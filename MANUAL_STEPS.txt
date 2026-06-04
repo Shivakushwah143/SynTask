@@ -1,0 +1,121 @@
+╔════════════════════════════════════════════════════════════╗
+║  MANUAL DEPLOYMENT STEPS - TASK DETAIL UI FIX            ║
+╚════════════════════════════════════════════════════════════╝
+
+📋 STEP-BY-STEP INSTRUCTIONS:
+
+──────────────────────────────────────────────────────────────
+STEP 1: BUILD FRONTEND
+──────────────────────────────────────────────────────────────
+
+Open PowerShell or Command Prompt and run:
+
+cd "C:\Users\Administrator\Documents\task management\frontend"
+npm run build
+
+✓ Wait for build to complete (takes 30-60 seconds)
+✓ You should see "build complete" message
+
+──────────────────────────────────────────────────────────────
+STEP 2: COPY TO PRODUCTION
+──────────────────────────────────────────────────────────────
+
+Option A - PowerShell:
+Remove-Item "C:\apps\task-management\frontend\dist" -Recurse -Force -ErrorAction SilentlyContinue
+Copy-Item "C:\Users\Administrator\Documents\task management\frontend\dist" "C:\apps\task-management\frontend\dist" -Recurse -Force
+
+Option B - Command Prompt:
+rd /s /q "C:\apps\task-management\frontend\dist"
+xcopy /E /I /Y "C:\Users\Administrator\Documents\task management\frontend\dist" "C:\apps\task-management\frontend\dist"
+
+✓ This copies all build files to production
+
+──────────────────────────────────────────────────────────────
+STEP 3: RESTART FRONTEND SERVER
+──────────────────────────────────────────────────────────────
+
+cd C:\apps\task-management
+pm2 restart task-management-frontend
+
+✓ Wait 5 seconds for restart
+
+──────────────────────────────────────────────────────────────
+STEP 4: VERIFY DEPLOYMENT
+──────────────────────────────────────────────────────────────
+
+pm2 status
+
+✓ Check that "task-management-frontend" shows "online"
+
+──────────────────────────────────────────────────────────────
+STEP 5: CLEAR BROWSER CACHE (CRITICAL!)
+──────────────────────────────────────────────────────────────
+
+Method 1 - Clear Cache:
+1. Press Ctrl + Shift + Delete
+2. Select "Cached images and files"
+3. Time range: "All time"
+4. Click "Clear data"
+
+Method 2 - Use Incognito/Private Window:
+Chrome: Ctrl + Shift + N
+Edge: Ctrl + Shift + P
+Firefox: Ctrl + Shift + P
+
+──────────────────────────────────────────────────────────────
+STEP 6: TEST
+──────────────────────────────────────────────────────────────
+
+1. Go to: https://task.synzent.ai/
+2. Login if needed
+3. Go to any project board
+4. Click on a task
+
+YOU SHOULD NOW SEE:
+✓ Larger task title (30px font)
+✓ "Description" heading with "Edit" button
+✓ Enhanced description box with border
+✓ Modern activity tabs with better spacing
+✓ Gradient avatar backgrounds in comments
+✓ "No comments yet - Be the first to comment!" empty state
+✓ Better overall spacing and layout
+
+──────────────────────────────────────────────────────────────
+TROUBLESHOOTING:
+──────────────────────────────────────────────────────────────
+
+❌ Still showing old UI?
+Try these in order:
+
+1. Use incognito/private window (easiest test)
+2. Clear cache again (make sure "All time" is selected)
+3. Check PM2 logs:
+   pm2 logs task-management-frontend --lines 50
+
+4. Verify files were copied:
+   dir "C:\apps\task-management\frontend\dist\index.html"
+   
+5. Check if Caddy needs restart (if using Caddy):
+   caddy reload
+
+6. Hard refresh: Ctrl + Shift + R (not just Ctrl + R)
+
+7. Check browser console (F12) for errors
+
+──────────────────────────────────────────────────────────────
+FILES CREATED FOR EASIER DEPLOYMENT:
+──────────────────────────────────────────────────────────────
+
+1. C:\apps\task-management\DEPLOY_NOW.ps1
+   - PowerShell automated script
+
+2. C:\apps\task-management\COMPLETE_FRONTEND_DEPLOY.bat
+   - Batch file automated script
+
+3. C:\apps\task-management\VERIFY_DEPLOYMENT.bat
+   - Verification script
+
+Just double-click any of these to run!
+
+══════════════════════════════════════════════════════════════
+
