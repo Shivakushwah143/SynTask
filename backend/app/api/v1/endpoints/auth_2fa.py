@@ -9,7 +9,7 @@ import base64
 
 from app.models.user import User
 from app.api.dependencies import get_current_user
-from app.core.security import verify_password, get_password_hash
+from app.core.security import decrypt_sensitive_value, encrypt_sensitive_value, verify_password
 
 router = APIRouter()
 
@@ -32,7 +32,7 @@ async def enable_2fa(
     
     # Update user
     current_user.two_factor_enabled = True
-    current_user.two_factor_secret = secret
+    current_user.two_factor_secret = encrypt_sensitive_value(secret)
     await current_user.save()
     
     # Generate QR code
@@ -88,7 +88,15 @@ async def verify_2fa(
             detail="2FA not enabled"
         )
     
-    totp = pyotp.TOTP(current_user.two_factor_secret)
+    try:
+        secret = decrypt_sensitive_value(current_user.two_factor_secret)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="2FA configuration is invalid"
+        )
+
+    totp = pyotp.TOTP(secret)
     
     if not totp.verify(code, valid_window=1):
         raise HTTPException(

@@ -53,7 +53,7 @@ async def init_super_admin():
     
     print(f"✓ Super Admin created successfully!")
     print(f"Email: {settings.SUPER_ADMIN_EMAIL}")
-    print(f"Password: {settings.SUPER_ADMIN_PASSWORD}")
+    print("Password: configured from SUPER_ADMIN_PASSWORD")
     print("\n⚠️  IMPORTANT: Change the password after first login!")
     
     client.close()

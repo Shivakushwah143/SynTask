@@ -1,9 +1,10 @@
 """Migrate company_admin role to admin"""
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
+from app.core.config import settings
 
-MONGODB_URL = "mongodb+srv://tms-madhu:madhu12345@cluster0.knbbp3j.mongodb.net/?appName=Cluster0&retryWrites=true&w=majority"
-DATABASE_NAME = "alphanexis_task_management"
+MONGODB_URL = settings.MONGODB_URL
+DATABASE_NAME = settings.DATABASE_NAME
 
 async def migrate():
     """Update all company_admin roles to admin"""

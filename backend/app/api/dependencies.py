@@ -4,14 +4,14 @@ API Dependencies - Authentication and Authorization
 from fastapi import Depends, HTTPException, status
 from typing import Optional
 
-from app.core.security import get_token_from_header, decode_token
+from app.core.security import get_token_from_header, decode_token_with_blacklist_check
 from app.models.user import User, UserRole, UserStatus
 
 
 async def get_current_user(token: str = Depends(get_token_from_header)) -> User:
     """Get current authenticated user"""
     # Decode token
-    payload = decode_token(token)
+    payload = await decode_token_with_blacklist_check(token)
     user_id = payload.get("sub")
     
     if not user_id:

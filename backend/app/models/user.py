@@ -56,8 +56,8 @@ class User(Document):
     last_login: Optional[datetime] = None
     is_email_verified: bool = False
     two_factor_enabled: bool = False
-    two_factor_secret: Optional[str] = None
-    # Password reset token (replaces OTP)
+    two_factor_secret: Optional[str] = None  # Encrypted with ENCRYPTION_KEY
+    # Password reset token hash (replaces OTP)
     password_reset_token: Optional[str] = None
     password_reset_token_expires_at: Optional[datetime] = None
     password_reset_token_used: bool = False

@@ -10,8 +10,12 @@ export const authAPI = {
     return response.data
   },
 
-  logout: async () => {
-    const response = await api.post('/auth/logout')
+  logout: async (refreshToken) => {
+    const response = await api.post('/auth/logout', refreshToken ? {
+      refresh_token: refreshToken,
+    } : undefined, {
+      skipAuthRefresh: true,
+    })
     return response.data
   },
 

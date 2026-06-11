@@ -1,7 +1,7 @@
 """
 Authentication Endpoints
 """
-from fastapi import APIRouter, HTTPException, status, Depends, Form, Query, Body, File, UploadFile
+from fastapi import APIRouter, HTTPException, status, Depends, Form, Query, Body, File, UploadFile, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Optional, Dict
 from datetime import datetime, timedelta
@@ -20,21 +20,43 @@ from app.core.security import (
 )
 from app.core.config import settings
 from app.core.email import send_password_reset_email
+from app.core.file_validation import detect_mime_type
+from app.core.security import get_token_from_header, decode_refresh_token
+from app.core.token_blacklist import blacklist_token, is_token_blacklisted
+from app.middleware.rate_limiter import limiter
 from app.api.dependencies import get_current_user
 from app.schemas.auth import RefreshTokenRequest, LoginRequest, ChangePasswordRequest
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+ALLOWED_AVATAR_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+
+async def find_user_by_reset_token(token: str) -> Optional[User]:
+    """Find the user for a plaintext reset token stored as a password hash."""
+    users = await User.find({"password_reset_token": {"$ne": None}}).to_list()
+    for user in users:
+        stored_token = user.password_reset_token
+        if not stored_token:
+            continue
+        try:
+            if verify_password(token, stored_token):
+                return user
+        except Exception:
+            continue
+    return None
 
 
 @router.post("/login")
+@limiter.limit("10/minute")
 async def login(
-    request: LoginRequest
+    request: Request,
+    login_request: LoginRequest
 ):
     """Login endpoint"""
     # Find user by email
-    user = await User.find_one(User.email == request.email.lower())
+    user = await User.find_one(User.email == login_request.email.lower())
     
     if not user:
         raise HTTPException(
@@ -43,7 +65,7 @@ async def login(
         )
     
     # Check password
-    if not verify_password(request.password, user.password_hash):
+    if not verify_password(login_request.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
@@ -57,7 +79,7 @@ async def login(
         )
     
     # Create tokens
-    access_token_expires = timedelta(days=30 if request.remember_me else settings.ACCESS_TOKEN_EXPIRE_MINUTES / 60 / 24)
+    access_token_expires = timedelta(days=30 if login_request.remember_me else settings.ACCESS_TOKEN_EXPIRE_MINUTES / 60 / 24)
     token_payload = {
         "sub": str(user.id),
         "email": user.email,
@@ -98,14 +120,19 @@ async def login(
 
 
 @router.post("/refresh")
+@limiter.limit("30/minute")
 async def refresh_token(
-    request: RefreshTokenRequest
+    request: Request,
+    refresh_request: RefreshTokenRequest
 ):
     """Refresh access token"""
-    from app.core.security import decode_refresh_token
-    
     try:
-        payload = decode_refresh_token(request.refresh_token)
+        if await is_token_blacklisted(refresh_request.refresh_token):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token"
+            )
+        payload = decode_refresh_token(refresh_request.refresh_token)
         user_id = payload.get("sub")
         
         user = await User.get(user_id)
@@ -138,8 +165,23 @@ async def refresh_token(
         )
 
 
+@router.post("/logout")
+async def logout(
+    token: str = Depends(get_token_from_header),
+    refresh_token: Optional[str] = Body(None, embed=True),
+    current_user: User = Depends(get_current_user)
+):
+    """Logout by revoking the current access token and optional refresh token."""
+    await blacklist_token(token)
+    if refresh_token:
+        await blacklist_token(refresh_token)
+    return {"success": True, "message": "Logged out successfully"}
+
+
 @router.post("/forgot-password")
+@limiter.limit("5/minute")
 async def forgot_password(
+    request: Request,
     email: str = Form(...)
 ):
     """Request password reset - generates token and sends email"""
@@ -160,7 +202,7 @@ async def forgot_password(
     reset_token = generate_reset_token()
     
     # Set token with expiration (30 minutes)
-    user.password_reset_token = reset_token
+    user.password_reset_token = get_password_hash(reset_token)
     user.password_reset_token_expires_at = datetime.utcnow() + timedelta(minutes=30)
     user.password_reset_token_used = False
     await user.save()
@@ -193,7 +235,9 @@ async def forgot_password(
 
 
 @router.get("/verify-reset-token")
+@limiter.limit("10/minute")
 async def verify_reset_token(
+    request: Request,
     token: str
 ):
     """Verify if reset token is valid (not expired, not used)"""
@@ -203,8 +247,8 @@ async def verify_reset_token(
             detail="Token is required"
         )
     
-    # Find user with this token
-    user = await User.find_one(User.password_reset_token == token)
+    # Find user by comparing token with the stored hash.
+    user = await find_user_by_reset_token(token)
     
     if not user:
         raise HTTPException(
@@ -237,7 +281,9 @@ async def verify_reset_token(
 
 
 @router.post("/reset-password")
+@limiter.limit("10/minute")
 async def reset_password(
+    request: Request,
     token: str = Form(...),
     new_password: str = Form(...)
 ):
@@ -248,8 +294,8 @@ async def reset_password(
             detail="Token is required"
         )
     
-    # Find user with this token
-    user = await User.find_one(User.password_reset_token == token)
+    # Find user by comparing token with the stored hash.
+    user = await find_user_by_reset_token(token)
     
     if not user:
         raise HTTPException(
@@ -424,6 +470,13 @@ async def upload_avatar(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File size exceeds maximum allowed size of 5MB"
+            )
+
+        detected_mime = detect_mime_type(file_content, file.filename or "")
+        if detected_mime not in ALLOWED_AVATAR_MIME_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File type '{detected_mime}' not allowed"
             )
         
         # Create avatars directory if it doesn't exist

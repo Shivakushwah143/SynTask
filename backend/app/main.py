@@ -12,7 +12,13 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
+from app.core.redis_client import close_redis, get_redis
 from app.api.v1.router import api_router
+from app.middleware.rate_limiter import (
+    RateLimitExceeded,
+    _rate_limit_exceeded_handler,
+    limiter,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -31,28 +37,18 @@ app = FastAPI(
     openapi_url="/api/openapi.json" if settings.ENVIRONMENT != "production" else None,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS Middleware
-# CORS: allow all in dev to avoid browser blocks during local testing
-cors_origins = settings.ALLOWED_ORIGINS or ["*"]
+cors_origins = settings.ALLOWED_ORIGINS if settings.ENVIRONMENT == "production" else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins if settings.ENVIRONMENT != "development" else ["*"],
-    allow_origin_regex=".*",
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
-
-# Dev helper middleware to always stamp CORS headers (covers error responses)
-@app.middleware("http")
-async def add_dev_cors_headers(request: Request, call_next):
-    response = await call_next(request)
-    if settings.ENVIRONMENT == "development":
-        origin = request.headers.get("origin", "*")
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Vary"] = "Origin"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
 
 # Trusted Host Middleware (Security)
 if settings.ENVIRONMENT == "production":
@@ -73,14 +69,10 @@ async def add_process_time_header(request: Request, call_next):
 # Exception handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global exception: {str(exc)}", exc_info=True)
+    logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={
-            "success": False,
-            "message": "Internal server error",
-            "error": str(exc) if settings.ENVIRONMENT != "production" else "An error occurred"
-        }
+        content={"success": False, "message": "Internal server error"}
     )
 
 # Startup event
@@ -88,8 +80,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def startup_event():
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
+    if settings.ENVIRONMENT == "production":
+        assert len(settings.SECRET_KEY) >= 32, "SECRET_KEY too short for production"
+        assert "changeme" not in settings.SECRET_KEY.lower(), "SECRET_KEY is default value"
+        assert "changeme" not in settings.SUPER_ADMIN_PASSWORD.lower(), "SUPER_ADMIN_PASSWORD is default"
+
     await init_db()
     logger.info("Database initialized successfully")
+    await get_redis()
     
     # Start background task for deadline checking
     import asyncio
@@ -101,6 +99,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutting down application")
+    await close_redis()
     await close_db()
     logger.info("Database connections closed")
 
@@ -118,6 +117,8 @@ async def health_check():
 @app.get("/debug", tags=["Health"])
 async def debug_backend():
     """Call this to confirm the backend returns user-provided project_id (no auto-generated ID as project_id)."""
+    if settings.ENVIRONMENT == "production":
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
     return {
         "status": "ok",
         "version": settings.VERSION,

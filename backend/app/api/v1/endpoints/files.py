@@ -11,6 +11,7 @@ from pathlib import Path
 from app.models.user import User
 from app.api.dependencies import get_current_user
 from app.core.config import settings
+from app.core.file_validation import detect_mime_type
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -24,6 +25,38 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 logger.info(f"Upload directory set to: {UPLOAD_DIR.absolute()}")
 PROJECT_UPLOAD_DIR = UPLOAD_DIR / "projects"
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+    "application/zip",
+}
+
+
+def validate_uploaded_file(filename: str, file_content: bytes) -> str:
+    file_ext = Path(filename or "").suffix.lower()
+    if file_ext not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type not allowed. Allowed types: {', '.join(settings.ALLOWED_EXTENSIONS)}"
+        )
+
+    detected_mime = detect_mime_type(file_content, filename)
+    if detected_mime not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type '{detected_mime}' not allowed"
+        )
+
+    return file_ext
 
 
 @router.post("/upload")
@@ -41,17 +74,11 @@ async def upload_file(
         
         if file_size > settings.MAX_UPLOAD_SIZE:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"File size exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE / 1024 / 1024}MB"
             )
         
-        # Validate file extension
-        file_ext = Path(file.filename).suffix.lower()
-        if file_ext not in settings.ALLOWED_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"File type not allowed. Allowed types: {', '.join(settings.ALLOWED_EXTENSIONS)}"
-            )
+        file_ext = validate_uploaded_file(file.filename, file_content)
         
         # Generate unique filename
         unique_filename = f"{uuid.uuid4()}{file_ext}"

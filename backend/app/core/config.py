@@ -2,6 +2,7 @@
 Application Configuration
 """
 from pydantic_settings import BaseSettings
+from pydantic import Field, model_validator
 from typing import List, Optional
 from functools import lru_cache
 
@@ -19,7 +20,8 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     
     # Security
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    SECRET_KEY: str = Field(..., description="Strong random secret for JWT signing. Minimum 32 characters.")
+    ENCRYPTION_KEY: str = Field(..., description="Fernet key for encrypting sensitive fields at rest.")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -31,14 +33,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "https://task.synzent.ai",
     ]
-    ALLOWED_HOSTS: List[str] = ["*"]
+    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
     # Frontend URL (for email links and redirects)
     FRONTEND_URL: str = "https://task.synzent.ai"
     
     # Database
-    # For MongoDB Atlas, set this via environment variable or .env file:
-    # MONGODB_URL=mongodb+srv://tms-madhu:madhu12345@cluster0.knbbp3j.mongodb.net/?appName=Cluster0&retryWrites=true&w=majority
-    MONGODB_URL: str = "mongodb+srv://tms-madhu:madhu12345@cluster0.knbbp3j.mongodb.net/?appName=Cluster0&retryWrites=true&w=majority"
+    MONGODB_URL: str = Field(..., description="MongoDB connection string.")
     DATABASE_NAME: str = "alphanexis_task_management"
     
     # Email Configuration
@@ -92,7 +92,8 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     
     # Redis (for caching and Celery)
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = Field(..., description="Redis URL for token blacklist and rate limiting.")
+    ENABLE_TOKEN_REVOCATION: bool = True
     
     # Celery (Background tasks)
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
@@ -105,13 +106,40 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_REQUESTS: int = 100
     RATE_LIMIT_PERIOD: int = 60  # seconds
+    AUTH_RATE_LIMIT_REQUESTS: int = 10
+    AUTH_RATE_LIMIT_PERIOD: int = 60  # seconds
     
     # Logging
     LOG_LEVEL: str = "INFO"
     
     # Super Admin
-    SUPER_ADMIN_EMAIL: str = "admin@alphanexis.com"
-    SUPER_ADMIN_PASSWORD: str = "changeme123"  # Change in production
+    SUPER_ADMIN_EMAIL: str = Field(..., description="Super admin bootstrap email address.")
+    SUPER_ADMIN_PASSWORD: str = Field(..., description="Super admin bootstrap password. Minimum 16 characters.")
+
+    @model_validator(mode="after")
+    def validate_production_settings(self):
+        """Fail fast when production is configured with unsafe defaults."""
+        if self.ENVIRONMENT != "production":
+            return self
+
+        errors = []
+        if not self.SECRET_KEY or len(self.SECRET_KEY) < 32:
+            errors.append("SECRET_KEY must be set to a strong value of at least 32 characters")
+        if not self.ENCRYPTION_KEY:
+            errors.append("ENCRYPTION_KEY must be set")
+        if not self.MONGODB_URL:
+            errors.append("MONGODB_URL must be set")
+        if len(self.SUPER_ADMIN_PASSWORD) < 16:
+            errors.append("SUPER_ADMIN_PASSWORD must be at least 16 characters")
+        if "*" in self.ALLOWED_ORIGINS:
+            errors.append("ALLOWED_ORIGINS cannot contain '*' in production")
+        if "*" in self.ALLOWED_HOSTS:
+            errors.append("ALLOWED_HOSTS cannot contain '*' in production")
+
+        if errors:
+            raise ValueError("Unsafe production configuration: " + "; ".join(errors))
+
+        return self
     
     class Config:
         env_file = ".env"
@@ -121,7 +149,14 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings() -> Settings:
-    return Settings()
+    try:
+        return Settings()
+    except Exception as e:
+        raise RuntimeError(
+            "FATAL: Missing required environment variables.\n"
+            "Copy backend/.env.example to backend/.env and fill in all required values.\n"
+            f"Error: {e}"
+        ) from e
 
 
 settings = get_settings()

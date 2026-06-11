@@ -6,6 +6,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
 const axiosInstance = axios.create({
   baseURL: API_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -38,7 +39,7 @@ axiosInstance.interceptors.response.use(
     const originalRequest = error.config
 
     // If the error is 401 and we haven't retried yet
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.skipAuthRefresh) {
       originalRequest._retry = true
 
       try {
@@ -61,7 +62,7 @@ axiosInstance.interceptors.response.use(
           return axiosInstance(originalRequest)
         }
       } catch (refreshError) {
-        useAuthStore.getState().logout()
+        useAuthStore.getState().clearAuth()
         window.location.href = '/login'
         toast.error('Session expired. Please login again.')
         return Promise.reject(refreshError)

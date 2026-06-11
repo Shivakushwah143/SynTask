@@ -1,43 +1,47 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
 
 export const useAuthStore = create(
-  persist(
-    (set, get) => ({
-      user: null,
-      token: null,
-      refreshToken: null,
-      isAuthenticated: false,
+  (set, get) => ({
+    user: null,
+    token: null,
+    refreshToken: null,
+    isAuthenticated: false,
 
-      setAuth: (user, token, refreshToken) =>
-        set({
-          user,
-          token,
-          refreshToken,
-          isAuthenticated: true,
-        }),
+    setAuth: (user, token, refreshToken) =>
+      set({
+        user,
+        token,
+        refreshToken,
+        isAuthenticated: true,
+      }),
 
-      updateUser: (userData) =>
-        set((state) => ({
-          user: { ...state.user, ...userData },
-        })),
+    updateUser: (userData) =>
+      set((state) => ({
+        user: { ...state.user, ...userData },
+      })),
 
-      logout: () =>
-        set({
-          user: null,
-          token: null,
-          refreshToken: null,
-          isAuthenticated: false,
-        }),
+    clearAuth: () =>
+      set({
+        user: null,
+        token: null,
+        refreshToken: null,
+        isAuthenticated: false,
+      }),
 
-      getToken: () => get().token,
+    logout: async () => {
+      const { refreshToken } = get()
+      try {
+        const { authAPI } = await import('../api/auth')
+        await authAPI.logout(refreshToken)
+      } catch (e) {
+        // Always clear client state, even if server-side revocation fails.
+      }
+      get().clearAuth()
+    },
 
-      getUser: () => get().user,
-    }),
-    {
-      name: 'auth-storage',
-      storage: createJSONStorage(() => localStorage),
-    }
-  )
+    getToken: () => get().token,
+
+    getUser: () => get().user,
+  })
 )
 
