@@ -28,7 +28,8 @@ class Task(Document):
     title: str
     description: Optional[str] = None
     company_id: Indexed(str)
-    project_id: Optional[str] = None  # FK: Project.project_id (user-provided e.g. PROJ-001), not Project._id
+    project_id: Optional[str] = None  # Logical Project.project_id (user-provided e.g. PROJ-001)
+    project_object_id: Optional[str] = None  # MongoDB Project._id string for normalized lookups
     
     # Assignment
     created_by: str  # User ID
@@ -95,6 +96,7 @@ class Task(Document):
             "status",
             "priority",
             "project_id",
+            "project_object_id",
         ]
 
 

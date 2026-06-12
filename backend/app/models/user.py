@@ -50,6 +50,7 @@ class User(Document):
     # Hierarchical Reporting Structure
     reports_to: Optional[str] = None  # User ID of the person this user reports to
     created_by: Optional[str] = None  # User ID who created this user
+    ancestors: List[str] = Field(default_factory=list)  # Root-to-parent user IDs for hierarchy lookups
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -78,41 +79,26 @@ class User(Document):
             "status",
             "reports_to",
             "created_by",
+            "ancestors",
         ]
     
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"
     
     async def get_all_subordinates(self) -> List['User']:
-        """Get all users that report to this user (recursive)"""
+        """Get all users that report directly or indirectly to this user."""
         from app.models.user import User
-        subordinates = []
-        
-        # Direct reports
-        direct_reports = await User.find(User.reports_to == str(self.id)).to_list()
-        subordinates.extend(direct_reports)
-        
-        # Recursive: get subordinates of subordinates
-        for report in direct_reports:
-            sub_subordinates = await report.get_all_subordinates()
-            subordinates.extend(sub_subordinates)
-        
-        return subordinates
+        query = {"ancestors": str(self.id)}
+        if self.company_id:
+            query["company_id"] = self.company_id
+        return await User.find(query).to_list()
     
     async def get_all_managers(self) -> List['User']:
-        """Get all managers in the chain (recursive upward)"""
+        """Get all managers in the chain using the denormalized ancestors array."""
         from app.models.user import User
-        managers = []
-        
-        if self.reports_to:
-            manager = await User.get(self.reports_to)
-            if manager:
-                managers.append(manager)
-                # Recursive: get managers of manager
-                upper_managers = await manager.get_all_managers()
-                managers.extend(upper_managers)
-        
-        return managers
+        if not self.ancestors:
+            return []
+        return await User.find({"_id": {"$in": self.ancestors}}).to_list()
     
     def can_create_role(self, target_role: UserRole) -> bool:
         """Check if this user can create a user with target_role"""

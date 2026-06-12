@@ -13,6 +13,7 @@ from app.api.dependencies import (
     get_current_company_admin_or_lead,
     check_company_access,
 )
+from app.services.task_service import TaskService
 
 router = APIRouter()
 
@@ -389,10 +390,8 @@ async def update_task_status(
             detail=f"Invalid status. Must be one of: {[s.value for s in TaskStatus]}"
         )
     
-    # Update status
-    task.status = task_status
-    task.updated_at = datetime.utcnow()
-    await task.save()
+    # Update status and trigger automation asynchronously when changed.
+    task = await TaskService.update_status(task, task_status, str(current_user.id))
     
     return {
         "id": str(task.id),

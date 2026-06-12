@@ -1,0 +1,550 @@
+# API Documentation - SynTask
+
+Base URL: `https://task.synzent.ai/api/v1`  
+Development: `http://localhost:8000/api/v1`
+
+Interactive Swagger docs are available only outside production at `GET /api/docs`.
+
+## Authentication
+
+Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions include login, refresh, forgot/reset password flows, company registration, public MSA signing links, selected subscription/payment webhook endpoints, and health/debug endpoints.
+
+### Core Auth Endpoints
+
+| Method | Path | Auth | Rate Limit | Description |
+|---|---|---|---|---|
+| POST | `/api/v1/auth/login` | No | 10/minute | Authenticate with email/password and receive access and refresh JWTs. |
+| POST | `/api/v1/auth/refresh` | No | 30/minute | Exchange a refresh token for a new access token. |
+| POST | `/api/v1/auth/logout` | Yes | Default | Blacklist the current access token and optional refresh token. |
+| POST | `/api/v1/auth/forgot-password` | No | 5/minute | Create a password reset token and send email when SMTP is configured. |
+| POST | `/api/v1/auth/reset-password` | No | 10/minute | Set a new password using a valid reset token. |
+| GET | `/api/v1/auth/me` | Yes | Default | Return current authenticated user. |
+
+### Login Request
+
+```json
+{"email":"user@example.com","password":"password","remember_me":false}
+```
+
+### Login Response
+
+```json
+{"access_token":"...","refresh_token":"...","token_type":"bearer","user":{"id":"...","email":"...","role":"admin"}}
+```
+
+## Endpoints by Module
+
+### 2FA
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/auth/2fa/disable-2fa` | `disable_2fa` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/auth/2fa/enable-2fa` | `enable_2fa` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/auth/2fa/verify-2fa` | `verify_2fa` | Uses router/endpoint dependencies where configured. |
+
+### Activity
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/activity/timeline` | `get_activity_timeline` | Uses router/endpoint dependencies where configured. |
+
+### Authentication
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| DELETE | `/api/v1/auth/avatar` | `delete_avatar` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/auth/change-password` | `change_password` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/auth/forgot-password` | `forgot_password` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/auth/login` | `login` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/auth/logout` | `logout` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/auth/me` | `get_current_user_info` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/auth/notification-preferences` | `update_notification_preferences` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/auth/refresh` | `refresh_token` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/auth/reset-password` | `reset_password` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/auth/upload-avatar` | `upload_avatar` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/auth/verify-reset-token` | `verify_reset_token` | Uses router/endpoint dependencies where configured. |
+
+### Automation
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/automation/` | `list_automation_rules` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/automation/` | `create_automation_rule` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/automation/{rule_id}` | `delete_automation_rule` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/automation/{rule_id}` | `get_automation_rule` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/automation/{rule_id}` | `update_automation_rule` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/automation/{rule_id}/activate` | `toggle_automation_rule` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/automation/{rule_id}/executions` | `get_automation_executions` | Uses router/endpoint dependencies where configured. |
+
+### Backlog
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/backlog/projects/{project_id}/backlog` | `get_project_backlog` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/backlog/projects/{project_id}/backlog/{task_id}/move-to-sprint` | `move_task_to_sprint` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/backlog/projects/{project_id}/backlog/{task_id}/remove-from-sprint` | `remove_task_from_sprint` | Uses router/endpoint dependencies where configured. |
+
+### Calendar
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/calendar/events` | `get_calendar_events` | Uses router/endpoint dependencies where configured. |
+
+### Changelog
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/changelog/tasks/{task_id}/changelog` | `get_task_changelog` | Uses router/endpoint dependencies where configured. |
+
+### Chat
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/chat/conversations` | `list_conversations` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/chat/conversations` | `create_or_get_conversation` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/chat/conversations/{conversation_id}/messages` | `get_messages` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/chat/conversations/{conversation_id}/messages` | `send_message` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/chat/groups` | `create_group` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/chat/groups/{group_id}` | `get_group_details` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/chat/groups/{group_id}/admins/{user_id}` | `remove_group_admin` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/chat/groups/{group_id}/admins/{user_id}` | `add_group_admin` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/chat/groups/{group_id}/members` | `get_group_members` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/chat/groups/{group_id}/members` | `add_members_to_group` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/chat/groups/{group_id}/members/{user_id}` | `remove_member_from_group` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/chat/messages/{message_id}` | `delete_message` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/chat/messages/{message_id}/read` | `mark_message_read` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/chat/users/search` | `search_users_for_chat` | Uses router/endpoint dependencies where configured. |
+
+### Clients
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/clients/` | `list_clients` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/clients/` | `create_client` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/clients/{client_id}` | `delete_client` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/clients/{client_id}` | `get_client` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/clients/{client_id}` | `update_client` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/clients/{client_id}/documents` | `upload_client_document` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/clients/{client_id}/documents/{document_index}` | `delete_client_document` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/clients/{client_id}/projects` | `add_project_to_client` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/clients/{client_id}/projects/{project_id}` | `remove_project_from_client` | Uses router/endpoint dependencies where configured. |
+
+### Companies
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/companies/` | `list_companies` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/companies/register` | `register_company` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/companies/{company_id}` | `delete_company` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/companies/{company_id}` | `get_company` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/companies/{company_id}/approve` | `approve_company` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/companies/{company_id}/status` | `update_company_status` | Uses router/endpoint dependencies where configured. |
+
+### Components
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/components/projects/{project_id}/components` | `list_components` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/components/projects/{project_id}/components` | `create_component` | Uses router/endpoint dependencies where configured. |
+
+### Dashboard
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/dashboard/stats` | `get_dashboard_stats` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/dashboard/super-admin/analytics` | `get_super_admin_analytics` | Uses router/endpoint dependencies where configured. |
+
+### Files
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/files/clients/{filename}` | `get_client_file` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/files/msa/{filename}` | `get_msa_file` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/files/projects/{filename}` | `get_project_file` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/files/upload` | `upload_file` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/files/{filename}` | `get_file` | Uses router/endpoint dependencies where configured. |
+
+### Health
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/debug` | `debug_backend` | Uses router/endpoint dependencies where configured. |
+
+### Invoices
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/invoices/` | `list_invoices` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/invoices/` | `create_invoice` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/invoices/{invoice_id}` | `delete_invoice` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/invoices/{invoice_id}` | `get_invoice` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/invoices/{invoice_id}` | `update_invoice` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/invoices/{invoice_id}/pdf` | `download_invoice_pdf` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/invoices/{invoice_id}/send-email` | `send_invoice_email` | Uses router/endpoint dependencies where configured. |
+
+### Issue Links
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| DELETE | `/api/v1/issue-links/links/{link_id}` | `delete_issue_link` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/issue-links/tasks/{task_id}/links` | `get_issue_links` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/issue-links/tasks/{task_id}/links` | `create_issue_link` | Uses router/endpoint dependencies where configured. |
+
+### Issue Types
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/issue-types/` | `list_issue_types` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/issue-types/` | `create_issue_type` | Uses router/endpoint dependencies where configured. |
+
+### Ledger
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/ledger/` | `get_ledger` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/ledger/{invoice_id}/payment` | `add_payment` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/ledger/{invoice_id}/tds` | `update_tds` | Uses router/endpoint dependencies where configured. |
+
+### MSA
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/msa/` | `list_msas` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/msa/` | `create_msa` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/msa/sign/{token}` | `get_msa_by_token` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/msa/sign/{token}` | `client_sign_msa` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/msa/{msa_id}` | `delete_msa` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/msa/{msa_id}` | `get_msa` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/msa/{msa_id}` | `update_msa` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/msa/{msa_id}/download` | `download_msa` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/msa/{msa_id}/save-as-template` | `save_as_template` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/msa/{msa_id}/send` | `send_msa` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/msa/{msa_id}/send-for-signature` | `send_for_signature` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/msa/{msa_id}/staffing-signature` | `add_staffing_signature` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/msa/{msa_id}/stamp` | `upload_stamp` | Uses router/endpoint dependencies where configured. |
+
+### Meetings
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/meetings/` | `list_meetings` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/meetings/` | `create_meeting` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/meetings/{meeting_id}` | `delete_meeting` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/meetings/{meeting_id}` | `get_meeting` | Uses router/endpoint dependencies where configured. |
+
+### Notifications
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/notifications/` | `list_notifications` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/notifications/mark-all-read` | `mark_all_notifications_as_read` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/notifications/{notification_id}` | `delete_notification` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/notifications/{notification_id}/read` | `mark_notification_as_read` | Uses router/endpoint dependencies where configured. |
+
+### Projects
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/projects/` | `list_projects` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/projects/` | `create_project` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/for-task-creation` | `get_projects_for_task_creation` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/projects/{project_id}` | `delete_project` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}` | `get_project` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/projects/{project_id}` | `update_project` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}/board` | `get_project_board` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}/board-columns` | `get_board_columns` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/projects/{project_id}/board-columns` | `create_board_column` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/projects/{project_id}/board-columns/{column_id}` | `delete_board_column` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/projects/{project_id}/board-columns/{column_id}` | `update_board_column` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}/epics` | `list_epics` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/projects/{project_id}/epics` | `create_epic` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}/files` | `list_project_files` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/projects/{project_id}/files` | `upload_project_file` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/projects/{project_id}/files/{file_id}` | `delete_project_file` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}/pages` | `list_pages` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/projects/{project_id}/pages` | `create_page` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/projects/{project_id}/pages/{page_id}` | `delete_page` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}/pages/{page_id}` | `get_page` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/projects/{project_id}/pages/{page_id}` | `update_page` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}/sprints` | `list_sprints` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/projects/{project_id}/sprints` | `create_sprint` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/projects/{project_id}/sprints/{sprint_id}/state` | `update_sprint_state` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}/summary` | `get_project_summary` | Uses router/endpoint dependencies where configured. |
+
+### Reports
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/reports/analytics/charts` | `get_analytics_charts` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/reports/tasks/export` | `export_tasks_report` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/reports/tickets/export` | `export_tickets_report` | Uses router/endpoint dependencies where configured. |
+
+### Sales
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/sales/dashboard` | `sales_dashboard` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/health` | `sales_health` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/me` | `sales_me` | Uses router/endpoint dependencies where configured. |
+
+### Sales Categories
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/sales/categories/` | `list_categories` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/categories/` | `create_category` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/categories/bulk-upload` | `bulk_upload_categories` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/categories/{category_id}` | `delete_category` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/categories/{category_id}` | `update_category` | Uses router/endpoint dependencies where configured. |
+
+### Sales Contacts
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/sales/contacts/` | `list_contacts` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/contacts/` | `create_contact` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/contacts/bulk-upload` | `bulk_upload_contacts` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/contacts/search` | `search_contact` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/contacts/share` | `share_contacts` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/contacts/shared-with-me` | `list_shared_contacts` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/contacts/{contact_id}` | `delete_contact` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/contacts/{contact_id}` | `get_contact` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/contacts/{contact_id}` | `update_contact` | Uses router/endpoint dependencies where configured. |
+
+### Sales Masters
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/sales/masters/business-categories` | `list_business_categories` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/masters/business-categories` | `create_business_category` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/masters/business-categories/{category_id}` | `delete_business_category` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/masters/business-categories/{category_id}` | `update_business_category` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/masters/channels` | `list_channels` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/masters/channels` | `create_channel` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/masters/channels/{channel_id}` | `delete_channel` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/masters/channels/{channel_id}` | `update_channel` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/masters/greetings` | `list_greetings` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/masters/greetings` | `create_greeting` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/masters/greetings/{greeting_id}` | `delete_greeting` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/masters/greetings/{greeting_id}` | `update_greeting` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/masters/nationalities` | `list_nationalities` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/masters/nationalities` | `create_nationality` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/masters/nationalities/{nationality_id}` | `delete_nationality` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/masters/nationalities/{nationality_id}` | `update_nationality` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/masters/reasons-for-lost` | `list_reasons` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/masters/reasons-for-lost` | `create_reason` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/masters/reasons-for-lost/{reason_id}` | `delete_reason` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/masters/reasons-for-lost/{reason_id}` | `update_reason` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/masters/stages` | `list_stages` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/masters/stages` | `create_stage` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/masters/stages/{stage_id}` | `delete_stage` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/masters/stages/{stage_id}` | `update_stage` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/masters/tags` | `list_tags` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/masters/tags` | `create_tag` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/masters/tags/{tag_id}` | `delete_tag` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/masters/tags/{tag_id}` | `update_tag` | Uses router/endpoint dependencies where configured. |
+
+### Sales Products
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/sales/products/` | `list_products` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/products/` | `create_products` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/products/bulk-upload` | `bulk_upload_products` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/sales/products/{product_id}` | `delete_product` | Uses router/endpoint dependencies where configured. |
+
+### Sales Prospects
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/sales/prospects/` | `list_prospects` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/prospects/` | `create_prospect` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/sales/prospects/bulk-upload` | `bulk_upload_prospects` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/prospects/search/contact` | `search_contact_for_prospect` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/prospects/{prospect_id}` | `get_prospect` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/prospects/{prospect_id}` | `update_prospect` | Uses router/endpoint dependencies where configured. |
+
+### Sales Reports
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/sales/reports/inventory` | `inventory_report` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/reports/lost` | `lost_prospect_report` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/reports/prospect` | `prospect_report` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/reports/sales` | `sales_report` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/reports/target` | `team_target_report` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/reports/team-activity` | `team_activity_report` | Uses router/endpoint dependencies where configured. |
+
+### Subscriptions
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/subscriptions/confirm-payment` | `confirm_payment` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/subscriptions/current` | `get_current_subscription` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/subscriptions/payment-intent` | `create_payment_intent` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/subscriptions/plans` | `get_subscription_plans` | Uses router/endpoint dependencies where configured. |
+
+### Super Admin - Billing
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/superadmin/billing/export` | `export_billing_data` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/superadmin/billing/invoices/generate` | `generate_invoice` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/superadmin/billing/razorpay/webhook` | `razorpay_webhook` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/superadmin/billing/revenue/analytics` | `get_revenue_analytics` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/superadmin/billing/transactions` | `list_transactions` | Uses router/endpoint dependencies where configured. |
+
+### Super Admin - Plans
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/superadmin/plans/` | `list_plans` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/superadmin/plans/` | `create_plan` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/superadmin/plans/count` | `get_plans_count` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/superadmin/plans/{plan_id}` | `delete_plan` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/superadmin/plans/{plan_id}` | `get_plan` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/superadmin/plans/{plan_id}` | `update_plan` | Uses router/endpoint dependencies where configured. |
+
+### Super Admin - Tenants
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/superadmin/tenants/` | `list_tenants` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/superadmin/tenants/{company_id}` | `delete_tenant` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/superadmin/tenants/{company_id}` | `get_tenant` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/activate` | `activate_tenant` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/approve` | `approve_tenant` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/superadmin/tenants/{company_id}/modules` | `update_tenant_modules` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/superadmin/tenants/{company_id}/subscription` | `update_subscription` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/suspend` | `suspend_tenant` | Uses router/endpoint dependencies where configured. |
+
+### Super Admin - Usage
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/superadmin/usage/analytics` | `get_usage_analytics` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/superadmin/usage/company/{company_id}` | `get_company_usage` | Uses router/endpoint dependencies where configured. |
+
+### Tasks
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/tasks/` | `list_tasks` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/tasks/` | `create_task` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/tasks/{task_id}` | `get_task` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/tasks/{task_id}` | `update_task` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/tasks/{task_id}/attachments` | `add_task_attachment` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/tasks/{task_id}/comments` | `get_task_comments` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/tasks/{task_id}/comments` | `add_task_comment` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/tasks/{task_id}/status` | `update_task_status` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/tasks/{task_id}/subtasks` | `get_task_subtasks` | Uses router/endpoint dependencies where configured. |
+
+### Tickets
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/tickets/` | `list_tickets` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/tickets/` | `create_ticket` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/tickets/{ticket_id}` | `delete_ticket` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/tickets/{ticket_id}` | `get_ticket` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/tickets/{ticket_id}` | `update_ticket` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/tickets/{ticket_id}/assign` | `assign_ticket` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/tickets/{ticket_id}/comments` | `get_ticket_comments` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/tickets/{ticket_id}/comments` | `add_ticket_comment` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/tickets/{ticket_id}/status` | `update_ticket_status` | Uses router/endpoint dependencies where configured. |
+
+### Time Tracking
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/time-tracking/tasks/{task_id}/log-time` | `log_time` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/time-tracking/tasks/{task_id}/time-logs` | `get_task_time_logs` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/time-tracking/tasks/{task_id}/time-summary` | `get_task_time_summary` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/time-tracking/time-logs/{log_id}` | `delete_time_log` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/time-tracking/users/{user_id}/time-logs` | `get_user_time_logs` | Uses router/endpoint dependencies where configured. |
+
+### Timesheet
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/timesheet/entries` | `create_timesheet_entry` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/timesheet/entries/{entry_id}` | `delete_timesheet_entry` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/timesheet/list` | `get_timesheet_list` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/timesheet/my-timesheet` | `get_my_timesheet` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/timesheet/team-timesheet` | `get_team_timesheet` | Uses router/endpoint dependencies where configured. |
+
+### Users
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/users/` | `list_users` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/users/assignable` | `get_assignable_users` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/users/creatable-roles` | `get_creatable_roles` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/users/create-employee` | `create_employee` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/users/create-lead` | `create_lead` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/users/create-user` | `create_user_hierarchical` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/users/detail/{user_id}` | `delete_user` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/users/detail/{user_id}` | `get_user` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/users/detail/{user_id}` | `update_user` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/users/detail/{user_id}/status` | `update_user_status` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/users/my-team` | `get_my_team` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/users/reporting-options` | `get_reporting_options` | Uses router/endpoint dependencies where configured. |
+
+### Versions
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/versions/projects/{project_id}/versions` | `list_versions` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/versions/projects/{project_id}/versions` | `create_version` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/versions/versions/{version_id}/release` | `release_version` | Uses router/endpoint dependencies where configured. |
+
+### Watchers
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| DELETE | `/api/v1/watchers/tasks/{task_id}/watchers` | `remove_watcher` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/watchers/tasks/{task_id}/watchers` | `get_watchers` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/watchers/tasks/{task_id}/watchers` | `add_watcher` | Uses router/endpoint dependencies where configured. |
+
+### Webhooks
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/webhooks/` | `list_webhooks` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/webhooks/` | `create_webhook` | Uses router/endpoint dependencies where configured. |
+| DELETE | `/api/v1/webhooks/{webhook_id}` | `delete_webhook` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/webhooks/{webhook_id}` | `get_webhook` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/webhooks/{webhook_id}/activate` | `toggle_webhook` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/webhooks/{webhook_id}/deliveries` | `get_webhook_deliveries` | Uses router/endpoint dependencies where configured. |
+
+### Workflows
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/workflows/` | `list_workflows` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/workflows/` | `create_workflow` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/workflows/statuses` | `list_workflow_statuses` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/workflows/statuses` | `create_workflow_status` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/workflows/transitions` | `list_workflow_transitions` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/workflows/transitions` | `create_workflow_transition` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/workflows/{workflow_id}` | `get_workflow` | Uses router/endpoint dependencies where configured. |
+| PATCH | `/api/v1/workflows/{workflow_id}/activate` | `activate_workflow` | Uses router/endpoint dependencies where configured. |
+
+## Error Responses
+
+| Status | Meaning | Typical Cause |
+|---|---|---|
+| 400 | Bad request | Invalid business input or failed upload validation |
+| 401 | Unauthorized | Missing, invalid, expired, or blacklisted token |
+| 403 | Forbidden | Role/module/company access denied |
+| 404 | Not found | Missing resource or public reset flow hides unavailable account |
+| 413 | Payload too large | Upload exceeds configured maximum |
+| 422 | Validation error | Request body/query does not match Pydantic schema |
+| 429 | Rate limited | SlowAPI auth limits exceeded |
+| 500 | Internal error | Unhandled server-side failure |
+
+## Pagination
+List endpoints commonly use `skip` and `limit`; default page size is configured in `Settings.DEFAULT_PAGE_SIZE` and max size is `Settings.MAX_PAGE_SIZE`.
+
+## Role and Module Access
+Route groups for task-management features are protected with `require_module("task")`; sales routes rely on endpoint-level role checks. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.

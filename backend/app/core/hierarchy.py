@@ -288,7 +288,7 @@ async def get_team_member_ids(user: User) -> List[str]:
     Get list of team member IDs (subordinates) for a user.
     Returns list of user IDs that report directly or indirectly to this user.
     """
-    subordinates = await user.get_all_subordinates()
-    return [str(sub.id) for sub in subordinates]
+    from app.services.user_service import UserService
+    return await UserService.get_all_subordinates_ids(str(user.id), user.company_id)
 
 

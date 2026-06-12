@@ -1,0 +1,109 @@
+# Architecture Overview - SynTask
+
+## System Architecture Diagram
+```mermaid
+flowchart LR
+    Browser[Browser] --> Nginx[Nginx / Static Hosting]
+    Nginx --> React[React 18 SPA]
+    React --> API[FastAPI API]
+    API --> Mongo[(MongoDB Atlas)]
+    API --> Redis[(Redis)]
+    API --> Uploads[(Local uploads/)]
+    API --> Email[SMTP]
+    API --> Zoom[Zoom API]
+    API --> Payments[Stripe / Razorpay]
+    Redis --> Celery[Future Celery Workers]
+```
+
+See the standalone diagram in [docs/diagrams/architecture.md](docs/diagrams/architecture.md).
+
+## Multi-Tenancy Design
+SynTask uses a single MongoDB database with tenant isolation through `company_id`. Tenant-owned collections such as projects, tasks, tickets, clients, invoices, meetings, sales records, and usage records include a `company_id` field. API handlers use the authenticated user returned by `get_current_user()` and helper dependencies in `backend/app/api/dependencies.py` to enforce company access.
+
+Request bodies are not trusted for tenant ownership. Endpoints generally derive tenant scope from the current user and role. Super admins are the exception and can operate across tenants for company, plan, billing, and usage administration.
+
+## Role Hierarchy
+```mermaid
+flowchart TD
+    SuperAdmin[Super Admin] --> Admin[Admin]
+    Admin --> Manager[Manager]
+    Manager --> Manager2[Manager]
+    Manager --> Lead[Lead]
+    Lead --> Employee[Employee]
+```
+
+| Role | Purpose | Enforcement |
+|---|---|---|
+| Super Admin | Platform and tenant administration | `get_current_super_admin`, model `can_create_role()` |
+| Admin | Company administration | `get_current_company_admin` |
+| Manager | Team management | `get_current_company_admin_or_lead`, hierarchy helpers |
+| Lead | Employee management | hierarchy helpers |
+| Employee | Assigned task/ticket execution | authenticated endpoint access |
+
+## Authentication Flow
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant R as React App
+    participant A as FastAPI
+    participant DB as MongoDB
+    participant Redis as Redis
+
+    U->>R: Submit email/password
+    R->>A: POST /api/v1/auth/login
+    A->>DB: Find active user and verify bcrypt hash
+    A-->>R: Access token + refresh token
+    R->>A: Authenticated requests with Bearer token
+    A->>Redis: Check token blacklist
+    A-->>R: API response
+    R->>A: POST /api/v1/auth/logout
+    A->>Redis: Store token blacklist entry until expiry
+```
+
+Access tokens expire according to `ACCESS_TOKEN_EXPIRE_MINUTES`; refresh tokens use `REFRESH_TOKEN_EXPIRE_DAYS`. Logout blacklists the access token and an optional refresh token in Redis.
+
+## Module Access Control
+Users have a `modules: List[str]` field such as `["task"]` or `["task", "sales"]`. The `require_module("task")` dependency gates most task-management route groups in `backend/app/api/v1/router.py`. Sales endpoints perform endpoint-level authorization.
+
+## Key Design Patterns
+### Beanie ODM
+Document models live in `backend/app/models`. They define collection names, indexes, enums, and document fields.
+
+### Async-First Backend
+FastAPI endpoints, Motor, Beanie, Redis, and background helpers are async-first.
+
+### Dependency Injection
+Authentication, role gates, module gates, and company access checks are implemented as FastAPI dependencies.
+
+### Background Tasks
+Startup launches the deadline checker from `app.core.deadline_checker`. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
+
+## Current Architecture Limitations
+- Phase 3 introduced a service layer for users, projects, tasks, sprints, epics, files, notifications, email, and automation. Some legacy endpoint modules still contain business logic and should continue moving behind services incrementally.
+- The legacy monolithic `projects.py` endpoint has been decomposed into a package under `backend/app/api/v1/endpoints/projects/`. Other large modules such as chat, users, tickets, MSA, and sales reports remain candidates for future decomposition.
+- Chat uses REST-style endpoints, not WebSocket.
+- File storage is local `uploads/`; S3 configuration exists but is optional and not the default storage path.
+- Project routes accept the logical `project_id` or MongoDB `_id` for compatibility. Tasks now include `project_object_id` for normalized project lookups while legacy `project_id` values remain supported.
+
+## Data Flow: Task Creation
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as POST /tasks
+    participant Auth as Auth Dependencies
+    participant DB as MongoDB
+    participant N as Notifications
+
+    U->>API: Create task request
+    API->>Auth: Validate token, module, company
+    Auth-->>API: Current user
+    API->>DB: Insert task document
+    API->>N: Create notifications / email side effects where implemented
+    API-->>U: Task response
+```
+
+## Database Collections
+The database reference in [backend/DATABASE_SCHEMA.md](backend/DATABASE_SCHEMA.md) is generated from Beanie models. Major domains include users, companies, subscriptions, projects, tasks, tickets, clients, invoices, MSAs, chat, meetings, time tracking, timesheets, sales CRM, workflows, automation, webhooks, notifications, and usage tracking.
+
+## File Storage
+Uploads are stored under `backend/uploads` or subdirectories such as clients, projects, MSA, and avatars. File type validation uses byte signatures for common allowed file types. AWS S3 settings exist for future object storage migration.

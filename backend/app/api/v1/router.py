@@ -73,13 +73,14 @@ api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"]
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
 # Sales Tracker module (new)
-api_router.include_router(sales.router, prefix="/sales", tags=["Sales"])
-api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"])
-api_router.include_router(sales_products.router, prefix="/sales/products", tags=["Sales Products"])
-api_router.include_router(sales_contacts.router, prefix="/sales/contacts", tags=["Sales Contacts"])
-api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Sales Prospects"])
-api_router.include_router(sales_masters.router, prefix="/sales/masters", tags=["Sales Masters"])
-api_router.include_router(sales_reports.router, prefix="/sales/reports", tags=["Sales Reports"])
+sales_module_dependency = [Depends(require_module("sales"))]
+api_router.include_router(sales.router, prefix="/sales", tags=["Sales"], dependencies=sales_module_dependency)
+api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)
+api_router.include_router(sales_products.router, prefix="/sales/products", tags=["Sales Products"], dependencies=sales_module_dependency)
+api_router.include_router(sales_contacts.router, prefix="/sales/contacts", tags=["Sales Contacts"], dependencies=sales_module_dependency)
+api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Sales Prospects"], dependencies=sales_module_dependency)
+api_router.include_router(sales_masters.router, prefix="/sales/masters", tags=["Sales Masters"], dependencies=sales_module_dependency)
+api_router.include_router(sales_reports.router, prefix="/sales/reports", tags=["Sales Reports"], dependencies=sales_module_dependency)
 
 # Super Admin endpoints
 api_router.include_router(superadmin_plans.router, prefix="/superadmin/plans", tags=["Super Admin - Plans"])
