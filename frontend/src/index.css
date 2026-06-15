@@ -8,7 +8,9 @@
   }
 
   body {
-    @apply bg-surface-muted text-text-primary antialiased;
+    @apply antialiased;
+    background: theme('colors.surface.muted');
+    color: theme('colors.text.primary');
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
@@ -49,15 +51,19 @@
   }
   
   .card {
-    @apply bg-surface rounded-card shadow-card border border-surface-border p-4;
+    @apply rounded-card shadow-card border p-4;
+    background: theme('colors.surface.DEFAULT');
+    border-color: theme('colors.surface.border');
   }
 
   .page-header {
-    @apply text-2xl font-bold text-text-primary;
+    @apply text-2xl font-bold;
+    color: theme('colors.text.primary');
   }
 
   .section-header {
-    @apply text-base font-semibold text-text-primary;
+    @apply text-base font-semibold;
+    color: theme('colors.text.primary');
   }
   
   .badge {
