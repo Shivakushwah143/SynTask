@@ -6,6 +6,10 @@ import {
   Settings,
   CreditCard,
   Clock,
+  Calendar as CalendarIcon,
+  BarChart3,
+  TrendingUp,
+  Video,
   FolderKanban,
   Ticket,
   MessageCircle,
@@ -19,55 +23,99 @@ import { useAuthStore } from '../store/authStore'
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation()
   const { user } = useAuthStore()
+  const userRole = user?.role === 'admin' ? 'company_admin' : user?.role
+  const hasModule = (module) => !module || user?.modules?.includes(module) || userRole === 'super_admin'
 
   const navigation = [
     {
       name: 'Dashboard',
       href: '/dashboard',
       icon: LayoutDashboard,
-      roles: ['super_admin', 'company_admin', 'lead', 'employee'],
+      roles: ['super_admin', 'company_admin', 'lead', 'employee', 'manager'],
     },
     {
       name: 'Projects',
       href: '/projects',
       icon: FolderKanban,
-      roles: ['company_admin', 'lead', 'employee'],
+      roles: ['company_admin', 'lead', 'employee', 'manager'],
+      module: 'task',
     },
     {
       name: 'Requests',
       href: '/tickets',
       icon: Ticket,
-      roles: ['company_admin', 'lead', 'employee'],
+      roles: ['company_admin', 'lead', 'employee', 'manager'],
+      module: 'task',
     },
     {
       name: 'Chat',
       href: '/chat',
       icon: MessageCircle,
-      roles: ['company_admin', 'lead', 'employee'],
+      roles: ['company_admin', 'lead', 'employee', 'manager'],
+      module: 'task',
+    },
+    {
+      name: 'Meetings',
+      href: '/meetings',
+      icon: Video,
+      roles: ['company_admin', 'lead', 'employee', 'manager'],
+      module: 'task',
+    },
+    {
+      name: 'Calendar',
+      href: '/calendar',
+      icon: CalendarIcon,
+      roles: ['company_admin', 'lead', 'employee', 'manager'],
+      module: 'task',
+    },
+    {
+      name: 'Timesheet',
+      href: '/timesheet',
+      icon: Clock,
+      roles: ['company_admin', 'lead', 'employee', 'manager'],
+      module: 'task',
+    },
+    {
+      name: 'Reports',
+      href: '/reports',
+      icon: BarChart3,
+      roles: ['company_admin', 'lead', 'employee', 'manager'],
+      module: 'task',
+    },
+    {
+      name: 'Sales',
+      href: '/sales',
+      icon: TrendingUp,
+      roles: ['company_admin', 'lead', 'employee', 'manager'],
+      module: 'sales',
     },
     {
       name: 'Clients',
       href: '/clients',
       icon: Briefcase,
       roles: ['company_admin'],
+      module: 'task',
     },
     {
       name: 'Invoices',
       href: '/invoices',
       icon: FileText,
       roles: ['company_admin'],
+      module: 'task',
     },
     {
       name: 'MSA',
       href: '/msa',
       icon: FileText,
       roles: ['company_admin', 'lead'],
+      module: 'task',
     },
     {
       name: 'Ledger',
       href: '/ledger',
       icon: DollarSign,
       roles: ['company_admin'],
+      module: 'task',
     },
     {
       name: 'Users',
@@ -80,6 +128,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: '/my-team',
       icon: Users,
       roles: ['lead'],
+      module: 'task',
     },
     {
       name: 'Companies',
@@ -103,12 +152,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: 'Settings',
       href: '/settings',
       icon: Settings,
-      roles: ['super_admin', 'company_admin', 'lead', 'employee'],
+      roles: ['super_admin', 'company_admin', 'lead', 'employee', 'manager'],
     },
   ]
 
   const filteredNavigation = navigation.filter((item) =>
-    item.roles.includes(user?.role)
+    item.roles.includes(userRole) && hasModule(item.module)
   )
 
   return (

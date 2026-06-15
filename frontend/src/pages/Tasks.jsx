@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Calendar, User, MessageSquare, MoreVertical, X, Edit, Trash2, Search, Filter } from 'lucide-react'
+import { Plus, Calendar, User, MoreVertical, Search, Filter } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
@@ -39,7 +39,21 @@ const Tasks = () => {
   }
 
   // Fetch tasks
-  const fetchTasks = async () => {
+  const loadAssignableUsers = useCallback(async () => {
+    try {
+      setLoadingUsers(true)
+      const data = await usersAPI.getAssignableUsers()
+      setAssignableUsers(data.users || [])
+    } catch (error) {
+      console.error('Error loading users:', error)
+      toast.error('Failed to load users')
+      setAssignableUsers([])
+    } finally {
+      setLoadingUsers(false)
+    }
+  }, [])
+
+  const fetchTasks = useCallback(async () => {
     try {
       setLoading(true)
       const data = await tasksAPI.listTasks(filters)
@@ -62,31 +76,21 @@ const Tasks = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filters, searchQuery])
 
   useEffect(() => {
-    fetchTasks()
     loadAssignableUsers()
-  }, [filters, user])
+  }, [loadAssignableUsers])
 
   // Check if we need to open a task from notification
   useEffect(() => {
     const taskId = sessionStorage.getItem('open_task_id')
     if (taskId) {
       sessionStorage.removeItem('open_task_id')
-      // Wait for tasks to load, then open the modal
-      const timer = setTimeout(async () => {
-        try {
-          const taskData = await tasksAPI.getTask(taskId)
-          setSelectedTask(taskData)
-          setShowTaskModal(true)
-        } catch (error) {
-          console.error('Error loading task from notification:', error)
-        }
-      }, 500)
+      const timer = setTimeout(() => navigate(`/tasks/${taskId}`), 500)
       return () => clearTimeout(timer)
     }
-  }, [tasks])
+  }, [navigate])
 
   useEffect(() => {
     // Debounce search
@@ -94,23 +98,7 @@ const Tasks = () => {
       fetchTasks()
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchQuery])
-
-  // Load users that can be assigned tasks
-  const loadAssignableUsers = async () => {
-    try {
-      setLoadingUsers(true)
-      // Use the new assignable users endpoint
-      const data = await usersAPI.getAssignableUsers()
-      setAssignableUsers(data.users || [])
-    } catch (error) {
-      console.error('Error loading users:', error)
-      toast.error('Failed to load users')
-      setAssignableUsers([])
-    } finally {
-      setLoadingUsers(false)
-    }
-  }
+  }, [fetchTasks])
 
   // Get tasks by status
   const getTasksByStatus = (status) => {
@@ -148,30 +136,6 @@ const Tasks = () => {
     }
   }
 
-  // Handle status change
-  const handleStatusChange = async (taskId, newStatus) => {
-    try {
-      await tasksAPI.updateTaskStatus(taskId, newStatus)
-      toast.success('Task status updated')
-      await fetchTasks()
-    } catch (error) {
-      toast.error('Failed to update task status')
-    }
-  }
-
-  // Handle delete
-  const handleDelete = async (taskId) => {
-    if (!confirm('Are you sure you want to delete this task?')) return
-    
-    try {
-      await tasksAPI.deleteTask(taskId)
-      toast.success('Task deleted')
-      await fetchTasks()
-    } catch (error) {
-      toast.error('Failed to delete task')
-    }
-  }
-
   // Handle task click
   const handleTaskClick = (task) => {
     if (task.project_id) {
@@ -179,11 +143,6 @@ const Tasks = () => {
     } else {
       navigate(`/tasks/${task.id}`)
     }
-  }
-
-  // Handle refresh after changes
-  const handleRefresh = async () => {
-    await fetchTasks()
   }
 
   if (loading) {

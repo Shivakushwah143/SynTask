@@ -137,13 +137,13 @@ async def create_timesheet_entry(
 
 @router.get("/my-timesheet")
 async def get_my_timesheet(
-    date: Optional[str] = Query(None, description="Date (YYYY-MM-DD). If not provided, uses today"),
+    date_filter: Optional[str] = Query(None, alias="date", description="Date (YYYY-MM-DD). If not provided, uses today"),
     current_user: User = Depends(get_current_user),
 ):
     """Get current user's timesheet for a specific date"""
     try:
-        if date:
-            entry_date = datetime.strptime(date, "%Y-%m-%d").date()
+        if date_filter:
+            entry_date = datetime.strptime(date_filter, "%Y-%m-%d").date()
         else:
             entry_date = date.today()
     except ValueError:

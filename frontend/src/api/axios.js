@@ -32,9 +32,33 @@ axiosInstance.interceptors.request.use(
   }
 )
 
+const withDataCompatibility = (payload) => {
+  if (payload && typeof payload === 'object' && !Object.prototype.hasOwnProperty.call(payload, 'data')) {
+    Object.defineProperty(payload, 'data', {
+      value: payload,
+      enumerable: false,
+      configurable: true,
+    })
+  }
+  return payload
+}
+
 // Response interceptor
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.config?.responseType === 'blob') {
+      return response
+    }
+
+    const payload = response.data
+    if (payload && Object.prototype.hasOwnProperty.call(payload, 'success')) {
+      if (!payload.success) {
+        return Promise.reject(new Error(payload.message || 'Request failed'))
+      }
+      return withDataCompatibility(payload.data !== undefined ? payload.data : payload)
+    }
+    return withDataCompatibility(payload)
+  },
   async (error) => {
     const originalRequest = error.config
 
