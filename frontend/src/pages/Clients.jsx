@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
+import { EmptyState, SkeletonTable } from '../components/ui'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
@@ -14,7 +15,6 @@ const Clients = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedClient, setSelectedClient] = useState(null)
-  const [projects, setProjects] = useState([])
   const [leads, setLeads] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -50,7 +50,6 @@ const Clients = () => {
   })
   const [creatingProject, setCreatingProject] = useState(false)
   const [showDocumentModal, setShowDocumentModal] = useState(false)
-  const [selectedDocument, setSelectedDocument] = useState(null)
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
 
@@ -59,7 +58,6 @@ const Clients = () => {
 
   useEffect(() => {
     loadClients()
-    loadProjects()
     loadLeads()
   }, [])
 
@@ -76,15 +74,6 @@ const Clients = () => {
       setClients([])
     } finally {
       setLoading(false)
-    }
-  }
-
-  const loadProjects = async () => {
-    try {
-      const response = await projectsApi.getProjects()
-      setProjects(response.data.projects || [])
-    } catch (error) {
-      console.error('Error loading projects:', error)
     }
   }
 
@@ -263,8 +252,7 @@ const Clients = () => {
         delivery_date: '',
       })
       
-      // Reload projects and client details
-      await loadProjects()
+      // Reload client details
       await handleViewClient(selectedClient)
     } catch (error) {
       console.error('Error creating project:', error)
@@ -381,12 +369,7 @@ const Clients = () => {
   if (loading) {
     return (
       <div className="p-4">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin h-8 w-8 border-4 border-primary-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading clients...</p>
-          </div>
-        </div>
+        <SkeletonTable rows={8} cols={5} />
       </div>
     )
   }
@@ -439,21 +422,23 @@ const Clients = () => {
 
       {/* Clients Table */}
       {filteredClients.length === 0 ? (
-        <div className="card text-center py-12">
-          <Briefcase className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600">No clients found</p>
-          {(isCompanyAdmin || isLead) && (
+        <EmptyState
+          icon={Briefcase}
+          title="No clients found"
+          description="Create a client to link projects, budgets, and documents."
+          action={(isCompanyAdmin || isLead) ? (
             <button
+              type="button"
               onClick={() => {
                 resetForm()
                 setShowCreateModal(true)
               }}
-              className="btn btn-primary mt-4"
+              className="btn btn-primary"
             >
               Add Your First Client
             </button>
-          )}
-        </div>
+          ) : null}
+        />
       ) : (
         <div className="card overflow-x-auto">
           <table className="min-w-full text-sm">

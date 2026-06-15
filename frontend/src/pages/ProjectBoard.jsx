@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Plus, Search, Filter, User, Calendar,
-  MoreVertical, X, Edit, Trash2, CheckSquare, Info, Tag,
+  ArrowLeft, Plus, Search, Filter, User,
+  X, Edit, Trash2, CheckSquare, Info, Tag,
   ChevronDown, ChevronUp, Settings
 } from 'lucide-react'
 import { projectsApi } from '../api/projects'
@@ -12,6 +12,55 @@ import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import PageEditor from '../components/PageEditor'
+import { EmptyState, SkeletonCard, SkeletonKanban } from '../components/ui'
+import { useMediaQuery } from '../hooks/useMediaQuery'
+
+const MobileTaskList = ({ statuses, filteredTasks, priorities, onTaskClick, onStatusChange, onCreateTask }) => (
+  <div className="space-y-4 md:hidden">
+    {statuses.map((status) => {
+      const tasks = filteredTasks(status.id)
+      return (
+        <section key={status.id} className="card">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-text-primary">{status.label}</h3>
+            <span className="badge badge-secondary">{tasks.length}</span>
+          </div>
+          {tasks.length === 0 ? (
+            <EmptyState
+              title="No tasks"
+              description="Nothing is currently in this status."
+              action={<button type="button" onClick={() => onCreateTask(status.id)} className="btn btn-secondary">Create task</button>}
+            />
+          ) : (
+            <div className="space-y-3">
+              {tasks.map((task) => (
+                <article key={task.id} className="rounded-lg border border-surface-border bg-white p-3">
+                  <button type="button" onClick={() => onTaskClick(task)} className="block w-full text-left">
+                    <h4 className="text-sm font-medium text-text-primary">{task.title}</h4>
+                    {task.description && <p className="mt-1 line-clamp-2 text-xs text-text-secondary">{task.description}</p>}
+                  </button>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <span className={`rounded px-2 py-1 text-xs font-medium ${priorities[task.priority]?.color || priorities.medium.color}`}>
+                      {priorities[task.priority]?.label || task.priority}
+                    </span>
+                    <select
+                      className="input max-w-36 py-1 text-xs"
+                      value={task.status}
+                      onChange={(event) => onStatusChange(task.id, event.target.value)}
+                      aria-label={`Move ${task.title} to status`}
+                    >
+                      {statuses.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    </select>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )
+    })}
+  </div>
+)
 
 const ProjectBoard = () => {
   const { projectId } = useParams()
@@ -19,6 +68,7 @@ const ProjectBoard = () => {
   const { user } = useAuthStore()
   const canManageColumns = ['company_admin', 'super_admin', 'lead'].includes(user?.role)
   const apiBaseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace(/\/api\/v1$/, '')
+  const isMobile = useMediaQuery('(max-width: 767px)')
   const [boardData, setBoardData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -293,17 +343,6 @@ const ProjectBoard = () => {
     }
   }
 
-  const handleDelete = async (taskId) => {
-    if (!window.confirm('Are you sure you want to delete this task?')) return
-    try {
-      await tasksAPI.deleteTask(taskId)
-      toast.success('Task deleted successfully')
-      setRefreshKey(prev => prev + 1)
-    } catch (error) {
-      toast.error('Failed to delete task')
-    }
-  }
-
   // Extract all unique labels from tasks
   useEffect(() => {
     if (boardData?.tasks_by_status) {
@@ -464,8 +503,8 @@ const ProjectBoard = () => {
       {/* Summary Tab Content */}
       {activeTab === 'summary' && (
         loadingSummary ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={3} />)}
           </div>
         ) : summaryData ? (
           <div className="space-y-6">
@@ -512,9 +551,6 @@ const ProjectBoard = () => {
                       cancelled: 'bg-red-500',
                       on_hold: 'bg-gray-500',
                     }
-                    const percentage = summaryData.status_overview.total > 0
-                      ? (count / summaryData.status_overview.total * 100).toFixed(0)
-                      : 0
                     return (
                       <div key={status} className="flex items-center justify-between">
                         <div className="flex items-center">
@@ -632,9 +668,7 @@ const ProjectBoard = () => {
       {/* Board Tab Content */}
       {activeTab === 'board' && (
         loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-          </div>
+          <SkeletonKanban cols={4} />
         ) : boardData ? (
           <>
             {/* Filters */}
@@ -895,6 +929,19 @@ const ProjectBoard = () => {
             )}
 
             {/* Kanban Board */}
+            {isMobile ? (
+              <MobileTaskList
+                statuses={statuses}
+                filteredTasks={filteredTasks}
+                priorities={priorities}
+                onTaskClick={handleTaskClick}
+                onStatusChange={handleStatusChange}
+                onCreateTask={(statusId) => {
+                  setSelectedStatus(statusId)
+                  setShowCreateModal(true)
+                }}
+              />
+            ) : (
             <div className="overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0">
               <div className="grid gap-4 sm:gap-6 inline-grid" style={{ gridTemplateColumns: `repeat(${statuses.length}, minmax(280px, 1fr))` }}>
                 {statuses.map((status) => {
@@ -1036,6 +1083,7 @@ const ProjectBoard = () => {
                 })}
               </div>
             </div>
+            )}
           </>
         ) : (
           <div className="text-center py-12">
@@ -1053,8 +1101,8 @@ const ProjectBoard = () => {
       {/* Pages Tab Content */}
       {activeTab === 'pages' && (
         loadingPages ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={3} />)}
           </div>
         ) : (
           <div className="space-y-6">
@@ -1063,7 +1111,7 @@ const ProjectBoard = () => {
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Pages</h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  Capture your team's knowledge and improve the way you get work done.
+                  Capture your team knowledge and improve the way you get work done.
                 </p>
               </div>
               <button

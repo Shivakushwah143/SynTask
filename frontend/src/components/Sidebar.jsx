@@ -167,6 +167,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
           onClick={onClose}
+          role="presentation"
         />
       )}
 
@@ -191,8 +192,10 @@ const Sidebar = ({ isOpen, onClose }) => {
             <h1 className="text-base font-bold text-primary-600">SynTask</h1>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="lg:hidden p-1 hover:bg-gray-100 rounded"
+            aria-label="Close navigation"
           >
             <X className="h-5 w-5 text-gray-600" />
           </button>
@@ -206,6 +209,9 @@ const Sidebar = ({ isOpen, onClose }) => {
               <Link
                 key={item.name}
                 to={item.href}
+                aria-current={isActive ? 'page' : undefined}
+                aria-label={item.name}
+                onClick={onClose}
                 className={`flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors ${isActive
                     ? 'bg-primary-50 text-primary-700'
                     : 'text-gray-700 hover:bg-gray-50'

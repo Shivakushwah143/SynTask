@@ -19,6 +19,31 @@ export default {
           800: '#1e40af',
           900: '#1e3a8a',
         },
+        surface: {
+          DEFAULT: '#ffffff',
+          muted: '#f9fafb',
+          subtle: '#f3f4f6',
+          border: '#e5e7eb',
+        },
+        text: {
+          primary: '#111827',
+          secondary: '#6b7280',
+          muted: '#9ca3af',
+          inverse: '#ffffff',
+        },
+        status: {
+          todo: { bg: '#f3f4f6', text: '#374151' },
+          in_progress: { bg: '#dbeafe', text: '#1d4ed8' },
+          in_review: { bg: '#fef3c7', text: '#92400e' },
+          completed: { bg: '#d1fae5', text: '#065f46' },
+          cancelled: { bg: '#fee2e2', text: '#991b1b' },
+        },
+        priority: {
+          low: { bg: '#d1fae5', text: '#065f46' },
+          medium: { bg: '#fef3c7', text: '#92400e' },
+          high: { bg: '#fed7aa', text: '#9a3412' },
+          critical: { bg: '#fee2e2', text: '#991b1b' },
+        },
         secondary: {
           50: '#f8fafc',
           100: '#f1f5f9',
@@ -34,6 +59,14 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      borderRadius: {
+        card: '0.75rem',
+      },
+      boxShadow: {
+        card: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+        'card-hover': '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        modal: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
       },
     },
   },

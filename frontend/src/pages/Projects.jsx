@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FolderKanban, Plus, Edit, Trash2, GitBranch, Calendar, Package, Tag, X, Users, BarChart3, Columns3 } from 'lucide-react'
+import { FolderKanban, Plus, Trash2, GitBranch, Calendar, Package, Tag, X, Users, BarChart3, Columns3 } from 'lucide-react'
 import { projectsApi } from '../api/projects'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
-import { issueTypesApi } from '../api/issueTypes'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { EmptyState, SkeletonCard } from '../components/ui'
 
 const Projects = () => {
   const navigate = useNavigate()
@@ -33,7 +33,6 @@ const Projects = () => {
   const [showProjectDetails, setShowProjectDetails] = useState(false)
   const [components, setComponents] = useState([])
   const [versions, setVersions] = useState([])
-  const [issueTypes, setIssueTypes] = useState([])
   const [showComponentModal, setShowComponentModal] = useState(false)
   const [showVersionModal, setShowVersionModal] = useState(false)
   const [componentForm, setComponentForm] = useState({ name: '', description: '' })
@@ -54,7 +53,6 @@ const Projects = () => {
 
   useEffect(() => {
     loadProjects()
-    loadIssueTypes()
   }, [])
 
   // Check if we need to open a project from notification
@@ -173,15 +171,6 @@ const Projects = () => {
     }
   }
 
-  const loadIssueTypes = async () => {
-    try {
-      const response = await issueTypesApi.getIssueTypes()
-      setIssueTypes(response.data.issue_types || [])
-    } catch (error) {
-      console.error('Error loading issue types:', error)
-    }
-  }
-
   const loadComponents = async () => {
     if (!selectedProject) return
     try {
@@ -296,8 +285,8 @@ const Projects = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
+        {[1, 2, 3, 4, 5, 6].map((item) => <SkeletonCard key={item} lines={4} actions />)}
       </div>
     )
   }
@@ -322,23 +311,12 @@ const Projects = () => {
 
       {/* Projects Grid */}
       {projects.length === 0 ? (
-        <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
-          <FolderKanban className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-          <h3 className="text-sm font-medium text-gray-900 mb-1">No projects yet</h3>
-          <p className="text-xs text-gray-600 mb-2">
-            {canCreateProjects 
-              ? "Get started by creating your first project"
-              : "No projects have been assigned to you yet"}
-          </p>
-          {canCreateProjects && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-            >
-              Create Project
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet"
+          description={canCreateProjects ? 'Get started by creating your first project.' : 'No projects have been assigned to you yet.'}
+          action={canCreateProjects ? <button type="button" onClick={() => setShowCreateModal(true)} className="btn btn-primary">Create Project</button> : null}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {projects.map((project) => (

@@ -6,6 +6,7 @@ import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { EmptyState, SkeletonKanban } from '../components/ui'
 
 const Tasks = () => {
   const navigate = useNavigate()
@@ -147,8 +148,8 @@ const Tasks = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary-600 border-t-transparent rounded-full"></div>
+      <div className="p-4">
+        <SkeletonKanban cols={4} />
       </div>
     )
   }
@@ -243,9 +244,7 @@ const Tasks = () => {
               </div>
               <div className="space-y-3 min-h-[200px]">
                 {statusTasks.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 text-sm">
-                    No tasks
-                  </div>
+                  <EmptyState title="No tasks" description="Nothing is currently in this status." />
                 ) : (
                   statusTasks.map((task) => (
                     <div

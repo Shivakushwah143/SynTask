@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { PageLoader } from './components/ui'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
@@ -82,6 +83,8 @@ const ModuleGuard = ({ module, children }) => {
   return <Navigate to="/dashboard" replace />
 }
 
+const withBoundary = (element) => <ErrorBoundary>{element}</ErrorBoundary>
+
 function App() {
   return (
     <Suspense fallback={<PageLoader />}>
@@ -94,54 +97,54 @@ function App() {
 
         <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="tasks" element={<Tasks />} />
-          <Route path="tickets" element={<Tickets />} />
-          <Route path="chat" element={<Chat />} />
-          <Route path="clients" element={<Clients />} />
-          <Route path="invoices" element={<Invoices />} />
-          <Route path="msa" element={<MSA />} />
-          <Route path="ledger" element={<Ledger />} />
-          <Route path="projects" element={<Projects />} />
-          <Route path="projects/:projectId/board" element={<ProjectBoard />} />
-          <Route path="projects/:projectId/tasks/:taskId" element={<TaskDetail />} />
-          <Route path="tasks/:taskId" element={<TaskDetail />} />
-          <Route path="time-tracking" element={<TimeTracking />} />
-          <Route path="meetings" element={<Meetings />} />
-          <Route path="calendar" element={<Calendar />} />
-          <Route path="timesheet" element={<Timesheet />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="users" element={<Users />} />
-          <Route path="companies" element={<Companies />} />
-          <Route path="subscriptions" element={<Subscriptions />} />
-          <Route path="activity" element={<ActivityLog />} />
-          <Route path="my-team" element={<MyTeam />} />
-          <Route path="settings" element={<Settings />} />
+          <Route path="dashboard" element={withBoundary(<Dashboard />)} />
+          <Route path="tasks" element={withBoundary(<Tasks />)} />
+          <Route path="tickets" element={withBoundary(<Tickets />)} />
+          <Route path="chat" element={withBoundary(<Chat />)} />
+          <Route path="clients" element={withBoundary(<Clients />)} />
+          <Route path="invoices" element={withBoundary(<Invoices />)} />
+          <Route path="msa" element={withBoundary(<MSA />)} />
+          <Route path="ledger" element={withBoundary(<Ledger />)} />
+          <Route path="projects" element={withBoundary(<Projects />)} />
+          <Route path="projects/:projectId/board" element={withBoundary(<ProjectBoard />)} />
+          <Route path="projects/:projectId/tasks/:taskId" element={withBoundary(<TaskDetail />)} />
+          <Route path="tasks/:taskId" element={withBoundary(<TaskDetail />)} />
+          <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
+          <Route path="meetings" element={withBoundary(<Meetings />)} />
+          <Route path="calendar" element={withBoundary(<Calendar />)} />
+          <Route path="timesheet" element={withBoundary(<Timesheet />)} />
+          <Route path="reports" element={withBoundary(<Reports />)} />
+          <Route path="users" element={withBoundary(<Users />)} />
+          <Route path="companies" element={withBoundary(<Companies />)} />
+          <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
+          <Route path="activity" element={withBoundary(<ActivityLog />)} />
+          <Route path="my-team" element={withBoundary(<MyTeam />)} />
+          <Route path="settings" element={withBoundary(<Settings />)} />
         </Route>
 
         <Route path="/sales" element={<ProtectedRoute><ModuleGuard module="sales"><SalesLayout /></ModuleGuard></ProtectedRoute>}>
-          <Route index element={<SalesDashboard />} />
-          <Route path="contacts" element={<SalesContacts />} />
-          <Route path="contacts/:id" element={<ContactDetail />} />
-          <Route path="prospects" element={<SalesProspects />} />
-          <Route path="prospects/:id" element={<ProspectDetail />} />
-          <Route path="pipeline" element={<SalesPipeline />} />
-          <Route path="reports" element={<SalesReports />} />
-          <Route path="settings" element={<SalesSettings />} />
+          <Route index element={withBoundary(<SalesDashboard />)} />
+          <Route path="contacts" element={withBoundary(<SalesContacts />)} />
+          <Route path="contacts/:id" element={withBoundary(<ContactDetail />)} />
+          <Route path="prospects" element={withBoundary(<SalesProspects />)} />
+          <Route path="prospects/:id" element={withBoundary(<ProspectDetail />)} />
+          <Route path="pipeline" element={withBoundary(<SalesPipeline />)} />
+          <Route path="reports" element={withBoundary(<SalesReports />)} />
+          <Route path="settings" element={withBoundary(<SalesSettings />)} />
         </Route>
 
         <Route path="/super-admin" element={<ProtectedRoute><SuperAdminGuard><SuperAdminLayout /></SuperAdminGuard></ProtectedRoute>}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
-          <Route path="tenants" element={<TenantManagement />} />
-          <Route path="tenants/:id" element={<TenantDetail />} />
-          <Route path="plans" element={<SubscriptionPlans />} />
-          <Route path="usage" element={<UsageAnalytics />} />
-          <Route path="billing" element={<BillingRevenue />} />
-          <Route path="companies" element={<Companies />} />
-          <Route path="users" element={<Users />} />
-          <Route path="activity" element={<ActivityLog />} />
-          <Route path="settings" element={<Settings />} />
+          <Route index element={withBoundary(<AdminDashboard />)} />
+          <Route path="dashboard" element={withBoundary(<AdminDashboard />)} />
+          <Route path="tenants" element={withBoundary(<TenantManagement />)} />
+          <Route path="tenants/:id" element={withBoundary(<TenantDetail />)} />
+          <Route path="plans" element={withBoundary(<SubscriptionPlans />)} />
+          <Route path="usage" element={withBoundary(<UsageAnalytics />)} />
+          <Route path="billing" element={withBoundary(<BillingRevenue />)} />
+          <Route path="companies" element={withBoundary(<Companies />)} />
+          <Route path="users" element={withBoundary(<Users />)} />
+          <Route path="activity" element={withBoundary(<ActivityLog />)} />
+          <Route path="settings" element={withBoundary(<Settings />)} />
         </Route>
 
         <Route path="*" element={<NotFound />} />
