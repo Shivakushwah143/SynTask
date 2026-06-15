@@ -2,7 +2,7 @@ import { useQuery } from 'react-query'
 import { Bar, BarChart, CartesianGrid, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts'
 import { BarChart3 } from 'lucide-react'
 import { salesApi } from '../../api/sales'
-import { EmptyState, LoadingSpinner, PageHeader } from '../../components/ui'
+import { EmptyState, PageHeader, SkeletonCard } from '../../components/ui'
 import { asArray } from '../phase4Utils'
 
 const COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed']
@@ -24,7 +24,7 @@ export default function SalesReports() {
   return (
     <div className="p-6">
       <PageHeader title="Sales Reports" description="Pipeline, conversion, and activity analytics." />
-      {prospects.isLoading ? <LoadingSpinner label="Loading sales reports" /> : data.length ? (
+      {prospects.isLoading ? <div className="grid gap-6 xl:grid-cols-2">{[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={6} />)}</div> : data.length ? (
         <div className="grid gap-6 xl:grid-cols-2">
           <ChartCard title="Prospects by status">
             <ResponsiveContainer width="100%" height={280}><PieChart><Pie data={byStatus} dataKey="value" nameKey="name" label>{byStatus.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer>

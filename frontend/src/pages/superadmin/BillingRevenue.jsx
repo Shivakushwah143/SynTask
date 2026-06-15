@@ -2,7 +2,7 @@ import { useQuery } from 'react-query'
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { CreditCard } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
-import { EmptyState, LoadingSpinner, PageHeader, Table } from '../../components/ui'
+import { EmptyState, PageHeader, SkeletonTable, Table } from '../../components/ui'
 import { asArray, formatDate, formatMoney } from '../phase4Utils'
 
 export default function BillingRevenue() {
@@ -19,7 +19,7 @@ export default function BillingRevenue() {
   return (
     <div>
       <PageHeader title="Billing & Revenue" description="Revenue analytics and transactions." />
-      {revenue.isLoading || transactions.isLoading ? <LoadingSpinner label="Loading billing data" /> : (
+      {revenue.isLoading || transactions.isLoading ? <SkeletonTable rows={6} cols={5} /> : (
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
             <Stat label="MRR" value={formatMoney(revenue.data?.mrr || revenue.data?.monthly_recurring_revenue)} />

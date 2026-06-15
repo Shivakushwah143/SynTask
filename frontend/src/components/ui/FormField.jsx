@@ -1,9 +1,14 @@
-export function FormField({ label, error, children, htmlFor }) {
+export function FormField({ label, error, children, htmlFor, required = false }) {
   return (
     <label className="block" htmlFor={htmlFor}>
-      {label ? <span className="mb-1 block text-sm font-medium text-gray-700">{label}</span> : null}
+      {label ? (
+        <span className="mb-1 block text-sm font-medium text-gray-700">
+          {label}
+          {required ? <span className="ml-1 text-red-600" aria-hidden="true">*</span> : null}
+        </span>
+      ) : null}
       {children}
-      {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}
+      {error ? <span className="mt-1 block text-xs text-red-600" role="alert">{error}</span> : null}
     </label>
   )
 }

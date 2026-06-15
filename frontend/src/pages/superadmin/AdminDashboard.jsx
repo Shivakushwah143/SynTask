@@ -2,7 +2,7 @@ import { useQuery } from 'react-query'
 import { Link } from 'react-router-dom'
 import { Building2, CreditCard, TrendingUp, Users } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
-import { Button, LoadingSpinner, PageHeader } from '../../components/ui'
+import { Button, PageHeader, SkeletonCard } from '../../components/ui'
 import { asArray, formatMoney } from '../phase4Utils'
 
 export default function AdminDashboard() {
@@ -13,7 +13,7 @@ export default function AdminDashboard() {
   return (
     <div>
       <PageHeader title="Super Admin Dashboard" description="Tenant, usage, and billing overview." actions={<Link to="/super-admin/tenants"><Button>Manage Tenants</Button></Link>} />
-      {tenants.isLoading ? <LoadingSpinner label="Loading dashboard" /> : (
+      {tenants.isLoading ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={3} />)}</div> : (
         <div className="grid gap-4 md:grid-cols-4">
           <Stat icon={Building2} label="Tenants" value={tenantRows.length} />
           <Stat icon={Users} label="Active" value={tenantRows.filter((t) => t.status === 'active').length} />

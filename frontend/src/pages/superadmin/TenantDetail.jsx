@@ -2,14 +2,14 @@ import { useQuery } from 'react-query'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Building2 } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
-import { Badge, Button, EmptyState, LoadingSpinner, PageHeader } from '../../components/ui'
+import { Badge, Button, EmptyState, PageHeader, SkeletonCard } from '../../components/ui'
 import { formatDate } from '../phase4Utils'
 
 export default function TenantDetail() {
   const { id } = useParams()
   const tenant = useQuery(['superadmin-tenant', id], () => superadminApi.getTenant(id), { enabled: Boolean(id) })
   const usage = useQuery(['superadmin-tenant-usage', id], () => superadminApi.getCompanyUsage(id), { enabled: Boolean(id) })
-  if (tenant.isLoading) return <LoadingSpinner label="Loading tenant" />
+  if (tenant.isLoading) return <div className="p-6"><SkeletonCard lines={8} /></div>
   if (tenant.isError || !tenant.data) return <EmptyState icon={Building2} title="Tenant not found" />
 
   return (

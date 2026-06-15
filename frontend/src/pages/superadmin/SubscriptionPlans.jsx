@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import { Package } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
-import { Button, EmptyState, FormField, inputClassName, LoadingSpinner, Modal, PageHeader, Table } from '../../components/ui'
+import { Button, EmptyState, FormField, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
 import { asArray, formatMoney } from '../phase4Utils'
 
 export default function SubscriptionPlans() {
@@ -24,7 +24,7 @@ export default function SubscriptionPlans() {
   return (
     <div>
       <PageHeader title="Subscription Plans" description="Manage plan tiers and pricing." actions={<Button onClick={() => setOpen(true)}>Create Plan</Button>} />
-      {isLoading ? <LoadingSpinner label="Loading plans" /> : plans.length ? <Table columns={columns} data={plans} /> : <EmptyState icon={Package} title="No plans found" action={<Button onClick={() => setOpen(true)}>Create Plan</Button>} />}
+      {isLoading ? <SkeletonTable rows={5} cols={5} /> : plans.length ? <Table columns={columns} data={plans} /> : <EmptyState icon={Package} title="No plans found" action={<Button onClick={() => setOpen(true)}>Create Plan</Button>} />}
       <Modal isOpen={open} onClose={() => setOpen(false)} title="Create plan">
         <div className="grid gap-4">
           {Object.keys(form).map((key) => <FormField key={key} label={key.replace('_', ' ')}><input className={inputClassName} value={form[key]} onChange={(event) => update(key, event.target.value)} /></FormField>)}

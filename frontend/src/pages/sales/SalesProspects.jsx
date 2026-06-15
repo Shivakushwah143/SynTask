@@ -5,7 +5,7 @@ import { Briefcase, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { salesApi } from '../../api/sales'
 import { usersAPI } from '../../api/users'
-import { Badge, Button, EmptyState, FormField, inputClassName, LoadingSpinner, Modal, PageHeader, Table } from '../../components/ui'
+import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
 import { asArray, formatDate, getId } from '../phase4Utils'
 
 export default function SalesProspects() {
@@ -31,7 +31,7 @@ export default function SalesProspects() {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input className={`${inputClassName} pl-10`} placeholder="Search prospects..." value={search} onChange={(event) => setSearch(event.target.value)} />
       </div>
-      {isLoading ? <LoadingSpinner label="Loading prospects" /> : isError ? <EmptyState icon={Briefcase} title="Could not load prospects" /> : prospects.length ? <Table columns={columns} data={prospects} /> : <EmptyState icon={Briefcase} title="No prospects yet" description="Create prospects to fill your pipeline." action={<Button onClick={() => setOpen(true)}>Add Prospect</Button>} />}
+      {isLoading ? <SkeletonTable rows={6} cols={6} /> : isError ? <EmptyState icon={Briefcase} title="Could not load prospects" /> : prospects.length ? <Table columns={columns} data={prospects} /> : <EmptyState icon={Briefcase} title="No prospects yet" description="Create prospects to fill your pipeline." action={<Button onClick={() => setOpen(true)}>Add Prospect</Button>} />}
       <ProspectModal isOpen={open} onClose={() => setOpen(false)} onDone={() => { setOpen(false); queryClient.invalidateQueries('sales-prospects') }} />
     </div>
   )

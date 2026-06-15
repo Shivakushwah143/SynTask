@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import { Settings } from 'lucide-react'
 import { salesApi } from '../../api/sales'
-import { Button, EmptyState, FormField, inputClassName, LoadingSpinner, Modal, PageHeader, Table } from '../../components/ui'
+import { Button, EmptyState, FormField, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
 import { asArray } from '../phase4Utils'
 
 const resources = [
@@ -54,7 +54,7 @@ function ResourceCard({ resource }) {
         <h2 className="font-semibold text-gray-900">{resource.title}</h2>
         <Button size="sm" onClick={() => setOpen(true)}>Add</Button>
       </div>
-      {isLoading ? <LoadingSpinner label="Loading" /> : rows.length ? <Table columns={[{ key: 'name', header: 'Name', render: (row) => row.name || row.label || row.title || row.category_name || row.product_name }, { key: 'status', header: 'Status', render: (row) => row.status || (row.is_active === false ? 'Inactive' : 'Active') }]} data={rows} /> : <EmptyState icon={Settings} title={`No ${resource.title.toLowerCase()}`} />}
+      {isLoading ? <SkeletonTable rows={4} cols={2} /> : rows.length ? <Table columns={[{ key: 'name', header: 'Name', render: (row) => row.name || row.label || row.title || row.category_name || row.product_name }, { key: 'status', header: 'Status', render: (row) => row.status || (row.is_active === false ? 'Inactive' : 'Active') }]} data={rows} /> : <EmptyState icon={Settings} title={`No ${resource.title.toLowerCase()}`} />}
       <Modal isOpen={open} onClose={() => setOpen(false)} title={`Add ${resource.title}`}>
         <div className="space-y-4">
           {resource.fields.map((field) => (

@@ -3,7 +3,7 @@ import { useQuery } from 'react-query'
 import { addDays, endOfMonth, format, isSameDay, startOfMonth, startOfWeek } from 'date-fns'
 import { Calendar as CalendarIcon } from 'lucide-react'
 import { calendarApi } from '../api/calendar'
-import { Badge, EmptyState, LoadingSpinner, PageHeader } from '../components/ui'
+import { Badge, EmptyState, PageHeader, Skeleton, SkeletonCard } from '../components/ui'
 import { asArray, formatDateTime } from './phase4Utils'
 
 export default function Calendar() {
@@ -23,7 +23,7 @@ export default function Calendar() {
   return (
     <div className="p-6">
       <PageHeader title="Calendar" description="Tasks, meetings, and timesheet events by day." />
-      {isLoading ? <LoadingSpinner label="Loading calendar" /> : isError ? <EmptyState icon={CalendarIcon} title="Could not load calendar" /> : (
+      {isLoading ? <CalendarSkeleton /> : isError ? <EmptyState icon={CalendarIcon} title="Could not load calendar" /> : (
         <div className="grid gap-6 xl:grid-cols-[1fr_20rem]">
           <div className="rounded-lg border border-gray-200 bg-white">
             <div className="grid grid-cols-7 border-b bg-gray-50 text-xs font-semibold uppercase text-gray-500">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="p-3">{day}</div>)}</div>
@@ -40,6 +40,28 @@ export default function Calendar() {
           </aside>
         </div>
       )}
+    </div>
+  )
+}
+
+function CalendarSkeleton() {
+  return (
+    <div className="grid gap-6 xl:grid-cols-[1fr_20rem]" role="status" aria-label="Loading calendar">
+      <div className="rounded-lg border border-gray-200 bg-white">
+        <div className="grid grid-cols-7 border-b bg-gray-50 p-3">
+          {Array.from({ length: 7 }).map((_, index) => <Skeleton key={index} className="h-4 w-10" />)}
+        </div>
+        <div className="grid grid-cols-7">
+          {Array.from({ length: 35 }).map((_, index) => (
+            <div key={index} className="min-h-28 border-b border-r p-2">
+              <Skeleton className="mb-3 h-4 w-6" />
+              <Skeleton className="mb-2 h-5 w-full" />
+              <Skeleton className="h-5 w-2/3" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <SkeletonCard lines={5} />
     </div>
   )
 }

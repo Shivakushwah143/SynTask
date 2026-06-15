@@ -2,14 +2,14 @@ import { useQuery } from 'react-query'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, User } from 'lucide-react'
 import { salesApi } from '../../api/sales'
-import { Badge, Button, EmptyState, LoadingSpinner, PageHeader } from '../../components/ui'
+import { Badge, Button, EmptyState, SkeletonCard, PageHeader } from '../../components/ui'
 import { formatDate } from '../phase4Utils'
 
 export default function ContactDetail() {
   const { id } = useParams()
   const { data, isLoading, isError } = useQuery(['sales-contact', id], () => salesApi.getContact(id), { enabled: Boolean(id) })
 
-  if (isLoading) return <div className="p-6"><LoadingSpinner label="Loading contact" /></div>
+  if (isLoading) return <div className="p-6"><SkeletonCard lines={8} /></div>
   if (isError || !data) return <div className="p-6"><EmptyState icon={User} title="Contact not found" /></div>
 
   return (
