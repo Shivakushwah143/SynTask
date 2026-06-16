@@ -16,11 +16,11 @@ export class ErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div className="flex min-h-[320px] flex-col items-center justify-center px-4 py-16 text-center">
-          <div className="mb-4 rounded-full bg-red-100 p-4">
-            <AlertTriangle className="h-8 w-8 text-red-600" />
+          <div className="mb-4 rounded-full bg-red-100 p-4 dark:bg-red-950/60">
+            <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-300" />
           </div>
-          <h2 className="mb-2 text-lg font-semibold text-text-primary">Something went wrong</h2>
-          <p className="mb-6 max-w-md text-sm text-text-secondary">
+          <h2 className="mb-2 text-lg font-semibold text-text-primary dark:text-gray-100">Something went wrong</h2>
+          <p className="mb-6 max-w-md text-sm text-text-secondary dark:text-gray-400">
             This section hit an error. Other pages are unaffected.
           </p>
           <button

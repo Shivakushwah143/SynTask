@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Bell, X } from 'lucide-react'
+import { Bell } from 'lucide-react'
 import { notificationsAPI } from '../api/notifications'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
@@ -13,7 +13,6 @@ const NotificationBell = () => {
   const dropdownRef = useRef(null)
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
-  const [previousUnreadCount, setPreviousUnreadCount] = useState(0)
   const [showDropdown, setShowDropdown] = useState(false)
   const [loading, setLoading] = useState(false)
   const previousNotificationsRef = useRef([])
@@ -36,8 +35,6 @@ const NotificationBell = () => {
     // Build route from related_type and related_id
     if (notification.related_type && notification.related_id) {
       const type = notification.related_type.toLowerCase()
-      const id = notification.related_id
-
       switch (type) {
         case 'task':
           return `tasks` // Will open task modal
@@ -123,8 +120,6 @@ const NotificationBell = () => {
       // Check for new notifications and show popup
       const previousNotifications = previousNotificationsRef.current
       const now = new Date()
-      const currentNotificationIds = new Set(newNotifications.map(n => n.id))
-      
       // Only show popups if not explicitly skipped (e.g., when marking as read)
       if (!skipPopups && isMountedRef.current) {
         if (isInitialLoad && !hasShownInitialPopupsRef.current) {
@@ -151,7 +146,6 @@ const NotificationBell = () => {
                 ),
                 {
                   duration: 5000,
-                  icon: '🔔',
                   position: 'top-right',
                 }
               )
@@ -200,7 +194,6 @@ const NotificationBell = () => {
               ),
               {
                 duration: 5000,
-                icon: '🔔',
                 position: 'top-right',
               }
             )
@@ -286,16 +279,6 @@ const NotificationBell = () => {
     }
   }, [showDropdown])
 
-  const handleMarkAsRead = async (notificationId) => {
-    try {
-      await notificationsAPI.markAsRead(notificationId)
-      // Skip popups when manually marking as read
-      await fetchNotifications(false, true)
-    } catch (error) {
-      toast.error('Failed to mark notification as read')
-    }
-  }
-
   const handleMarkAllAsRead = async () => {
     try {
       setLoading(true)
@@ -317,7 +300,9 @@ const NotificationBell = () => {
           e.stopPropagation()
           setShowDropdown(!showDropdown)
         }}
-        className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+        className="relative rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+        aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+        aria-expanded={showDropdown}
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
@@ -331,42 +316,42 @@ const NotificationBell = () => {
       </button>
 
       {showDropdown && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900">Notifications</h3>
+        <div className="absolute right-0 z-50 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900 dark:shadow-none">
+          <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-800">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}
                 disabled={loading}
-                className="text-xs text-primary-600 hover:text-primary-700"
+                className="text-xs text-primary-600 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-300"
               >
                 Mark all read
               </button>
             )}
           </div>
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-gray-200 dark:divide-gray-800">
             {notifications.length === 0 ? (
-              <div className="p-4 text-center text-gray-500 text-sm">
+              <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
                 No notifications
               </div>
             ) : (
               notifications.map((notif) => (
                 <div
                   key={notif.id}
-                  className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
-                    !notif.is_read ? 'bg-blue-50' : ''
+                  className={`cursor-pointer p-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                    !notif.is_read ? 'bg-blue-50 dark:bg-blue-950/30' : ''
                   }`}
                   onClick={() => handleNotificationClick(notif)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                         {notif.title}
                       </p>
-                      <p className="text-xs text-gray-600 mt-1">
+                      <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
                         {notif.message}
                       </p>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="mt-1 text-xs text-gray-400">
                         {format(new Date(notif.created_at), 'MMM d, h:mm a')}
                       </p>
                     </div>

@@ -174,12 +174,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       {/* Sidebar */}
       <div className={`
         fixed lg:static inset-y-0 left-0 z-50
-        w-64 lg:w-52 bg-white border-r border-gray-200 flex flex-col
+        w-64 lg:w-52 bg-white border-r border-gray-200 flex flex-col dark:bg-gray-950 dark:border-gray-800
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
+        <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center space-x-2">
             <img
               src="/logo.svg"
@@ -194,10 +194,10 @@ const Sidebar = ({ isOpen, onClose }) => {
           <button
             type="button"
             onClick={onClose}
-            className="lg:hidden p-1 hover:bg-gray-100 rounded"
+            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg dark:hover:bg-gray-800"
             aria-label="Close navigation"
           >
-            <X className="h-5 w-5 text-gray-600" />
+            <X className="h-5 w-5 text-gray-600 dark:text-gray-300" />
           </button>
         </div>
 
@@ -213,8 +213,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                 aria-label={item.name}
                 onClick={onClose}
                 className={`flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors ${isActive
-                    ? 'bg-primary-50 text-primary-700'
-                    : 'text-gray-700 hover:bg-gray-50'
+                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
+                    : 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900'
                   }`}
               >
                 <item.icon className="mr-2.5 h-5 w-5 flex-shrink-0" />
@@ -225,10 +225,10 @@ const Sidebar = ({ isOpen, onClose }) => {
         </nav>
 
         {/* User Info */}
-        <div className="p-4 border-t border-gray-200">
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
           <Link
             to="/settings"
-            className="flex items-center hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors cursor-pointer"
+            className="flex items-center hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors cursor-pointer dark:hover:bg-gray-900"
             onClick={onClose}
           >
             <div className="flex-shrink-0">
@@ -236,7 +236,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <img
                   src={user.avatar.startsWith('http') ? user.avatar : `${import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${user.avatar}`}
                   alt={user?.first_name}
-                  className="h-10 w-10 rounded-full object-cover border border-gray-200"
+                  className="h-10 w-10 rounded-full object-cover border border-gray-200 dark:border-gray-700"
                   onError={(e) => {
                     // Fallback to initials if image fails to load
                     e.target.style.display = 'none'
@@ -251,10 +251,10 @@ const Sidebar = ({ isOpen, onClose }) => {
               </div>
             </div>
             <div className="ml-3 flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-700 truncate">
+              <p className="text-sm font-medium text-gray-700 truncate dark:text-gray-100">
                 {user?.first_name} {user?.last_name}
               </p>
-              <p className="text-xs text-gray-500 capitalize truncate">
+              <p className="text-xs text-gray-500 capitalize truncate dark:text-gray-400">
                 {user?.role?.replace('_', ' ')}
               </p>
             </div>

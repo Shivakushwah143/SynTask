@@ -8,7 +8,7 @@ import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { EmptyState, SkeletonCard } from '../components/ui'
+import { EmptyState, FormField, SkeletonCard, inputClassName } from '../components/ui'
 
 const Projects = () => {
   const navigate = useNavigate()
@@ -28,6 +28,7 @@ const Projects = () => {
     start_date: '',
     delivery_date: ''
   })
+  const [formErrors, setFormErrors] = useState({})
   const [assignableUsers, setAssignableUsers] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
   const [showProjectDetails, setShowProjectDetails] = useState(false)
@@ -128,8 +129,51 @@ const Projects = () => {
     }
   }, [showCreateModal])
 
+  const resetCreateForm = () => {
+    setFormData({
+      name: '',
+      key: '',
+      description: '',
+      type: 'software',
+      lead_id: '',
+      assigned_to: '',
+      start_date: '',
+      delivery_date: ''
+    })
+    setFormErrors({})
+  }
+
+  const updateCreateForm = (field, value) => {
+    setFormData((current) => ({ ...current, [field]: value }))
+    setFormErrors((current) => ({ ...current, [field]: '' }))
+  }
+
+  const validateCreateForm = () => {
+    const nextErrors = {}
+    const keyPattern = /^[A-Z0-9]{2,10}$/
+
+    if (!formData.name.trim()) nextErrors.name = 'Project name is required.'
+    if (!formData.key.trim()) {
+      nextErrors.key = 'Project key is required.'
+    } else if (!keyPattern.test(formData.key.trim())) {
+      nextErrors.key = 'Use 2-10 uppercase letters or numbers.'
+    }
+
+    if (formData.start_date && formData.delivery_date) {
+      const startDate = new Date(formData.start_date)
+      const deliveryDate = new Date(formData.delivery_date)
+      if (deliveryDate < startDate) {
+        nextErrors.delivery_date = 'Delivery date must be after the start date.'
+      }
+    }
+
+    setFormErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
+
   const handleCreate = async (e) => {
     e.preventDefault()
+    if (!validateCreateForm()) return
     try {
       // Convert datetime-local format to ISO string for backend
       const submitData = { ...formData }
@@ -143,16 +187,7 @@ const Projects = () => {
       await projectsApi.createProject(submitData)
       toast.success('Project created successfully')
       setShowCreateModal(false)
-      setFormData({ 
-        name: '', 
-        key: '', 
-        description: '', 
-        type: 'software', 
-        lead_id: '',
-        assigned_to: '',
-        start_date: '',
-        delivery_date: ''
-      })
+      resetCreateForm()
       loadProjects()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create project')
@@ -425,13 +460,17 @@ const Projects = () => {
       {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold">Create New Project</h2>
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col dark:bg-gray-900">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Create New Project</h2>
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                onClick={() => {
+                  setShowCreateModal(false)
+                  resetCreateForm()
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                aria-label="Close create project dialog"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -439,43 +478,36 @@ const Projects = () => {
             <form onSubmit={handleCreate} className="flex flex-col flex-1 overflow-hidden">
               <div className="overflow-y-auto flex-1 p-6">
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Project Name
-                    </label>
+                  <FormField label="Project Name" error={formErrors.name} required>
                     <input
                       type="text"
                       required
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      onChange={(e) => updateCreateForm('name', e.target.value)}
+                      className={inputClassName}
+                      aria-invalid={Boolean(formErrors.name)}
                     />
-                  </div>
+                  </FormField>
                   
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Project Key
-                    </label>
+                  <FormField label="Project Key" error={formErrors.key} required>
                     <input
                       type="text"
                       required
                       maxLength={10}
                       value={formData.key}
-                      onChange={(e) => setFormData({ ...formData, key: e.target.value.toUpperCase() })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
+                      onChange={(e) => updateCreateForm('key', e.target.value.toUpperCase())}
+                      className={`${inputClassName} font-mono`}
                       placeholder="e.g., WEB, DEV"
+                      aria-invalid={Boolean(formErrors.key)}
                     />
-                    <p className="text-xs text-gray-500 mt-1">Unique key for this project</p>
-                  </div>
+                    <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">Unique key for this project</p>
+                  </FormField>
                   
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Type
-                    </label>
+                  <FormField label="Type">
                     <select
                       value={formData.type}
-                      onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      onChange={(e) => updateCreateForm('type', e.target.value)}
+                      className={inputClassName}
                     >
                       <option value="software">Software</option>
                       <option value="business">Business</option>
@@ -483,53 +515,42 @@ const Projects = () => {
                       <option value="operations">Operations</option>
                       <option value="other">Other</option>
                     </select>
-                  </div>
+                  </FormField>
                   
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
-                    </label>
+                  <FormField label="Description">
                     <textarea
                       value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      onChange={(e) => updateCreateForm('description', e.target.value)}
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      className={inputClassName}
                     />
-                  </div>
+                  </FormField>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Start Date
-                    </label>
+                  <FormField label="Start Date">
                     <input
                       type="datetime-local"
                       value={formData.start_date}
-                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      onChange={(e) => updateCreateForm('start_date', e.target.value)}
+                      className={inputClassName}
                     />
-                  </div>
+                  </FormField>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Delivery Date *
-                    </label>
+                  <FormField label="Delivery Date" error={formErrors.delivery_date}>
                     <input
                       type="datetime-local"
                       value={formData.delivery_date}
-                      onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      onChange={(e) => updateCreateForm('delivery_date', e.target.value)}
+                      className={inputClassName}
+                      aria-invalid={Boolean(formErrors.delivery_date)}
                     />
-                    <p className="text-xs text-gray-500 mt-1">Projects are ranked by delivery date (nearest first)</p>
-                  </div>
+                    <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">Projects are ranked by delivery date (nearest first)</p>
+                  </FormField>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Assign To
-                    </label>
+                  <FormField label="Assign To">
                     <select
                       value={formData.assigned_to}
-                      onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      onChange={(e) => updateCreateForm('assigned_to', e.target.value)}
+                      className={inputClassName}
                     >
                       <option value="">Unassigned</option>
                       {assignableUsers.map((u) => (
@@ -538,12 +559,12 @@ const Projects = () => {
                         </option>
                       ))}
                     </select>
-                    <p className="text-xs text-gray-500 mt-1">Assigned user will receive a notification</p>
-                  </div>
+                    <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">Assigned user will receive a notification</p>
+                  </FormField>
                 </div>
               </div>
               
-              <div className="flex gap-3 p-6 border-t border-gray-200 bg-gray-50">
+              <div className="flex gap-3 p-6 border-t border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950">
                 <button
                   type="submit"
                   className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
@@ -552,8 +573,11 @@ const Projects = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                  onClick={() => {
+                    setShowCreateModal(false)
+                    resetCreateForm()
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
                 >
                   Cancel
                 </button>

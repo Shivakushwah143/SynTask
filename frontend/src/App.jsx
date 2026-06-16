@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
+import { useTheme } from './hooks/useTheme'
 import { PageLoader } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
@@ -86,6 +87,8 @@ const ModuleGuard = ({ module, children }) => {
 const withBoundary = (element) => <ErrorBoundary>{element}</ErrorBoundary>
 
 function App() {
+  useTheme()
+
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>

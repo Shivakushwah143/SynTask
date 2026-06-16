@@ -34,6 +34,7 @@ const Clients = () => {
     notes: '',
     tags: '',
   })
+  const [formErrors, setFormErrors] = useState({})
   const [editingClient, setEditingClient] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
@@ -89,6 +90,7 @@ const Clients = () => {
   const handleCreateClient = async (e) => {
     e.preventDefault()
     if (submitting) return
+    if (!validateClientForm()) return
 
     try {
       setSubmitting(true)
@@ -116,6 +118,7 @@ const Clients = () => {
   const handleUpdateClient = async (e) => {
     e.preventDefault()
     if (submitting || !editingClient) return
+    if (!validateClientForm()) return
 
     try {
       setSubmitting(true)
@@ -163,6 +166,7 @@ const Clients = () => {
   }
 
   const handleEditClient = (client) => {
+    setFormErrors({})
     setEditingClient(client)
     setFormData({
       name: client.name || '',
@@ -304,6 +308,25 @@ const Clients = () => {
       tags: '',
     })
     setEditingClient(null)
+    setFormErrors({})
+  }
+
+  const updateClientField = (field, value) => {
+    setFormData((current) => ({ ...current, [field]: value }))
+    setFormErrors((current) => ({ ...current, [field]: '' }))
+  }
+
+  const validateClientForm = () => {
+    const nextErrors = {}
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+    if (!formData.name.trim()) nextErrors.name = 'Client name is required.'
+    if (formData.email.trim() && !emailPattern.test(formData.email.trim())) {
+      nextErrors.email = 'Enter a valid email address.'
+    }
+
+    setFormErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
   }
 
   const filteredClients = clients.filter(client => {
@@ -573,23 +596,27 @@ const Clients = () => {
               <form onSubmit={editingClient ? handleUpdateClient : handleCreateClient} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Name *</label>
                     <input
                       type="text"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) => updateClientField('name', e.target.value)}
                       className="input"
                       required
+                      aria-invalid={Boolean(formErrors.name)}
                     />
+                    {formErrors.name ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.name}</p> : null}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Email</label>
                     <input
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      onChange={(e) => updateClientField('email', e.target.value)}
                       className="input"
+                      aria-invalid={Boolean(formErrors.email)}
                     />
+                    {formErrors.email ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.email}</p> : null}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Contact</label>
