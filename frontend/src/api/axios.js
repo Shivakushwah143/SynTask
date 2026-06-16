@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
+import { getAccessToken, getRefreshToken, updateAccessToken } from '../utils/storage'
 import toast from 'react-hot-toast'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
@@ -12,10 +13,15 @@ const axiosInstance = axios.create({
   },
 })
 
-// Request interceptor
+// Request interceptor - check storage for token
 axiosInstance.interceptors.request.use(
   (config) => {
-    const token = useAuthStore.getState().token
+    // First try to get token from state, then from storage
+    let token = useAuthStore.getState().token
+    if (!token) {
+      token = getAccessToken() // Check localStorage/cookies
+    }
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -67,7 +73,11 @@ axiosInstance.interceptors.response.use(
       originalRequest._retry = true
 
       try {
-        const refreshToken = useAuthStore.getState().refreshToken
+        // Try to get refresh token from state, then from storage
+        let refreshToken = useAuthStore.getState().refreshToken
+        if (!refreshToken) {
+          refreshToken = getRefreshToken() // Check localStorage/cookies
+        }
 
         if (refreshToken) {
           const response = await axios.post(`${API_URL}/auth/refresh`, {
@@ -76,6 +86,10 @@ axiosInstance.interceptors.response.use(
 
           const { access_token } = response.data
 
+          // Update token in storage
+          updateAccessToken(access_token)
+          
+          // Update state
           useAuthStore.getState().setAuth(
             useAuthStore.getState().user,
             access_token,

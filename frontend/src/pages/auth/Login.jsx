@@ -28,7 +28,7 @@ const Login = () => {
 
     try {
       const response = await authAPI.login(formData.email, formData.password, formData.remember_me)
-      setAuth(response.user, response.access_token, response.refresh_token)
+      setAuth(response.user, response.access_token, response.refresh_token, formData.remember_me)
       toast.success('Login successful!')
       navigate('/dashboard')
     } catch (error) {
