@@ -1,7 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html class="light" data-theme="light" lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      ;(() => {
+        const storedTheme = localStorage.getItem('syntask-theme')
+        const theme = storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : 'light'
+        document.documentElement.classList.remove('light', 'dark')
+        document.documentElement.classList.add(theme)
+        document.documentElement.dataset.theme = theme
+        document.documentElement.style.colorScheme = theme
+      })()
+    </script>
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Alphanexis Task Management & Ticketing SaaS Platform" />

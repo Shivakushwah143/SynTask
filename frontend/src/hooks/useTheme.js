@@ -8,11 +8,11 @@ const normalizeTheme = (theme) => (THEMES.includes(theme) ? theme : null)
 
 const getInitialTheme = () => {
   if (typeof window === 'undefined') return 'light'
-  const documentTheme = normalizeTheme(document.documentElement.dataset.theme)
-  if (documentTheme) return documentTheme
   const savedTheme = normalizeTheme(window.localStorage.getItem(STORAGE_KEY))
   if (savedTheme) return savedTheme
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  const documentTheme = normalizeTheme(document.documentElement.dataset.theme)
+  if (documentTheme) return documentTheme
+  return 'light'
 }
 
 const applyTheme = (theme) => {
@@ -58,12 +58,13 @@ export const useTheme = () => {
   }, [])
 
   const toggleTheme = () => {
-    setTheme((currentTheme) => {
-      const nextTheme = currentTheme === 'dark' ? 'light' : 'dark'
-      window.localStorage.setItem(STORAGE_KEY, nextTheme)
-      window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: { theme: nextTheme } }))
-      return nextTheme
-    })
+    const currentTheme = normalizeTheme(document.documentElement.dataset.theme) || theme
+    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark'
+
+    applyTheme(nextTheme)
+    window.localStorage.setItem(STORAGE_KEY, nextTheme)
+    setTheme(nextTheme)
+    window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: { theme: nextTheme } }))
   }
 
   return { theme, toggleTheme }
