@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Mail, Loader2, ArrowLeft } from 'lucide-react'
+import { Mail, Loader2, ArrowLeft, CheckCircle2 } from 'lucide-react'
 import { authAPI } from '../../api/auth'
 import toast from 'react-hot-toast'
 
@@ -66,88 +66,108 @@ const ForgotPassword = () => {
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <button
-          type="button"
-          onClick={() => navigate('/login')}
-          className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Login
-        </button>
-        <h2 className="text-2xl font-bold text-gray-900">Forgot Password</h2>
-        <p className="text-gray-600 mt-1">
-          {emailSent 
-            ? 'Check your email for password reset instructions' 
-            : 'Enter your registered email address to receive a password reset link'}
-        </p>
-      </div>
+    <div className="flex flex-col gap-8">
+      {/* Back Button */}
+      <button
+        type="button"
+        onClick={() => navigate('/login')}
+        className="flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm font-medium transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4 mr-2" />
+        Back to Sign In
+      </button>
 
       {!emailSent ? (
-        <form onSubmit={handleRequestReset} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Mail className="h-5 w-5 text-gray-400" />
+        <>
+          {/* Header */}
+          <div className="text-left">
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Reset Password</h2>
+            <p className="text-gray-600 dark:text-gray-400">
+              Enter your email address and we'll send you a link to reset your password.
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleRequestReset} className="space-y-4">
+            <div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Mail className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full px-4 py-3 pl-12 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="Enter your email"
+                />
               </div>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="input pl-10"
-                placeholder="your@email.com"
-              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="animate-spin h-5 w-5" />
+                  Sending...
+                </>
+              ) : (
+                'Send Reset Link'
+              )}
+            </button>
+          </form>
+        </>
+      ) : (
+        <div className="flex flex-col gap-8 items-center">
+          {/* Success Icon */}
+          <div className="flex justify-center">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+              <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn btn-primary w-full flex items-center justify-center"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="animate-spin mr-2 h-5 w-5" />
-                Sending...
-              </>
-            ) : (
-              'Send Reset Link'
-            )}
-          </button>
-        </form>
-      ) : (
-        <div className="text-center space-y-4">
-          <div className="p-4 bg-green-50 rounded-lg">
-            <p className="text-sm text-green-800">
-              A password reset link has been sent to <strong>{email}</strong>
+          {/* Success Message */}
+          <div className="text-center">
+            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Check your email</h3>
+            <p className="text-gray-600 dark:text-gray-400">
+              We've sent a password reset link to <strong className="font-semibold">{email}</strong>
             </p>
-            <p className="text-xs text-green-600 mt-2">
-              Please check your email and click the link to reset your password.
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+              The link will expire in 24 hours. If you don't see it, check your spam folder.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setEmailSent(false)
-              setEmail('')
-            }}
-            className="text-sm text-primary-600 hover:text-primary-700"
-          >
-            Send another email
-          </button>
+
+          {/* Actions */}
+          <div className="w-full space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEmailSent(false)
+                setEmail('')
+              }}
+              className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-700 hover:border-purple-500 dark:hover:border-purple-400 text-gray-900 dark:text-white font-semibold rounded-lg transition-all duration-200"
+            >
+              Try another email
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="w-full px-4 py-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-900 dark:text-white font-semibold rounded-lg transition-all duration-200"
+            >
+              Back to Sign In
+            </button>
+          </div>
         </div>
       )}
+    </div>
+  )
+}
 
-      <div className="mt-6 text-center">
-        <Link to="/login" className="text-sm text-primary-600 hover:text-primary-700">
-          Back to Login
-        </Link>
-      </div>
+export default ForgotPassword
     </div>
   )
 }
