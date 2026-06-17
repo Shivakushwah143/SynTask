@@ -2,25 +2,35 @@ import { create } from 'zustand'
 import {
   saveAuthTokens,
   saveUserData,
-  getAccessToken,
-  getRefreshToken,
-  getUserData,
   clearAuthStorage,
-  updateAccessToken,
-  hasAuthData,
+  getStoredAuthData,
 } from '../utils/storage'
+
+const getInitialAuthState = () => {
+  const storedAuth = getStoredAuthData()
+  if (!storedAuth) {
+    return {
+      user: null,
+      token: null,
+      refreshToken: null,
+      isAuthenticated: false,
+    }
+  }
+
+  return {
+    user: storedAuth.user,
+    token: storedAuth.token,
+    refreshToken: storedAuth.refreshToken,
+    isAuthenticated: true,
+  }
+}
 
 export const useAuthStore = create(
   (set, get) => ({
-    user: null,
-    token: null,
-    refreshToken: null,
-    isAuthenticated: false,
+    ...getInitialAuthState(),
 
-    setAuth: (user, token, refreshToken, rememberMe = false) => {
-      // Save tokens to storage (localStorage + cookies)
+    setAuth: (user, token, refreshToken, rememberMe) => {
       saveAuthTokens(token, refreshToken, rememberMe)
-      // Save user data to localStorage
       saveUserData(user)
       
       set({
@@ -32,12 +42,13 @@ export const useAuthStore = create(
     },
 
     updateUser: (userData) =>
-      set((state) => ({
-        user: { ...state.user, ...userData },
-      })),
+      set((state) => {
+        const user = { ...state.user, ...userData }
+        saveUserData(user)
+        return { user }
+      }),
 
     clearAuth: () => {
-      // Clear from storage
       clearAuthStorage()
       
       set({
@@ -59,22 +70,20 @@ export const useAuthStore = create(
       get().clearAuth()
     },
 
-    // Initialize auth from stored tokens
     initializeAuth: () => {
-      if (hasAuthData()) {
-        const token = getAccessToken()
-        const refreshToken = getRefreshToken()
-        const user = getUserData()
-        
-        set({
-          user,
-          token,
-          refreshToken,
-          isAuthenticated: true,
-        })
-        return true
+      const storedAuth = getStoredAuthData()
+      if (!storedAuth) {
+        get().clearAuth()
+        return false
       }
-      return false
+
+      set({
+        user: storedAuth.user,
+        token: storedAuth.token,
+        refreshToken: storedAuth.refreshToken,
+        isAuthenticated: true,
+      })
+      return true
     },
 
     getToken: () => get().token,

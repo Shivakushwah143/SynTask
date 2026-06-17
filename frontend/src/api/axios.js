@@ -19,7 +19,7 @@ axiosInstance.interceptors.request.use(
     // First try to get token from state, then from storage
     let token = useAuthStore.getState().token
     if (!token) {
-      token = getAccessToken() // Check localStorage/cookies
+      token = getAccessToken()
     }
     
     if (token) {
@@ -76,7 +76,7 @@ axiosInstance.interceptors.response.use(
         // Try to get refresh token from state, then from storage
         let refreshToken = useAuthStore.getState().refreshToken
         if (!refreshToken) {
-          refreshToken = getRefreshToken() // Check localStorage/cookies
+          refreshToken = getRefreshToken()
         }
 
         if (refreshToken) {

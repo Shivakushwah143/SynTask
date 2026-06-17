@@ -1,112 +1,122 @@
 /**
  * Storage utilities for auth tokens
- * Stores tokens in both localStorage and cookies for persistence
+ * Uses sessionStorage for normal sessions and localStorage only when
+ * "remember me" is selected.
  */
 
 const TOKEN_KEY = 'auth_token'
 const REFRESH_TOKEN_KEY = 'refresh_token'
 const USER_KEY = 'auth_user'
+const REMEMBER_KEY = 'auth_remember_me'
 
-/**
- * Set cookie with optional expiration
- */
-export const setCookie = (name, value, days = 7) => {
-  const date = new Date()
-  date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000)
-  const expires = `expires=${date.toUTCString()}`
-  document.cookie = `${name}=${encodeURIComponent(value)};${expires};path=/;SameSite=Lax`
+const getSessionStorage = () => (typeof window === 'undefined' ? null : window.sessionStorage)
+const getLocalStorage = () => (typeof window === 'undefined' ? null : window.localStorage)
+
+const removeFromStorage = (storage) => {
+  if (!storage) return
+  storage.removeItem(TOKEN_KEY)
+  storage.removeItem(REFRESH_TOKEN_KEY)
+  storage.removeItem(USER_KEY)
+  storage.removeItem(REMEMBER_KEY)
 }
 
-/**
- * Get cookie value
- */
-export const getCookie = (name) => {
-  const nameEQ = name + '='
-  const cookies = document.cookie.split(';')
-  for (let i = 0; i < cookies.length; i++) {
-    let cookie = cookies[i].trim()
-    if (cookie.indexOf(nameEQ) === 0) {
-      return decodeURIComponent(cookie.substring(nameEQ.length))
-    }
+const deleteLegacyCookie = (name) => {
+  if (typeof document === 'undefined') return
+  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Lax`
+}
+
+const clearLegacyCookies = () => {
+  deleteLegacyCookie(TOKEN_KEY)
+  deleteLegacyCookie(REFRESH_TOKEN_KEY)
+}
+
+const getActiveStorage = () => {
+  const session = getSessionStorage()
+  const local = getLocalStorage()
+
+  if (session?.getItem(TOKEN_KEY) || session?.getItem(REFRESH_TOKEN_KEY)) return session
+  if (local?.getItem(TOKEN_KEY) || local?.getItem(REFRESH_TOKEN_KEY)) return local
+  return session || local
+}
+
+const getStorageForRememberMe = (rememberMe) => {
+  if (rememberMe === true) return getLocalStorage()
+  if (rememberMe === false) return getSessionStorage()
+  return getActiveStorage()
+}
+
+export const saveAuthTokens = (accessToken, refreshToken, rememberMe) => {
+  const targetStorage = getStorageForRememberMe(rememberMe)
+  const inactiveStorage = targetStorage === getLocalStorage() ? getSessionStorage() : getLocalStorage()
+
+  removeFromStorage(inactiveStorage)
+  clearLegacyCookies()
+
+  if (!targetStorage || !accessToken || !refreshToken) return
+
+  targetStorage.setItem(TOKEN_KEY, accessToken)
+  targetStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+  if (typeof rememberMe === 'boolean') {
+    targetStorage.setItem(REMEMBER_KEY, String(rememberMe))
   }
-  return null
 }
 
-/**
- * Delete cookie
- */
-export const deleteCookie = (name) => {
-  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`
-}
-
-/**
- * Save auth tokens to both localStorage and cookies
- */
-export const saveAuthTokens = (accessToken, refreshToken, rememberMe = false) => {
-  // Always save to localStorage for this session
-  localStorage.setItem(TOKEN_KEY, accessToken)
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
-  
-  // Save to cookies if rememberMe is enabled (7 days), otherwise session cookie
-  const cookieDays = rememberMe ? 30 : 0 // 0 = session cookie
-  setCookie(TOKEN_KEY, accessToken, cookieDays)
-  setCookie(REFRESH_TOKEN_KEY, refreshToken, cookieDays)
-}
-
-/**
- * Save user data to localStorage
- */
 export const saveUserData = (user) => {
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  const targetStorage = getActiveStorage()
+  const inactiveStorage = targetStorage === getLocalStorage() ? getSessionStorage() : getLocalStorage()
+
+  if (!targetStorage || !user) return
+
+  inactiveStorage?.removeItem(USER_KEY)
+  targetStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
-/**
- * Get access token from storage (localStorage or cookies)
- */
 export const getAccessToken = () => {
-  return localStorage.getItem(TOKEN_KEY) || getCookie(TOKEN_KEY)
+  return getSessionStorage()?.getItem(TOKEN_KEY) || getLocalStorage()?.getItem(TOKEN_KEY) || null
 }
 
-/**
- * Get refresh token from storage
- */
 export const getRefreshToken = () => {
-  return localStorage.getItem(REFRESH_TOKEN_KEY) || getCookie(REFRESH_TOKEN_KEY)
+  return getSessionStorage()?.getItem(REFRESH_TOKEN_KEY) || getLocalStorage()?.getItem(REFRESH_TOKEN_KEY) || null
 }
 
-/**
- * Get user data from localStorage
- */
 export const getUserData = () => {
-  const user = localStorage.getItem(USER_KEY)
-  return user ? JSON.parse(user) : null
+  const storedUser = getSessionStorage()?.getItem(USER_KEY) || getLocalStorage()?.getItem(USER_KEY)
+  if (!storedUser) return null
+
+  try {
+    return JSON.parse(storedUser)
+  } catch {
+    clearAuthStorage()
+    return null
+  }
 }
 
-/**
- * Clear all auth data from storage
- */
 export const clearAuthStorage = () => {
-  // Clear localStorage
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
-  
-  // Clear cookies
-  deleteCookie(TOKEN_KEY)
-  deleteCookie(REFRESH_TOKEN_KEY)
+  removeFromStorage(getSessionStorage())
+  removeFromStorage(getLocalStorage())
+  clearLegacyCookies()
 }
 
-/**
- * Check if auth data exists in storage
- */
 export const hasAuthData = () => {
-  return !!(getAccessToken() && getRefreshToken())
+  return !!(getAccessToken() && getRefreshToken() && getUserData())
 }
 
-/**
- * Update access token in storage
- */
+export const getStoredAuthData = () => {
+  const token = getAccessToken()
+  const refreshToken = getRefreshToken()
+  const user = getUserData()
+
+  if (!token || !refreshToken || !user) {
+    if (token || refreshToken || user) clearAuthStorage()
+    return null
+  }
+
+  return { token, refreshToken, user }
+}
+
 export const updateAccessToken = (accessToken) => {
-  localStorage.setItem(TOKEN_KEY, accessToken)
-  setCookie(TOKEN_KEY, accessToken, 0) // Session cookie
+  const targetStorage = getActiveStorage()
+  if (!targetStorage || !accessToken) return
+  targetStorage.setItem(TOKEN_KEY, accessToken)
+  clearLegacyCookies()
 }
