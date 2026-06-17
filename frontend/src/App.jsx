@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { useTheme } from './hooks/useTheme'
@@ -88,6 +88,12 @@ const withBoundary = (element) => <ErrorBoundary>{element}</ErrorBoundary>
 
 function App() {
   useTheme()
+  
+  // Initialize auth from stored tokens on app load
+  useEffect(() => {
+    const { initializeAuth } = useAuthStore.getState()
+    initializeAuth()
+  }, [])
 
   return (
     <Suspense fallback={<PageLoader />}>

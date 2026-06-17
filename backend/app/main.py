@@ -41,7 +41,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Middleware
-cors_origins = settings.ALLOWED_ORIGINS if settings.ENVIRONMENT == "production" else ["http://localhost:3000"]
+cors_origins = settings.ALLOWED_ORIGINS 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
