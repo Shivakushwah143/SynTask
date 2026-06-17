@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { Plus, Search, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { salesApi } from '../../api/sales'
-import { Badge, Button, ConfirmDialog, EmptyState, FormField, inputClassName, LoadingSpinner, Modal, PageHeader, Table } from '../../components/ui'
+import { Badge, Button, ConfirmDialog, EmptyState, FormField, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
 import { asArray, formatDate, getId, toFormData } from '../phase4Utils'
 
 export default function SalesContacts() {
@@ -40,7 +40,7 @@ export default function SalesContacts() {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input className={`${inputClassName} pl-10`} placeholder="Search contacts..." value={search} onChange={(event) => setSearch(event.target.value)} />
       </div>
-      {isLoading ? <LoadingSpinner label="Loading contacts" /> : isError ? <EmptyState icon={Users} title="Could not load contacts" description="Try refreshing the page." /> : contacts.length ? <Table columns={columns} data={contacts} /> : <EmptyState icon={Users} title="No contacts yet" description="Add your first sales contact." action={<Button onClick={() => setCreateOpen(true)}>Add Contact</Button>} />}
+      {isLoading ? <SkeletonTable rows={6} cols={5} /> : isError ? <EmptyState icon={Users} title="Could not load contacts" description="Try refreshing the page." /> : contacts.length ? <Table columns={columns} data={contacts} /> : <EmptyState icon={Users} title="No contacts yet" description="Add your first sales contact." action={<Button onClick={() => setCreateOpen(true)}>Add Contact</Button>} />}
       <ContactModal isOpen={createOpen} onClose={() => setCreateOpen(false)} onDone={() => { setCreateOpen(false); queryClient.invalidateQueries('sales-contacts') }} />
       <ConfirmDialog isOpen={Boolean(deleteId)} onClose={() => setDeleteId(null)} onConfirm={() => deleteMutation.mutate(deleteId)} loading={deleteMutation.isLoading} title="Delete contact" message="This contact will be removed from the CRM." confirmLabel="Delete" />
     </div>

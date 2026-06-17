@@ -4,12 +4,51 @@
 
 @layer base {
   html {
-    font-size: 90%; /* Scale down to 90% (16px * 0.9 = 14.4px base) */
+    font-size: 90%;
   }
-  
+
+  :root {
+    --color-app-bg: theme('colors.surface.muted');
+    --color-app-surface: theme('colors.surface.DEFAULT');
+    --color-app-surface-muted: theme('colors.surface.muted');
+    --color-app-surface-subtle: theme('colors.surface.subtle');
+    --color-app-border: theme('colors.surface.border');
+    --color-app-text: theme('colors.text.primary');
+    --color-app-text-secondary: theme('colors.text.secondary');
+    --color-app-text-muted: theme('colors.text.muted');
+  }
+
+  html.dark,
+  html[data-theme='dark'] {
+    --color-app-bg: theme('colors.gray.950');
+    --color-app-surface: theme('colors.gray.900');
+    --color-app-surface-muted: theme('colors.gray.950');
+    --color-app-surface-subtle: theme('colors.gray.800');
+    --color-app-border: theme('colors.gray.800');
+    --color-app-text: theme('colors.gray.100');
+    --color-app-text-secondary: theme('colors.gray.300');
+    --color-app-text-muted: theme('colors.gray.400');
+  }
+
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    @apply antialiased;
+    background: var(--color-app-bg);
+    color: var(--color-app-text);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  :focus-visible {
+    outline: 2px solid theme('colors.primary.500');
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
   }
 }
 
@@ -23,7 +62,7 @@
   }
   
   .btn-secondary {
-    @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-2 focus:ring-gray-200;
+    @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-2 focus:ring-gray-200 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700 dark:focus:ring-gray-700;
   }
   
   .btn-danger {
@@ -31,11 +70,25 @@
   }
   
   .input {
-    @apply w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all;
+    @apply w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500;
   }
   
   .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-4;
+    @apply border p-4 dark:shadow-none;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    background: var(--color-app-surface);
+    border-color: var(--color-app-border);
+  }
+
+  .page-header {
+    @apply text-2xl font-bold;
+    color: var(--color-app-text);
+  }
+
+  .section-header {
+    @apply text-base font-semibold;
+    color: var(--color-app-text);
   }
   
   .badge {
@@ -70,15 +123,15 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100;
+  @apply bg-gray-100 dark:bg-gray-900;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full;
+  @apply bg-gray-300 rounded-full dark:bg-gray-700;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400;
+  @apply bg-gray-400 dark:bg-gray-600;
 }
 
 /* Loading Animation */
@@ -90,5 +143,147 @@
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin,
+  .animate-pulse {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@layer utilities {
+  :where(html.dark, html[data-theme='dark']) .bg-white {
+    background-color: theme('colors.gray.900');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-gray-50,
+  :where(html.dark, html[data-theme='dark']) .bg-gray-50\/60 {
+    background-color: theme('colors.gray.950');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-gray-100,
+  :where(html.dark, html[data-theme='dark']) .bg-gray-200 {
+    background-color: theme('colors.gray.800');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-gray-300 {
+    background-color: theme('colors.gray.700');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-blue-50,
+  :where(html.dark, html[data-theme='dark']) .bg-blue-100 {
+    background-color: rgb(23 37 84 / 0.6);
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-primary-50,
+  :where(html.dark, html[data-theme='dark']) .bg-primary-100 {
+    background-color: rgb(23 37 84 / 0.6);
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-green-50,
+  :where(html.dark, html[data-theme='dark']) .bg-green-100 {
+    background-color: rgb(20 83 45 / 0.55);
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-yellow-50,
+  :where(html.dark, html[data-theme='dark']) .bg-yellow-100 {
+    background-color: rgb(113 63 18 / 0.55);
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-orange-50,
+  :where(html.dark, html[data-theme='dark']) .bg-orange-100 {
+    background-color: rgb(124 45 18 / 0.55);
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-red-50,
+  :where(html.dark, html[data-theme='dark']) .bg-red-100 {
+    background-color: rgb(127 29 29 / 0.55);
+  }
+
+  :where(html.dark, html[data-theme='dark']) .bg-purple-50,
+  :where(html.dark, html[data-theme='dark']) .bg-purple-100 {
+    background-color: rgb(88 28 135 / 0.55);
+  }
+
+  :where(html.dark, html[data-theme='dark']) .border-gray-100,
+  :where(html.dark, html[data-theme='dark']) .border-gray-200,
+  :where(html.dark, html[data-theme='dark']) .border-gray-300,
+  :where(html.dark, html[data-theme='dark']) .border-surface-border {
+    border-color: theme('colors.gray.800');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+  :where(html.dark, html[data-theme='dark']) .divide-surface-border > :not([hidden]) ~ :not([hidden]) {
+    border-color: theme('colors.gray.800');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-gray-900,
+  :where(html.dark, html[data-theme='dark']) .text-gray-800 {
+    color: theme('colors.gray.100');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-gray-700,
+  :where(html.dark, html[data-theme='dark']) .text-gray-600 {
+    color: theme('colors.gray.300');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-gray-500,
+  :where(html.dark, html[data-theme='dark']) .text-gray-400 {
+    color: theme('colors.gray.400');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-blue-700,
+  :where(html.dark, html[data-theme='dark']) .text-blue-800 {
+    color: theme('colors.blue.300');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-primary-600,
+  :where(html.dark, html[data-theme='dark']) .text-primary-700,
+  :where(html.dark, html[data-theme='dark']) .text-primary-800 {
+    color: theme('colors.primary.300');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-green-600,
+  :where(html.dark, html[data-theme='dark']) .text-green-700,
+  :where(html.dark, html[data-theme='dark']) .text-green-800 {
+    color: theme('colors.green.300');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-yellow-600,
+  :where(html.dark, html[data-theme='dark']) .text-yellow-700,
+  :where(html.dark, html[data-theme='dark']) .text-yellow-800 {
+    color: theme('colors.yellow.300');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-orange-700,
+  :where(html.dark, html[data-theme='dark']) .text-orange-800 {
+    color: theme('colors.orange.300');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-red-600,
+  :where(html.dark, html[data-theme='dark']) .text-red-700,
+  :where(html.dark, html[data-theme='dark']) .text-red-800 {
+    color: theme('colors.red.300');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-purple-600,
+  :where(html.dark, html[data-theme='dark']) .text-purple-700,
+  :where(html.dark, html[data-theme='dark']) .text-purple-800 {
+    color: theme('colors.purple.300');
+  }
+
+  :where(html.dark, html[data-theme='dark']) .hover\:bg-gray-50:hover,
+  :where(html.dark, html[data-theme='dark']) .hover\:bg-gray-100:hover,
+  :where(html.dark, html[data-theme='dark']) .hover\:bg-gray-200:hover {
+    background-color: theme('colors.gray.800');
+  }
 }
 

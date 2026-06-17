@@ -6,8 +6,8 @@ export function LoadingSpinner({ size = 'md', label = 'Loading' }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-2 text-sm text-gray-500">
-      <span className={`${sizes[size]} animate-spin rounded-full border-2 border-gray-200 border-t-primary-600`} />
+    <span className="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+      <span className={`${sizes[size]} animate-spin rounded-full border-2 border-gray-200 border-t-primary-600 dark:border-gray-700 dark:border-t-primary-400`} />
       {label ? <span>{label}</span> : null}
     </span>
   )
@@ -15,7 +15,7 @@ export function LoadingSpinner({ size = 'md', label = 'Loading' }) {
 
 export function PageLoader() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
       <LoadingSpinner size="lg" label="Loading page" />
     </div>
   )

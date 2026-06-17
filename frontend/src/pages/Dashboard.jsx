@@ -30,6 +30,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import toast from 'react-hot-toast'
+import { SkeletonCard, SkeletonTable } from '../components/ui'
 
 const Dashboard = () => {
   const { user } = useAuthStore()
@@ -119,8 +120,15 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary-600 border-t-transparent rounded-full"></div>
+      <div className="space-y-6 p-4" role="status" aria-label="Loading dashboard">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={2} />)}
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <SkeletonCard lines={6} />
+          <SkeletonCard lines={6} />
+        </div>
+        <SkeletonTable rows={5} cols={4} />
       </div>
     )
   }

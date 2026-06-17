@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Building2, Search } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
-import { Badge, Button, EmptyState, inputClassName, LoadingSpinner, PageHeader, Table } from '../../components/ui'
+import { Badge, Button, EmptyState, inputClassName, PageHeader, SkeletonTable, Table } from '../../components/ui'
 import { asArray, getId } from '../phase4Utils'
 
 export default function TenantManagement() {
@@ -27,7 +27,7 @@ export default function TenantManagement() {
     <div>
       <PageHeader title="Tenant Management" description="Review, activate, and suspend tenant companies." />
       <div className="relative mb-4"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input className={`${inputClassName} pl-10`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search tenants..." /></div>
-      {isLoading ? <LoadingSpinner label="Loading tenants" /> : isError ? <EmptyState icon={Building2} title="Could not load tenants" /> : tenants.length ? <Table columns={columns} data={tenants} /> : <EmptyState icon={Building2} title="No tenants found" />}
+      {isLoading ? <SkeletonTable rows={7} cols={5} /> : isError ? <EmptyState icon={Building2} title="Could not load tenants" /> : tenants.length ? <Table columns={columns} data={tenants} /> : <EmptyState icon={Building2} title="No tenants found" />}
     </div>
   )
 }

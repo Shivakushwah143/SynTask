@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Ticket as TicketIcon, User, Calendar, X, GripVertical, Settings, Edit, Trash2 } from 'lucide-react'
+import { Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2 } from 'lucide-react'
 import { ticketsAPI } from '../api/tickets'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import TicketDetailModal from '../components/TicketDetailModal'
+import { SkeletonKanban } from '../components/ui'
 import {
   DndContext,
   DragOverlay,
@@ -546,8 +547,8 @@ const Tickets = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 border-4 border-primary-600 border-t-transparent rounded-full"></div>
+      <div className="p-4">
+        <SkeletonKanban cols={4} />
       </div>
     )
   }

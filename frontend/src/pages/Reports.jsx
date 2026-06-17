@@ -3,7 +3,7 @@ import { useQuery } from 'react-query'
 import { Bar, BarChart, CartesianGrid, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts'
 import { BarChart3 } from 'lucide-react'
 import { reportsAPI } from '../api/reports'
-import { Button, EmptyState, LoadingSpinner, PageHeader } from '../components/ui'
+import { Button, EmptyState, PageHeader, SkeletonCard } from '../components/ui'
 
 const COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626']
 
@@ -18,7 +18,7 @@ export default function Reports() {
   return (
     <div className="p-6">
       <PageHeader title="Reports" description="Task, project, time, and ticket analytics." actions={<div className="flex gap-2">{['week', 'month', 'quarter'].map((item) => <Button key={item} variant={period === item ? 'primary' : 'secondary'} onClick={() => setPeriod(item)}>{item}</Button>)}</div>} />
-      {isLoading ? <LoadingSpinner label="Loading reports" /> : isError ? <EmptyState icon={BarChart3} title="Could not load reports" /> : (
+      {isLoading ? <ReportsSkeleton /> : isError ? <EmptyState icon={BarChart3} title="Could not load reports" /> : (
         <div className="grid gap-6 xl:grid-cols-2">
           <ChartCard title="Tasks by status"><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={taskRows} dataKey="value" nameKey="name" label>{taskRows.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></ChartCard>
           <ChartCard title="Tasks by priority"><ResponsiveContainer width="100%" height={280}><BarChart data={priorityRows}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#f59e0b" /></BarChart></ResponsiveContainer></ChartCard>
@@ -32,4 +32,12 @@ export default function Reports() {
 
 function ChartCard({ title, children }) {
   return <section className="rounded-lg border border-gray-200 bg-white p-4"><h2 className="mb-4 font-semibold text-gray-900">{title}</h2>{children}</section>
+}
+
+function ReportsSkeleton() {
+  return (
+    <div className="grid gap-6 xl:grid-cols-2" role="status" aria-label="Loading reports">
+      {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={6} />)}
+    </div>
+  )
 }

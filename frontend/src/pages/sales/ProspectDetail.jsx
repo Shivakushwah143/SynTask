@@ -2,13 +2,13 @@ import { useQuery } from 'react-query'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Briefcase } from 'lucide-react'
 import { salesApi } from '../../api/sales'
-import { Badge, Button, EmptyState, LoadingSpinner, PageHeader } from '../../components/ui'
+import { Badge, Button, EmptyState, SkeletonCard, PageHeader } from '../../components/ui'
 import { formatDate, formatMoney } from '../phase4Utils'
 
 export default function ProspectDetail() {
   const { id } = useParams()
   const { data, isLoading, isError } = useQuery(['sales-prospect', id], () => salesApi.getProspect(id), { enabled: Boolean(id) })
-  if (isLoading) return <div className="p-6"><LoadingSpinner label="Loading prospect" /></div>
+  if (isLoading) return <div className="p-6"><SkeletonCard lines={8} /></div>
   if (isError || !data) return <div className="p-6"><EmptyState icon={Briefcase} title="Prospect not found" /></div>
   return (
     <div className="p-6">

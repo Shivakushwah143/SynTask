@@ -4,7 +4,7 @@ import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import toast from 'react-hot-toast'
 import { salesApi } from '../../api/sales'
-import { Badge, EmptyState, LoadingSpinner, PageHeader } from '../../components/ui'
+import { Badge, EmptyState, PageHeader, SkeletonKanban } from '../../components/ui'
 import { asArray, formatMoney, getId } from '../phase4Utils'
 
 export default function SalesPipeline() {
@@ -35,7 +35,7 @@ export default function SalesPipeline() {
   return (
     <div className="p-6">
       <PageHeader title="Sales Pipeline" description="Drag prospects between stages." />
-      {stagesQuery.isLoading || prospectsQuery.isLoading ? <LoadingSpinner label="Loading pipeline" /> : prospects.length ? (
+      {stagesQuery.isLoading || prospectsQuery.isLoading ? <SkeletonKanban cols={4} /> : prospects.length ? (
         <DndContext onDragEnd={onDragEnd}>
           <div className="grid min-h-[30rem] gap-4 overflow-x-auto md:grid-cols-3 xl:grid-cols-4">
             {fallbackStages.map((stage) => {

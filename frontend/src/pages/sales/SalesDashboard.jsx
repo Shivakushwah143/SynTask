@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Briefcase, IndianRupee, TrendingUp, Users } from 'lucide-react'
 import { salesApi } from '../../api/sales'
-import { Button, EmptyState, LoadingSpinner, PageHeader } from '../../components/ui'
+import { Button, EmptyState, PageHeader, SkeletonCard } from '../../components/ui'
 import { asArray, formatMoney, sumBy } from '../phase4Utils'
 
 export default function SalesDashboard() {
@@ -31,7 +31,9 @@ export default function SalesDashboard() {
         actions={<Button as={Link} onClick={undefined}><Link to="/sales/prospects">Open Prospects</Link></Button>}
       />
       {loading ? (
-        <LoadingSpinner label="Loading sales metrics" />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={3} />)}
+        </div>
       ) : prospectList.length || contactList.length ? (
         <>
           <div className="grid gap-4 md:grid-cols-4">

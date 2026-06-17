@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
+import { EmptyState, SkeletonTable } from '../components/ui'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
@@ -14,7 +15,6 @@ const Clients = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedClient, setSelectedClient] = useState(null)
-  const [projects, setProjects] = useState([])
   const [leads, setLeads] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -34,6 +34,7 @@ const Clients = () => {
     notes: '',
     tags: '',
   })
+  const [formErrors, setFormErrors] = useState({})
   const [editingClient, setEditingClient] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
@@ -50,7 +51,6 @@ const Clients = () => {
   })
   const [creatingProject, setCreatingProject] = useState(false)
   const [showDocumentModal, setShowDocumentModal] = useState(false)
-  const [selectedDocument, setSelectedDocument] = useState(null)
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
 
@@ -59,7 +59,6 @@ const Clients = () => {
 
   useEffect(() => {
     loadClients()
-    loadProjects()
     loadLeads()
   }, [])
 
@@ -79,15 +78,6 @@ const Clients = () => {
     }
   }
 
-  const loadProjects = async () => {
-    try {
-      const response = await projectsApi.getProjects()
-      setProjects(response.data.projects || [])
-    } catch (error) {
-      console.error('Error loading projects:', error)
-    }
-  }
-
   const loadLeads = async () => {
     try {
       const data = await usersAPI.listUsers(null, 'lead')
@@ -100,6 +90,7 @@ const Clients = () => {
   const handleCreateClient = async (e) => {
     e.preventDefault()
     if (submitting) return
+    if (!validateClientForm()) return
 
     try {
       setSubmitting(true)
@@ -127,6 +118,7 @@ const Clients = () => {
   const handleUpdateClient = async (e) => {
     e.preventDefault()
     if (submitting || !editingClient) return
+    if (!validateClientForm()) return
 
     try {
       setSubmitting(true)
@@ -174,6 +166,7 @@ const Clients = () => {
   }
 
   const handleEditClient = (client) => {
+    setFormErrors({})
     setEditingClient(client)
     setFormData({
       name: client.name || '',
@@ -263,8 +256,7 @@ const Clients = () => {
         delivery_date: '',
       })
       
-      // Reload projects and client details
-      await loadProjects()
+      // Reload client details
       await handleViewClient(selectedClient)
     } catch (error) {
       console.error('Error creating project:', error)
@@ -316,6 +308,25 @@ const Clients = () => {
       tags: '',
     })
     setEditingClient(null)
+    setFormErrors({})
+  }
+
+  const updateClientField = (field, value) => {
+    setFormData((current) => ({ ...current, [field]: value }))
+    setFormErrors((current) => ({ ...current, [field]: '' }))
+  }
+
+  const validateClientForm = () => {
+    const nextErrors = {}
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+    if (!formData.name.trim()) nextErrors.name = 'Client name is required.'
+    if (formData.email.trim() && !emailPattern.test(formData.email.trim())) {
+      nextErrors.email = 'Enter a valid email address.'
+    }
+
+    setFormErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
   }
 
   const filteredClients = clients.filter(client => {
@@ -381,12 +392,7 @@ const Clients = () => {
   if (loading) {
     return (
       <div className="p-4">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin h-8 w-8 border-4 border-primary-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading clients...</p>
-          </div>
-        </div>
+        <SkeletonTable rows={8} cols={5} />
       </div>
     )
   }
@@ -439,21 +445,23 @@ const Clients = () => {
 
       {/* Clients Table */}
       {filteredClients.length === 0 ? (
-        <div className="card text-center py-12">
-          <Briefcase className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600">No clients found</p>
-          {(isCompanyAdmin || isLead) && (
+        <EmptyState
+          icon={Briefcase}
+          title="No clients found"
+          description="Create a client to link projects, budgets, and documents."
+          action={(isCompanyAdmin || isLead) ? (
             <button
+              type="button"
               onClick={() => {
                 resetForm()
                 setShowCreateModal(true)
               }}
-              className="btn btn-primary mt-4"
+              className="btn btn-primary"
             >
               Add Your First Client
             </button>
-          )}
-        </div>
+          ) : null}
+        />
       ) : (
         <div className="card overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -588,23 +596,27 @@ const Clients = () => {
               <form onSubmit={editingClient ? handleUpdateClient : handleCreateClient} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Name *</label>
                     <input
                       type="text"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) => updateClientField('name', e.target.value)}
                       className="input"
                       required
+                      aria-invalid={Boolean(formErrors.name)}
                     />
+                    {formErrors.name ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.name}</p> : null}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Email</label>
                     <input
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      onChange={(e) => updateClientField('email', e.target.value)}
                       className="input"
+                      aria-invalid={Boolean(formErrors.email)}
                     />
+                    {formErrors.email ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.email}</p> : null}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Contact</label>
