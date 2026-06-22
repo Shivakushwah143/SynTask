@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2 } from 'lucide-react'
 import { ticketsAPI } from '../api/tickets'
 import { usersAPI } from '../api/users'
@@ -119,7 +119,7 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
   return (
     <div
       ref={setNodeRef}
-      className={`card transition-colors ${isOver ? 'ring-2 ring-primary-100 bg-primary-50/40' : ''}`}
+      className={`card w-[300px] min-w-[300px] shrink-0 transition-colors ${isOver ? 'ring-2 ring-primary-100 bg-primary-50/40' : ''}`}
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-gray-900">{status.label}</h3>
@@ -242,6 +242,10 @@ const Tickets = () => {
     }, {})
   }, [statuses])
 
+  const sortedStatuses = useMemo(() => {
+    return [...statuses].sort((a, b) => (a.order || 0) - (b.order || 0))
+  }, [statuses])
+
   // Column management states
   const canManageColumns = ['company_admin', 'super_admin', 'lead'].includes(user?.role)
   const [showColumnModal, setShowColumnModal] = useState(false)
@@ -290,7 +294,7 @@ const Tickets = () => {
   }
 
   // Fetch tickets
-  const fetchTickets = async () => {
+  const fetchTickets = useCallback(async () => {
     try {
       setLoading(true)
       const data = await ticketsAPI.listTickets(filters)
@@ -302,11 +306,11 @@ const Tickets = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filters])
 
   useEffect(() => {
     fetchTickets()
-  }, [filters])
+  }, [fetchTickets])
 
   // Check if we need to open a ticket from notification
   useEffect(() => {
@@ -554,14 +558,15 @@ const Tickets = () => {
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4 lg:p-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Requests</h1>
-          <p className="text-gray-600 text-xs mt-0.5">Support and issue tracking</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <div className="mb-4 rounded-2xl border border-gray-200 bg-gradient-to-r from-white to-gray-50 p-4 shadow-sm dark:border-gray-800 dark:from-gray-950 dark:to-gray-900">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Requests</h1>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Support and issue tracking</p>
+          </div>
+          <div className="flex items-center gap-2">
           {canManageColumns && (
             <button
               onClick={() => {
@@ -585,10 +590,11 @@ const Tickets = () => {
           </button>
         </div>
       </div>
+      </div>
 
       {/* Filters */}
-      <div className="card">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="card mb-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
             <select
@@ -625,8 +631,9 @@ const Tickets = () => {
         onDragStart={(event) => setActiveId(event.active.id)}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-          {statuses.sort((a, b) => (a.order || 0) - (b.order || 0)).map((status) => {
+        <div className="overflow-x-auto pb-2">
+          <div className="flex min-w-max gap-5 pr-2">
+            {sortedStatuses.map((status) => {
             const statusTickets = getTicketsByStatus(status.id)
             return (
               <StatusColumn
@@ -642,6 +649,7 @@ const Tickets = () => {
               />
             )
           })}
+          </div>
         </div>
         <DragOverlay>
           {activeId ? (
