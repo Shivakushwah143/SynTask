@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowRight,
@@ -26,6 +26,20 @@ import {
   Workflow,
   X,
   Zap,
+  Clock,
+  CheckCircle,
+  Heart,
+  Phone,
+  FileText,
+  Rocket,
+  TrendingUp,
+  Monitor,
+  Factory,
+  Scale,
+  Hotel,
+  HardHat,
+  Landmark,
+  UtensilsCrossed,
 } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 
@@ -188,6 +202,87 @@ const compareRows = [
   ['Agency reporting', false, false, true],
 ]
 
+// TrustedBy Component Data
+const logos = [
+  { name: "Accenture", abbr: "AC" },
+  { name: "Deloitte", abbr: "DL" },
+  { name: "McKinsey", abbr: "MC" },
+  { name: "Bosch", abbr: "BS" },
+  { name: "Siemens", abbr: "SI" },
+  { name: "Honeywell", abbr: "HW" },
+  { name: "Infosys", abbr: "IF" },
+  { name: "Wipro", abbr: "WP" },
+  { name: "Cognizant", abbr: "CG" },
+  { name: "HCLTech", abbr: "HC" },
+  { name: "Philips", abbr: "PH" },
+  { name: "3M", abbr: "3M" },
+]
+
+// Statistics Component Data
+const statsData = [
+  { value: 48, suffix: "h", label: "Average Team Deployment", sublabel: "From kickoff to first commit", icon: Clock, color: "#2563EB" },
+  { value: 250, suffix: "+", label: "Projects Delivered", sublabel: "Across 12 industries globally", icon: CheckCircle, color: "#4F46E5" },
+  { value: 95, suffix: "%", label: "Client Retention", sublabel: "Long-term partnership model", icon: Heart, color: "#7C3AED" },
+  { value: 24, suffix: "/7", label: "Managed Support", sublabel: "Always-on NOC & L1–L3", icon: Headphones, color: "#10B981" },
+  { label: "Global Delivery", sublabel: "USA + India Delivery Centers", icon: Globe, color: "#F59E0B", custom: "2 Hubs" },
+]
+
+// HowItWorks Component Data
+const howItWorksSteps = [
+  {
+    icon: Phone,
+    number: "01",
+    title: "Discovery Call",
+    description: "We map your business challenges, existing stack, and goals in a focused 60-minute session with our solutions architects.",
+    duration: "Day 1",
+    color: "#2563EB",
+  },
+  {
+    icon: FileText,
+    number: "02",
+    title: "Solution Blueprint",
+    description: "Our team delivers a detailed technical and operational blueprint: team structure, tech stack, timelines, and ROI projections.",
+    duration: "Days 2–3",
+    color: "#4F46E5",
+  },
+  {
+    icon: Rocket,
+    number: "03",
+    title: "Team Deployment",
+    description: "Vetted engineers and AI specialists are onboarded to your project. Credentials, repos, and comms channels set up in hours.",
+    duration: "Days 3–5",
+    color: "#7C3AED",
+  },
+  {
+    icon: Play,
+    number: "04",
+    title: "Execution & Delivery",
+    description: "Sprints begin. Weekly demos, async standups, and full transparency via your preferred project management tools.",
+    duration: "Week 2+",
+    color: "#0891B2",
+  },
+  {
+    icon: TrendingUp,
+    number: "05",
+    title: "Optimization & Scale",
+    description: "Continuous improvement cycles. We scale teams up or down, introduce AI automation, and optimize for long-term business outcomes.",
+    duration: "Ongoing",
+    color: "#10B981",
+  },
+]
+
+// Industries Component Data
+const industries = [
+  { name: "Information Technology", icon: Monitor, color: "#2563EB", desc: "Digital transformation, product engineering, cloud migration" },
+  { name: "Manufacturing", icon: Factory, color: "#4F46E5", desc: "Smart factory, predictive maintenance, QA automation" },
+  { name: "Legal", icon: Scale, color: "#7C3AED", desc: "Document automation, compliance, contract intelligence" },
+  { name: "Healthcare", icon: Heart, color: "#EF4444", desc: "Patient ops, claims processing, clinical AI" },
+  { name: "Hospitality", icon: Hotel, color: "#F59E0B", desc: "Guest experience, booking ops, revenue management" },
+  { name: "Construction", icon: HardHat, color: "#EA580C", desc: "Project tracking, safety compliance, BIM integration" },
+  { name: "Finance", icon: Landmark, color: "#0891B2", desc: "Risk management, regulatory reporting, fraud detection" },
+  { name: "Food & Beverage", icon: UtensilsCrossed, color: "#10B981", desc: "Supply chain, inventory ops, demand forecasting" },
+]
+
 const sectionVariants = {
   hidden: { opacity: 0, y: 28 },
   visible: {
@@ -277,6 +372,682 @@ function StatCard({ value, label }) {
   )
 }
 
+// ---- TrustedBy Component ----
+function LogoChip({ name, abbr }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 24px",
+        background: "var(--color-app-surface)",
+        border: "1px solid var(--color-app-border)",
+        borderRadius: 10,
+        flexShrink: 0,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <div
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          background: "linear-gradient(135deg, #1E3A5F, #2563EB)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          fontSize: 11,
+          fontWeight: 800,
+          color: "white",
+          letterSpacing: "0.02em",
+        }}
+      >
+        {abbr}
+      </div>
+      <span
+        style={{
+          fontFamily: "'Inter', sans-serif",
+          fontSize: 14,
+          fontWeight: 600,
+          color: "var(--color-app-text-secondary)",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {name}
+      </span>
+    </div>
+  );
+}
+
+function TrustedBy() {
+  const trackRef = useRef(null);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    let pos = 0;
+    let rafId;
+    const speed = 0.5;
+
+    function tick() {
+      pos -= speed;
+      const half = track.scrollWidth / 2;
+      if (Math.abs(pos) >= half) pos = 0;
+      track.style.transform = `translateX(${pos}px)`;
+      rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  const allLogos = [...logos, ...logos];
+
+  return (
+    <section style={{ padding: "64px 0", background: "var(--color-app-surface-muted)", borderTop: "1px solid var(--color-app-border)", borderBottom: "1px solid var(--color-app-border)" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto", paddingBottom: 32, textAlign: "center" }}>
+        <p
+          style={{
+            fontFamily: "'Inter', sans-serif",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--color-app-text-muted)",
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+          }}
+        >
+          Trusted by Industry Leaders
+        </p>
+      </div>
+
+      <div style={{ overflow: "hidden", position: "relative" }}>
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 120,
+            background: "linear-gradient(to right, var(--color-app-surface-muted), transparent)",
+            zIndex: 2,
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: 120,
+            background: "linear-gradient(to left, var(--color-app-surface-muted), transparent)",
+            zIndex: 2,
+            pointerEvents: "none",
+          }}
+        />
+
+        <div
+          ref={trackRef}
+          style={{
+            display: "flex",
+            gap: 12,
+            willChange: "transform",
+            width: "max-content",
+          }}
+        >
+          {allLogos.map((logo, i) => (
+            <LogoChip key={`${logo.name}-${i}`} name={logo.name} abbr={logo.abbr} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---- Statistics Component ----
+function useCountUp(target, duration, start) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!start) return;
+    let startTime = null;
+    function tick(ts) {
+      if (!startTime) startTime = ts;
+      const progress = Math.min((ts - startTime) / (duration * 1000), 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      setCount(Math.floor(ease * target));
+      if (progress < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }, [target, duration, start]);
+  return count;
+}
+
+function StatCardWithCount({ stat, inView }) {
+  const count = useCountUp(stat.value ?? 0, 1.5, inView);
+  const Icon = stat.icon;
+
+  return (
+    <div
+      style={{
+        background: "var(--color-app-surface)",
+        border: "1px solid var(--color-app-border)",
+        borderRadius: 16,
+        padding: 32,
+        position: "relative",
+        overflow: "hidden",
+        transition: "transform 0.2s, box-shadow 0.2s",
+        cursor: "default",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-4px)";
+        e.currentTarget.style.boxShadow = "0 16px 40px rgba(15,23,42,0.1)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 3,
+          background: `linear-gradient(90deg, ${stat.color}, ${stat.color}88)`,
+        }}
+      />
+
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 12,
+          background: `${stat.color}12`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 20,
+        }}
+      >
+        <Icon size={22} color={stat.color} />
+      </div>
+
+      <div
+        style={{
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          fontSize: 44,
+          fontWeight: 800,
+          color: "var(--color-app-text)",
+          letterSpacing: "-0.03em",
+          lineHeight: 1,
+          marginBottom: 8,
+        }}
+      >
+        {stat.custom ? stat.custom : `${count}${stat.suffix}`}
+      </div>
+
+      <div
+        style={{
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          fontSize: 16,
+          fontWeight: 600,
+          color: "var(--color-app-text)",
+          marginBottom: 4,
+        }}
+      >
+        {stat.label}
+      </div>
+      <div
+        style={{
+          fontFamily: "'Inter', sans-serif",
+          fontSize: 13,
+          color: "var(--color-app-text-muted)",
+        }}
+      >
+        {stat.sublabel}
+      </div>
+    </div>
+  );
+}
+
+function Statistics() {
+  const ref = useRef(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setInView(true); },
+      { threshold: 0.2 }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <section ref={ref} style={{ padding: "96px 24px", background: "#FAFBFC" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", marginBottom: 56 }}>
+          <p
+            style={{
+              fontFamily: "'Inter', sans-serif",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#2563EB",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: 12,
+            }}
+          >
+            Our Track Record
+          </p>
+          <h2
+            style={{
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontSize: "clamp(28px, 4vw, 48px)",
+              fontWeight: 800,
+              color: "var(--color-app-text)",
+              letterSpacing: "-0.02em",
+              lineHeight: 1.2,
+            }}
+          >
+            Numbers that define our impact
+          </h2>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 20,
+          }}
+        >
+          {statsData.map((stat) => (
+            <StatCardWithCount key={stat.label} stat={stat} inView={inView} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---- HowItWorks Component ----
+function HowItWorks() {
+  const [activeStep, setActiveStep] = useState(0);
+
+  return (
+    <section style={{ padding: "96px 24px", background: "var(--color-app-surface-muted)" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", marginBottom: 56 }}>
+          <p
+            style={{
+              fontFamily: "'Inter', sans-serif",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#2563EB",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: 12,
+            }}
+          >
+            How It Works
+          </p>
+          <h2
+            style={{
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontSize: "clamp(28px, 4vw, 48px)",
+              fontWeight: 800,
+              color: "var(--color-app-text)",
+              letterSpacing: "-0.02em",
+              lineHeight: 1.2,
+              marginBottom: 16,
+            }}
+          >
+            From first call to full operation
+          </h2>
+          <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, color: "#475569", maxWidth: 480, margin: "0 auto" }}>
+            A structured process built for enterprise speed and reliability.
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 0,
+            marginBottom: 48,
+            background: "#E2E8F0",
+            borderRadius: 100,
+            overflow: "hidden",
+            height: 4,
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              background: "linear-gradient(90deg, #2563EB, #10B981)",
+              borderRadius: 100,
+              transition: "width 0.5s ease",
+              width: `${((activeStep + 1) / howItWorksSteps.length) * 100}%`,
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 40,
+            overflowX: "auto",
+            paddingBottom: 4,
+          }}
+        >
+          {howItWorksSteps.map((step, i) => (
+            <button
+              key={step.number}
+              onClick={() => setActiveStep(i)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "10px 18px",
+                borderRadius: 100,
+                border: "none",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                fontFamily: "'Inter', sans-serif",
+                fontSize: 13,
+                fontWeight: 600,
+                transition: "all 0.2s",
+                background: activeStep === i ? step.color : "white",
+                color: activeStep === i ? "white" : "#64748B",
+                boxShadow: activeStep === i ? `0 2px 8px ${step.color}30` : "0 0 0 1px #E2E8F0",
+              }}
+            >
+              <span
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  background: activeStep === i ? "rgba(255,255,255,0.25)" : "#F1F5F9",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                {step.number}
+              </span>
+              {step.title}
+            </button>
+          ))}
+        </div>
+
+        {(() => {
+          const step = howItWorksSteps[activeStep];
+          const Icon = step.icon;
+          return (
+            <div
+              key={activeStep}
+              style={{
+                background: "var(--color-app-surface)",
+                border: `1px solid ${step.color}20`,
+                borderRadius: 20,
+                padding: 48,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 48,
+                alignItems: "center",
+                animation: "fadeIn 0.3s ease",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: `${step.color}10`,
+                    border: `1px solid ${step.color}20`,
+                    borderRadius: 100,
+                    padding: "6px 14px",
+                    marginBottom: 20,
+                  }}
+                >
+                  <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: 600, color: step.color }}>
+                    {step.duration}
+                  </span>
+                </div>
+                <h3
+                  style={{
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontSize: 36,
+                    fontWeight: 800,
+                    color: "var(--color-app-text)",
+                    letterSpacing: "-0.02em",
+                    marginBottom: 16,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {step.title}
+                </h3>
+                <p
+                  style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: 16,
+                    color: "#475569",
+                    lineHeight: 1.7,
+                    marginBottom: 28,
+                  }}
+                >
+                  {step.description}
+                </p>
+                <button
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: step.color,
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                  onClick={() => setActiveStep((activeStep + 1) % howItWorksSteps.length)}
+                >
+                  {activeStep < howItWorksSteps.length - 1 ? "Next Step" : "Start Over"} <ArrowRight size={14} />
+                </button>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <div
+                  style={{
+                    width: 200,
+                    height: 200,
+                    borderRadius: "50%",
+                    background: `linear-gradient(135deg, ${step.color}15, ${step.color}05)`,
+                    border: `2px solid ${step.color}20`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    position: "relative",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 120,
+                      height: 120,
+                      borderRadius: "50%",
+                      background: `linear-gradient(135deg, ${step.color}25, ${step.color}10)`,
+                      border: `2px solid ${step.color}30`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 72,
+                        height: 72,
+                        borderRadius: "50%",
+                        background: `linear-gradient(135deg, ${step.color}, ${step.color}CC)`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: `0 8px 24px ${step.color}40`,
+                      }}
+                    >
+                      <Icon size={32} color="white" />
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 12,
+                      right: 12,
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontSize: 48,
+                      fontWeight: 800,
+                      color: `${step.color}15`,
+                      letterSpacing: "-0.04em",
+                      lineHeight: 1,
+                    }}
+                  >
+                    {step.number}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </section>
+  );
+}
+
+// ---- Industries Component ----
+function Industries() {
+  const [hovered, setHovered] = useState(null);
+
+  return (
+    <section id="industries" style={{ padding: "96px 24px", background: "var(--color-app-surface-muted)" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", marginBottom: 56 }}>
+          <p
+            style={{
+              fontFamily: "'Inter', sans-serif",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#2563EB",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: 12,
+            }}
+          >
+            Industries We Serve
+          </p>
+          <h2
+            style={{
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontSize: "clamp(28px, 4vw, 48px)",
+              fontWeight: 800,
+              color: "var(--color-app-text)",
+              letterSpacing: "-0.02em",
+              lineHeight: 1.2,
+              marginBottom: 16,
+            }}
+          >
+            Built for every vertical
+          </h2>
+          <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, color: "#475569", maxWidth: 480, margin: "0 auto" }}>
+            Deep domain expertise across industries that demand reliability, scale, and precision.
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: 16,
+          }}
+        >
+          {industries.map((ind, i) => {
+            const Icon = ind.icon;
+            const isHovered = hovered === i;
+            return (
+              <div
+                key={ind.name}
+                onMouseEnter={() => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  background: isHovered ? "white" : "white",
+                  border: `1px solid ${isHovered ? ind.color + "40" : "#E2E8F0"}`,
+                  borderRadius: 16,
+                  padding: "28px 24px",
+                  cursor: "default",
+                  transition: "all 0.2s ease",
+                  transform: isHovered ? "translateY(-4px)" : "translateY(0)",
+                  boxShadow: isHovered ? `0 12px 24px rgba(15,23,42,0.08)` : "none",
+                }}
+              >
+                <div
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 12,
+                    background: isHovered ? `linear-gradient(135deg, ${ind.color}, ${ind.color}AA)` : `${ind.color}12`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 16,
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <Icon size={22} color={isHovered ? "white" : ind.color} />
+                </div>
+                <h3
+                  style={{
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: "var(--color-app-text)",
+                    letterSpacing: "-0.01em",
+                    marginBottom: 6,
+                  }}
+                >
+                  {ind.name}
+                </h3>
+                <p
+                  style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: 13,
+                    color: "var(--color-app-text-secondary)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {ind.desc}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---- Main NewLanding Component ----
 function NewLanding() {
   const { theme, toggleTheme } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -477,6 +1248,9 @@ function NewLanding() {
           </motion.div>
         </section>
 
+        {/* TrustedBy Component */}
+        <TrustedBy />
+
         <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
             <SectionHeading
@@ -498,6 +1272,9 @@ function NewLanding() {
             ))}
           </motion.div>
         </section>
+
+        {/* Statistics Component */}
+        <Statistics />
 
         <section id="solutions" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
@@ -527,81 +1304,8 @@ function NewLanding() {
           </motion.div>
         </section>
 
-        <section id="how-it-works" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="How it works"
-              title="Designed for fast agency onboarding"
-              description="Set up your team, move in your clients, and start operating in a way that feels natural to agencies."
-            />
-          </motion.div>
-
-          <div className="mt-12 grid gap-6 lg:grid-cols-[0.45fr_0.55fr]">
-            <motion.div
-              variants={staggerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.2 }}
-              className={`rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface} p-4`}
-            >
-              {workflowSteps.map((step, index) => {
-                const active = index === activeStep
-                return (
-                  <button
-                    key={step.title}
-                    type="button"
-                    onClick={() => setActiveStep(index)}
-                    className={`mb-3 flex w-full items-start gap-4 rounded-[1.5rem] border p-4 text-left transition ${
-                      active
-                        ? 'border-primary-200 bg-primary-50 shadow-sm'
-                        : 'border-transparent bg-transparent hover:border-slate-200 hover:bg-white'
-                    }`}
-                  >
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold ${
-                        active ? 'bg-primary-600 text-white' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      0{index + 1}
-                    </div>
-                    <div>
-                      <div className="font-bold text-[var(--color-app-text)]">{step.title}</div>
-                      <div className={`mt-1 text-sm leading-6 ${themeTheme.textSecondary}`}>{step.description}</div>
-                    </div>
-                  </button>
-                )
-              })}
-            </motion.div>
-
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentWorkflow.title}
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -18 }}
-                transition={{ duration: 0.35 }}
-                className={`overflow-hidden rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface} shadow-[0_20px_50px_rgba(15,23,42,0.06)]`}
-              >
-                <img src={currentWorkflow.image} alt={currentWorkflow.title} className="h-[420px] w-full object-cover" />
-                <div className="p-8">
-                  <div className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Step {activeStep + 1}</div>
-                  <h3 className="mt-3 font-display text-3xl font-black tracking-tight">{currentWorkflow.title}</h3>
-                  <p className={`mt-4 max-w-2xl text-base leading-8 ${themeTheme.textSecondary}`}>{currentWorkflow.description}</p>
-                  <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                    {['Clear ownership', 'Automated handoffs', 'Live visibility'].map((label) => (
-                      <div
-                        key={label}
-                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                      >
-                        {label}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </section>
+        {/* HowItWorks Component */}
+        <HowItWorks />
 
         <section id="features" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
@@ -689,44 +1393,8 @@ function NewLanding() {
           </motion.div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Industries"
-              title="Built for the way modern agencies sell and deliver"
-              description="SynTask fits the cadence of digital teams that need structure, speed, and visibility across multiple clients."
-            />
-          </motion.div>
-
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {industryCards.map((name, index) => (
-              <motion.div
-                key={name}
-                variants={itemVariants}
-                className={`rounded-[1.75rem] border ${themeTheme.border} ${themeTheme.surface} p-6`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="text-lg font-bold">{name}</div>
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
-                    <Globe className="h-5 w-5" />
-                  </div>
-                </div>
-                <p className={`mt-4 text-sm leading-7 ${themeTheme.textSecondary}`}>
-                  Tailored workflows, approvals, and reporting for {name.toLowerCase()} teams that need polished delivery.
-                </p>
-                <div className="mt-5 h-2 rounded-full bg-slate-100">
-                  <div className="h-2 rounded-full bg-primary-500" style={{ width: `${65 + index * 5}%` }} />
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </section>
+        {/* Industries Component */}
+        <Industries />
 
         <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
@@ -1037,7 +1705,7 @@ function NewLanding() {
                   <label className="grid gap-2">
                     <span className="text-sm font-semibold text-slate-700">What do you need help with?</span>
                     <textarea
-                      rows="5"
+                      rows={5}
                       placeholder="Tell us about your workflows, pain points, or what you want to improve."
                       className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-primary-400 focus:bg-white"
                     />

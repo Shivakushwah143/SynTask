@@ -24,20 +24,25 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    minify: 'esbuild',
+    minify: 'oxc',
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-ui': ['lucide-react', '@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
-          'vendor-charts': ['recharts'],
-          'vendor-query': ['react-query'],
-          'vendor-forms': ['react-hook-form', 'zod', '@hookform/resolvers'],
-          'vendor-dates': ['date-fns'],
-          'vendor-network': ['axios', 'zustand'],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router-dom)[\\/]/.test(id)) return 'vendor-react'
+          if (/[\\/]node_modules[\\/](lucide-react|@dnd-kit)[\\/]/.test(id)) return 'vendor-ui'
+          if (/[\\/]node_modules[\\/]recharts[\\/]/.test(id)) return 'vendor-charts'
+          if (/[\\/]node_modules[\\/]react-query[\\/]/.test(id)) return 'vendor-query'
+          if (/[\\/]node_modules[\\/](react-hook-form|zod|@hookform)[\\/]/.test(id)) return 'vendor-forms'
+          if (/[\\/]node_modules[\\/]date-fns[\\/]/.test(id)) return 'vendor-dates'
+          if (/[\\/]node_modules[\\/](axios|zustand)[\\/]/.test(id)) return 'vendor-network'
+          return undefined
         },
       },
     },
   },
 })
+
+
+
