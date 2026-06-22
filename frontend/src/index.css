@@ -10,48 +10,31 @@
   }
 
   :root {
-    --color-app-bg: #f6f8fc;
+    --color-app-bg: theme('colors.surface.muted');
     --color-app-surface: theme('colors.surface.DEFAULT');
-    --color-app-surface-muted: #f8fafc;
-    --color-app-surface-subtle: #eef2ff;
-    --color-app-border: #dbe3ef;
+    --color-app-surface-muted: theme('colors.surface.muted');
+    --color-app-surface-subtle: theme('colors.surface.subtle');
+    --color-app-border: theme('colors.surface.border');
     --color-app-text: theme('colors.text.primary');
-    --color-app-text-secondary: #475569;
-    --color-app-text-muted: #64748b;
-    --color-app-accent: theme('colors.primary.600');
-    --color-app-accent-strong: #4f46e5;
-    --color-app-accent-soft: #eff6ff;
-    --color-app-ring: rgb(37 99 235 / 0.22);
-    --color-app-shadow: 0 18px 45px rgb(15 23 42 / 0.08);
-    --color-app-shadow-soft: 0 10px 26px rgb(15 23 42 / 0.06);
-    --color-app-header: rgb(255 255 255 / 0.84);
+    --color-app-text-secondary: theme('colors.text.secondary');
+    --color-app-text-muted: theme('colors.text.muted');
   }
 
   html.dark,
   html[data-theme='dark'] {
-    --color-app-bg: #020617;
-    --color-app-surface: #0f172a;
-    --color-app-surface-muted: #020617;
-    --color-app-surface-subtle: #111c33;
-    --color-app-border: #1e293b;
-    --color-app-text: #f8fafc;
-    --color-app-text-secondary: #cbd5e1;
-    --color-app-text-muted: #94a3b8;
-    --color-app-accent: #60a5fa;
-    --color-app-accent-strong: #818cf8;
-    --color-app-accent-soft: rgb(30 64 175 / 0.28);
-    --color-app-ring: rgb(96 165 250 / 0.34);
-    --color-app-shadow: 0 24px 70px rgb(0 0 0 / 0.34);
-    --color-app-shadow-soft: 0 14px 32px rgb(0 0 0 / 0.24);
-    --color-app-header: rgb(15 23 42 / 0.82);
+    --color-app-bg: theme('colors.gray.950');
+    --color-app-surface: theme('colors.gray.900');
+    --color-app-surface-muted: theme('colors.gray.950');
+    --color-app-surface-subtle: theme('colors.gray.800');
+    --color-app-border: theme('colors.gray.800');
+    --color-app-text: theme('colors.gray.100');
+    --color-app-text-secondary: theme('colors.gray.300');
+    --color-app-text-muted: theme('colors.gray.400');
   }
 
   body {
     @apply antialiased;
-    background:
-      radial-gradient(circle at 20% 0%, rgb(37 99 235 / 0.08), transparent 28rem),
-      radial-gradient(circle at 100% 12%, rgb(124 58 237 / 0.08), transparent 30rem),
-      var(--color-app-bg);
+    background: var(--color-app-bg);
     color: var(--color-app-text);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
@@ -73,15 +56,15 @@
 
 @layer components {
   .btn {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   
   .btn-primary {
-    @apply bg-primary-600 text-white shadow-lg shadow-primary-200/50 hover:-translate-y-0.5 hover:bg-primary-700 focus:ring-2 focus:ring-primary-200 dark:shadow-primary-950/30;
+    @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-2 focus:ring-primary-200;
   }
   
   .btn-secondary {
-    @apply border border-gray-200 bg-white text-gray-800 shadow-sm hover:border-primary-200 hover:bg-primary-50 focus:ring-2 focus:ring-primary-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:border-primary-500/50 dark:hover:bg-primary-950/30 dark:focus:ring-primary-900;
+    @apply bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-2 focus:ring-gray-200 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700 dark:focus:ring-gray-700;
   }
   
   .btn-danger {
@@ -89,51 +72,14 @@
   }
   
   .input {
-    @apply w-full rounded-xl border px-3.5 py-2.5 text-sm transition-all focus:border-primary-500 focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60 dark:placeholder:text-gray-500;
-    background: var(--color-app-surface);
-    border-color: var(--color-app-border);
-    color: var(--color-app-text);
-    --tw-ring-color: var(--color-app-ring);
+    @apply w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500;
   }
   
   .card {
-    @apply rounded-2xl border p-4 transition-shadow;
+    @apply rounded-[0.75rem] border p-4 dark:shadow-none;
     background: var(--color-app-surface);
     border-color: var(--color-app-border);
-    box-shadow: var(--color-app-shadow-soft);
-  }
-
-  .app-shell {
-    background:
-      radial-gradient(circle at 8% 0%, rgb(37 99 235 / 0.08), transparent 26rem),
-      radial-gradient(circle at 100% 16%, rgb(124 58 237 / 0.08), transparent 26rem),
-      var(--color-app-bg);
-    color: var(--color-app-text);
-  }
-
-  .app-surface {
-    @apply border;
-    background: var(--color-app-surface);
-    border-color: var(--color-app-border);
-    box-shadow: var(--color-app-shadow-soft);
-  }
-
-  .app-header {
-    background: var(--color-app-header);
-    border-color: var(--color-app-border);
-    backdrop-filter: blur(18px);
-  }
-
-  .app-icon-button {
-    @apply inline-flex h-10 w-10 items-center justify-center rounded-xl border text-sm transition-all hover:-translate-y-0.5;
-    background: var(--color-app-surface);
-    border-color: var(--color-app-border);
-    color: var(--color-app-text-secondary);
-  }
-
-  .app-icon-button:hover {
-    background: var(--color-app-accent-soft);
-    color: var(--color-app-accent);
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   }
 
   .page-header {
@@ -147,7 +93,7 @@
   }
   
   .badge {
-    @apply inline-flex min-h-6 items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold;
+    @apply px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
   
   .badge-primary {
@@ -216,31 +162,21 @@
 
 @layer utilities {
   :where(html.dark, html[data-theme='dark']) .bg-white {
-    background-color: var(--color-app-surface);
+    background-color: theme('colors.gray.900');
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-gray-50,
   :where(html.dark, html[data-theme='dark']) .bg-gray-50\/60 {
-    background-color: var(--color-app-bg);
+    background-color: theme('colors.gray.950');
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-gray-100,
   :where(html.dark, html[data-theme='dark']) .bg-gray-200 {
-    background-color: var(--color-app-surface-subtle);
+    background-color: theme('colors.gray.800');
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-gray-300 {
     background-color: theme('colors.gray.700');
-  }
-
-  :where(html.dark, html[data-theme='dark']) .bg-slate-50,
-  :where(html.dark, html[data-theme='dark']) .bg-slate-100 {
-    background-color: var(--color-app-surface-subtle);
-  }
-
-  :where(html.dark, html[data-theme='dark']) .bg-slate-900,
-  :where(html.dark, html[data-theme='dark']) .bg-slate-950 {
-    background-color: var(--color-app-bg);
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-blue-50,
@@ -281,11 +217,8 @@
   :where(html.dark, html[data-theme='dark']) .border-gray-100,
   :where(html.dark, html[data-theme='dark']) .border-gray-200,
   :where(html.dark, html[data-theme='dark']) .border-gray-300,
-  :where(html.dark, html[data-theme='dark']) .border-slate-100,
-  :where(html.dark, html[data-theme='dark']) .border-slate-200,
-  :where(html.dark, html[data-theme='dark']) .border-slate-300,
   :where(html.dark, html[data-theme='dark']) .border-surface-border {
-    border-color: var(--color-app-border);
+    border-color: theme('colors.gray.800');
   }
 
   :where(html.dark, html[data-theme='dark']) .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
@@ -294,25 +227,18 @@
   }
 
   :where(html.dark, html[data-theme='dark']) .text-gray-900,
-  :where(html.dark, html[data-theme='dark']) .text-gray-800,
-  :where(html.dark, html[data-theme='dark']) .text-slate-950,
-  :where(html.dark, html[data-theme='dark']) .text-slate-900,
-  :where(html.dark, html[data-theme='dark']) .text-slate-800 {
-    color: var(--color-app-text);
+  :where(html.dark, html[data-theme='dark']) .text-gray-800 {
+    color: theme('colors.gray.100');
   }
 
   :where(html.dark, html[data-theme='dark']) .text-gray-700,
-  :where(html.dark, html[data-theme='dark']) .text-gray-600,
-  :where(html.dark, html[data-theme='dark']) .text-slate-700,
-  :where(html.dark, html[data-theme='dark']) .text-slate-600 {
-    color: var(--color-app-text-secondary);
+  :where(html.dark, html[data-theme='dark']) .text-gray-600 {
+    color: theme('colors.gray.300');
   }
 
   :where(html.dark, html[data-theme='dark']) .text-gray-500,
-  :where(html.dark, html[data-theme='dark']) .text-gray-400,
-  :where(html.dark, html[data-theme='dark']) .text-slate-500,
-  :where(html.dark, html[data-theme='dark']) .text-slate-400 {
-    color: var(--color-app-text-muted);
+  :where(html.dark, html[data-theme='dark']) .text-gray-400 {
+    color: theme('colors.gray.400');
   }
 
   :where(html.dark, html[data-theme='dark']) .text-blue-700,
@@ -357,25 +283,8 @@
 
   :where(html.dark, html[data-theme='dark']) .hover\:bg-gray-50:hover,
   :where(html.dark, html[data-theme='dark']) .hover\:bg-gray-100:hover,
-  :where(html.dark, html[data-theme='dark']) .hover\:bg-gray-200:hover,
-  :where(html.dark, html[data-theme='dark']) .hover\:bg-slate-50:hover,
-  :where(html.dark, html[data-theme='dark']) .hover\:bg-slate-100:hover {
-    background-color: var(--color-app-surface-subtle);
-  }
-
-  :where(html.dark, html[data-theme='dark']) input,
-  :where(html.dark, html[data-theme='dark']) select,
-  :where(html.dark, html[data-theme='dark']) textarea {
-    color-scheme: dark;
-  }
-
-  :where(html.dark, html[data-theme='dark']) .shadow-sm,
-  :where(html.dark, html[data-theme='dark']) .shadow-lg,
-  :where(html.dark, html[data-theme='dark']) .shadow-xl,
-  :where(html.dark, html[data-theme='dark']) .shadow-2xl {
-    --tw-shadow-color: rgb(0 0 0 / 0.35);
+  :where(html.dark, html[data-theme='dark']) .hover\:bg-gray-200:hover {
+    background-color: theme('colors.gray.800');
   }
 
 }
-
-

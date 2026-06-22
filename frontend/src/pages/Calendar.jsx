@@ -9,11 +9,7 @@ import { asArray, formatDateTime } from './phase4Utils'
 export default function Calendar() {
   const [selected, setSelected] = useState(new Date())
   const [month, setMonth] = useState(new Date())
-  const monthRange = useMemo(() => ({
-    start_date: format(startOfMonth(month), 'yyyy-MM-dd'),
-    end_date: format(endOfMonth(month), 'yyyy-MM-dd'),
-  }), [month])
-  const { data, isLoading, isError } = useQuery(['calendar-events', monthRange.start_date, monthRange.end_date], () => calendarApi.getEvents(monthRange))
+  const { data, isLoading, isError } = useQuery(['calendar-events', format(month, 'yyyy-MM')], () => calendarApi.getEvents({ month: format(month, 'yyyy-MM') }))
   const events = asArray(data, ['events'])
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 })
@@ -27,7 +23,7 @@ export default function Calendar() {
   const monthLabel = format(month, 'MMMM yyyy')
 
   return (
-    <div className="min-w-0 overflow-x-hidden p-4 sm:p-6">
+    <div className="p-4 sm:p-6">
       <PageHeader
         title="Calendar"
         description="Tasks, meetings, and timesheet events by day."
@@ -51,8 +47,8 @@ export default function Calendar() {
         )}
       />
       {isLoading ? <CalendarSkeleton /> : isError ? <EmptyState icon={CalendarIcon} title="Could not load calendar" /> : (
-        <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="min-w-0 overflow-hidden rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] shadow-[var(--color-app-shadow-soft)]">
+        <div className="grid gap-6 xl:grid-cols-[1fr_20rem]">
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
             <div className="grid grid-cols-7 border-b bg-gray-50 text-xs font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="p-2 text-center sm:p-3 sm:text-left">{day}</div>)}</div>
             <div className="grid grid-cols-7">
               {days.map((day) => {
@@ -84,7 +80,7 @@ export default function Calendar() {
               })}
             </div>
           </div>
-          <aside className="min-w-0 rounded-2xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] p-4 shadow-[var(--color-app-shadow-soft)]">
+          <aside className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="font-semibold text-gray-900 dark:text-gray-100">{format(selected, 'PPP')}</h2>
@@ -117,7 +113,7 @@ export default function Calendar() {
 
 function CalendarSkeleton() {
   return (
-    <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]" role="status" aria-label="Loading calendar">
+    <div className="grid gap-6 xl:grid-cols-[1fr_20rem]" role="status" aria-label="Loading calendar">
       <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
         <div className="grid grid-cols-7 border-b bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950">
           {Array.from({ length: 7 }).map((_, index) => <Skeleton key={index} className="h-4 w-10" />)}
@@ -136,4 +132,3 @@ function CalendarSkeleton() {
     </div>
   )
 }
-

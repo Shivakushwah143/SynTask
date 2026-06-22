@@ -4,6 +4,7 @@ import { useAuthStore } from './store/authStore'
 import { useTheme } from './hooks/useTheme'
 import { PageLoader } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { Agentation } from "agentation";
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
@@ -25,7 +26,6 @@ const ActivityLog = lazy(() => import('./pages/ActivityLog'))
 const Settings = lazy(() => import('./pages/Settings'))
 const MyTeam = lazy(() => import('./pages/MyTeam'))
 const NotFound = lazy(() => import('./pages/NotFound'))
-const ApiPerformanceDashboard = lazy(() => import('./pages/ApiPerformanceDashboard'))
 const Projects = lazy(() => import('./pages/Projects'))
 const ProjectBoard = lazy(() => import('./pages/ProjectBoard'))
 const TaskDetail = lazy(() => import('./pages/TaskDetail'))
@@ -134,7 +134,6 @@ function App() {
           <Route path="calendar" element={withBoundary(<Calendar />)} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
           <Route path="reports" element={withBoundary(<Reports />)} />
-          <Route path="dev/api-performance" element={withBoundary(<ApiPerformanceDashboard />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
@@ -170,6 +169,7 @@ function App() {
 
         <Route path="*" element={<NotFound />} />
       </Routes>
+      {import.meta.env.DEV && <Agentation />}
     </Suspense>
   )
 }

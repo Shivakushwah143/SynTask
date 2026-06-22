@@ -76,7 +76,7 @@ const SuperAdminLayout = () => {
   ]
 
   return (
-    <div className="app-shell min-h-screen">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -87,21 +87,21 @@ const SuperAdminLayout = () => {
 
       {/* Sidebar */}
       <aside
-        className={`app-header fixed top-0 left-0 z-50 h-full w-64 border-r transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-gray-200 transition-transform duration-300 dark:border-gray-800 dark:bg-gray-950 lg:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-6 border-b border-[var(--color-app-border)]">
+        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-br from-primary-600 to-primary-700 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">SA</span>
             </div>
-            <span className="font-display font-bold text-[var(--color-app-text)]">Super Admin</span>
+            <span className="font-bold text-gray-900 dark:text-gray-100">Super Admin</span>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="app-icon-button lg:hidden"
+            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100 lg:hidden"
             aria-label="Close navigation"
           >
             <X className="h-5 w-5" />
@@ -119,8 +119,8 @@ const SuperAdminLayout = () => {
                 to={item.href}
                 className={`flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
                   isActive
-                    ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200/70 dark:bg-primary-950/60 dark:text-primary-200 dark:ring-primary-500/20'
-                    : 'text-[var(--color-app-text-secondary)] hover:bg-[var(--color-app-accent-soft)] hover:text-[var(--color-app-accent)]'
+                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-900'
                 }`}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => setSidebarOpen(false)}
@@ -133,7 +133,7 @@ const SuperAdminLayout = () => {
         </nav>
 
         {/* User info & logout */}
-        <div className="absolute bottom-0 left-0 right-0 border-t border-[var(--color-app-border)] p-4">
+        <div className="absolute bottom-0 left-0 right-0 border-t border-gray-200 p-4 dark:border-gray-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
@@ -142,15 +142,15 @@ const SuperAdminLayout = () => {
                 </span>
               </div>
               <div>
-                <p className="text-sm font-semibold text-[var(--color-app-text)]">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                   {user?.first_name} {user?.last_name}
                 </p>
-                <p className="text-xs text-[var(--color-app-text-muted)]">Super Admin</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Super Admin</p>
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className="app-icon-button"
+              className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-100"
               aria-label="Logout"
             >
               <LogOut className="h-5 w-5" />
@@ -162,10 +162,10 @@ const SuperAdminLayout = () => {
       {/* Main content */}
       <div className="lg:pl-64">
         {/* Top bar */}
-        <header className="app-header h-16 border-b flex items-center justify-between px-4 lg:px-6">
+        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 dark:border-gray-800 dark:bg-gray-950 lg:px-6">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="app-icon-button lg:hidden"
+            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100 lg:hidden"
             aria-label="Open navigation"
           >
             <Menu className="h-6 w-6" />
@@ -173,8 +173,8 @@ const SuperAdminLayout = () => {
           
           <div className="flex items-center space-x-4 ml-auto">
             <ThemeToggle />
-            <span className="text-sm text-[var(--color-app-text-secondary)]">
-              Welcome back, <span className="font-semibold text-[var(--color-app-text)]">{user?.first_name}</span>
+            <span className="text-sm text-gray-600 dark:text-gray-300">
+              Welcome back, <span className="font-medium text-gray-900 dark:text-gray-100">{user?.first_name}</span>
             </span>
           </div>
         </header>
@@ -189,5 +189,4 @@ const SuperAdminLayout = () => {
 }
 
 export default SuperAdminLayout
-
 

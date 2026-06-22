@@ -1,9 +1,9 @@
 const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, previewImage = null }) => {
   return (
-    <div className="app-shell flex min-h-screen">
+    <div className="flex min-h-screen bg-white dark:bg-gray-900">
       {/* Left Side - Branding with Preview */}
       {showLeftBranding && (
-        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-950 via-primary-900 to-indigo-700 flex-col items-center justify-between p-12 relative overflow-hidden">
+        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-purple-600 via-purple-500 to-blue-600 flex-col items-center justify-between p-12 relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-10 right-10 w-72 h-72 bg-white rounded-full blur-3xl"></div>
@@ -63,7 +63,7 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
       )}
 
       {/* Right Side - Form */}
-      <div className={`flex w-full ${showLeftBranding ? 'lg:w-1/2' : ''} flex-col items-center justify-center p-4 py-8`}>
+      <div className={`flex w-full ${showLeftBranding ? 'lg:w-1/2' : ''} bg-white dark:bg-gray-900 flex-col items-center justify-center p-4 py-8`}>
         <div className={`w-full ${maxWidth}`}>
           {/* Mobile Logo (shown on mobile only) */}
           <div className="mb-8 text-center lg:hidden">
@@ -81,7 +81,7 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
           </div>
 
           {/* Form Container */}
-          <div className="app-surface rounded-2xl p-6 sm:p-8">
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 sm:p-8">
             {children}
           </div>
 
@@ -97,4 +97,3 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
 }
 
 export default AuthLayout
-
