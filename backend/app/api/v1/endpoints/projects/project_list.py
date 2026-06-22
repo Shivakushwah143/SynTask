@@ -13,6 +13,13 @@ async def list_projects(
     current_user: User = Depends(get_current_user),
 ):
     """List projects for the company with role-based visibility"""
+    cache_key = None
+    if current_user.company_id:
+        cache_key = f"{project_list_key(current_user.company_id)}:{current_user.role.value}:{current_user.id}:{status_filter or 'all'}:{skip}:{limit}"
+        cached = await cache_get(cache_key)
+        if cached:
+            return cached
+
     # Super Admin can see all projects, others need company_id
     if current_user.role == UserRole.SUPER_ADMIN:
         query = {}
@@ -134,11 +141,14 @@ async def list_projects(
         x["delivery_date"] if x["delivery_date"] else datetime.max
     ))
     
-    return {
+    data = {
         "projects": projects_with_stats,
         "total": total,
         "skip": skip,
         "limit": limit
     }
+    if cache_key:
+        await cache_set(cache_key, data, ttl=180)
+    return data
 
 

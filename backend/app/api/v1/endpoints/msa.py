@@ -22,7 +22,6 @@ from app.api.dependencies import (
     check_company_access,
 )
 from app.core.config import settings
-from app.core.email import EMAIL_CONFIGURED
 
 router = APIRouter()
 
@@ -181,12 +180,11 @@ async def create_msa(
             
             msa.sent_date = datetime.utcnow()
             
-            # Send email
-            from app.core.email import send_msa_signature_email
-            email_sent = await send_msa_signature_email(msa, current_user)
-            
-            msa.email_sent = email_sent
-            msa.email_sent_at = datetime.utcnow() if email_sent else None
+            from app.worker.tasks.email_tasks import send_msa_signature_email_task
+            send_msa_signature_email_task.delay(str(msa.id), str(current_user.id))
+
+            msa.email_sent = True
+            msa.email_sent_at = datetime.utcnow()
             msa.email_sent_to = msa.client_email
             
             await msa.save()
@@ -666,12 +664,12 @@ async def send_msa(
             msa.status = MSAStatus.SENT
         msa.sent_date = datetime.utcnow()
         
-        # Send email
-        from app.core.email import send_msa_signature_email
-        email_sent = await send_msa_signature_email(msa, current_user)
-        
-        msa.email_sent = email_sent
-        msa.email_sent_at = datetime.utcnow() if email_sent else None
+        from app.worker.tasks.email_tasks import send_msa_signature_email_task
+        send_msa_signature_email_task.delay(str(msa.id), str(current_user.id))
+
+        email_sent = True
+        msa.email_sent = True
+        msa.email_sent_at = datetime.utcnow()
         msa.email_sent_to = msa.client_email
         msa.updated_at = datetime.utcnow()
         await msa.save()
@@ -839,12 +837,12 @@ async def send_for_signature(
         
         msa.sent_date = datetime.utcnow()
         
-        # Send email
-        from app.core.email import send_msa_signature_email
-        email_sent = await send_msa_signature_email(msa, current_user)
-        
-        msa.email_sent = email_sent
-        msa.email_sent_at = datetime.utcnow() if email_sent else None
+        from app.worker.tasks.email_tasks import send_msa_signature_email_task
+        send_msa_signature_email_task.delay(str(msa.id), str(current_user.id))
+
+        email_sent = True
+        msa.email_sent = True
+        msa.email_sent_at = datetime.utcnow()
         msa.email_sent_to = msa.client_email
         msa.updated_at = datetime.utcnow()
         await msa.save()
@@ -971,21 +969,14 @@ async def client_sign_msa(
         msa.updated_at = datetime.utcnow()
         await msa.save()
         
-        # Send confirmation email to company
-        if EMAIL_CONFIGURED and msa.company_id:
-            try:
-                from app.core.email import send_msa_signed_confirmation_email
-                await send_msa_signed_confirmation_email(msa)
-            except Exception as e:
-                logger.error(f"Failed to send confirmation email: {str(e)}")
-        
-        # Send signed copy to client
-        if EMAIL_CONFIGURED and msa.client_email:
-            try:
-                from app.core.email import send_msa_signed_copy_to_client
-                await send_msa_signed_copy_to_client(msa)
-            except Exception as e:
-                logger.error(f"Failed to send signed copy to client: {str(e)}")
+        from app.worker.tasks.email_tasks import (
+            send_msa_signed_confirmation_email_task,
+            send_msa_signed_copy_to_client_task,
+        )
+        if msa.company_id:
+            send_msa_signed_confirmation_email_task.delay(str(msa.id))
+        if msa.client_email:
+            send_msa_signed_copy_to_client_task.delay(str(msa.id))
         
         return {
             "message": "MSA signed successfully. A signed copy has been emailed to you.",

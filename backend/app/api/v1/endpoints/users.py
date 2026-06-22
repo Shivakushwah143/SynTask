@@ -555,16 +555,16 @@ async def create_lead(
     
     await lead.insert()
     
-    # Send welcome email to the new Lead
+    # Queue welcome email to the new Lead
     try:
-        from app.core.email import send_welcome_email
-        await send_welcome_email(
-            email=email,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-            role="LEAD",
-            created_by_name=f"{current_user.first_name} {current_user.last_name}"
+        from app.worker.tasks.email_tasks import send_welcome_email_task
+        send_welcome_email_task.delay(
+            email,
+            password,
+            first_name,
+            last_name,
+            "LEAD",
+            f"{current_user.first_name} {current_user.last_name}",
         )
     except Exception as e:
         # Log error but don't fail the request
@@ -647,16 +647,16 @@ async def create_employee(
                 lead.managed_employee_ids = managed_ids
                 await lead.save()
     
-    # Send welcome email to the new Employee
+    # Queue welcome email to the new Employee
     try:
-        from app.core.email import send_welcome_email
-        await send_welcome_email(
-            email=email,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-            role="EMPLOYEE",
-            created_by_name=f"{current_user.first_name} {current_user.last_name}"
+        from app.worker.tasks.email_tasks import send_welcome_email_task
+        send_welcome_email_task.delay(
+            email,
+            password,
+            first_name,
+            last_name,
+            "EMPLOYEE",
+            f"{current_user.first_name} {current_user.last_name}",
         )
     except Exception as e:
         # Log error but don't fail the request
@@ -1011,16 +1011,16 @@ async def create_user_hierarchical(
                     lead.managed_employee_ids = managed_ids
                     await lead.save()
     
-    # Send welcome email
+    # Queue welcome email
     try:
-        from app.core.email import send_welcome_email
-        await send_welcome_email(
-            email=email,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-            role=target_role.value.upper(),
-            created_by_name=current_user.full_name()
+        from app.worker.tasks.email_tasks import send_welcome_email_task
+        send_welcome_email_task.delay(
+            email,
+            password,
+            first_name,
+            last_name,
+            target_role.value.upper(),
+            current_user.full_name(),
         )
     except Exception as e:
         import logging

@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 from beanie import Document, Indexed
 from pydantic import Field, EmailStr
 from enum import Enum
+from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
 
 class ClientStatus(str, Enum):
@@ -67,5 +68,9 @@ class Client(Document):
             "status",
             "assigned_to",
             "created_by",
+            IndexModel([("company_id", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("name", TEXT), ("company_name", TEXT), ("email", TEXT)]),
         ]
 

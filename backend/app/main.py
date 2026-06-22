@@ -60,6 +60,36 @@ if settings.ENVIRONMENT == "production":
 # Request timing middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
+    limit = request.query_params.get("limit")
+    if limit is not None:
+        try:
+            if int(limit) > settings.MAX_PAGE_SIZE:
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "detail": [
+                            {
+                                "loc": ["query", "limit"],
+                                "msg": f"Input should be less than or equal to {settings.MAX_PAGE_SIZE}",
+                                "type": "less_than_equal",
+                            }
+                        ]
+                    },
+                )
+        except ValueError:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": [
+                        {
+                            "loc": ["query", "limit"],
+                            "msg": "Input should be a valid integer",
+                            "type": "int_parsing",
+                        }
+                    ]
+                },
+            )
+
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time

@@ -2,6 +2,7 @@
 Invoice Management Endpoints
 """
 from fastapi import APIRouter, HTTPException, status, Depends, Form, Query
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -354,35 +355,22 @@ async def send_invoice_email(
             detail="Client email not found"
         )
     
-    # Send invoice email
-    from app.core.email import send_invoice_email
-    
-    invoice_dict = invoice.dict()
-    email_sent = await send_invoice_email(
-        invoice_data=invoice_dict,
-        client_email=invoice.client_email,
-        client_name=invoice.client_name
-    )
-    
-    if email_sent:
-        invoice.email_sent = True
-        invoice.email_sent_at = datetime.utcnow()
-        invoice.email_sent_to = invoice.client_email
-        invoice.status = InvoiceStatus.SENT
-        invoice.updated_at = datetime.utcnow()
-        await invoice.save()
-        
-        return {
-            "message": "Invoice email sent successfully",
-            "sent_to": invoice.client_email,
-        }
-    else:
-        # Email sending failed but don't raise error - log it
-        logger.error(f"Failed to send invoice email to {invoice.client_email}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send invoice email. Please check email configuration."
-        )
+    from app.worker.tasks.email_tasks import send_invoice_email_task
+
+    invoice_dict = jsonable_encoder(invoice)
+    send_invoice_email_task.delay(invoice_dict, invoice.client_email, invoice.client_name)
+
+    invoice.email_sent = True
+    invoice.email_sent_at = datetime.utcnow()
+    invoice.email_sent_to = invoice.client_email
+    invoice.status = InvoiceStatus.SENT
+    invoice.updated_at = datetime.utcnow()
+    await invoice.save()
+
+    return {
+        "message": "Invoice email queued successfully",
+        "sent_to": invoice.client_email,
+    }
 
 
 @router.get("/{invoice_id}/pdf")

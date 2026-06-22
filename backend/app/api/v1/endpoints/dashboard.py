@@ -7,6 +7,7 @@ from app.models.task import Task, TaskStatus
 from app.models.ticket import Ticket, TicketStatus
 from app.models.company import Company, Subscription
 from app.api.dependencies import get_current_user, get_current_super_admin
+from app.core.cache import cache_get, cache_set, dashboard_cache_key
 
 router = APIRouter()
 
@@ -16,6 +17,11 @@ async def get_dashboard_stats(
     current_user: User = Depends(get_current_user)
 ):
     """Get dashboard statistics with hierarchical RBAC"""
+    cache_key = dashboard_cache_key(str(current_user.id), current_user.role.value, current_user.company_id)
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
     if current_user.role == UserRole.SUPER_ADMIN:
         # Super Admin Dashboard
         total_companies = await Company.find().count()
@@ -23,13 +29,15 @@ async def get_dashboard_stats(
         pending_companies = await Company.find({"status": "pending"}).count()
         total_subscriptions = await Subscription.find().count()
         
-        return {
+        data = {
             "role": "super_admin",
             "total_companies": total_companies,
             "active_companies": active_companies,
             "pending_companies": pending_companies,
             "total_subscriptions": total_subscriptions,
         }
+        await cache_set(cache_key, data, ttl=300)
+        return data
     
     # Admin or legacy Company Admin
     is_admin = (
@@ -57,7 +65,7 @@ async def get_dashboard_stats(
         
         total_users = await User.find({"company_id": current_user.company_id}).count()
         
-        return {
+        data = {
             "role": "admin",
             "total_tasks": total_tasks,
             "active_tasks": active_tasks,
@@ -66,6 +74,8 @@ async def get_dashboard_stats(
             "open_tickets": open_tickets,
             "total_users": total_users,
         }
+        await cache_set(cache_key, data, ttl=300)
+        return data
     
     elif current_user.role == UserRole.MANAGER:
         # Manager Dashboard - See all subordinates' data
@@ -105,7 +115,7 @@ async def get_dashboard_stats(
         
         total_subordinates = len(subordinates)
         
-        return {
+        data = {
             "role": "manager",
             "total_tasks": total_tasks,
             "active_tasks": active_tasks,
@@ -114,6 +124,8 @@ async def get_dashboard_stats(
             "open_tickets": open_tickets,
             "total_subordinates": total_subordinates,
         }
+        await cache_set(cache_key, data, ttl=300)
+        return data
     
     elif current_user.role == UserRole.LEAD:
         # Lead Dashboard - See only their employees' data
@@ -146,7 +158,7 @@ async def get_dashboard_stats(
         
         total_employees = len(employees)
         
-        return {
+        data = {
             "role": "lead",
             "my_tasks": my_tasks,
             "team_tasks": team_tasks,
@@ -154,6 +166,8 @@ async def get_dashboard_stats(
             "team_tickets": team_tickets,
             "total_employees": total_employees,
         }
+        await cache_set(cache_key, data, ttl=300)
+        return data
     
     else:
         # Employee Dashboard - See only own data
@@ -179,13 +193,15 @@ async def get_dashboard_stats(
             "created_by": str(current_user.id)
         }).count()
         
-        return {
+        data = {
             "role": "employee",
             "my_tasks": my_tasks,
             "active_tasks": active_tasks,
             "completed_tasks": completed_tasks,
             "my_tickets": my_tickets,
         }
+        await cache_set(cache_key, data, ttl=300)
+        return data
 
 
 @router.get("/super-admin/analytics")

@@ -1,12 +1,13 @@
 """
 Zoom API Integration Service
 """
-import requests
 import base64
 import time
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
+
+import httpx
 
 from app.core.config import settings
 
@@ -24,7 +25,7 @@ class ZoomService:
         self.access_token: Optional[str] = None
         self.token_expires_at: Optional[datetime] = None
     
-    def _get_access_token(self) -> str:
+    async def _get_access_token(self) -> str:
         """Get OAuth access token for Zoom API"""
         # If we have a valid token, return it
         if self.access_token and self.token_expires_at and datetime.utcnow() < self.token_expires_at:
@@ -49,7 +50,8 @@ class ZoomService:
             }
             
             try:
-                response = requests.post(url, headers=headers, timeout=10)
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.post(url, headers=headers)
                 response.raise_for_status()
                 data = response.json()
                 self.access_token = data.get("access_token")
@@ -74,7 +76,7 @@ class ZoomService:
             except ImportError:
                 raise ValueError("PyJWT is required for JWT-based Zoom authentication. Install it with: pip install PyJWT")
     
-    def create_meeting(
+    async def create_meeting(
         self,
         topic: str,
         start_time: datetime,
@@ -86,7 +88,7 @@ class ZoomService:
         timezone: str = "UTC"
     ) -> Dict[str, Any]:
         """Create a Zoom meeting"""
-        token = self._get_access_token()
+        token = await self._get_access_token()
         
         # For Server-to-Server OAuth, use "me" endpoint instead of specific user email
         # "me" refers to the account owner or first admin user in the Zoom account
@@ -121,7 +123,8 @@ class ZoomService:
         }
         
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             meeting_data = response.json()
             
@@ -134,7 +137,7 @@ class ZoomService:
                 "zoom_start_time": meeting_data.get("start_time"),
                 "zoom_duration": meeting_data.get("duration")
             }
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             logger.error(f"Zoom API error: {e.response.text if e.response else str(e)}")
             raise Exception(f"Failed to create Zoom meeting: {e.response.text if e.response else str(e)}")
         except Exception as e:
@@ -147,9 +150,9 @@ class ZoomService:
         import string
         return ''.join(random.choices(string.digits, k=6))
     
-    def delete_meeting(self, meeting_id: str, host_email: Optional[str] = None) -> bool:
+    async def delete_meeting(self, meeting_id: str, host_email: Optional[str] = None) -> bool:
         """Delete a Zoom meeting"""
-        token = self._get_access_token()
+        token = await self._get_access_token()
         
         if not host_email:
             raise ValueError("host_email is required for Zoom meeting deletion")
@@ -161,7 +164,8 @@ class ZoomService:
         }
         
         try:
-            response = requests.delete(url, headers=headers, timeout=10)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.delete(url, headers=headers)
             response.raise_for_status()
             return True
         except Exception as e:

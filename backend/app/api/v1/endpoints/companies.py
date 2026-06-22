@@ -298,16 +298,16 @@ async def approve_company(
         )
         await subscription.insert()
     
-    # Send welcome email to the new Company Admin
+    # Queue welcome email to the new Company Admin
     try:
-        from app.core.email import send_welcome_email
-        await send_welcome_email(
-            email=admin_email,
-            password=admin_password,
-            first_name=admin_first_name,
-            last_name=admin_last_name,
-            role=target_role.value.upper(),
-            created_by_name=f"{current_user.first_name} {current_user.last_name}"
+        from app.worker.tasks.email_tasks import send_welcome_email_task
+        send_welcome_email_task.delay(
+            admin_email,
+            admin_password,
+            admin_first_name,
+            admin_last_name,
+            target_role.value.upper(),
+            f"{current_user.first_name} {current_user.last_name}",
         )
     except Exception as e:
         # Log error but don't fail the request

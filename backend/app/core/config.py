@@ -96,8 +96,8 @@ class Settings(BaseSettings):
     ENABLE_TOKEN_REVOCATION: bool = True
     
     # Celery (Background tasks)
-    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
+    CELERY_BROKER_URL: Optional[str] = None
+    CELERY_RESULT_BACKEND: Optional[str] = None
     
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20

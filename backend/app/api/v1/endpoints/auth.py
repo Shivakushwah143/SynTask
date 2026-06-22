@@ -19,13 +19,13 @@ from app.core.security import (
     generate_reset_token
 )
 from app.core.config import settings
-from app.core.email import send_password_reset_email
 from app.core.file_validation import detect_mime_type
 from app.core.security import get_token_from_header, decode_refresh_token
 from app.core.token_blacklist import blacklist_token, is_token_blacklisted
 from app.middleware.rate_limiter import limiter
 from app.api.dependencies import get_current_user
 from app.schemas.auth import RefreshTokenRequest, LoginRequest, ChangePasswordRequest
+from app.worker.tasks.email_tasks import send_password_reset_email_task
 
 logger = logging.getLogger(__name__)
 
@@ -211,26 +211,17 @@ async def forgot_password(
     frontend_url = getattr(settings, 'FRONTEND_URL', None) or (settings.ALLOWED_ORIGINS[0] if settings.ALLOWED_ORIGINS else "http://localhost:3000")
     reset_link = f"{frontend_url}/reset-password?token={reset_token}"
     
-    # Try to send email
-    email_sent = await send_password_reset_email(
-        email=user.email,
-        reset_token=reset_token,
-        user_name=user.first_name
-    )
-    
-    # If email not configured or failed, log the link for development
-    if not email_sent:
-        logger.info(f"Password reset link for {email}: {reset_link}")
+    send_password_reset_email_task.delay(user.email, reset_token, user.first_name)
+    logger.info(f"Password reset email queued for {email}")
     
     response_data = {
         "message": "Password reset link has been sent to your email."
     }
     
     # Only include reset_link in development mode if email wasn't sent
-    if settings.ENVIRONMENT == "development" and not email_sent:
+    if settings.ENVIRONMENT == "development":
         response_data["reset_link"] = reset_link
-        logger.warning(f"Email not configured. Reset link: {reset_link}")
-    
+
     return response_data
 
 

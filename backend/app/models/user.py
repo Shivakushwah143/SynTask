@@ -6,6 +6,7 @@ from typing import Optional, List
 from beanie import Document, Indexed
 from pydantic import EmailStr, Field
 from enum import Enum
+from pymongo import ASCENDING, IndexModel
 
 
 class UserRole(str, Enum):
@@ -80,6 +81,12 @@ class User(Document):
             "reports_to",
             "created_by",
             "ancestors",
+            "password_reset_token",
+            IndexModel([("company_id", ASCENDING), ("role", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("role", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("reports_to", ASCENDING), ("role", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("reports_to", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("ancestors", ASCENDING)]),
         ]
     
     def full_name(self) -> str:
