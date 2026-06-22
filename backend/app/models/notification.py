@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from beanie import Document, Indexed
 from pydantic import Field
 from enum import Enum
+from pymongo import ASCENDING, DESCENDING, IndexModel
 
 
 class NotificationType(str, Enum):
@@ -64,5 +65,9 @@ class Notification(Document):
             "company_id",
             "is_read",
             "type",
+            "created_at",
+            IndexModel([("user_id", ASCENDING), ("is_read", ASCENDING)]),
+            IndexModel([("user_id", ASCENDING), ("is_read", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("related_id", ASCENDING), ("related_type", ASCENDING), ("type", ASCENDING), ("created_at", DESCENDING)]),
         ]
 

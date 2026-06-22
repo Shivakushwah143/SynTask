@@ -143,6 +143,8 @@ async def create_project(
     
     # Insert project
     await project.insert()
+    await cache_delete(project_list_key(current_user.company_id))
+    await cache_delete_pattern(f"dashboard:stats:{current_user.company_id}:*")
     
     # Force-write project_id to MongoDB so the field always exists in the document.
     # Use direct database access to ensure project_id is saved

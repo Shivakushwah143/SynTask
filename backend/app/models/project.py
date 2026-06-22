@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 from beanie import Document, Indexed
 from pydantic import Field
 from enum import Enum
+from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
 
 class ProjectType(str, Enum):
@@ -86,6 +87,14 @@ class Project(Document):
             "created_by",
             "assigned_to",
             "delivery_date",
+            "team_member_ids",
+            IndexModel([("company_id", ASCENDING), ("key", ASCENDING)], unique=True),
+            IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING)], unique=True, sparse=True),
+            IndexModel([("company_id", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("team_member_ids", ASCENDING)]),
+            IndexModel([("name", TEXT), ("description", TEXT)]),
         ]
 
 

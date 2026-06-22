@@ -36,6 +36,8 @@ async def delete_project(
         )
     
     await project.delete()
+    await cache_delete(project_list_key(project.company_id))
+    await cache_delete_pattern(f"dashboard:stats:{project.company_id}:*")
     
     return {"message": "Project deleted successfully"}
 

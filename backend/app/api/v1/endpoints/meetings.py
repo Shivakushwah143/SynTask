@@ -78,7 +78,7 @@ async def create_meeting(
         zoom_data = {}
         if settings.ZOOM_API_KEY_COMPUTED and settings.ZOOM_API_SECRET_COMPUTED:
             try:
-                zoom_data = zoom_service.create_meeting(
+                zoom_data = await zoom_service.create_meeting(
                     topic=title,
                     start_time=meeting_datetime,
                     duration=duration,
@@ -326,7 +326,7 @@ async def delete_meeting(
         try:
             host = await User.get(meeting.host_id)
             if host:
-                zoom_service.delete_meeting(meeting.zoom_meeting_id, host.email)
+                await zoom_service.delete_meeting(meeting.zoom_meeting_id, host.email)
         except Exception as e:
             logger.warning(f"Failed to delete Zoom meeting: {str(e)}")
     
