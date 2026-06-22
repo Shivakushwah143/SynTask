@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
 import { getAccessToken, getRefreshToken, updateAccessToken } from '../utils/storage'
 import toast from 'react-hot-toast'
+import { installApiPerformanceMonitor } from '../utils/apiPerformanceMonitor'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
@@ -12,6 +13,8 @@ const axiosInstance = axios.create({
     'Content-Type': 'application/json',
   },
 })
+
+installApiPerformanceMonitor(axiosInstance)
 
 // Request interceptor - check storage for token
 axiosInstance.interceptors.request.use(
@@ -80,8 +83,10 @@ axiosInstance.interceptors.response.use(
         }
 
         if (refreshToken) {
-          const response = await axios.post(`${API_URL}/auth/refresh`, {
+          const response = await axiosInstance.post('/auth/refresh', {
             refresh_token: refreshToken,
+          }, {
+            skipAuthRefresh: true,
           })
 
           const { access_token } = response.data
@@ -122,4 +127,3 @@ axiosInstance.interceptors.response.use(
 )
 
 export default axiosInstance
-
