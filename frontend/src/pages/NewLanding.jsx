@@ -1100,7 +1100,7 @@ function NewLanding() {
           </div>
 
           <div className="mt-12 flex flex-col gap-4 border-t border-slate-200 pt-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-            <div>© 2026 SynTask. All rights reserved.</div>
+            <div>© 2026  SynTask. All rights reserved.</div>
             <div className="flex items-center gap-5">
               <a href="#top" className="transition hover:text-slate-900">
                 Privacy
