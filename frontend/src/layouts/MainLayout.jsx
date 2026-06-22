@@ -16,7 +16,7 @@ const MainLayout = () => {
   useKeyboardShortcut('k', openSearch, { metaKey: true })
 
   return (
-    <div className="app-shell flex h-screen overflow-hidden">
+    <div className="flex h-screen bg-gray-50 overflow-hidden dark:bg-gray-950">
       {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
@@ -26,7 +26,7 @@ const MainLayout = () => {
         <Header onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
 
         {/* Page Content */}
-        <main className={`min-w-0 flex-1 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
+        <main className={`flex-1 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto'} w-full bg-gray-50 dark:bg-gray-950`}>
           <Outlet />
         </main>
       </div>
@@ -36,8 +36,4 @@ const MainLayout = () => {
 }
 
 export default MainLayout
-
-
-
-
 

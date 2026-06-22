@@ -8,7 +8,7 @@ from datetime import datetime, date, timedelta
 from app.models.meeting import Meeting
 from app.models.task import Task
 from app.models.user import User, UserRole
-from app.api.dependencies import get_current_user, check_company_access, get_project_by_id
+from app.api.dependencies import get_current_user, check_company_access
 
 router = APIRouter()
 
@@ -197,11 +197,11 @@ async def get_calendar_events(
                 assignee = await User.get(task.assigned_to) if task.assigned_to else None
                 assignee_name = f"{assignee.first_name} {assignee.last_name}" if assignee else "Unassigned"
                 
-                # Get project name if available. task.project_id stores the logical
-                # project id (for example ECP-001), not always MongoDB _id.
+                # Get project name if available
                 project_name = None
                 if task.project_id:
-                    project, _ = await get_project_by_id(str(task.project_id), current_user.company_id)
+                    from app.models.project import Project
+                    project = await Project.get(task.project_id)
                     if project:
                         project_name = project.name
                 
@@ -242,5 +242,4 @@ async def get_calendar_events(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching calendar events: {str(e)}"
         )
-
 

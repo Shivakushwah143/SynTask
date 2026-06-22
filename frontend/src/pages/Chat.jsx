@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Send, Paperclip, Search, X, File as FileIcon, Users, Settings, MessageCircle, ArrowLeft } from 'lucide-react'
+import { Send, Paperclip, Search, X, Image as ImageIcon, File as FileIcon, Download, Users, Settings } from 'lucide-react'
 import { chatAPI } from '../api/chat'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
@@ -315,27 +315,27 @@ const Chat = () => {
   }
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden bg-[var(--color-app-bg)]">
+    <div className="flex h-full bg-gray-50">
       {/* Conversations Sidebar */}
-      <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} h-full min-h-0 w-full flex-none flex-col border-r border-[var(--color-app-border)] bg-[var(--color-app-surface)] md:w-80`}>
+      <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         {/* Header */}
-        <div className="relative border-b border-[var(--color-app-border)] p-4">
+        <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-xl font-bold text-[var(--color-app-text)]">Messages</h2>
-            <div className="flex min-w-0 items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900">Messages</h2>
+            <div className="flex items-center space-x-2">
               <button
                 onClick={() => {
                   setGroupModalMode('create')
                   setShowGroupModal(true)
                 }}
-                className="app-icon-button"
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                 title="Create Group"
               >
                 <Users className="h-5 w-5" />
               </button>
               <button
                 onClick={() => setShowSearch(!showSearch)}
-                className="app-icon-button"
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                 title="New Chat"
               >
                 <Search className="h-5 w-5" />
@@ -351,7 +351,7 @@ const Chat = () => {
                 placeholder="Search users..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3.5 py-2.5 text-sm text-[var(--color-app-text)] outline-none transition focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
               {searchQuery && (
                 <button
@@ -359,7 +359,7 @@ const Chat = () => {
                     setSearchQuery('')
                     setSearchResults([])
                   }}
-                  className="absolute right-2 top-2 text-[var(--color-app-text-muted)] hover:text-[var(--color-app-accent)]"
+                  className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -369,17 +369,17 @@ const Chat = () => {
 
           {/* Search Results */}
           {showSearch && searchResults.length > 0 && (
-            <div className="absolute inset-x-0 z-10 mt-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface)] shadow-[var(--color-app-shadow)]">
+            <div className="absolute z-10 w-80 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
               {searchResults.map((user) => (
                 <button
                   key={user.id}
                   onClick={() => startConversation(user.id)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-app-accent-soft)]"
+                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center space-x-3"
                 >
                   {renderAvatar(user.avatar, user.name, 'md')}
                   <div>
-                    <div className="font-semibold text-[var(--color-app-text)]">{user.name}</div>
-                    <div className="text-xs text-[var(--color-app-text-muted)] capitalize">{user.role.replace('_', ' ')}</div>
+                    <div className="font-medium text-gray-900">{user.name}</div>
+                    <div className="text-xs text-gray-500 capitalize">{user.role.replace('_', ' ')}</div>
                   </div>
                 </button>
               ))}
@@ -388,13 +388,13 @@ const Chat = () => {
         </div>
 
         {/* Conversations List */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             </div>
           ) : conversations.length === 0 ? (
-            <div className="px-6 py-10 text-center text-[var(--color-app-text-muted)]">
+            <div className="text-center py-8 text-gray-500">
               <p>No conversations yet</p>
               <p className="text-sm mt-2">Search for a user to start chatting</p>
             </div>
@@ -406,8 +406,8 @@ const Chat = () => {
                 <button
                   key={conversation.id}
                   onClick={() => setSelectedConversation(conversation)}
-                  className={`flex w-full items-center gap-3 border-b border-[var(--color-app-border)] px-4 py-3 text-left transition-colors hover:bg-[var(--color-app-accent-soft)] ${
-                    selectedConversation?.id === conversation.id ? 'bg-primary-50 dark:bg-primary-950/50' : ''
+                  className={`w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center space-x-3 border-b border-gray-100 ${
+                    selectedConversation?.id === conversation.id ? 'bg-primary-50' : ''
                   }`}
                 >
                   {isGroup ? (
@@ -419,11 +419,11 @@ const Chat = () => {
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2 truncate font-semibold text-[var(--color-app-text)]">
+                      <div className="font-medium text-gray-900 truncate flex items-center space-x-2">
                         {isGroup ? (
                           <>
                             <span>{conversation.group_name}</span>
-                            <span className="text-xs text-[var(--color-app-text-muted)]">({conversation.participants?.length || 0})</span>
+                            <span className="text-xs text-gray-500">({conversation.participants?.length || 0})</span>
                           </>
                         ) : (
                           <span>{otherParticipant?.name || 'Unknown User'}</span>
@@ -435,11 +435,11 @@ const Chat = () => {
                         </span>
                       )}
                     </div>
-                    <div className="truncate text-sm text-[var(--color-app-text-muted)]">
+                    <div className="text-sm text-gray-500 truncate">
                       {conversation.last_message || 'No messages yet'}
                     </div>
                     {conversation.last_message_at && (
-                      <div className="mt-1 text-xs text-[var(--color-app-text-muted)]">
+                      <div className="text-xs text-gray-400 mt-1">
                         {formatDistanceToNow(new Date(conversation.last_message_at), { addSuffix: true })}
                       </div>
                     )}
@@ -452,25 +452,17 @@ const Chat = () => {
       </div>
 
       {/* Chat Window */}
-      <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} h-full min-h-0 min-w-0 flex-1 flex-col`}>
+      <div className="flex-1 flex flex-col">
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-3 sm:px-6 sm:py-4">
+            <div className="bg-white border-b border-gray-200 px-6 py-4">
               {(() => {
                 const otherParticipant = getOtherParticipant(selectedConversation)
                 const isGroup = selectedConversation?.is_group
                 return (
-                  <div className="flex min-w-0 items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedConversation(null)}
-                        className="app-icon-button md:hidden"
-                        aria-label="Back to conversations"
-                      >
-                        <ArrowLeft className="h-5 w-5" />
-                      </button>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
                       {isGroup ? (
                         <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center">
                           <Users className="h-5 w-5 text-primary-600" />
@@ -479,10 +471,10 @@ const Chat = () => {
                         renderAvatar(otherParticipant?.avatar, otherParticipant?.name, 'md')
                       )}
                       <div>
-                        <div className="truncate font-semibold text-[var(--color-app-text)]">
+                        <div className="font-semibold text-gray-900">
                           {isGroup ? selectedConversation.group_name : (otherParticipant?.name || 'Unknown User')}
                         </div>
-                        <div className="text-xs text-[var(--color-app-text-muted)] capitalize">
+                        <div className="text-xs text-gray-500 capitalize">
                           {isGroup ? (
                             <span>{selectedConversation.participants?.length || 0} members</span>
                           ) : (
@@ -497,7 +489,7 @@ const Chat = () => {
                           setGroupModalMode('manage')
                           setShowGroupModal(true)
                         }}
-                        className="app-icon-button"
+                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                         title="Manage Group"
                       >
                         <Settings className="h-5 w-5" />
@@ -509,7 +501,7 @@ const Chat = () => {
             </div>
 
             {/* Messages */}
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:p-6">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.map((message) => {
                 const isOwn = message.sender_id === user?.id
                 return (
@@ -517,9 +509,9 @@ const Chat = () => {
                     key={message.id}
                     className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`max-w-[82vw] sm:max-w-md ${isOwn ? 'order-2' : 'order-1'}`}>
+                    <div className={`max-w-md ${isOwn ? 'order-2' : 'order-1'}`}>
                       {!isOwn && (
-                        <div className="mb-1 px-2 text-xs text-[var(--color-app-text-muted)]">
+                        <div className="text-xs text-gray-500 mb-1 px-2">
                           {message.sender_name}
                         </div>
                       )}
@@ -527,7 +519,7 @@ const Chat = () => {
                         className={`rounded-lg px-4 py-2 ${
                           isOwn
                             ? 'bg-primary-600 text-white'
-                            : 'border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-[var(--color-app-text)]'
+                            : 'bg-white border border-gray-200 text-gray-900'
                         }`}
                       >
                         {message.message_type === 'file' && (
@@ -557,7 +549,7 @@ const Chat = () => {
                           </div>
                         )}
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                        <div className={`mt-1 text-xs ${isOwn ? 'text-primary-100' : 'text-[var(--color-app-text-muted)]'}`}>
+                        <div className={`text-xs mt-1 ${isOwn ? 'text-primary-100' : 'text-gray-500'}`}>
                           {format(new Date(message.created_at), 'HH:mm')}
                         </div>
                       </div>
@@ -570,18 +562,18 @@ const Chat = () => {
 
             {/* File Preview */}
             {fileInput && (
-              <div className="flex items-center justify-between gap-3 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface-muted)] px-3 py-2 sm:px-6">
-                <div className="flex min-w-0 items-center gap-2">
+              <div className="px-6 py-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
                   <FileIcon className="h-4 w-4 text-gray-600" />
-                  <span className="truncate text-sm text-[var(--color-app-text-secondary)]">{fileInput.name}</span>
-                  <span className="text-xs text-[var(--color-app-text-muted)]">({formatFileSize(fileInput.size)})</span>
+                  <span className="text-sm text-gray-700">{fileInput.name}</span>
+                  <span className="text-xs text-gray-500">({formatFileSize(fileInput.size)})</span>
                 </div>
                 <button
                   onClick={() => {
                     setFileInput(null)
                     if (fileInputRef.current) fileInputRef.current.value = ''
                   }}
-                  className="text-[var(--color-app-text-muted)] hover:text-[var(--color-app-accent)]"
+                  className="text-gray-500 hover:text-gray-700"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -589,12 +581,12 @@ const Chat = () => {
             )}
 
             {/* Message Input */}
-            <form onSubmit={sendMessage} className="border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-3 sm:px-6 sm:py-4">
-              <div className="flex items-end gap-2">
+            <form onSubmit={sendMessage} className="bg-white border-t border-gray-200 px-6 py-4">
+              <div className="flex items-end space-x-2">
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="app-icon-button"
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                   title="Attach File"
                 >
                   <Paperclip className="h-5 w-5" />
@@ -610,7 +602,7 @@ const Chat = () => {
                   onChange={(e) => setMessageInput(e.target.value)}
                   placeholder="Type a message..."
                   rows={1}
-                  className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-[var(--color-app-border)] bg-[var(--color-app-surface-muted)] px-3.5 py-2.5 text-sm text-[var(--color-app-text)] outline-none transition focus:border-primary-500 focus:ring-4 focus:ring-primary-500/20"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
@@ -621,7 +613,7 @@ const Chat = () => {
                 <button
                   type="submit"
                   disabled={sending || (!messageInput.trim() && !fileInput)}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-lg shadow-primary-200/50 transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 dark:shadow-primary-950/30"
+                  className="p-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="h-5 w-5" />
                 </button>
@@ -629,11 +621,11 @@ const Chat = () => {
             </form>
           </>
         ) : (
-          <div className="hidden flex-1 items-center justify-center p-6 md:flex">
+          <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/60 dark:text-primary-300"><MessageCircle className="h-8 w-8" /></div>
-              <h3 className="mb-2 text-xl font-semibold text-[var(--color-app-text)]">Select a conversation</h3>
-              <p className="text-[var(--color-app-text-muted)]">Choose a conversation from the sidebar or start a new one</p>
+              <div className="text-6xl mb-4">💬</div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Select a conversation</h3>
+              <p className="text-gray-500">Choose a conversation from the sidebar or start a new one</p>
             </div>
           </div>
         )}
@@ -653,11 +645,4 @@ const Chat = () => {
 }
 
 export default Chat
-
-
-
-
-
-
-
 

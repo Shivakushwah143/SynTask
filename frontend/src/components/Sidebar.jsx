@@ -204,13 +204,13 @@ const Sidebar = ({ isOpen, onClose }) => {
           ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
-      <div className="app-header relative flex h-full flex-col overflow-visible border-r">   
+      <div className="relative flex h-full flex-col overflow-visible bg-white border-r border-gray-200 dark:bg-gray-950 dark:border-gray-800">   
           {/* Desktop collapse toggle */}
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="absolute -right-3.5 top-[22px] z-10 hidden h-8 w-8 items-center justify-center rounded-full border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-[var(--color-app-text-secondary)] shadow-md transition-all hover:scale-105 hover:border-primary-400 hover:text-primary-600 lg:flex"
+            className="absolute -right-3.5 top-[22px] z-10 hidden h-8 w-8 items-center justify-center rounded-full border-2 border-gray-200 bg-white text-gray-600 shadow-md transition-all hover:scale-105 hover:border-primary-400 hover:text-primary-600 lg:flex dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
           >
             {collapsed ? (
               <ChevronRight className="h-4 w-4" />
@@ -221,7 +221,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
           {/* Logo */}
           <div
-            className={`h-16 flex items-center px-4 border-b border-[var(--color-app-border)] ${
+            className={`h-16 flex items-center px-4 border-b border-gray-200 dark:border-gray-800 ${
               collapsed ? "lg:justify-center lg:px-0" : "justify-between"
             }`}
           >
@@ -235,7 +235,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 }}
               />
               <h1
-                className={`font-display text-base font-extrabold text-primary-600 ${collapsed ? "lg:hidden" : ""}`}
+                className={`text-base font-bold text-primary-600 ${collapsed ? "lg:hidden" : ""}`}
               >
                 SynTask
               </h1>
@@ -243,7 +243,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             <button
               type="button"
               onClick={onClose}
-              className="app-icon-button lg:hidden"
+              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg dark:hover:bg-gray-800"
               aria-label="Close navigation"
             >
               <X className="h-5 w-5 text-gray-600 dark:text-gray-300" />
@@ -267,12 +267,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                   aria-current={isActive ? "page" : undefined}
                   aria-label={item.name}
                   onClick={onClose}
-                  className={`group relative flex min-h-11 items-center px-3 py-2.5 text-sm font-semibold rounded-xl transition-all ${
+                  className={`group relative flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors ${
                     collapsed ? "lg:justify-center lg:px-0" : ""
                   } ${
                     isActive
-                      ? "bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200/70 dark:bg-primary-950/60 dark:text-primary-200 dark:ring-primary-500/20"
-                      : "text-[var(--color-app-text-secondary)] hover:bg-[var(--color-app-accent-soft)] hover:text-[var(--color-app-accent)]"
+                      ? "bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200"
+                      : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
                   }`}
                 >
                   <item.icon
@@ -331,7 +331,7 @@ const Sidebar = ({ isOpen, onClose }) => {
           </nav>
 
           {/* User Info */}
-          <div className="border-t border-[var(--color-app-border)] p-4">
+          <div className="p-4 border-t border-gray-200 dark:border-gray-800">
             <Link
               to="/settings"
               title={
@@ -339,7 +339,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   ? `${user?.first_name || ""} ${user?.last_name || ""}`.trim()
                   : undefined
               }
-              className={`group relative flex items-center rounded-xl p-2 -m-2 transition-colors cursor-pointer hover:bg-[var(--color-app-accent-soft)] ${
+              className={`group relative flex items-center hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors cursor-pointer dark:hover:bg-gray-900 ${
                 collapsed ? "lg:justify-center" : ""
               }`}
               onClick={onClose}
@@ -353,7 +353,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                         : `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${user.avatar}`
                     }
                     alt={user?.first_name}
-                    className="h-10 w-10 rounded-xl object-cover border border-[var(--color-app-border)]"
+                    className="h-10 w-10 rounded-full object-cover border border-gray-200 dark:border-gray-700"
                     onError={(e) => {
                       // Fallback to initials if image fails to load
                       e.target.style.display = "none";
@@ -373,10 +373,10 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div
                 className={`ml-3 flex-1 min-w-0 ${collapsed ? "lg:hidden" : ""}`}
               >
-                <p className="text-sm font-semibold text-[var(--color-app-text)] truncate">
+                <p className="text-sm font-medium text-gray-700 truncate dark:text-gray-100">
                   {user?.first_name} {user?.last_name}
                 </p>
-                <p className="text-xs text-[var(--color-app-text-muted)] capitalize truncate">
+                <p className="text-xs text-gray-500 capitalize truncate dark:text-gray-400">
                   {user?.role?.replace("_", " ")}
                 </p>
               </div>
@@ -396,4 +396,3 @@ const Sidebar = ({ isOpen, onClose }) => {
 };
 
 export default Sidebar;
-
