@@ -11,6 +11,10 @@ const ActivityLog = () => {
     days: 30,
   })
 
+
+
+
+  
   useEffect(() => {
     fetchActivities()
   }, [filters])
