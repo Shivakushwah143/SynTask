@@ -1084,23 +1084,32 @@ function NewLanding() {
             ))}
           </nav>
 
-          <div className="hidden items-center gap-3 lg:flex">
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className={`inline-flex h-11 w-11 items-center justify-center rounded-full border ${themeTheme.border} bg-white text-slate-700 transition hover:bg-slate-50`}
-              aria-label="Toggle theme"
-            >
-              {theme === 'dark' ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
-            </button>
-            <a
-              href="#contact"
-              className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              Start Free Trial
-              <ArrowRight className="h-4 w-4" />
-            </a>
-          </div>
+         <div className="hidden items-center gap-3 lg:flex">
+  <button
+    type="button"
+    onClick={toggleTheme}
+    className={`inline-flex h-11 w-11 items-center justify-center rounded-full border ${themeTheme.border} bg-white text-slate-700 transition hover:bg-slate-50`}
+    aria-label="Toggle theme"
+  >
+    {theme === 'dark' ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+  </button>
+  
+  {/* ADD THIS LOGIN BUTTON */}
+  <a
+    href="/login"
+    className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-400 shadow-sm"
+  >
+    Log In
+  </a>
+  
+  <a
+    href="#contact"
+    className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+  >
+    Start Free Trial
+    <ArrowRight className="h-4 w-4" />
+  </a>
+</div>
 
           <button
             type="button"
@@ -1120,25 +1129,35 @@ function NewLanding() {
               exit={{ opacity: 0, y: -12 }}
               className="border-t border-slate-200 bg-white px-4 py-4 shadow-2xl lg:hidden"
             >
-              <div className="mx-auto flex max-w-7xl flex-col gap-3">
-                {navItems.map((item) => (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className="rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    {item.label}
-                  </a>
-                ))}
-                <button
-                  type="button"
-                  onClick={toggleTheme}
-                  className="mt-2 inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
-                >
-                  Toggle theme
-                </button>
-              </div>
+             <div className="mx-auto flex max-w-7xl flex-col gap-3">
+  {navItems.map((item) => (
+    <a
+      key={item.href}
+      href={item.href}
+      onClick={() => setMobileOpen(false)}
+      className="rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+    >
+      {item.label}
+    </a>
+  ))}
+  
+  {/* ADD THIS LOGIN BUTTON FOR MOBILE */}
+  <a
+    href="/login"
+    onClick={() => setMobileOpen(false)}
+    className="rounded-2xl px-4 py-3 text-sm font-semibold text-primary-600 hover:bg-primary-50 border border-primary-200"
+  >
+    Log In
+  </a>
+  
+  <button
+    type="button"
+    onClick={toggleTheme}
+    className="mt-2 inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
+  >
+    Toggle theme
+  </button>
+</div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1481,45 +1500,85 @@ function NewLanding() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Testimonials"
-              title="Social proof from agencies that moved faster"
-              description="Teams using SynTask report stronger delivery visibility, cleaner handoffs, and a more professional client experience."
-            />
-          </motion.div>
+       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
+  <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
+    <SectionHeading
+      eyebrow="Testimonials"
+      title="Social proof from agencies that moved faster"
+      description="Teams using SynTask report stronger delivery visibility, cleaner handoffs, and a more professional client experience."
+    />
+  </motion.div>
 
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-6 lg:grid-cols-3"
-          >
-            {testimonials.map((item) => (
-              <motion.article
-                key={item.name}
-                variants={itemVariants}
-                className={`rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface} p-7 shadow-[0_18px_40px_rgba(15,23,42,0.05)]`}
-              >
-                <div className="flex items-center gap-1 text-amber-400">
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <Star key={index} className="h-4 w-4 fill-current" />
-                  ))}
-                </div>
-                <p className="mt-5 text-lg leading-8 text-slate-800">“{item.quote}”</p>
-                <div className="mt-7 flex items-center gap-4">
-                  <img src={item.image} alt={item.name} className="h-14 w-14 rounded-2xl object-cover" />
-                  <div>
-                    <div className="font-bold text-slate-900">{item.name}</div>
-                    <div className={`text-sm ${themeTheme.textSecondary}`}>{item.role}</div>
-                  </div>
-                </div>
-              </motion.article>
+  <motion.div
+    variants={staggerVariants}
+    initial="hidden"
+    whileInView="visible"
+    viewport={{ once: true, amount: 0.15 }}
+    className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3 auto-rows-auto"
+  >
+    {/* Featured card - spans 2 columns on large screens */}
+    <motion.article
+      variants={itemVariants}
+      whileHover={{ y: -6 }}
+      className="md:col-span-2 lg:col-span-2 row-span-2 rounded-2xl border bg-gradient-to-br from-primary-50 to-white p-8 shadow-lg"
+    >
+      <div className="flex items-start gap-6 h-full">
+        <div className="flex-1">
+          <div className="flex items-center gap-1 text-amber-400 mb-3">
+            {Array.from({ length: 5 }).map((_, idx) => (
+              <Star key={idx} className="h-4 w-4 fill-current" />
             ))}
-          </motion.div>
-        </section>
+          </div>
+          <blockquote className="text-xl font-medium text-slate-800 leading-relaxed">
+            "{testimonials[0].quote}"
+          </blockquote>
+          <div className="mt-6 flex items-center gap-4">
+            <img 
+              src={testimonials[0].image} 
+              alt={testimonials[0].name} 
+              className="h-14 w-14 rounded-full object-cover ring-4 ring-primary-100" 
+            />
+            <div>
+              <div className="font-bold text-slate-900">{testimonials[0].name}</div>
+              <div className="text-sm text-slate-500">{testimonials[0].role}</div>
+            </div>
+          </div>
+        </div>
+        <div className="hidden lg:block text-8xl font-serif text-primary-200/50">"</div>
+      </div>
+    </motion.article>
+
+    {/* Regular cards */}
+    {testimonials.slice(1).map((item) => (
+      <motion.article
+        key={item.name}
+        variants={itemVariants}
+        whileHover={{ y: -6 }}
+        className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow-xl transition-shadow duration-300"
+      >
+        <div className="flex items-center gap-1 text-amber-400 mb-3">
+          {Array.from({ length: 5 }).map((_, idx) => (
+            <Star key={idx} className="h-3.5 w-3.5 fill-current" />
+          ))}
+        </div>
+        <blockquote className="text-slate-700 leading-relaxed text-sm">
+          "{item.quote}"
+        </blockquote>
+        <div className="mt-4 flex items-center gap-3">
+          <img 
+            src={item.image} 
+            alt={item.name} 
+            className="h-10 w-10 rounded-full object-cover" 
+          />
+          <div>
+            <div className="font-semibold text-slate-900 text-sm">{item.name}</div>
+            <div className="text-xs text-slate-500">{item.role}</div>
+          </div>
+        </div>
+      </motion.article>
+    ))}
+  </motion.div>
+</section>
 
         <section id="pricing" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
