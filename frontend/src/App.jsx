@@ -4,6 +4,7 @@ import { useAuthStore } from './store/authStore'
 import { useTheme } from './hooks/useTheme'
 import { PageLoader } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { Agentation } from "agentation";
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
@@ -14,6 +15,8 @@ const Login = lazy(() => import('./pages/auth/Login'))
 const AdminRequest = lazy(() => import('./pages/auth/AdminRequest'))
 const ForgotPassword = lazy(() => import('./pages/auth/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'))
+const Landing = lazy(() => import('./pages/Landing'))
+const NewLanding = lazy(() => import('./pages/NewLanding'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Users = lazy(() => import('./pages/Users'))
@@ -71,6 +74,18 @@ const PublicRoute = ({ children }) => {
 
 const PublicRouteAllowAuth = ({ children }) => children
 
+const LandingRoute = () => {
+  const { isAuthenticated } = useAuthStore()
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />
+  return <Landing />
+}
+
+const NewLandingRoute = () => {
+  const { isAuthenticated } = useAuthStore()
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />
+  return <NewLanding />
+}
+
 const SuperAdminGuard = ({ children }) => {
   const { user } = useAuthStore()
   if (!isSuperAdminRole(user?.role)) return <Navigate to="/dashboard" replace />
@@ -92,14 +107,16 @@ function App() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        <Route path="/" element={<NewLandingRoute />} />
+        <Route path="/old-landing" element={<LandingRoute />} />
+        <Route path="/new-landing" element={<NewLanding />} />
         <Route path="/login" element={<PublicRoute><AuthLayout previewImage="/dashboard-preview.png"><Login /></AuthLayout></PublicRoute>} />
         <Route path="/admin-request" element={<PublicRoute><AuthLayout maxWidth="max-w-5xl"><AdminRequest /></AuthLayout></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />
         <Route path="/reset-password" element={<PublicRouteAllowAuth><AuthLayout><ResetPassword /></AuthLayout></PublicRouteAllowAuth>} />
         <Route path="/msa/sign/:token" element={<PublicRouteAllowAuth><MSASign /></PublicRouteAllowAuth>} />
 
-        <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={withBoundary(<Dashboard />)} />
           <Route path="tasks" element={withBoundary(<Tasks />)} />
           <Route path="tickets" element={withBoundary(<Tickets />)} />
@@ -152,6 +169,7 @@ function App() {
 
         <Route path="*" element={<NotFound />} />
       </Routes>
+      {import.meta.env.DEV && <Agentation />}
     </Suspense>
   )
 }

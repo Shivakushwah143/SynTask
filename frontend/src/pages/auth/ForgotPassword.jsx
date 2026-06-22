@@ -168,8 +168,6 @@ const ForgotPassword = () => {
 }
 
 export default ForgotPassword
-    </div>
-  )
-}
+  
+  
 
-export default ForgotPassword

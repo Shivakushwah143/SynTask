@@ -47,20 +47,18 @@ export default {
           critical: { bg: '#fee2e2', text: '#991b1b' },
         },
         secondary: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
-          500: '#64748b',
-          600: '#475569',
-          700: '#334155',
-          800: '#1e293b',
+          500: '#8b5cf6',
+          600: '#7c3aed',
+        },
+        dark: {
           900: '#0f172a',
+          800: '#1e293b',
+          700: '#334155',
         },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         card: '0.75rem',
@@ -74,4 +72,3 @@ export default {
   },
   plugins: [],
 }
-
