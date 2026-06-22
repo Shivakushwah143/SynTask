@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowRight,
@@ -22,7 +22,6 @@ import {
   Sparkles,
   Star,
   Sun,
-  Users,
   Workflow,
   X,
   Zap,
@@ -73,34 +72,6 @@ const solutions = [
     title: 'Client operations',
     description: 'Centralize support, billing, approvals, and communication without switching tools.',
     image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1200&h=800&fit=crop',
-  },
-]
-
-const workflowSteps = [
-  {
-    title: 'Set up your agency',
-    description: 'Configure services, teams, permissions, and automations in a single workspace.',
-    image: 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=1200&h=800&fit=crop',
-  },
-  {
-    title: 'Add clients and accounts',
-    description: 'Create clean client spaces with contacts, deals, tasks, and billing history attached.',
-    image: 'https://images.unsplash.com/photo-1521791136064-7986c0212926?w=1200&h=800&fit=crop',
-  },
-  {
-    title: 'Assign work with clarity',
-    description: 'Break delivery into milestones, owners, deadlines, and approvals that stay visible to everyone.',
-    image: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=800&fit=crop',
-  },
-  {
-    title: 'Track time and budget',
-    description: 'Measure hours, retainers, and profitability across every account without spreadsheet chaos.',
-    image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&h=800&fit=crop',
-  },
-  {
-    title: 'Invoice with confidence',
-    description: 'Turn completed work into professional invoices, recurring billing, and clean reporting.',
-    image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&h=800&fit=crop',
   },
 ]
 
@@ -182,15 +153,6 @@ const faqs = [
     answer:
       'Yes. You can create invoices, manage recurring billing, and keep revenue data connected to the right client and project context.',
   },
-]
-
-const industryCards = [
-  'Performance Marketing',
-  'Creative Studios',
-  'SEO Agencies',
-  'Brand & Design',
-  'Media Buying',
-  'Web Development',
 ]
 
 const compareRows = [
@@ -1051,10 +1013,7 @@ function Industries() {
 function NewLanding() {
   const { theme, toggleTheme } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [activeStep, setActiveStep] = useState(0)
   const [openFaq, setOpenFaq] = useState(0)
-
-  const currentWorkflow = useMemo(() => workflowSteps[activeStep], [activeStep])
 
   return (
     <div className={`min-h-screen ${themeTheme.muted} ${themeTheme.text}`}>
@@ -1307,7 +1266,12 @@ function NewLanding() {
         {/* HowItWorks Component */}
         <HowItWorks />
 
-        <section id="features" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
+        <section id="features" className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+          <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+            <div className="absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-primary-100/70 blur-3xl" />
+            <div className="absolute right-0 top-20 h-80 w-80 rounded-full bg-violet-100/60 blur-3xl" />
+          </div>
+
           <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
             <SectionHeading
               eyebrow="Features"
@@ -1316,28 +1280,130 @@ function NewLanding() {
             />
           </motion.div>
 
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3"
-          >
-            {features.map(({ icon: Icon, title, description }) => (
-              <motion.div
-                key={title}
-                variants={itemVariants}
-                whileHover={{ y: -5 }}
-                className={`rounded-[1.75rem] border ${themeTheme.border} ${themeTheme.surface} p-6 shadow-[0_18px_40px_rgba(15,23,42,0.05)]`}
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
-                  <Icon className="h-6 w-6" />
+          <div className="mt-12 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+            <motion.div
+              variants={itemVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.2 }}
+              whileHover={{ y: -6 }}
+              className={`overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-gradient-to-br from-white via-primary-50/60 to-white p-7 shadow-[0_24px_80px_rgba(15,23,42,0.08)] sm:p-8`}
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-2 rounded-full border border-primary-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.26em] text-primary-700">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Agency control center
+                </span>
+                <span className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700">
+                  Live operational visibility
+                </span>
+              </div>
+
+              <div className="mt-6 grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+                <div>
+                  <h3 className="font-display text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                    Run every client account from one elegant workspace.
+                  </h3>
+                  <p className={`mt-4 max-w-lg text-base leading-8 ${themeTheme.textSecondary}`}>
+                    Keep your team aligned with shared task boards, deal visibility, support queues, and billing context that feels built for agencies.
+                  </p>
+
+                  <div className="mt-6 space-y-3">
+                    {[
+                      'Unified delivery, sales, support, and billing',
+                      'Designed for agency owners and operations leads',
+                      'Clear ownership across every client workflow',
+                    ].map((item) => (
+                      <div key={item} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm font-medium text-slate-700">
+                        <Check className="h-4 w-4 text-emerald-600" />
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-7 grid grid-cols-3 gap-3">
+                    {[
+                      ['58%', 'Less admin'],
+                      ['3.2x', 'Faster handoffs'],
+                      ['94%', 'Visibility'],
+                    ].map(([value, label]) => (
+                      <div key={label} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                        <div className="text-2xl font-black tracking-tight text-slate-950">{value}</div>
+                        <div className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <h3 className="mt-5 text-xl font-bold">{title}</h3>
-                <p className={`mt-3 text-sm leading-7 ${themeTheme.textSecondary}`}>{description}</p>
-              </motion.div>
-            ))}
-          </motion.div>
+
+                <div className="relative">
+                  <div className="absolute -left-4 -top-4 h-24 w-24 rounded-full bg-primary-200/50 blur-2xl" />
+                  <div className="overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.12)]">
+                    <img
+                      src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=800&fit=crop"
+                      alt="Agency team working"
+                      className="h-[290px] w-full object-cover"
+                    />
+                    <div className="p-5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Command view</div>
+                          <div className="mt-1 text-lg font-bold text-slate-950">This week at a glance</div>
+                        </div>
+                        <div className="rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">Updated now</div>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        {[
+                          ['12', 'Active clients'],
+                          ['48', 'Open tasks'],
+                          ['$84k', 'Pipeline'],
+                        ].map(([value, label]) => (
+                          <div key={label} className="rounded-2xl bg-slate-50 px-4 py-4">
+                            <div className="text-xl font-black tracking-tight text-slate-950">{value}</div>
+                            <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              variants={staggerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.15 }}
+              className="grid gap-5 sm:grid-cols-2"
+            >
+              {features.map(({ icon: Icon, title, description }, index) => (
+                <motion.div
+                  key={title}
+                  variants={itemVariants}
+                  whileHover={{ y: -6 }}
+                  className={`group relative overflow-hidden rounded-[1.9rem] border ${themeTheme.border} ${themeTheme.surface} p-6 shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
+                    index === 0 || index === 5 ? 'sm:col-span-2' : ''
+                  }`}
+                >
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary-500 via-violet-500 to-sky-500" />
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-700 ring-1 ring-primary-100 transition group-hover:scale-105">
+                      <Icon className="h-7 w-7" />
+                    </div>
+                    <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                      0{index + 1}
+                    </div>
+                  </div>
+                  <h3 className="mt-5 text-2xl font-bold tracking-tight text-slate-950">{title}</h3>
+                  <p className={`mt-3 max-w-md text-sm leading-7 ${themeTheme.textSecondary}`}>{description}</p>
+                  <div className="mt-5 flex items-center gap-2 text-sm font-semibold text-primary-700">
+                    Learn more
+                    <ChevronRight className="h-4 w-4" />
+                  </div>
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
         </section>
 
         <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
@@ -1405,53 +1471,134 @@ function NewLanding() {
             />
           </motion.div>
 
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-6 lg:grid-cols-3"
-          >
-            {[
-              {
-                name: 'Operations Lead',
-                bullets: ['Approvals', 'Capacity planning', 'Billing visibility'],
-              },
-              {
-                name: 'Account Manager',
-                bullets: ['Client communication', 'Project status', 'Ticket follow-up'],
-              },
-              {
-                name: 'Agency Founder',
-                bullets: ['Revenue trends', 'Delivery health', 'Pipeline forecast'],
-              },
-            ].map((person) => (
-              <motion.div
-                key={person.name}
-                variants={itemVariants}
-                whileHover={{ y: -6 }}
-                className={`rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface} p-6`}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                    <Users className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <div className="text-xl font-bold">{person.name}</div>
-                    <div className={`text-sm ${themeTheme.textSecondary}`}>Role-based workspace</div>
-                  </div>
+          <div className="mt-10 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+            <motion.div
+              variants={itemVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.2 }}
+              whileHover={{ y: -5 }}
+              className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-8 text-white shadow-[0_24px_70px_rgba(15,23,42,0.2)]`}
+            >
+              <div className="absolute -right-10 top-8 h-40 w-40 rounded-full bg-primary-500/20 blur-3xl" />
+              <div className="absolute -bottom-16 left-0 h-40 w-40 rounded-full bg-violet-500/15 blur-3xl" />
+              <div className="relative">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.3em] text-white/80">
+                  <ShieldCheck className="h-3.5 w-3.5 text-sky-300" />
+                  Role-based control
                 </div>
-                <div className="mt-5 space-y-3">
-                  {person.bullets.map((bullet) => (
-                    <div key={bullet} className="flex items-center gap-3 text-sm font-medium text-slate-700">
-                      <Check className="h-4 w-4 text-emerald-600" />
-                      {bullet}
+                <h3 className="mt-6 max-w-md font-display text-4xl font-black tracking-tight sm:text-5xl">
+                  Every role sees exactly what matters.
+                </h3>
+                <p className="mt-5 max-w-md text-base leading-8 text-slate-300">
+                  The workspace adapts to your team structure so operations, client management, and leadership can move faster without stepping on each other.
+                </p>
+
+                <div className="mt-8 grid grid-cols-3 gap-3">
+                  {[
+                    ['Ops', 'Approvals'],
+                    ['AMs', 'Client updates'],
+                    ['Leads', 'Forecasts'],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">{label}</div>
+                      <div className="mt-2 text-sm font-bold text-white">{value}</div>
                     </div>
                   ))}
                 </div>
-              </motion.div>
-            ))}
-          </motion.div>
+
+                <div className="mt-8 space-y-4">
+                  {[
+                    { label: 'Operations Lead', pct: '92%', tone: 'bg-primary-500' },
+                    { label: 'Account Manager', pct: '88%', tone: 'bg-violet-500' },
+                    { label: 'Agency Founder', pct: '97%', tone: 'bg-emerald-500' },
+                  ].map((row) => (
+                    <div key={row.label} className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                      <div className="flex items-center justify-between text-sm font-medium">
+                        <span>{row.label}</span>
+                        <span className="text-white/70">{row.pct} clarity</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                        <div className={`h-full rounded-full ${row.tone}`} style={{ width: row.pct }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              variants={staggerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.15 }}
+              className="grid gap-5 sm:grid-cols-2"
+            >
+              {[
+                {
+                  name: 'Operations Lead',
+                  icon: Workflow,
+                  tag: 'Process owner',
+                  bullets: ['Approvals', 'Capacity planning', 'Billing visibility'],
+                  accent: 'from-primary-500/10 to-primary-50',
+                },
+                {
+                  name: 'Account Manager',
+                  icon: MessageSquare,
+                  tag: 'Client owner',
+                  bullets: ['Client communication', 'Project status', 'Ticket follow-up'],
+                  accent: 'from-violet-500/10 to-violet-50',
+                },
+                {
+                  name: 'Agency Founder',
+                  icon: BrainCircuit,
+                  tag: 'Decision maker',
+                  bullets: ['Revenue trends', 'Delivery health', 'Pipeline forecast'],
+                  accent: 'from-emerald-500/10 to-emerald-50',
+                },
+              ].map((person, index) => {
+                const Icon = person.icon
+                const isWide = index === 2
+                return (
+                  <motion.div
+                    key={person.name}
+                    variants={itemVariants}
+                    whileHover={{ y: -6 }}
+                    className={`relative overflow-hidden rounded-[2rem] border ${themeTheme.border} bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
+                      isWide ? 'sm:col-span-2' : ''
+                    }`}
+                  >
+                    <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${person.accent}`} />
+                    <div className={`absolute right-0 top-0 h-28 w-28 rounded-full bg-gradient-to-br ${person.accent} blur-2xl`} />
+                    <div className="relative">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-200">
+                            <Icon className="h-6 w-6" />
+                          </div>
+                          <div>
+                            <div className="text-xl font-black tracking-tight text-slate-950">{person.name}</div>
+                            <div className={`text-sm ${themeTheme.textSecondary}`}>{person.tag}</div>
+                          </div>
+                        </div>
+                        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                          Role {index + 1}
+                        </div>
+                      </div>
+                      <div className="mt-6 space-y-3">
+                        {person.bullets.map((bullet) => (
+                          <div key={bullet} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+                            <Check className="h-4 w-4 text-emerald-600" />
+                            {bullet}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </motion.div>
+          </div>
         </section>
 
         <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
@@ -1463,21 +1610,124 @@ function NewLanding() {
             />
           </motion.div>
 
-          <div className={`mt-10 overflow-hidden rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface}`}>
-            <div className="grid grid-cols-4 border-b border-slate-200 bg-slate-50 px-6 py-4 text-sm font-semibold text-slate-600">
-              <div>Capability</div>
-              <div className="text-center">Spreadsheets</div>
-              <div className="text-center">Generic PM tools</div>
-              <div className="text-center">SynTask</div>
-            </div>
-            {compareRows.map(([label, sheets, generic, syntask]) => (
-              <div key={label} className="grid grid-cols-4 items-center border-b border-slate-100 px-6 py-4 last:border-b-0">
-                <div className="font-medium text-slate-800">{label}</div>
-                <div className="flex justify-center">{sheets ? <Check className="h-5 w-5 text-emerald-600" /> : <X className="h-5 w-5 text-rose-400" />}</div>
-                <div className="flex justify-center">{generic ? <Check className="h-5 w-5 text-emerald-600" /> : <X className="h-5 w-5 text-rose-400" />}</div>
-                <div className="flex justify-center">{syntask ? <Check className="h-5 w-5 text-emerald-600" /> : <X className="h-5 w-5 text-rose-400" />}</div>
+          <div className="mt-12 grid gap-6 lg:grid-cols-[0.72fr_1.28fr]">
+            <motion.div
+              variants={itemVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.2 }}
+              className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-slate-950 p-8 text-white shadow-[0_24px_70px_rgba(15,23,42,0.18)]`}
+            >
+              <div className="absolute -right-12 top-0 h-40 w-40 rounded-full bg-primary-500/20 blur-3xl" />
+              <div className="absolute -bottom-16 left-0 h-40 w-40 rounded-full bg-violet-500/20 blur-3xl" />
+              <div className="relative">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.28em] text-white/75">
+                  <ShieldCheck className="h-3.5 w-3.5 text-sky-300" />
+                  Decision guide
+                </div>
+                <h3 className="mt-6 max-w-sm font-display text-4xl font-black tracking-tight">
+                  The difference becomes obvious when the work gets real.
+                </h3>
+                <p className="mt-5 max-w-md text-base leading-8 text-slate-300">
+                  Spreadsheets and generic tools can track tasks. SynTask connects the full agency workflow so leaders can operate with confidence.
+                </p>
+
+                <div className="mt-8 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                  {[
+                    ['Ops', 'Cleaner handoffs'],
+                    ['Sales', 'One pipeline'],
+                    ['Finance', 'Connected billing'],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">{label}</div>
+                      <div className="mt-2 text-sm font-bold text-white">{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
+                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/55">Best fit</div>
+                  <div className="mt-2 text-xl font-black tracking-tight">SynTask for agency operators</div>
+                  <p className="mt-3 text-sm leading-7 text-slate-300">
+                    Designed for teams that want fewer tools, stronger visibility, and a more premium client experience.
+                  </p>
+                </div>
               </div>
-            ))}
+            </motion.div>
+
+            <motion.div
+              variants={staggerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.15 }}
+              className={`overflow-hidden rounded-[2.25rem] border ${themeTheme.border} ${themeTheme.surface} shadow-[0_20px_50px_rgba(15,23,42,0.05)]`}
+            >
+              <div className="grid grid-cols-4 border-b border-slate-200 bg-slate-50/90 px-6 py-4 text-sm font-semibold text-slate-600">
+                <div>Capability</div>
+                <div className="text-center">Spreadsheets</div>
+                <div className="text-center">Generic PM tools</div>
+                <div className="text-center">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-primary-600 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-white">
+                    SynTask
+                    <Sparkles className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+
+              {compareRows.map(([label, sheets, generic, syntask], index) => (
+                <div
+                  key={label}
+                  className={`grid grid-cols-4 items-center border-b border-slate-100 px-6 py-5 last:border-b-0 ${
+                    index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                  }`}
+                >
+                  <div>
+                    <div className="text-base font-semibold text-slate-900">{label}</div>
+                    <div className="mt-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
+                      Agency workflow coverage
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center">
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-rose-50 text-rose-500">
+                      {sheets ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-center">
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-500">
+                      {generic ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-center">
+                    <span
+                      className={`inline-flex h-11 w-11 items-center justify-center rounded-full shadow-sm ${
+                        syntask ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-rose-50 text-rose-500'
+                      }`}
+                    >
+                      {syntask ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              <div className="grid gap-4 border-t border-slate-200 bg-gradient-to-r from-primary-50 via-white to-violet-50 px-6 py-5 sm:grid-cols-[1fr_auto] sm:items-center">
+                <div>
+                  <div className="text-sm font-bold text-slate-900">Built to replace patchwork with clarity</div>
+                  <div className="mt-1 text-sm text-slate-600">
+                    If you want one place for operations, sales, and billing, SynTask is the direct answer.
+                  </div>
+                </div>
+                <a
+                  href="#pricing"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  View pricing
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+              </div>
+            </motion.div>
           </div>
         </section>
 
@@ -1530,55 +1780,139 @@ function NewLanding() {
             />
           </motion.div>
 
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-6 lg:grid-cols-3"
-          >
-            {pricing.map((tier) => (
-              <motion.div
-                key={tier.name}
-                variants={itemVariants}
-                whileHover={{ y: -6 }}
-                className={`relative rounded-[2rem] border p-7 shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
-                  tier.accent ? 'border-primary-200 bg-primary-50/50' : `${themeTheme.border} ${themeTheme.surface}`
-                }`}
-              >
-                {tier.accent && (
-                  <div className="absolute right-6 top-6 rounded-full bg-primary-600 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-white">
-                    Most Popular
-                  </div>
-                )}
-                <div className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">{tier.name}</div>
-                <div className="mt-4 flex items-end gap-2">
-                  <div className="font-display text-5xl font-black tracking-tight">{tier.price}</div>
-                  <div className="pb-1 text-sm font-medium text-slate-500">{tier.period}</div>
+          <div className="mt-12 grid gap-6">
+            <motion.div
+              variants={itemVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.2 }}
+              whileHover={{ y: -5 }}
+              className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-slate-950 p-8 text-white shadow-[0_26px_70px_rgba(15,23,42,0.18)]`}
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.35),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(139,92,246,0.22),transparent_36%)]" />
+              <div className="relative">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.3em] text-white/75">
+                  <Sparkles className="h-3.5 w-3.5 text-sky-300" />
+                  Built for agency growth
                 </div>
-                <p className={`mt-4 text-sm leading-7 ${themeTheme.textSecondary}`}>{tier.description}</p>
-                <div className="mt-6 space-y-3">
-                  {tier.features.map((feature) => (
-                    <div key={feature} className="flex items-center gap-3 text-sm font-medium text-slate-700">
-                      <Check className="h-4 w-4 text-emerald-600" />
-                      {feature}
+                <h3 className="mt-6 max-w-md font-display text-4xl font-black tracking-tight sm:text-5xl">
+                  Pricing that scales with real client work.
+                </h3>
+                <p className="mt-5 max-w-md text-base leading-8 text-slate-300">
+                  Start lean, upgrade when operations grow, and keep the whole agency in one operating system instead of stitching tools together.
+                </p>
+
+                <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                  {[
+                    ['500+', 'Agencies'],
+                    ['18h', 'Saved weekly'],
+                    ['94%', 'Renewals'],
+                  ].map(([value, label]) => (
+                    <div key={label} className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                      <div className="text-2xl font-black tracking-tight text-white">{value}</div>
+                      <div className="mt-1 text-xs font-semibold uppercase tracking-[0.22em] text-white/55">{label}</div>
                     </div>
                   ))}
                 </div>
-                <a
-                  href="#contact"
-                  className={`mt-7 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold ${
-                    tier.accent
-                      ? 'bg-primary-600 text-white hover:bg-primary-700'
-                      : 'bg-slate-950 text-white hover:bg-slate-800'
-                  }`}
-                >
-                  Choose plan
-                  <ArrowRight className="h-4 w-4" />
-                </a>
-              </motion.div>
+
+                <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/50">Best fit</div>
+                      <div className="mt-1 text-lg font-bold">Professional plan</div>
+                    </div>
+                    <div className="rounded-full bg-primary-500 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-white">
+                      Most Popular
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-end gap-2">
+                    <div className="font-display text-5xl font-black tracking-tight">$79</div>
+                    <div className="pb-1 text-sm text-white/65">/mo</div>
+                  </div>
+                  <p className="mt-3 text-sm leading-7 text-slate-300">
+                    Ideal for scaling agencies that need full visibility across delivery, sales, support, and billing.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              variants={staggerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.15 }}
+              className="grid gap-5 lg:grid-cols-3"
+            >
+              {pricing.map((tier) => {
+                const featured = tier.accent
+                return (
+                  <motion.div
+                    key={tier.name}
+                    variants={itemVariants}
+                    whileHover={{ y: -6 }}
+                    className={`relative overflow-hidden rounded-[2rem] border p-7 shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
+                      featured ? 'border-primary-200 bg-gradient-to-br from-primary-50 to-white' : `${themeTheme.border} ${themeTheme.surface}`
+                    }`}
+                  >
+                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary-500 via-violet-500 to-sky-500" />
+                    {featured && (
+                      <div className="absolute right-6 top-6 rounded-full bg-primary-600 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-white">
+                        Most Popular
+                      </div>
+                    )}
+
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">{tier.name}</div>
+                        <div className="mt-4 flex items-end gap-2">
+                          <div className="font-display text-5xl font-black tracking-tight text-slate-950">{tier.price}</div>
+                          <div className="pb-1 text-sm font-medium text-slate-500">{tier.period}</div>
+                        </div>
+                      </div>
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                        <BadgeDollarSign className="h-6 w-6" />
+                      </div>
+                    </div>
+
+                    <p className={`mt-4 text-sm leading-7 ${themeTheme.textSecondary}`}>{tier.description}</p>
+
+                    <div className="mt-6 space-y-3">
+                      {tier.features.map((feature) => (
+                        <div key={feature} className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm">
+                          <Check className="h-4 w-4 text-emerald-600" />
+                          {feature}
+                        </div>
+                      ))}
+                    </div>
+
+                    <a
+                      href="#contact"
+                      className={`mt-7 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition ${
+                        featured
+                          ? 'bg-primary-600 text-white shadow-lg shadow-primary-200 hover:bg-primary-700'
+                          : 'bg-slate-950 text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      Choose plan
+                      <ArrowRight className="h-4 w-4" />
+                    </a>
+                  </motion.div>
+                )
+              })}
+            </motion.div>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {[
+              'No setup fees',
+              'Cancel anytime',
+              'Dedicated onboarding for higher tiers',
+            ].map((value) => (
+              <div key={value} className={`rounded-[1.5rem] border ${themeTheme.border} ${themeTheme.surface} px-5 py-4 text-sm font-semibold text-slate-700 shadow-sm`}>
+                {value}
+              </div>
             ))}
-          </motion.div>
+          </div>
         </section>
 
         <section id="faq" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
