@@ -13,6 +13,7 @@ from app.api.dependencies import (
     get_current_company_admin_or_lead,
     check_company_access,
 )
+from app.core.cache import cache_delete_pattern
 
 router = APIRouter()
 
@@ -131,6 +132,7 @@ async def create_ticket(
     )
     
     await ticket.save()
+    await cache_delete_pattern(f"dashboard:stats:{current_user.company_id}:*")
     
     return {
         "id": str(ticket.id),
@@ -388,6 +390,7 @@ async def update_ticket_status(
         ticket.closed_at = None
     
     await ticket.save()
+    await cache_delete_pattern(f"dashboard:stats:{ticket.company_id}:*")
     
     return {
         "id": str(ticket.id),
@@ -449,6 +452,7 @@ async def assign_ticket(
     ticket.updated_at = datetime.utcnow()
     
     await ticket.save()
+    await cache_delete_pattern(f"dashboard:stats:{ticket.company_id}:*")
     
     return {
         "id": str(ticket.id),
@@ -652,6 +656,7 @@ async def delete_ticket(
     
     # Delete ticket
     await ticket.delete()
+    await cache_delete_pattern(f"dashboard:stats:{ticket.company_id}:*")
     
     return {
         "message": "Ticket deleted successfully",

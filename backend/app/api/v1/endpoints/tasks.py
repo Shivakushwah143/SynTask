@@ -14,6 +14,7 @@ from app.api.dependencies import (
     check_company_access,
 )
 from app.services.task_service import TaskService
+from app.core.cache import cache_delete_pattern
 
 router = APIRouter()
 
@@ -257,27 +258,28 @@ async def create_task(
     )
     
     await task.insert()
+    await cache_delete_pattern(f"dashboard:stats:{current_user.company_id}:*")
 
     # Send email notification if task is assigned
     if assigned_to and assignee:
         try:
-            from app.core.email import send_task_assignment_email
+            from app.worker.tasks.email_tasks import send_task_assignment_email_task
             # Safely determine project name if a valid project was loaded above
             project_name = None
             if "project" in locals() and project is not None:
                 project_name = getattr(project, "name", None) or getattr(project, "project_name", None)
 
-            await send_task_assignment_email(
-                assignee_email=assignee.email,
-                assignee_name=assignee.full_name(),
-                task_title=title,
-                task_description=description or "",
-                task_priority=task_priority.value,
-                task_due_date=parsed_due_date,
-                assigned_by_name=current_user.full_name(),
-                task_id=str(task.id),
-                project_name=project_name,
-            )
+            send_task_assignment_email_task.delay({
+                "assignee_email": assignee.email,
+                "assignee_name": assignee.full_name(),
+                "task_title": title,
+                "task_description": description or "",
+                "task_priority": task_priority.value,
+                "task_due_date": parsed_due_date.isoformat() if parsed_due_date else None,
+                "assigned_by_name": current_user.full_name(),
+                "task_id": str(task.id),
+                "project_name": project_name,
+            })
         except Exception as e:
             # Log error but don't fail the request
             import logging
@@ -472,6 +474,7 @@ async def add_task_comment(
     # Update task's updated_at
     task.updated_at = datetime.utcnow()
     await task.save()
+    await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
     
     return {
         "id": str(comment.id),

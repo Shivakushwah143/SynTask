@@ -6,6 +6,7 @@ from typing import Optional, List
 from beanie import Document, Indexed
 from pydantic import Field
 from enum import Enum
+from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
 
 class TaskPriority(str, Enum):
@@ -97,6 +98,17 @@ class Task(Document):
             "priority",
             "project_id",
             "project_object_id",
+            "due_date",
+            "parent_task_id",
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("project_object_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("due_date", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("parent_task_id", ASCENDING)]),
+            IndexModel([("title", TEXT), ("description", TEXT)]),
         ]
 
 
@@ -120,5 +132,6 @@ class TaskComment(Document):
             "task_id",
             "user_id",
             "company_id",
+            IndexModel([("task_id", ASCENDING), ("company_id", ASCENDING), ("created_at", ASCENDING)]),
         ]
 

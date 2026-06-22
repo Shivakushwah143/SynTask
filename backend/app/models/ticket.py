@@ -6,6 +6,7 @@ from typing import Optional, List
 from beanie import Document, Indexed
 from pydantic import Field
 from enum import Enum
+from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
 
 class TicketType(str, Enum):
@@ -89,6 +90,14 @@ class Ticket(Document):
             "status",
             "priority",
             "type",
+            "created_at",
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("created_by", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("ticket_number", ASCENDING)]),
+            IndexModel([("title", TEXT), ("description", TEXT)]),
         ]
 
 
@@ -113,5 +122,6 @@ class TicketComment(Document):
             "ticket_id",
             "user_id",
             "company_id",
+            IndexModel([("ticket_id", ASCENDING), ("company_id", ASCENDING), ("created_at", ASCENDING)]),
         ]
 
