@@ -21,6 +21,7 @@
     "clsx": "^2.1.0",
     "date-fns": "^3.6.0",
     "express": "^5.2.1",
+    "framer-motion": "^12.40.0",
     "lucide-react": "^0.303.0",
     "otpauth": "^9.2.3",
     "qrcode": "^1.5.3",
@@ -38,7 +39,7 @@
   "devDependencies": {
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react": "^6.0.2",
     "agentation": "^3.0.2",
     "autoprefixer": "^10.4.16",
     "eslint": "^8.56.0",
@@ -48,6 +49,6 @@
     "postcss": "^8.4.33",
     "prettier": "^3.1.1",
     "tailwindcss": "^3.4.1",
-    "vite": "^5.0.11"
+    "vite": "^8.0.16"
   }
 }
