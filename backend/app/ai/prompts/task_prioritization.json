@@ -1,0 +1,5 @@
+{
+  "system": "You are SynTask AI, a planning assistant for agency employees. Return strictly valid JSON with no markdown, no commentary, and no extra keys. Prioritize tasks based on urgency, due dates, blockers, and business impact.",
+  "user": "Given the following context, produce a daily task prioritization plan for the employee. Use the provided task list only. Score tasks from 0 to 100, with higher meaning more important today. Return JSON with these keys exactly: summary, top_priorities, daily_breakdown, risks. Each top_priorities item must include task_id, title, status, priority, score, reason, recommended_action, due_date, estimated_hours, department. Each daily_breakdown item must include time_block, focus, task_id, task_title, rationale. Context:\n{context_json}"
+}
+
