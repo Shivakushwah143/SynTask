@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Trash2, MessageSquare, Paperclip, Send, User, Plus, List, Edit, Save, Eye, Link2, History, Tag, Package, Calendar } from 'lucide-react'
+import { X, Trash2, Paperclip, Send, User, Plus, List, Edit, Save, Eye, Link2, History } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { filesAPI } from '../api/files'
 import { usersAPI } from '../api/users'
@@ -10,6 +10,7 @@ import { issueTypesApi } from '../api/issueTypes'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
 import { useAuthStore } from '../store/authStore'
+import { hasCompanyAdminAccess, isLeadRole, getRoleLabel } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -83,11 +84,11 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
         const fallbackData = await usersAPI.listUsers(user.company_id)
         let fallbackUsers = fallbackData.users || []
         // Filter based on role
-        if (user.role === 'company_admin') {
+        if (hasCompanyAdminAccess(user.role)) {
           fallbackUsers = fallbackUsers.filter(u => 
             u.role === 'lead' || u.role === 'employee'
           )
-        } else if (user.role === 'lead') {
+        } else if (isLeadRole(user.role)) {
           fallbackUsers = fallbackUsers.filter(u => u.role === 'employee')
         }
         setUsers(fallbackUsers)
@@ -414,7 +415,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                     <option value="">Unassigned</option>
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.first_name} {u.last_name} ({u.role === 'lead' ? 'Lead' : 'Employee'})
+                        {u.first_name} {u.last_name} ({getRoleLabel(u.role)})
                       </option>
                     ))}
                   </select>
@@ -551,10 +552,10 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                   <option value="">Unassigned</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.first_name} {u.last_name} ({u.role === 'lead' ? 'Lead' : 'Employee'})
-                    </option>
-                  ))}
-                </select>
+                        {u.first_name} {u.last_name} ({getRoleLabel(u.role)})
+                      </option>
+                    ))}
+                  </select>
                 {task.assigned_to && (() => {
                   const assignedUser = users.find(u => u.id === task.assigned_to)
                   return assignedUser ? (
@@ -943,4 +944,3 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
 }
 
 export default TaskDetailModal
-

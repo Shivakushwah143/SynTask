@@ -6,17 +6,16 @@ import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { Button, ConfirmDialog, EmptyState, FormField, Modal, Table, inputClassName } from '../components/ui'
+import { hasCompanyAdminAccess, getRoleLabel } from '../utils/roles'
 
 const emptyForm = {
   name: '',
   manager_id: '',
 }
 
-const isCompanyAdminRole = (role) => role === 'admin' || role === 'company_admin'
-
 const Departments = () => {
   const { user } = useAuthStore()
-  const canManageDepartments = isCompanyAdminRole(user?.role)
+  const canManageDepartments = hasCompanyAdminAccess(user?.role)
   const [departments, setDepartments] = useState([])
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -277,7 +276,7 @@ const Departments = () => {
               <option value="">No manager</option>
               {managerOptions.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.first_name} {item.last_name} ({item.role?.replace('_', ' ')})
+                  {item.first_name} {item.last_name} ({getRoleLabel(item.role)})
                 </option>
               ))}
             </select>

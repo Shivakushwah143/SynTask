@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 def _is_company_admin(user: User) -> bool:
-    return user.role == UserRole.ADMIN or user.role.value == "company_admin"
+    return user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
 
 
 async def _require_company_admin_only(current_user: User = Depends(get_current_user)) -> User:

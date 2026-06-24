@@ -5,6 +5,7 @@ import { useTheme } from './hooks/useTheme'
 import { PageLoader } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Agentation } from "agentation";
+import { isSuperAdminRole } from './utils/roles'
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
@@ -60,8 +61,6 @@ const TenantDetail = lazy(() => import('./pages/superadmin/TenantDetail'))
 const SubscriptionPlans = lazy(() => import('./pages/superadmin/SubscriptionPlans'))
 const UsageAnalytics = lazy(() => import('./pages/superadmin/UsageAnalytics'))
 const BillingRevenue = lazy(() => import('./pages/superadmin/BillingRevenue'))
-
-const isSuperAdminRole = (role) => ['super_admin', 'SuperAdmin'].includes(role)
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuthStore()

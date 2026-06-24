@@ -8,11 +8,13 @@ import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { EmptyState, SkeletonKanban } from '../components/ui'
+import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 
 const Tasks = () => {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const canManageTasks = ['company_admin', 'lead'].includes(user?.role)
+  const userRole = normalizeRole(user?.role)
+  const canManageTasks = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -44,7 +46,7 @@ const Tasks = () => {
     critical: { label: 'Critical', color: 'badge-danger' },
   }
 
-  const isCompanyAdmin = ['company_admin', 'admin'].includes(user?.role)
+  const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
 
   // Fetch tasks
   const loadAssignableUsers = useCallback(async () => {
@@ -423,7 +425,7 @@ const Tasks = () => {
                 )}
                 {!loadingUsers && visibleAssignableUsers.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">
-                    {user.role === 'company_admin' 
+                    {userRole === ROLE.ADMIN 
                       ? 'No leads or employees available. Create users first.'
                       : 'No employees available. Create employees first.'}
                   </p>

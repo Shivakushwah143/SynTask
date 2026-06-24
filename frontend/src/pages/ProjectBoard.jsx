@@ -14,6 +14,7 @@ import { format } from 'date-fns'
 import PageEditor from '../components/PageEditor'
 import { EmptyState, SkeletonCard, SkeletonKanban } from '../components/ui'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { hasCompanyAdminAccess, isLeadRole, getRoleLabel } from '../utils/roles'
 
 const MobileTaskList = ({ statuses, filteredTasks, priorities, onTaskClick, onStatusChange, onCreateTask }) => (
   <div className="space-y-4 md:hidden">
@@ -66,7 +67,7 @@ const ProjectBoard = () => {
   const { projectId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const canManageColumns = ['company_admin', 'super_admin', 'lead'].includes(user?.role)
+  const canManageColumns = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role)
   const apiBaseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace(/\/api\/v1$/, '')
   const isMobile = useMediaQuery('(max-width: 767px)')
   const [boardData, setBoardData] = useState(null)
@@ -1172,7 +1173,7 @@ const ProjectBoard = () => {
                           {file.type?.toUpperCase() || 'FILE'} • {(file.size / 1024).toFixed(1)} KB • Uploaded by {file.uploaded_by_name || 'Unknown'}
                         </div>
                       </div>
-                      {['company_admin', 'super_admin', 'lead'].includes(user?.role) && (
+                      {(hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role)) && (
                         <button
                           onClick={() => handleDeleteProjectFile(file.id)}
                           className="text-red-600 hover:text-red-700 p-1"
@@ -1379,7 +1380,7 @@ const ProjectBoard = () => {
                     <option value="">Unassigned</option>
                     {assignableUsers.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.first_name} {u.last_name} {u.role === 'employee' ? '(Employee)' : u.role === 'lead' ? '(Lead)' : ''}
+                        {u.first_name} {u.last_name} {getRoleLabel(u.role) ? `(${getRoleLabel(u.role)})` : ''}
                       </option>
                     ))}
                   </select>

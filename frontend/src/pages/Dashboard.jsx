@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import toast from 'react-hot-toast'
 import { SkeletonCard, SkeletonTable } from '../components/ui'
+import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 
 // ---- design tokens -------------------------------------------------------
 // Accent colors stay constant across themes (they're tinted badges, not
@@ -162,7 +163,8 @@ const Dashboard = () => {
       setRecentTasks(tasksData.tasks || [])
 
       // Employees should also see recently assigned/created requests on the dashboard.
-      if (statsData.role === 'employee') {
+      const dashboardRole = normalizeRole(statsData.role)
+      if (dashboardRole === ROLE.EMPLOYEE) {
         const ticketsData = await ticketsAPI.listTickets({ limit: 8 })
         setRecentTickets(ticketsData.tickets || [])
       } else {
@@ -170,7 +172,7 @@ const Dashboard = () => {
       }
 
       // Fetch chart data (Company Admin and above)
-      if (statsData.role === 'company_admin' || statsData.role === 'super_admin') {
+      if (hasCompanyAdminAccess(dashboardRole)) {
         try {
           const charts = await reportsAPI.getAnalyticsCharts('month')
           setChartData(charts)
@@ -220,7 +222,9 @@ const Dashboard = () => {
 
   // Role-specific stats cards (label, value, subtitle, icon, accent color)
   const getStatsCards = () => {
-    if (stats.role === 'super_admin') {
+    const dashboardRole = normalizeRole(stats.role)
+
+    if (dashboardRole === ROLE.SUPER_ADMIN) {
       return [
         {
           name: 'Total Companies',
@@ -251,7 +255,7 @@ const Dashboard = () => {
           accent: 'purple',
         },
       ]
-    } else if (stats.role === 'company_admin') {
+    } else if (hasCompanyAdminAccess(dashboardRole)) {
       return [
         {
           name: 'Total Tasks',
@@ -282,7 +286,7 @@ const Dashboard = () => {
           accent: 'purple',
         },
       ]
-    } else if (stats.role === 'lead') {
+    } else if (dashboardRole === ROLE.LEAD) {
       return [
         {
           name: 'My Tasks',
@@ -485,7 +489,7 @@ const Dashboard = () => {
       </div>
 
       {/* Export Reports Section */}
-      {(stats.role === 'company_admin' || stats.role === 'super_admin') && (
+      {hasCompanyAdminAccess(stats.role) && (
         <div className={`${card} p-5 sm:p-6`}>
           <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Export reports</h3>
           <p className="text-sm text-slate-500 dark:text-gray-400 mb-4">
@@ -507,37 +511,37 @@ const Dashboard = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              {stats?.role === 'employee' ? 'Recent Requests' : 'Recent Tasks'}
+              {normalizeRole(stats?.role) === ROLE.EMPLOYEE ? 'Recent Requests' : 'Recent Tasks'}
             </h3>
             <p className="text-sm text-slate-500 dark:text-gray-500">
-              {stats?.role === 'employee'
+              {normalizeRole(stats?.role) === ROLE.EMPLOYEE
                 ? 'Latest requests assigned to or created by you'
                 : 'Latest work moving across your board'}
             </p>
           </div>
           <button
-            onClick={() => navigate(stats?.role === 'employee' ? '/tickets' : '/tasks')}
+            onClick={() => navigate(normalizeRole(stats?.role) === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}
             className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-500 dark:hover:text-blue-400"
           >
             View All
           </button>
         </div>
         <div className="space-y-2.5">
-          {(stats?.role === 'employee' ? recentTickets : recentTasks).length === 0 ? (
+          {(normalizeRole(stats?.role) === ROLE.EMPLOYEE ? recentTickets : recentTasks).length === 0 ? (
             <p className="text-slate-500 dark:text-gray-500 text-sm text-center py-6">
-              {stats?.role === 'employee' ? 'No recent requests' : 'No recent tasks'}
+              {normalizeRole(stats?.role) === ROLE.EMPLOYEE ? 'No recent requests' : 'No recent tasks'}
             </p>
           ) : (
-            (stats?.role === 'employee' ? recentTickets : recentTasks).map((item) => (
+            (normalizeRole(stats?.role) === ROLE.EMPLOYEE ? recentTickets : recentTasks).map((item) => (
               <div
                 key={item.id}
-                onClick={() => navigate(stats?.role === 'employee' ? '/tickets' : '/tasks')}
+                onClick={() => navigate(normalizeRole(stats?.role) === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}
                 className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3.5 cursor-pointer hover:bg-slate-100 transition-colors dark:border-white/[0.04] dark:bg-white/[0.02] dark:hover:bg-white/[0.05]"
               >
                 <div>
                   <p className="text-sm font-medium text-slate-900 dark:text-white">{item.title}</p>
                   <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-500">
-                    {stats?.role === 'employee'
+                    {normalizeRole(stats?.role) === ROLE.EMPLOYEE
                       ? (item.created_at ? `Created: ${new Date(item.created_at).toLocaleDateString()}` : 'No date')
                       : (item.due_date ? `Due: ${new Date(item.due_date).toLocaleDateString()}` : 'No due date')}
                   </p>

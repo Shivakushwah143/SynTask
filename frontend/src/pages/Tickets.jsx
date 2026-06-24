@@ -24,6 +24,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { ROLE, normalizeRole } from '../utils/roles'
 
 // Sortable Ticket Card Component
 const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
@@ -182,6 +183,7 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
 
 const Tickets = () => {
   const { user } = useAuthStore()
+  const userRole = normalizeRole(user?.role)
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -243,7 +245,7 @@ const Tickets = () => {
   }, [statuses])
 
   // Column management states
-  const canManageColumns = ['company_admin', 'super_admin', 'lead'].includes(user?.role)
+  const canManageColumns = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [showColumnModal, setShowColumnModal] = useState(false)
   const [editingColumn, setEditingColumn] = useState(null)
   const [columnForm, setColumnForm] = useState({ label: '', color: 'badge-secondary' })
@@ -264,10 +266,10 @@ const Tickets = () => {
 
   // Fetch team members for Leads
   useEffect(() => {
-    if (user?.role === 'lead') {
+    if (userRole === ROLE.LEAD) {
       fetchTeamMembers()
     }
-  }, [user])
+  }, [userRole])
 
   const fetchTeamMembers = async () => {
     try {
@@ -729,9 +731,9 @@ const Tickets = () => {
                     })}
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    {user?.role === 'employee'
+                    {userRole === ROLE.EMPLOYEE
                       ? 'Assign this request to a Lead or Admin'
-                      : user?.role === 'lead'
+                      : userRole === ROLE.LEAD
                         ? 'Assign this request to anyone in the company'
                         : 'Assign this request to a team member'}
                   </p>
@@ -770,7 +772,7 @@ const Tickets = () => {
           }}
           onStatusChange={handleStatusChange}
           onAssign={handleAssignTicket}
-          teamMembers={user?.role === 'lead' ? teamMembers : null}
+          teamMembers={userRole === ROLE.LEAD ? teamMembers : null}
         />
       )}
 

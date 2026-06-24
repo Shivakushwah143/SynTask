@@ -3,6 +3,7 @@ import { Plus, RefreshCw, X } from 'lucide-react'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
+import { hasCompanyAdminAccess, isLeadRole, normalizeRole, getRoleLabel } from '../utils/roles'
 import toast from 'react-hot-toast'
 
 const Users = () => {
@@ -18,8 +19,8 @@ const Users = () => {
   const [departments, setDepartments] = useState([])
   
   // Check if current user is a Lead
-  const isLead = user?.role === 'lead'
-  const isCompanyAdmin = user?.role === 'company_admin' || user?.role === 'admin'
+  const isLead = isLeadRole(user?.role)
+  const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
 
   // Fetch users
   const fetchUsers = useCallback(async () => {
@@ -210,7 +211,7 @@ const Users = () => {
   // Handle edit
   const handleEdit = (userToEdit) => {
     setEditingUser(userToEdit)
-    setUserType(userToEdit.role === 'lead' ? 'lead' : 'employee')
+        setUserType(normalizeRole(userToEdit.role) === 'lead' ? 'lead' : 'employee')
     setShowAddModal(true)
   }
 
@@ -410,7 +411,7 @@ const Users = () => {
                       {user.email}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
-                      {user.role?.replace('_', ' ') || 'N/A'}
+                    {getRoleLabel(user.role) || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {user.department || 'N/A'}

@@ -120,10 +120,7 @@ async def list_users(
         total = await User.find(query).count()
     else:
         # Admin: See all users in their company
-        is_admin = (
-            current_user.role == UserRole.ADMIN or 
-            current_user.role.value == "company_admin"
-        )
+        is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
         
         if is_admin:
             query = {"company_id": current_user.company_id}
@@ -240,10 +237,7 @@ async def get_assignable_users(
     users = []
 
     # Special case: Admin filtering by project - return only that project's lead and their employees
-    is_admin = (
-        current_user.role == UserRole.ADMIN or 
-        current_user.role.value == "company_admin"
-    )
+    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
     if project_id and (is_admin or current_user.role == UserRole.SUPER_ADMIN):
         project = await Project.get(project_id)
         if not project or project.company_id != current_user.company_id:
@@ -302,10 +296,7 @@ async def get_assignable_users(
         # If no lead assigned or lead not found, fall back to default admin behaviour below
 
     # Admin or Super Admin
-    is_admin = (
-        current_user.role == UserRole.ADMIN or 
-        current_user.role.value == "company_admin"
-    )
+    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
     if is_admin or current_user.role == UserRole.SUPER_ADMIN:
         # Admin can assign to Leads and Employees
         leads = await Lead.find({
@@ -639,10 +630,7 @@ async def create_employee(
         final_lead_id = str(current_user.id)
     
     # Validate lead_id if provided (for Company Admin)
-    is_admin = (
-        current_user.role == UserRole.ADMIN or 
-        current_user.role.value == "company_admin"
-    )
+    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
     if final_lead_id and is_admin:
         lead = await User.get(final_lead_id)
         if not lead or lead.role != UserRole.LEAD or lead.company_id != current_user.company_id:
@@ -758,10 +746,7 @@ async def delete_user(
     # Team Leader (Lead) restrictions
     if current_user.role == UserRole.LEAD:
         # Cannot delete admins
-        is_user_admin = (
-            user.role == UserRole.ADMIN or 
-            user.role.value == "company_admin"
-        )
+        is_user_admin = user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
         if is_user_admin or user.role == UserRole.SUPER_ADMIN:
             raise HTTPException(
                 status_code=http_status.HTTP_403_FORBIDDEN,

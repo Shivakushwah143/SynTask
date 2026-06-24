@@ -1,26 +1,21 @@
-import { useState, useEffect, useRef } from 'react'
-import { FileText, Plus, Edit, Trash2, X, Mail, Calendar, Search, Eye, Send, Upload, CheckCircle, Clock, XCircle, Download, Filter, Bookmark } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { FileText, Plus, X, Search, Send, CheckCircle, Clock, Download, Filter, Bookmark } from 'lucide-react'
 import { msaAPI } from '../api/msa'
-import { clientsAPI } from '../api/clients'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import SignatureCanvas from '../components/SignatureCanvas'
-import api from '../api/axios'
+import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 
 const MSA = () => {
   const { user } = useAuthStore()
   const [msas, setMsas] = useState([])
   const [loading, setLoading] = useState(true)
-  const [clients, setClients] = useState([])
   const [activeTab, setActiveTab] = useState('client') // 'client' or 'candidate'
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showSendModal, setShowSendModal] = useState(false)
   const [showTemplateModal, setShowTemplateModal] = useState(false)
-  const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedMSA, setSelectedMSA] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
 
   const [createFormData, setCreateFormData] = useState({
     client_name: '',
@@ -55,20 +50,18 @@ const MSA = () => {
   const [sending, setSending] = useState(false)
   const [templates, setTemplates] = useState([])
 
-  const isCompanyAdmin = user?.role === 'company_admin'
-  const isLead = user?.role === 'lead'
+  const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
+  const isLead = isLeadRole(user?.role)
 
   useEffect(() => {
     loadMSAs()
-    loadClients()
     loadTemplates()
-  }, [activeTab, statusFilter])
+  }, [activeTab])
 
   const loadMSAs = async () => {
     try {
       setLoading(true)
       const params = { msa_type: activeTab }
-      if (statusFilter) params.status_filter = statusFilter
       const data = await msaAPI.listMSAs(params)
       setMsas(data.msas || [])
     } catch (error) {
@@ -77,15 +70,6 @@ const MSA = () => {
       setMsas([])
     } finally {
       setLoading(false)
-    }
-  }
-
-  const loadClients = async () => {
-    try {
-      const data = await clientsAPI.listClients({})
-      setClients(data.clients || [])
-    } catch (error) {
-      console.error('Error loading clients:', error)
     }
   }
 
@@ -136,7 +120,7 @@ const MSA = () => {
       // Add send flag
       formDataToSend.append('send_immediately', sendImmediately ? 'true' : 'false')
 
-      const response = await msaAPI.createMSA(formDataToSend)
+      await msaAPI.createMSA(formDataToSend)
       toast.success(sendImmediately ? 'MSA created and sent successfully' : 'MSA saved as draft')
       setShowCreateModal(false)
       setCreateFormData({
@@ -249,30 +233,6 @@ const MSA = () => {
     } catch (error) {
       console.error('Error saving template:', error)
       toast.error('Failed to save as template')
-    }
-  }
-
-  const handleDeleteMSA = async (msaId) => {
-    if (!window.confirm('Are you sure you want to delete this MSA?')) return
-
-    try {
-      await msaAPI.deleteMSA(msaId)
-      toast.success('MSA deleted successfully')
-      loadMSAs()
-    } catch (error) {
-      console.error('Error deleting MSA:', error)
-      toast.error(error.response?.data?.detail || 'Failed to delete MSA')
-    }
-  }
-
-  const handleViewMSA = async (msa) => {
-    try {
-      const data = await msaAPI.getMSA(msa.id)
-      setSelectedMSA(data)
-      setShowDetailModal(true)
-    } catch (error) {
-      console.error('Error loading MSA details:', error)
-      toast.error('Failed to load MSA details')
     }
   }
 

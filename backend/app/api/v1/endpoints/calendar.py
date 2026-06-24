@@ -50,10 +50,7 @@ async def get_calendar_events(
         elif view_type == "team_calendar":
             # Check if user has permission for team calendar
             # Check access - Admin, Manager, Lead can view team calendar
-            is_admin = (
-                current_user.role == UserRole.ADMIN or 
-                current_user.role.value == "company_admin"
-            )
+            is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
             
             if not is_admin and current_user.role not in [UserRole.MANAGER, UserRole.LEAD]:
                 raise HTTPException(
@@ -242,4 +239,3 @@ async def get_calendar_events(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching calendar events: {str(e)}"
         )
-
