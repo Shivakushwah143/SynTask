@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PencilLine, Plus, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { departmentsAPI } from '../api/departments'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
@@ -15,6 +16,7 @@ const emptyForm = {
 
 const Departments = () => {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const canManageDepartments = hasCompanyAdminAccess(user?.role)
   const [departments, setDepartments] = useState([])
   const [users, setUsers] = useState([])
@@ -33,6 +35,7 @@ const Departments = () => {
     () => users.filter((item) => item.status === 'active'),
     [users],
   )
+  const noActiveUsersAvailable = !loadingUsers && managerOptions.length === 0
 
   const loadDepartments = async () => {
     try {
@@ -281,6 +284,23 @@ const Departments = () => {
               ))}
             </select>
           </FormField>
+
+          {noActiveUsersAvailable ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="font-medium">No active users available yet.</p>
+              <p className="mt-1">
+                Create a user from the Users page first, then come back to assign the department.
+              </p>
+              <Button
+                variant="secondary"
+                type="button"
+                className="mt-3"
+                onClick={() => navigate('/users')}
+              >
+                Go to Users
+              </Button>
+            </div>
+          ) : null}
 
           {formError && formError.toLowerCase().includes('manager') ? (
             <p className="text-sm text-red-600" role="alert">

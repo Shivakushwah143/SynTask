@@ -54,6 +54,23 @@ export const usersAPI = {
     return response.data
   },
 
+  // Create User with hierarchical role support
+  createUser: async (userData) => {
+    const formData = new URLSearchParams()
+    Object.keys(userData).forEach(key => {
+      if (userData[key]) {
+        formData.append(key, userData[key])
+      }
+    })
+
+    const response = await api.post('/users/create-user', formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    })
+    return response.data
+  },
+
   // Update user status
   updateUserStatus: async (userId, newStatus) => {
     const response = await api.patch(`/users/${userId}/status`, {
@@ -99,4 +116,3 @@ export const usersAPI = {
     return response.data
   },
 }
-
