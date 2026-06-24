@@ -14,12 +14,14 @@ import {
   FolderKanban,
   Ticket,
   MessageCircle,
+  Bot,
   Briefcase,
   FileText,
   X,
   DollarSign,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 
@@ -107,6 +109,20 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
+      name: "AI Copilot",
+      href: "/ai-prioritization",
+      icon: Sparkles,
+      roles: ["company_admin", "lead", "employee", "manager"],
+      module: "task",
+    },
+    {
+      name: "AI Assistant",
+      href: "/ai-assistant",
+      icon: Bot,
+      roles: ["company_admin", "lead", "employee", "manager"],
+      module: "task",
+    },
+    {
       name: "Sales",
       href: "/sales",
       icon: TrendingUp,
@@ -146,6 +162,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/users",
       icon: Users,
       roles: ["company_admin", "super_admin"],
+    },
+    {
+      name: "Departments",
+      href: "/departments",
+      icon: Building2,
+      roles: ["company_admin"],
     },
     {
       name: "My Team",

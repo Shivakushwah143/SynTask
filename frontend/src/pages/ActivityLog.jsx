@@ -18,6 +18,7 @@ const ActivityLog = () => {
   useEffect(() => {
     fetchActivities()
   }, [filters])
+  
 
   const fetchActivities = async () => {
     try {

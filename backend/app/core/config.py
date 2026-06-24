@@ -111,7 +111,17 @@ class Settings(BaseSettings):
     
     # Logging
     LOG_LEVEL: str = "INFO"
-    
+
+    # AI pipeline
+    AI_PROVIDER: str = "groq"  # groq, openai
+    GROQ_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    AI_TIMEOUT: int = 30
+    AI_MAX_TOKENS: int = 500
+    AI_TEMPERATURE: float = 0.2
+    AI_MODEL_GROQ: str = "llama-3.1-70b-versatile"
+    AI_MODEL_OPENAI: str = "gpt-4o-mini"
+
     # Super Admin
     SUPER_ADMIN_EMAIL: str = Field(..., description="Super admin bootstrap email address.")
     SUPER_ADMIN_PASSWORD: str = Field(..., description="Super admin bootstrap password. Minimum 16 characters.")
@@ -160,4 +170,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-

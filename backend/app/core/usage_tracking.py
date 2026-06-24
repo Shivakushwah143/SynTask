@@ -6,6 +6,8 @@ from typing import Callable
 from datetime import datetime
 import logging
 
+from beanie.odm.operators.find.comparison import In
+
 from app.models.user import User
 from app.models.company_subscription import CompanySubscription
 from app.models.subscription_plan import SubscriptionPlan
@@ -30,7 +32,7 @@ async def track_usage_and_enforce_limits(
         # Get subscription
         subscription = await CompanySubscription.find_one(
             CompanySubscription.company_id == company_id,
-            CompanySubscription.status.in_(["active", "trial", "grace_period"])
+            In(CompanySubscription.status, ["active", "trial", "grace_period"])
         )
         
         if not subscription:
@@ -214,4 +216,3 @@ async def update_usage_counts(company_id: str):
     except Exception as e:
         logger.error(f"Error updating usage counts: {str(e)}")
         return None
-
