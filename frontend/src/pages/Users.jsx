@@ -163,7 +163,11 @@ const Users = () => {
         userData.department = formData.get('department')?.trim() || ''
       }
 
-      if (userType === 'lead') {
+      if (userType === 'manager') {
+        userData.role = 'manager'
+        userData.reports_to = String(user.id)
+        await usersAPI.createUser(userData)
+      } else if (userType === 'lead') {
         userData.team_name = formData.get('team_name') || ''
         await usersAPI.createLead(userData)
       } else {
@@ -176,7 +180,7 @@ const Users = () => {
         await usersAPI.createEmployee(userData)
       }
       
-      toast.success(`✅ ${userType === 'lead' ? 'Lead' : 'Employee'} created successfully!`)
+      toast.success(`✅ ${userType === 'manager' ? 'Manager' : userType === 'lead' ? 'Lead' : 'Employee'} created successfully!`)
       setShowAddModal(false)
       setFormErrors({})
       await fetchUsers()
@@ -211,7 +215,8 @@ const Users = () => {
   // Handle edit
   const handleEdit = (userToEdit) => {
     setEditingUser(userToEdit)
-        setUserType(normalizeRole(userToEdit.role) === 'lead' ? 'lead' : 'employee')
+    const normalizedRole = normalizeRole(userToEdit.role)
+    setUserType(normalizedRole === 'manager' ? 'manager' : normalizedRole === 'lead' ? 'lead' : 'employee')
     setShowAddModal(true)
   }
 
@@ -466,6 +471,17 @@ const Users = () => {
                 <div className="flex space-x-4">
                   <button
                     type="button"
+                    onClick={() => setUserType('manager')}
+                    className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors ${
+                      userType === 'manager'
+                        ? 'border-primary-600 bg-primary-50 text-primary-700'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-primary-300'
+                    }`}
+                  >
+                    Manager
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setUserType('lead')}
                     className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors ${
                       userType === 'lead'
@@ -715,7 +731,7 @@ const Users = () => {
                     ? (editingUser ? 'Updating...' : 'Creating...') 
                     : editingUser 
                       ? 'Update User' 
-                      : `Create ${userType === 'lead' ? 'Lead' : 'Employee'}`}
+                      : `Create ${userType === 'manager' ? 'Manager' : userType === 'lead' ? 'Lead' : 'Employee'}`}
                 </button>
                 <button
                   type="button"
