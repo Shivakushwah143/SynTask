@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Plus, RefreshCw, X } from 'lucide-react'
 import { usersAPI } from '../api/users'
+import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 
@@ -14,13 +15,14 @@ const Users = () => {
   const [userType, setUserType] = useState('employee') // 'lead' or 'employee'
   const [submitting, setSubmitting] = useState(false)
   const [formErrors, setFormErrors] = useState({})
+  const [departments, setDepartments] = useState([])
   
   // Check if current user is a Lead
   const isLead = user?.role === 'lead'
-  const isCompanyAdmin = user?.role === 'company_admin'
+  const isCompanyAdmin = user?.role === 'company_admin' || user?.role === 'admin'
 
   // Fetch users
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -42,14 +44,28 @@ const Users = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  const fetchDepartments = useCallback(async () => {
+    if (!isCompanyAdmin) return
+    try {
+      const data = await departmentsAPI.listDepartments()
+      setDepartments(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('Error loading departments:', error)
+      setDepartments([])
+    }
+  }, [isCompanyAdmin])
 
   useEffect(() => {
     fetchUsers()
-  }, [])
+    if (isCompanyAdmin) {
+      fetchDepartments()
+    }
+  }, [fetchUsers, fetchDepartments, isCompanyAdmin])
 
   // Validate form data
-  const validateForm = (formData, userType) => {
+  const validateForm = (formData) => {
     const errors = {}
     
     // First name validation
@@ -73,7 +89,7 @@ const Users = () => {
     if (!email) {
       errors.email = 'Email is required'
     } else {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      const emailRegex = /^[^\s@]+@[^\s@]+[.][^\s@]+$/
       if (!emailRegex.test(email)) {
         errors.email = 'Please enter a valid email address'
       }
@@ -94,7 +110,7 @@ const Users = () => {
     // Phone validation (optional but must be valid if provided)
     const phone = formData.get('phone')?.trim()
     if (phone) {
-      const phoneRegex = /^[\+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,9}$/
+      const phoneRegex = /^\+?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/
       if (!phoneRegex.test(phone)) {
         errors.phone = 'Please enter a valid phone number'
       }
@@ -117,7 +133,7 @@ const Users = () => {
     const formData = new FormData(e.target)
     
     // Validate form
-    const errors = validateForm(formData, userType)
+    const errors = validateForm(formData)
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
       return
@@ -135,7 +151,15 @@ const Users = () => {
         first_name: formData.get('first_name')?.trim(),
         last_name: formData.get('last_name')?.trim(),
         phone: formData.get('phone')?.trim() || '',
-        department: formData.get('department')?.trim() || '',
+      }
+
+      if (isCompanyAdmin) {
+        const departmentId = formData.get('department_id')?.trim() || ''
+        const selectedDepartment = departments.find((department) => department.id === departmentId)
+        userData.department_id = departmentId
+        userData.department = selectedDepartment?.name || ''
+      } else {
+        userData.department = formData.get('department')?.trim() || ''
       }
 
       if (userType === 'lead') {
@@ -201,7 +225,19 @@ const Users = () => {
       last_name: formData.get('last_name'),
       email: formData.get('email'),
       phone: formData.get('phone') || '',
-      department: formData.get('department') || '',
+    }
+
+    if (isCompanyAdmin) {
+      const departmentId = formData.get('department_id')?.trim() || ''
+      const selectedDepartment = departments.find((department) => department.id === departmentId)
+      if (departmentId) {
+        updateData.department_id = departmentId
+      }
+      if (selectedDepartment) {
+        updateData.department = selectedDepartment.name
+      }
+    } else {
+      updateData.department = formData.get('department') || ''
     }
 
     // Add role-specific fields
@@ -336,6 +372,9 @@ const Users = () => {
                   Role
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Department
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -346,8 +385,8 @@ const Users = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
-                    No users found. Click "Add User" to create your first team member.
+                  <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                    No users found. Click {'"Add User"'} to create your first team member.
                   </td>
                 </tr>
               ) : (
@@ -372,6 +411,9 @@ const Users = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
                       {user.role?.replace('_', ' ') || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {user.department || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
@@ -571,19 +613,39 @@ const Users = () => {
                   <p className="text-red-500 text-xs mt-1">{formErrors.phone}</p>
                 )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Department
-                </label>
-                <input
-                  type="text"
-                  name="department"
-                  autoComplete="off"
-                  defaultValue={editingUser?.department || ''}
-                  className="input"
-                  placeholder="Enter department name"
-                />
-              </div>
+              {isCompanyAdmin ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <select
+                    name="department_id"
+                    defaultValue={editingUser?.department_id || ''}
+                    className="input"
+                  >
+                    <option value="">No department</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <input
+                    type="text"
+                    name="department"
+                    autoComplete="off"
+                    defaultValue={editingUser?.department || ''}
+                    className="input"
+                    placeholder="Enter department name"
+                  />
+                </div>
+              )}
 
               {/* Lead-specific fields */}
               {userType === 'lead' && (

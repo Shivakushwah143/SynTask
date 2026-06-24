@@ -25,6 +25,8 @@ from app.models.changelog import ChangeLog
 from app.models.chat import Conversation, ChatMessage, MessageType
 from app.models.page import Page, PageStatus
 from app.models.client import Client, ClientStatus
+from app.models.department import Department
+from app.models.ai_log import AIInteractionLog
 from app.models.invoice import Invoice, InvoiceType, InvoiceStatus
 from app.models.msa import MSA, MSAStatus
 from app.models.meeting import Meeting, MeetingStatus
@@ -79,6 +81,10 @@ __all__ = [
     "Page", "PageStatus",
     # Client models
     "Client", "ClientStatus",
+    # Department models
+    "Department",
+    # AI models
+    "AIInteractionLog",
     # Invoice models
     "Invoice", "InvoiceType", "InvoiceStatus",
     # MSA models
@@ -88,4 +94,3 @@ __all__ = [
     # Timesheet models
     "TimesheetEntry", "TimesheetSummary", "TimesheetStatus",
 ]
-

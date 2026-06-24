@@ -47,6 +47,7 @@ class User(Document):
     phone: Optional[str] = None
     avatar: Optional[str] = None
     company_id: Optional[str] = None  # For company users
+    department_id: Optional[str] = None  # Company Department document ID
     
     # Hierarchical Reporting Structure
     reports_to: Optional[str] = None  # User ID of the person this user reports to
@@ -226,5 +227,5 @@ class Employee(User):
     ]
     lead_id: Optional[str] = None  # Legacy field - use reports_to instead
     department: Optional[str] = None
+    department_id: Optional[str] = None
     designation: Optional[str] = None
-

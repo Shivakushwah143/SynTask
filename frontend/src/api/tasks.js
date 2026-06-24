@@ -8,6 +8,7 @@ export const tasksAPI = {
     if (filters.priority) params.append('priority', filters.priority)
     if (filters.assigned_to) params.append('assigned_to', filters.assigned_to)
     if (filters.created_by) params.append('created_by', filters.created_by)
+    if (filters.department_id) params.append('department_id', filters.department_id)
     if (filters.skip) params.append('skip', filters.skip)
     if (filters.limit) params.append('limit', filters.limit)
     
@@ -112,4 +113,3 @@ export const tasksAPI = {
     return response.data
   },
 }
-

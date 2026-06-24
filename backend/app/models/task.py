@@ -36,6 +36,8 @@ class Task(Document):
     created_by: str  # User ID
     assigned_to: Optional[str] = None  # User ID
     assigned_by: Optional[str] = None  # User ID
+    department_id: Optional[str] = None  # Department document ID
+    department: Optional[str] = None  # Legacy department name fallback
     
     # Task Details
     status: TaskStatus = TaskStatus.TODO
@@ -134,4 +136,3 @@ class TaskComment(Document):
             "company_id",
             IndexModel([("task_id", ASCENDING), ("company_id", ASCENDING), ("created_at", ASCENDING)]),
         ]
-

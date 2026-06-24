@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.models.user import User, UserRole, UserStatus, Admin, Manager, Lead, Employee, CompanyAdmin
 from app.models.project import Project
+from app.models.department import Department
 from app.core.security import get_password_hash
 from app.core.hierarchy import (
     validate_hierarchy_creation,
@@ -21,6 +22,23 @@ from app.api.dependencies import (
 )
 
 router = APIRouter()
+
+
+async def _resolve_department(company_id: Optional[str], department_id: Optional[str]):
+    if not department_id:
+        return None
+
+    department = await Department.get(department_id)
+    if (
+        not department
+        or department.deleted_at is not None
+        or (company_id is not None and department.company_id != company_id)
+    ):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Invalid department",
+        )
+    return department
 
 # ==================== NEW HIERARCHICAL RBAC ENDPOINTS ====================
 # CRITICAL: These MUST be defined FIRST in the router before any /{param} routes
@@ -195,6 +213,8 @@ async def list_users(
                 "status": user.status.value,
                 "company_id": user.company_id,
                 "reports_to": user.reports_to,
+                "department_id": getattr(user, "department_id", None),
+                "department": getattr(user, "department", None),
                 "modules": getattr(user, "modules", []),
                 "active_module": getattr(user, "active_module", None),
                 "created_at": user.created_at,
@@ -273,6 +293,8 @@ async def get_assignable_users(
                             "last_name": user.last_name,
                             "role": user.role.value,
                             "status": user.status.value,
+                            "department_id": getattr(user, "department_id", None),
+                            "department": getattr(user, "department", None),
                         }
                         for user in users
                     ]
@@ -364,6 +386,8 @@ async def get_assignable_users(
                 "last_name": user.last_name,
                 "role": user.role.value,
                 "status": user.status.value,
+                "department_id": getattr(user, "department_id", None),
+                "department": getattr(user, "department", None),
             }
             for user in users
         ]
@@ -440,6 +464,7 @@ async def get_my_team(
             "role": employee.role.value,
             "status": employee.status.value,
             "department": employee.department,
+            "department_id": getattr(employee, "department_id", None),
             "designation": employee.designation,
             "phone": employee.phone,
             "created_at": employee.created_at,
@@ -515,6 +540,8 @@ async def get_user(
         "company_id": user.company_id,
         "phone": user.phone,
         "avatar": user.avatar,
+        "department": getattr(user, "department", None),
+        "department_id": getattr(user, "department_id", None),
         "created_at": user.created_at,
         "last_login": user.last_login,
     }
@@ -528,6 +555,7 @@ async def create_lead(
     last_name: str = Form(...),
     team_name: Optional[str] = Form(None),
     department: Optional[str] = Form(None),
+    department_id: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin)
 ):
@@ -539,6 +567,8 @@ async def create_lead(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
+
+    department_doc = await _resolve_department(current_user.company_id, department_id)
     
     # Create Lead
     lead = Lead(
@@ -548,7 +578,8 @@ async def create_lead(
         last_name=last_name,
         company_id=current_user.company_id,
         team_name=team_name,
-        department=department,
+        department=department_doc.name if department_doc else department,
+        department_id=department_id if department_doc else None,
         phone=phone,
         status=UserStatus.ACTIVE
     )
@@ -586,6 +617,7 @@ async def create_employee(
     last_name: str = Form(...),
     lead_id: Optional[str] = Form(None),
     department: Optional[str] = Form(None),
+    department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
@@ -598,6 +630,8 @@ async def create_employee(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
+
+    department_doc = await _resolve_department(current_user.company_id, department_id)
     
     # If current user is a Lead, automatically assign employee to this Lead
     final_lead_id = lead_id
@@ -625,7 +659,8 @@ async def create_employee(
         last_name=last_name,
         company_id=current_user.company_id,
         lead_id=final_lead_id,
-        department=department,
+        department=department_doc.name if department_doc else department,
+        department_id=department_id if department_doc else None,
         designation=designation,
         phone=phone,
         status=UserStatus.ACTIVE
@@ -797,6 +832,7 @@ async def update_user(
     email: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     department: Optional[str] = Form(None),
+    department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
@@ -839,6 +875,10 @@ async def update_user(
         user.phone = phone
     if department is not None:
         user.department = department
+    if department_id is not None:
+        department_doc = await _resolve_department(current_user.company_id, department_id)
+        user.department_id = department_id if department_doc else None
+        user.department = department_doc.name if department_doc else None
     if designation is not None:
         user.designation = designation
 
@@ -860,6 +900,7 @@ async def create_user_hierarchical(
     reports_to: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     department: Optional[str] = Form(None),
+    department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
     team_name: Optional[str] = Form(None),
     modules: Optional[str] = Form(None),
@@ -919,6 +960,8 @@ async def create_user_hierarchical(
         parsed_modules = ["task"]
     active_module = parsed_modules[0]
 
+    department_doc = await _resolve_department(company_id, department_id) if company_id else None
+
     # Create user based on role
     user_data = {
         "email": email.lower(),
@@ -930,7 +973,8 @@ async def create_user_hierarchical(
         "reports_to": reports_to,
         "created_by": str(current_user.id),
         "phone": phone,
-        "department": department,
+        "department": department_doc.name if department_doc else department,
+        "department_id": department_id if department_doc else None,
         "modules": parsed_modules,
         "active_module": active_module,
         "status": UserStatus.ACTIVE
@@ -1033,4 +1077,3 @@ async def create_user_hierarchical(
         "role": target_role.value,
         "reports_to": reports_to
     }
-

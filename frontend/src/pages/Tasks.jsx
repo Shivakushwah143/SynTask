@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Calendar, User, MoreVertical, Search, Filter } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
+import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -21,9 +22,13 @@ const Tasks = () => {
   const [filters, setFilters] = useState({
     priority: '',
     assigned_to: '',
+    department_id: '',
   })
   const [assignableUsers, setAssignableUsers] = useState([])
   const [loadingUsers, setLoadingUsers] = useState(false)
+  const [departments, setDepartments] = useState([])
+  const [loadingDepartments, setLoadingDepartments] = useState(false)
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
 
   const statuses = [
     { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
@@ -39,6 +44,8 @@ const Tasks = () => {
     critical: { label: 'Critical', color: 'badge-danger' },
   }
 
+  const isCompanyAdmin = ['company_admin', 'admin'].includes(user?.role)
+
   // Fetch tasks
   const loadAssignableUsers = useCallback(async () => {
     try {
@@ -53,6 +60,20 @@ const Tasks = () => {
       setLoadingUsers(false)
     }
   }, [])
+
+  const loadDepartments = useCallback(async () => {
+    if (!isCompanyAdmin) return
+    try {
+      setLoadingDepartments(true)
+      const data = await departmentsAPI.listDepartments()
+      setDepartments(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('Error loading departments:', error)
+      setDepartments([])
+    } finally {
+      setLoadingDepartments(false)
+    }
+  }, [isCompanyAdmin])
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -83,6 +104,10 @@ const Tasks = () => {
     loadAssignableUsers()
   }, [loadAssignableUsers])
 
+  useEffect(() => {
+    loadDepartments()
+  }, [loadDepartments])
+
   // Check if we need to open a task from notification
   useEffect(() => {
     const taskId = sessionStorage.getItem('open_task_id')
@@ -106,6 +131,16 @@ const Tasks = () => {
     return tasks.filter(task => task.status === status)
   }
 
+  const visibleAssignableUsers = selectedDepartmentId
+    ? assignableUsers.filter((item) => item.department_id === selectedDepartmentId)
+    : assignableUsers
+
+  const closeCreateModal = () => {
+    if (submitting) return
+    setShowCreateModal(false)
+    setSelectedDepartmentId('')
+  }
+
   // Handle create task
   const handleCreateTask = async (e) => {
     e.preventDefault()
@@ -124,9 +159,14 @@ const Tasks = () => {
         due_date: formData.get('due_date') || '',
       }
 
+      if (isCompanyAdmin && selectedDepartmentId) {
+        taskData.department_id = selectedDepartmentId
+      }
+
       await tasksAPI.createTask(taskData)
       toast.success('✅ Task created successfully!')
       setShowCreateModal(false)
+      setSelectedDepartmentId('')
       await fetchTasks()
       e.target.reset()
     } catch (error) {
@@ -164,7 +204,10 @@ const Tasks = () => {
         </div>
         {canManageTasks && (
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => {
+              setSelectedDepartmentId('')
+              setShowCreateModal(true)
+            }}
             className="btn btn-primary flex items-center justify-center w-full sm:w-auto"
           >
             <Plus className="h-4 w-4 mr-1.5" />
@@ -217,15 +260,33 @@ const Tasks = () => {
                 value={filters.assigned_to}
                 onChange={(e) => setFilters({ ...filters, assigned_to: e.target.value })}
                 className="input"
-              >
-                <option value="">All Users</option>
-                {assignableUsers.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.first_name} {u.last_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                >
+                  <option value="">All Users</option>
+                  {assignableUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.first_name} {u.last_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            {isCompanyAdmin && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                <select
+                  value={filters.department_id}
+                  onChange={(e) => setFilters({ ...filters, department_id: e.target.value })}
+                  className="input"
+                  disabled={loadingDepartments}
+                >
+                  <option value="">All Departments</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -298,6 +359,11 @@ const Tasks = () => {
                           })()}
                         </div>
                       )}
+                      {task.department && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          Department: {task.department}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -346,7 +412,7 @@ const Tasks = () => {
                   disabled={loadingUsers}
                 >
                   <option value="">Unassigned</option>
-                  {assignableUsers.map((u) => (
+                  {visibleAssignableUsers.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.first_name} {u.last_name} ({u.role === 'lead' ? 'Lead' : 'Employee'})
                     </option>
@@ -355,7 +421,7 @@ const Tasks = () => {
                 {loadingUsers && (
                   <p className="text-xs text-gray-500 mt-1">Loading users...</p>
                 )}
-                {!loadingUsers && assignableUsers.length === 0 && (
+                {!loadingUsers && visibleAssignableUsers.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">
                     {user.role === 'company_admin' 
                       ? 'No leads or employees available. Create users first.'
@@ -363,6 +429,30 @@ const Tasks = () => {
                   </p>
                 )}
               </div>
+              {isCompanyAdmin && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <select
+                    name="department_id"
+                    value={selectedDepartmentId}
+                    onChange={(event) => setSelectedDepartmentId(event.target.value)}
+                    className="input"
+                    disabled={loadingDepartments}
+                  >
+                    <option value="">No department</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                  {loadingDepartments && (
+                    <p className="text-xs text-gray-500 mt-1">Loading departments...</p>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Priority
@@ -394,7 +484,7 @@ const Tasks = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={closeCreateModal}
                   disabled={submitting}
                   className="btn btn-secondary flex-1"
                 >

@@ -30,6 +30,8 @@ from app.models.changelog import ChangeLog
 from app.models.chat import Conversation, ChatMessage
 from app.models.page import Page
 from app.models.client import Client
+from app.models.department import Department
+from app.models.ai_log import AIInteractionLog
 from app.models.invoice import Invoice
 from app.models.msa import MSA
 from app.models.meeting import Meeting
@@ -131,6 +133,8 @@ async def init_db():
                 ChatMessage,
                 Page,
                 Client,
+                Department,
+                AIInteractionLog,
                 Invoice,
                 MSA,
                 Meeting,
@@ -169,4 +173,3 @@ async def close_db():
 def get_database():
     """Get database instance"""
     return client[settings.DATABASE_NAME]
-
