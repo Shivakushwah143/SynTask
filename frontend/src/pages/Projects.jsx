@@ -9,12 +9,13 @@ import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { EmptyState, FormField, SkeletonCard, inputClassName } from '../components/ui'
+import { hasCompanyAdminAccess } from '../utils/roles'
 
 const Projects = () => {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const canCreateProjects = user?.role === 'company_admin' || user?.role === 'super_admin'
-  const canEditProjects = user?.role === 'company_admin' || user?.role === 'super_admin'
+  const canCreateProjects = hasCompanyAdminAccess(user?.role)
+  const canEditProjects = hasCompanyAdminAccess(user?.role)
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -1167,4 +1168,3 @@ const Projects = () => {
 }
 
 export default Projects
-

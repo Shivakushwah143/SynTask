@@ -5,6 +5,7 @@ import { EmptyState, SkeletonTable } from '../components/ui'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
+import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -54,8 +55,8 @@ const Clients = () => {
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
 
-  const isCompanyAdmin = user?.role === 'company_admin'
-  const isLead = user?.role === 'lead'
+  const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
+  const isLead = isLeadRole(user?.role)
 
   useEffect(() => {
     loadClients()
@@ -1150,4 +1151,3 @@ const Clients = () => {
 }
 
 export default Clients
-

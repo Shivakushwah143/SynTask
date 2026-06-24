@@ -20,9 +20,12 @@ class UserRole(str, Enum):
     @classmethod
     def from_legacy(cls, role_str: str) -> 'UserRole':
         """Convert legacy COMPANY_ADMIN to ADMIN"""
-        if role_str == "company_admin":
+        normalized = str(role_str).strip().lower().replace(" ", "_").replace("-", "_")
+        if normalized in {"company_admin", "companyadmin"}:
             return cls.ADMIN
-        return cls(role_str)
+        if normalized in {"superadmin", "super_admin"}:
+            return cls.SUPER_ADMIN
+        return cls(normalized)
 
 
 class UserStatus(str, Enum):

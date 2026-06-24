@@ -5,6 +5,15 @@ import {
   clearAuthStorage,
   getStoredAuthData,
 } from '../utils/storage'
+import { normalizeRole } from '../utils/roles'
+
+const normalizeUser = (user) => {
+  if (!user) return user
+  return {
+    ...user,
+    role: normalizeRole(user.role),
+  }
+}
 
 const getInitialAuthState = () => {
   const storedAuth = getStoredAuthData()
@@ -18,7 +27,7 @@ const getInitialAuthState = () => {
   }
 
   return {
-    user: storedAuth.user,
+    user: normalizeUser(storedAuth.user),
     token: storedAuth.token,
     refreshToken: storedAuth.refreshToken,
     isAuthenticated: true,
@@ -30,11 +39,12 @@ export const useAuthStore = create(
     ...getInitialAuthState(),
 
     setAuth: (user, token, refreshToken, rememberMe) => {
+      const normalizedUser = normalizeUser(user)
       saveAuthTokens(token, refreshToken, rememberMe)
-      saveUserData(user)
+      saveUserData(normalizedUser)
       
       set({
-        user,
+        user: normalizedUser,
         token,
         refreshToken,
         isAuthenticated: true,
@@ -43,7 +53,7 @@ export const useAuthStore = create(
 
     updateUser: (userData) =>
       set((state) => {
-        const user = { ...state.user, ...userData }
+        const user = normalizeUser({ ...state.user, ...userData })
         saveUserData(user)
         return { user }
       }),
@@ -78,7 +88,7 @@ export const useAuthStore = create(
       }
 
       set({
-        user: storedAuth.user,
+        user: normalizeUser(storedAuth.user),
         token: storedAuth.token,
         refreshToken: storedAuth.refreshToken,
         isAuthenticated: true,
@@ -91,4 +101,3 @@ export const useAuthStore = create(
     getUser: () => get().user,
   })
 )
-
