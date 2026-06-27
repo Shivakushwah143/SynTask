@@ -1,20 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
-  ArrowLeft, Trash2, MessageSquare, Paperclip, Send, User, Plus, 
-  Edit, Save, Eye, Link2, History, Tag, Package, Calendar, 
-  X, List, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
-  Clock, Zap
+  ArrowLeft, Trash2, Paperclip, Eye, History,
+  X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
+  Zap, Sparkles
 } from 'lucide-react'
+import { aiAPI } from '../api/ai'
 import { tasksAPI } from '../api/tasks'
 import { filesAPI } from '../api/files'
 import { usersAPI } from '../api/users'
 import { watchersApi } from '../api/watchers'
-import { issueLinksApi } from '../api/issueLinks'
 import { changelogApi } from '../api/changelog'
-import { issueTypesApi } from '../api/issueTypes'
-import { componentsApi } from '../api/components'
-import { versionsApi } from '../api/versions'
 import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
@@ -31,25 +27,19 @@ const TaskDetail = () => {
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
   const [loadingComments, setLoadingComments] = useState(true)
-  const [subtasks, setSubtasks] = useState([])
-  const [showSubtaskForm, setShowSubtaskForm] = useState(false)
-  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
-  const [creatingSubtask, setCreatingSubtask] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({})
   const [users, setUsers] = useState([])
-  const [loadingUsers, setLoadingUsers] = useState(false)
   const [activeTab, setActiveTab] = useState('all')
   const [watchers, setWatchers] = useState([])
   const [isWatching, setIsWatching] = useState(false)
-  const [issueLinks, setIssueLinks] = useState([])
   const [changelog, setChangelog] = useState([])
-  const [issueTypes, setIssueTypes] = useState([])
-  const [components, setComponents] = useState([])
-  const [versions, setVersions] = useState([])
   const [projectInfo, setProjectInfo] = useState(null)
   const [taskStatus, setTaskStatus] = useState('')
   const [detailsExpanded, setDetailsExpanded] = useState(true)
+  const [breakdown, setBreakdown] = useState(null)
+  const [breakdownLoading, setBreakdownLoading] = useState(false)
+  const [breakdownError, setBreakdownError] = useState('')
 
   useEffect(() => {
     if (taskId) {
@@ -109,16 +99,12 @@ const TaskDetail = () => {
       
       if (data.project_id) {
         loadProjectInfo(data.project_id)
-        loadComponents(data.project_id)
-        loadVersions(data.project_id)
       }
       
       await Promise.all([
         loadComments(),
-        loadSubtasks(),
         loadUsers(),
         loadWatchers(),
-        loadIssueLinks(),
         loadChangelog(),
       ])
     } catch (error) {
@@ -134,7 +120,6 @@ const TaskDetail = () => {
     try {
       const response = await projectsApi.getProject(projId)
       setProjectInfo(response.data)
-      loadIssueTypes(projId)
     } catch (error) {
       console.error('Error loading project:', error)
     }
@@ -142,13 +127,10 @@ const TaskDetail = () => {
 
   const loadUsers = async () => {
     try {
-      setLoadingUsers(true)
       const data = await usersAPI.getAssignableUsers()
       setUsers(data.users || [])
     } catch (error) {
       console.error('Error loading users:', error)
-    } finally {
-      setLoadingUsers(false)
     }
   }
 
@@ -163,16 +145,6 @@ const TaskDetail = () => {
     }
   }
 
-  const loadIssueLinks = async () => {
-    if (!task) return
-    try {
-      const response = await issueLinksApi.getLinks(task.id)
-      setIssueLinks(response.data.links || [])
-    } catch (error) {
-      console.error('Error loading issue links:', error)
-    }
-  }
-
   const loadChangelog = async () => {
     if (!task) return
     try {
@@ -180,33 +152,6 @@ const TaskDetail = () => {
       setChangelog(response.data.changelog || [])
     } catch (error) {
       console.error('Error loading changelog:', error)
-    }
-  }
-
-  const loadIssueTypes = async (projId) => {
-    try {
-      const response = await issueTypesApi.getIssueTypes({ project_id: projId })
-      setIssueTypes(response.data.issue_types || [])
-    } catch (error) {
-      console.error('Error loading issue types:', error)
-    }
-  }
-
-  const loadComponents = async (projId) => {
-    try {
-      const response = await componentsApi.getComponents(projId)
-      setComponents(response.data.components || [])
-    } catch (error) {
-      console.error('Error loading components:', error)
-    }
-  }
-
-  const loadVersions = async (projId) => {
-    try {
-      const response = await versionsApi.getVersions(projId)
-      setVersions(response.data.versions || [])
-    } catch (error) {
-      console.error('Error loading versions:', error)
     }
   }
 
@@ -220,16 +165,6 @@ const TaskDetail = () => {
       console.error('Error loading comments:', error)
     } finally {
       setLoadingComments(false)
-    }
-  }
-
-  const loadSubtasks = async () => {
-    if (!taskId) return
-    try {
-      const data = await tasksAPI.getSubtasks(taskId)
-      setSubtasks(data.subtasks || [])
-    } catch (error) {
-      console.error('Error loading subtasks:', error)
     }
   }
 
@@ -350,6 +285,27 @@ const TaskDetail = () => {
     }
   }
 
+  const handleGenerateBreakdown = async () => {
+    if (!task?.id || breakdownLoading) return
+
+    try {
+      setBreakdownLoading(true)
+      setBreakdownError('')
+      const data = await aiAPI.generateTaskBreakdown({
+        task_id: task.id,
+        max_subtasks: 5,
+      })
+      setBreakdown(data)
+      toast.success('Task breakdown generated')
+    } catch (error) {
+      console.error('Failed to generate task breakdown', error)
+      setBreakdownError(error.response?.data?.detail || error.message || 'Failed to generate task breakdown')
+      toast.error(error.response?.data?.detail || 'Failed to generate task breakdown')
+    } finally {
+      setBreakdownLoading(false)
+    }
+  }
+
   const priorities = {
     low: { label: 'Low', color: 'text-gray-600 bg-gray-100' },
     medium: { label: 'Medium', color: 'text-blue-600 bg-blue-100' },
@@ -381,8 +337,6 @@ const TaskDetail = () => {
       </div>
     )
   }
-
-  const assignedUser = users.find(u => u.id === task.assigned_to)
 
   return (
     <div className="h-full flex flex-col bg-white -m-6" style={{ minHeight: 'calc(100vh - 96px)' }}>
@@ -493,6 +447,100 @@ const TaskDetail = () => {
                 {task.description || 'No description'}
               </div>
             )}
+          </div>
+
+          {/* AI Task Breakdown */}
+          <div className="mb-6 rounded-2xl border border-primary-200 bg-primary-50/60 p-4 dark:border-primary-900/40 dark:bg-primary-950/20">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">AI Task Breakdown</h3>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  Generate subtasks, dependencies, and milestones for this task.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleGenerateBreakdown}
+                disabled={breakdownLoading}
+                className="inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                {breakdownLoading ? 'Generating...' : 'Generate breakdown'}
+              </button>
+            </div>
+
+            {breakdownError ? (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
+                {breakdownError}
+              </div>
+            ) : null}
+
+            {breakdown ? (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-gray-900">
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-primary-600">Summary</div>
+                  <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{breakdown.summary}</p>
+                  <div className="mt-3 grid gap-2 text-xs text-gray-500 dark:text-gray-400 sm:grid-cols-2">
+                    <div>Total estimate: {breakdown.time_estimate_hours} hours</div>
+                    <div>Dependencies: {breakdown.dependencies?.length || 0}</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-gray-900">
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Subtasks</h4>
+                    <div className="mt-3 space-y-3">
+                      {breakdown.subtasks?.map((item) => (
+                        <div key={`${item.order}-${item.title}`} className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="font-medium text-gray-900 dark:text-gray-100">
+                              {item.order}. {item.title}
+                            </div>
+                            <div className="text-xs font-semibold text-primary-600">{item.estimated_hours}h</div>
+                          </div>
+                          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{item.description}</p>
+                          {item.dependencies?.length ? (
+                            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                              Depends on: {item.dependencies.join(', ')}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-gray-900">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Dependencies</h4>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {breakdown.dependencies?.length ? (
+                          breakdown.dependencies.map((item, index) => (
+                            <span key={`${item}-${index}`} className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                              {item}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-sm text-gray-500 dark:text-gray-400">No explicit dependencies detected.</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-gray-900">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Milestones</h4>
+                      <div className="mt-3 space-y-3">
+                        {breakdown.milestones?.map((item) => (
+                          <div key={item.title} className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+                            <div className="font-medium text-gray-900 dark:text-gray-100">{item.title}</div>
+                            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{item.description}</p>
+                            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.success_criteria}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* Attachments */}
@@ -884,4 +932,3 @@ const TaskDetail = () => {
 }
 
 export default TaskDetail
-

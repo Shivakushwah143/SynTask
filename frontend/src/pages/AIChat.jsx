@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
-import { Bot, Clock3, Send, Sparkles, User } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Bot, CheckSquare, Clock3, FileText, Send, Sparkles, Ticket, User } from 'lucide-react'
 import { format } from 'date-fns'
+import { useNavigate } from 'react-router-dom'
 import { aiAPI } from '../api/ai'
 import { useAuthStore } from '../store/authStore'
 import { Badge, Button, PageHeader } from '../components/ui'
 
 const AIChat = () => {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const firstName = user?.first_name || 'there'
 
   const [messages, setMessages] = useState([
@@ -22,6 +24,48 @@ const AIChat = () => {
   const [lastUpdated, setLastUpdated] = useState(null)
 
   const conversation = useMemo(() => messages, [messages])
+  const actionCards = useMemo(() => {
+    if (suggestedActions.length) {
+      return suggestedActions.map((action, index) => ({
+        key: `${action.label}-${index}`,
+        icon: Sparkles,
+        label: action.label,
+        detail: action.type ? `Suggested ${action.type} action from verified AI context.` : 'Suggested follow-up from verified AI context.',
+        path: action.payload?.path || '',
+      }))
+    }
+
+    return [
+      {
+        key: 'prioritize-day',
+        icon: CheckSquare,
+        label: 'Prioritize my day',
+        detail: 'Generate a ranked plan from your assigned tasks and current requests.',
+        path: '/ai-prioritization',
+      },
+      {
+        key: 'review-tickets',
+        icon: Ticket,
+        label: 'Review waiting tickets',
+        detail: 'Check requests that may need a response, owner, or escalation.',
+        path: '/tickets',
+      },
+      {
+        key: 'daily-report',
+        icon: FileText,
+        label: 'Generate daily report',
+        detail: 'Capture completed work, blockers, and tomorrow priorities.',
+        path: '/reports',
+      },
+      {
+        key: 'risk-scan',
+        icon: AlertTriangle,
+        label: 'Scan for risks',
+        detail: 'Look for overdue work, blocked tasks, and delivery pressure.',
+        path: '/dashboard',
+      },
+    ]
+  }, [suggestedActions])
 
   const handleSend = async (event) => {
     event.preventDefault()
@@ -164,21 +208,32 @@ const AIChat = () => {
             </p>
 
             <div className="mt-4 space-y-3">
-              {suggestedActions.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                  No suggested actions yet.
-                </div>
-              ) : (
-                suggestedActions.map((action, index) => (
-                  <div key={`${action.label}-${index}`} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">{action.label}</div>
-                    <div className="mt-1 text-xs uppercase tracking-[0.18em] text-gray-500">{action.type}</div>
-                    {action.payload?.path ? (
-                      <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">Path: {action.payload.path}</div>
-                    ) : null}
+              {actionCards.map((action) => {
+                const Icon = action.icon
+                return (
+                  <div key={action.key} className="group rounded-2xl border border-gray-200 bg-gray-50 p-4 transition hover:border-primary-300 hover:bg-primary-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-800 dark:hover:bg-primary-950/20">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-primary-600 shadow-sm dark:bg-gray-900 dark:text-primary-300">
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-gray-900 dark:text-gray-100">{action.label}</div>
+                        <div className="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300">{action.detail}</div>
+                      </div>
+                      {action.path ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate(action.path)}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition group-hover:bg-white group-hover:text-primary-600 dark:group-hover:bg-gray-900 dark:group-hover:text-primary-300"
+                          aria-label={`Open ${action.label}`}
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                ))
-              )}
+                )
+              })}
             </div>
           </div>
         </div>

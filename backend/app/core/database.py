@@ -32,6 +32,7 @@ from app.models.page import Page
 from app.models.client import Client
 from app.models.department import Department
 from app.models.ai_log import AIInteractionLog
+from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
 from app.models.invoice import Invoice
 from app.models.msa import MSA
 from app.models.meeting import Meeting
@@ -135,6 +136,10 @@ async def init_db():
                 Client,
                 Department,
                 AIInteractionLog,
+                CompanyMemory,
+                ProjectMemory,
+                UserMemory,
+                ClientMemory,
                 Invoice,
                 MSA,
                 Meeting,

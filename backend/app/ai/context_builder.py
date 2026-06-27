@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from beanie.odm.operators.find.comparison import In
 from beanie.odm.operators.find.logical import Or
 
+from app.ai.memory import AIMemoryService
 from app.models.company import Company
 from app.models.department import Department
-from app.models.task import Task, TaskStatus
-from app.models.ticket import Ticket, TicketStatus
-from app.models.user import User, UserRole
+from app.models.task import Task, TaskPriority, TaskStatus
+from app.models.ticket import Ticket, TicketPriority, TicketStatus
+from app.models.user import User, UserRole, UserStatus
+from app.api.dependencies import get_project_by_id
 
 
 class ContextBuilder:
@@ -187,6 +189,452 @@ class ContextBuilder:
         }
 
     @staticmethod
+    def _serialize_task_for_daily_report(
+        task: Task,
+        department_lookup: dict[str, str],
+        project_name: str | None,
+        report_date: date,
+    ) -> dict[str, Any]:
+        serialized = ContextBuilder._serialize_task_for_breakdown(task, department_lookup, project_name)
+        due_date = task.due_date.date() if task.due_date else None
+        completed_date = task.completed_at.date() if task.completed_at else None
+        priority_weight = {
+            TaskPriority.CRITICAL.value: 3,
+            TaskPriority.HIGH.value: 2,
+            TaskPriority.MEDIUM.value: 1,
+            TaskPriority.LOW.value: 0,
+        }.get(task.priority.value, 1)
+        serialized.update(
+            {
+                "item_type": "task",
+                "item_id": str(task.id),
+                "due_in_days": (due_date - report_date).days if due_date else None,
+                "is_overdue": bool(due_date and due_date < report_date and task.status != TaskStatus.COMPLETED),
+                "completed_today": bool(completed_date == report_date),
+                "owner": task.assigned_to,
+                "priority_weight": priority_weight,
+            }
+        )
+        return serialized
+
+    @staticmethod
+    def _serialize_ticket_for_daily_report(ticket: Ticket, report_date: date) -> dict[str, Any]:
+        due_date = ticket.due_date.date() if ticket.due_date else None
+        priority_weight = {
+            TicketPriority.URGENT.value: 3,
+            TicketPriority.HIGH.value: 2,
+            TicketPriority.MEDIUM.value: 1,
+            TicketPriority.LOW.value: 0,
+        }.get(ticket.priority.value, 1)
+        return {
+            "item_type": "ticket",
+            "item_id": str(ticket.id),
+            "ticket_number": ticket.ticket_number,
+            "title": ticket.title,
+            "description": ticket.description,
+            "status": ticket.status.value,
+            "priority": ticket.priority.value,
+            "type": ticket.type.value,
+            "due_date": ticket.due_date,
+            "due_in_days": (due_date - report_date).days if due_date else None,
+            "is_overdue": bool(due_date and due_date < report_date and ticket.status not in {TicketStatus.RESOLVED, TicketStatus.CLOSED}),
+            "created_by": ticket.created_by,
+            "assigned_to": ticket.assigned_to,
+            "created_at": ticket.created_at,
+            "updated_at": ticket.updated_at,
+            "priority_weight": priority_weight,
+        }
+
+    @staticmethod
+    def _serialize_task_for_breakdown(task: Task, department_lookup: dict[str, str], project_name: str | None) -> dict[str, Any]:
+        department_name = None
+        if getattr(task, "department_id", None):
+            department_name = department_lookup.get(task.department_id)
+        elif getattr(task, "department", None):
+            department_name = task.department
+
+        return {
+            "task_id": str(task.id),
+            "title": task.title,
+            "description": task.description,
+            "status": task.status.value,
+            "priority": task.priority.value,
+            "due_date": task.due_date,
+            "estimated_hours": task.estimated_hours,
+            "story_points": task.story_points,
+            "project_id": task.project_id,
+            "project_name": project_name,
+            "department": department_name,
+            "assigned_to": task.assigned_to,
+            "created_by": task.created_by,
+            "parent_task_id": task.parent_task_id,
+            "tags": list(getattr(task, "tags", []) or []),
+        }
+
+    @staticmethod
+    async def build_task_breakdown_context(
+        current_user: User,
+        task_id: str,
+        max_subtasks: int = 5,
+    ) -> dict[str, Any]:
+        task = await Task.get(task_id)
+        if not task:
+            raise ValueError("Task not found")
+
+        if current_user.role != UserRole.SUPER_ADMIN and task.company_id != current_user.company_id:
+            raise ValueError("Task must belong to the same company")
+
+        team_member_ids = await ContextBuilder._get_team_member_ids(current_user)
+        is_admin = current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}
+        is_team_visible = False
+
+        if is_admin:
+            is_team_visible = True
+        elif current_user.role == UserRole.MANAGER:
+            is_team_visible = (
+                task.assigned_to in team_member_ids
+                or task.created_by == str(current_user.id)
+                or (
+                    getattr(current_user, "department_id", None)
+                    and task.department_id == getattr(current_user, "department_id", None)
+                )
+            )
+        elif current_user.role == UserRole.LEAD:
+            is_team_visible = task.assigned_to in team_member_ids or task.created_by == str(current_user.id)
+        else:
+            is_team_visible = task.assigned_to == str(current_user.id) or task.created_by == str(current_user.id)
+
+        if not is_team_visible:
+            raise ValueError("Not allowed to generate breakdown for this task")
+
+        company = await Company.get(task.company_id) if task.company_id else None
+        department_lookup: dict[str, str] = {}
+        if task.company_id:
+            department_docs = await Department.find(
+                Department.company_id == task.company_id,
+                Department.deleted_at == None,  # noqa: E711
+            ).to_list()
+            department_lookup = {str(item.id): item.name for item in department_docs}
+
+        project = None
+        project_name = None
+        project_identifier = task.project_id or task.project_object_id
+        if project_identifier:
+            project, _ = await get_project_by_id(project_identifier, task.company_id)
+            if project:
+                project_name = project.name
+
+        assignee = await User.get(task.assigned_to) if task.assigned_to else None
+        creator = await User.get(task.created_by) if task.created_by else None
+
+        child_tasks = await Task.find(
+            Task.company_id == task.company_id,
+            Task.parent_task_id == str(task.id),
+        ).sort("created_at").limit(max_subtasks).to_list()
+
+        serialized_child_tasks = [
+            ContextBuilder._serialize_task_for_breakdown(child_task, department_lookup, project_name)
+            for child_task in child_tasks
+        ]
+
+        existing_dependencies: list[str] = []
+        if task.parent_task_id:
+            existing_dependencies.append(task.parent_task_id)
+        if task.project_id:
+            existing_dependencies.append(task.project_id)
+        if task.project_object_id and task.project_object_id not in existing_dependencies:
+            existing_dependencies.append(task.project_object_id)
+
+        return {
+            "company": {
+                "id": task.company_id,
+                "name": company.name if company else None,
+            },
+            "task": ContextBuilder._serialize_task_for_breakdown(task, department_lookup, project_name),
+            "assignee": {
+                "id": str(assignee.id) if assignee else None,
+                "name": assignee.full_name() if assignee else None,
+                "role": assignee.role.value if assignee else None,
+            },
+            "creator": {
+                "id": str(creator.id) if creator else None,
+                "name": creator.full_name() if creator else None,
+                "role": creator.role.value if creator else None,
+            },
+            "project": {
+                "id": str(project.id) if project else task.project_object_id,
+                "project_id": project.project_id if project and project.project_id else task.project_id,
+                "name": project_name,
+                "status": project.status.value if project else None,
+                "lead_id": getattr(project, "lead_id", None) if project else None,
+            },
+            "team": {
+                "current_user_id": str(current_user.id),
+                "current_user_role": current_user.role.value,
+                "team_member_ids": team_member_ids,
+            },
+            "existing_subtasks": serialized_child_tasks,
+            "existing_dependencies": existing_dependencies,
+            "subtask_limit": max_subtasks,
+            "access_scope": (
+                "platform"
+                if current_user.role == UserRole.SUPER_ADMIN
+                else "company"
+                if current_user.role == UserRole.ADMIN
+                else "department"
+                if current_user.role == UserRole.MANAGER and getattr(current_user, "department_id", None)
+                else "team"
+                if current_user.role in {UserRole.MANAGER, UserRole.LEAD}
+                else "self"
+            ),
+        }
+
+    @staticmethod
+    async def build_daily_report_context(
+        current_user: User,
+        report_date: date,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        company_id = current_user.company_id
+        if not company_id and current_user.role != UserRole.SUPER_ADMIN:
+            raise ValueError("User must belong to a company")
+
+        company = await Company.get(company_id) if company_id else None
+        department = await Department.get(current_user.department_id) if getattr(current_user, "department_id", None) else None
+
+        department_lookup: dict[str, str] = {}
+        if company_id:
+            department_docs = await Department.find(
+                Department.company_id == company_id,
+                Department.deleted_at == None,  # noqa: E711
+            ).to_list()
+            department_lookup = {str(item.id): item.name for item in department_docs}
+
+        scope_user_ids = [str(current_user.id)]
+        report_type = "employee"
+        access_scope = "self"
+
+        if current_user.role == UserRole.SUPER_ADMIN:
+            report_type = "admin"
+            access_scope = "platform"
+            scope_user_ids = []
+        elif current_user.role == UserRole.ADMIN:
+            report_type = "admin"
+            access_scope = "company"
+            if company_id:
+                company_users = await User.find(
+                    User.company_id == company_id,
+                    User.status == UserStatus.ACTIVE,
+                ).to_list()
+                scope_user_ids = [str(user.id) for user in company_users]
+        elif current_user.role == UserRole.MANAGER and getattr(current_user, "department_id", None):
+            report_type = "department"
+            access_scope = "department"
+            department_users = await User.find(
+                User.company_id == company_id,
+                User.department_id == current_user.department_id,
+                User.status == UserStatus.ACTIVE,
+            ).to_list()
+            scope_user_ids = [str(user.id) for user in department_users]
+        elif current_user.role == UserRole.MANAGER:
+            report_type = "lead"
+            access_scope = "team"
+            subordinates = await current_user.get_all_subordinates()
+            scope_user_ids = [str(subordinate.id) for subordinate in subordinates]
+        elif current_user.role == UserRole.LEAD:
+            report_type = "lead"
+            access_scope = "team"
+            direct_reports = await User.find(
+                User.company_id == company_id,
+                User.reports_to == str(current_user.id),
+                User.status == UserStatus.ACTIVE,
+            ).to_list()
+            scope_user_ids = [str(user.id) for user in direct_reports]
+
+        if str(current_user.id) not in scope_user_ids:
+            scope_user_ids.append(str(current_user.id))
+        scope_user_ids = list(dict.fromkeys(scope_user_ids))
+
+        task_filters: list[Any] = []
+        ticket_filters: list[Any] = []
+        if company_id:
+            task_filters.append(Task.company_id == company_id)
+            ticket_filters.append(Ticket.company_id == company_id)
+
+        if current_user.role == UserRole.EMPLOYEE:
+            task_filters.append(Task.assigned_to == str(current_user.id))
+            ticket_filters.append(
+                Or(
+                    Ticket.created_by == str(current_user.id),
+                    Ticket.assigned_to == str(current_user.id),
+                )
+            )
+        elif report_type == "lead":
+            task_filters.append(In(Task.assigned_to, scope_user_ids))
+            ticket_filters.append(
+                Or(
+                    In(Ticket.created_by, scope_user_ids),
+                    In(Ticket.assigned_to, scope_user_ids),
+                )
+            )
+        elif report_type == "department":
+            department_id = getattr(current_user, "department_id", None)
+            if department_id:
+                task_filters.append(
+                    Or(
+                        Task.department_id == department_id,
+                        In(Task.assigned_to, scope_user_ids),
+                    )
+                )
+            else:
+                task_filters.append(In(Task.assigned_to, scope_user_ids))
+            ticket_filters.append(
+                Or(
+                    In(Ticket.created_by, scope_user_ids),
+                    In(Ticket.assigned_to, scope_user_ids),
+                )
+            )
+
+        tasks = await Task.find(*task_filters).sort("-created_at").limit(limit * 4).to_list()
+        tickets = await Ticket.find(*ticket_filters).sort("-created_at").limit(limit * 4).to_list()
+
+        task_project_names: dict[str, str] = {}
+        project_identifiers: list[str] = []
+        for task in tasks:
+            identifier = task.project_id or task.project_object_id
+            if identifier and identifier not in project_identifiers:
+                project_identifiers.append(identifier)
+        for identifier in project_identifiers[:limit]:
+            project, project_name = await get_project_by_id(identifier, company_id)
+            if project_name:
+                task_project_names[identifier] = project_name
+            elif project and getattr(project, "name", None):
+                task_project_names[identifier] = project.name
+
+        serialized_tasks = [
+            ContextBuilder._serialize_task_for_daily_report(
+                task,
+                department_lookup,
+                task_project_names.get(task.project_id or task.project_object_id),
+                report_date,
+            )
+            for task in tasks
+        ]
+        serialized_tickets = [
+            ContextBuilder._serialize_ticket_for_daily_report(ticket, report_date)
+            for ticket in tickets
+        ]
+
+        completed_tasks = [
+            item for item in serialized_tasks
+            if item["completed_today"] or item["status"] == TaskStatus.COMPLETED.value
+        ]
+        pending_tasks = [
+            item for item in serialized_tasks
+            if item["status"] != TaskStatus.COMPLETED.value
+        ]
+        blockers = [
+            item for item in serialized_tasks
+            if item["is_overdue"] or item["status"] == TaskStatus.IN_REVIEW.value
+        ]
+        tomorrow = report_date + timedelta(days=1)
+        tomorrow_priorities = [
+            item for item in serialized_tasks
+            if item["due_date"] and item["due_date"].date() == tomorrow and item["status"] != TaskStatus.COMPLETED.value
+        ]
+        open_tickets = [
+            item for item in serialized_tickets
+            if item["status"] in {
+                TicketStatus.OPEN.value,
+                TicketStatus.IN_PROGRESS.value,
+                TicketStatus.WAITING_FOR_CUSTOMER.value,
+                TicketStatus.REOPENED.value,
+            }
+        ]
+        overdue_tickets = [item for item in serialized_tickets if item["is_overdue"]]
+
+        task_count_by_owner: dict[str, int] = {}
+        for item in serialized_tasks:
+            owner = item.get("owner") or "unassigned"
+            task_count_by_owner[owner] = task_count_by_owner.get(owner, 0) + 1
+
+        project_counts: dict[str, dict[str, int]] = {}
+        for item in serialized_tasks:
+            project_name = item.get("project_name") or item.get("project_id") or "No project"
+            bucket = project_counts.setdefault(project_name, {"total": 0, "completed": 0, "pending": 0})
+            bucket["total"] += 1
+            if item["status"] == TaskStatus.COMPLETED.value:
+                bucket["completed"] += 1
+            else:
+                bucket["pending"] += 1
+
+        return {
+            "company": {
+                "id": company_id,
+                "name": company.name if company else None,
+            },
+            "department": {
+                "id": getattr(department, "id", None) if department else None,
+                "name": department.name if department else getattr(current_user, "department", None),
+            },
+            "report_type": report_type,
+            "report_scope": access_scope,
+            "report_date": report_date.isoformat(),
+            "generated_for": {
+                "user_id": str(current_user.id),
+                "full_name": current_user.full_name(),
+                "first_name": current_user.first_name,
+                "role": current_user.role.value,
+                "department": getattr(current_user, "department", None),
+                "department_id": getattr(current_user, "department_id", None),
+                "team_name": getattr(current_user, "team_name", None),
+            },
+            "scope_user_ids": scope_user_ids,
+            "scope_summary": {
+                "task_count": len(serialized_tasks),
+                "ticket_count": len(serialized_tickets),
+                "completed_tasks": len(completed_tasks),
+                "pending_tasks": len(pending_tasks),
+                "blockers": len(blockers) + len(overdue_tickets),
+                "tomorrow_priorities": len(tomorrow_priorities),
+            },
+            "task_count_by_owner": task_count_by_owner,
+            "project_summary": [
+                {
+                    "project_name": project_name,
+                    "total_tasks": counts["total"],
+                    "completed_tasks": counts["completed"],
+                    "pending_tasks": counts["pending"],
+                }
+                for project_name, counts in sorted(project_counts.items(), key=lambda item: (-item[1]["total"], item[0]))[:limit]
+            ],
+            "tasks": serialized_tasks,
+            "tickets": serialized_tickets,
+            "completed_tasks": completed_tasks[:limit],
+            "pending_tasks": pending_tasks[:limit],
+            "blockers": [
+                *blockers,
+                *overdue_tickets,
+            ][:limit],
+            "tomorrow_priorities": sorted(
+                tomorrow_priorities,
+                key=lambda item: (
+                    -item.get("priority_weight", 0),
+                    item.get("due_date") or datetime.max,
+                    item.get("title") or "",
+                ),
+            )[:limit],
+            "open_tickets": open_tickets[:limit],
+            "overdue_tickets": overdue_tickets[:limit],
+            "summary_metrics": {
+                "tasks_completed_today": len(completed_tasks),
+                "tasks_pending": len(pending_tasks),
+                "ticket_blockers": len(overdue_tickets),
+                "project_count": len(project_counts),
+            },
+        }
+
+    @staticmethod
     async def build_chat_context(
         current_user: User,
         message: str,
@@ -275,6 +723,19 @@ class ContextBuilder:
         elif current_user.role == UserRole.SUPER_ADMIN:
             role_scope = "platform"
 
+        project_ids = [
+            item["project_id"]
+            for item in serialized_tasks
+            if item.get("project_id")
+        ]
+        memory_context = await AIMemoryService().retrieve_for_context(
+            current_user,
+            query=message,
+            access_scope=role_scope,
+            project_ids=project_ids,
+            limit=limit,
+        )
+
         return {
             "company": {
                 "id": company_id,
@@ -302,6 +763,7 @@ class ContextBuilder:
             "recent_tickets": serialized_tickets,
             "task_count": len(serialized_tasks),
             "ticket_count": len(serialized_tickets),
+            "memory": memory_context,
             "team_member_ids": team_member_ids,
             "company_summary": {
                 "name": company.name if company else None,
