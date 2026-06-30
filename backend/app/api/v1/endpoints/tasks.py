@@ -7,6 +7,7 @@ from datetime import datetime
 from bson import ObjectId
 
 from app.models.task import Task, TaskStatus, TaskPriority, TaskComment
+from app.models.department import Department
 from app.models.user import User, UserRole
 from app.api.dependencies import (
     get_current_user,
@@ -19,6 +20,23 @@ from app.core.cache import cache_delete_pattern
 router = APIRouter()
 
 
+async def _resolve_department(company_id: str, department_id: Optional[str]):
+    if not department_id:
+        return None
+
+    department = await Department.get(department_id)
+    if (
+        not department
+        or department.deleted_at is not None
+        or department.company_id != company_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid department",
+        )
+    return department
+
+
 @router.get("/")
 async def list_tasks(
     status_filter: Optional[str] = None,
@@ -26,6 +44,7 @@ async def list_tasks(
     assigned_to: Optional[str] = None,
     created_by: Optional[str] = None,
     project_id: Optional[str] = None,
+    department_id: Optional[str] = None,
     skip: int = 0,
     limit: int = 20,
     current_user: User = Depends(get_current_user)
@@ -78,6 +97,8 @@ async def list_tasks(
         # Simple equality check - MongoDB will only match documents where project_id equals this value
         # Tasks with project_id=None or missing project_id field won't match
         query["project_id"] = project_id
+    if department_id:
+        query["department_id"] = department_id
     
     tasks = await Task.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
     total = await Task.find(query).count()
@@ -92,6 +113,8 @@ async def list_tasks(
                 "assigned_to": task.assigned_to,
                 "created_by": task.created_by,
                 "project_id": str(task.project_id) if task.project_id else None,
+                "department_id": getattr(task, "department_id", None),
+                "department": getattr(task, "department", None),
                 "due_date": task.due_date,
                 "created_at": task.created_at,
             }
@@ -115,6 +138,7 @@ async def create_task(
     project_id: Optional[str] = Form(None),
     epic_id: Optional[str] = Form(None),
     sprint_id: Optional[str] = Form(None),
+    department_id: Optional[str] = Form(None),
     story_points: Optional[int] = Form(None),
     estimated_hours: Optional[float] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead),
@@ -239,6 +263,8 @@ async def create_task(
                 detail="Sprint not found"
             )
 
+    department_doc = await _resolve_department(current_user.company_id, department_id)
+
     task = Task(
         title=title,
         description=description,
@@ -246,6 +272,8 @@ async def create_task(
         created_by=str(current_user.id),
         assigned_to=assigned_to,
         assigned_by=str(current_user.id) if assignee else None,
+        department_id=department_id if department_doc else None,
+        department=department_doc.name if department_doc else None,
         priority=task_priority,
         due_date=parsed_due_date,
         tags=parsed_tags,
@@ -313,6 +341,8 @@ async def create_task(
         "assigned_to": task.assigned_to,
         "created_by": task.created_by,
         "project_id": str(task.project_id) if task.project_id else None,
+        "department_id": task.department_id,
+        "department": task.department,
         "due_date": task.due_date,
         "created_at": task.created_at,
         "message": "Task created successfully",
@@ -358,6 +388,8 @@ async def get_task(
         "created_by": task.created_by,
         "created_by_name": f"{created_by_user.first_name} {created_by_user.last_name}" if created_by_user else None,
         "project_id": str(task.project_id) if task.project_id else None,
+        "department_id": getattr(task, "department_id", None),
+        "department": getattr(task, "department", None),
         "due_date": task.due_date,
         "tags": task.tags,
         "attachments": task.attachments if hasattr(task, 'attachments') and task.attachments else [],
@@ -528,6 +560,7 @@ async def update_task(
     issue_type_id: Optional[str] = Form(None),
     component_id: Optional[str] = Form(None),
     fix_version_id: Optional[str] = Form(None),
+    department_id: Optional[str] = Form(None),
     start_date: Optional[str] = Form(None),
     story_points: Optional[int] = Form(None),
     estimated_hours: Optional[float] = Form(None),
@@ -605,6 +638,14 @@ async def update_task(
         task.component_id = component_id if component_id != '' else None
     if fix_version_id is not None:
         task.fix_version_id = fix_version_id if fix_version_id != '' else None
+    if department_id is not None:
+        if department_id == '':
+            task.department_id = None
+            task.department = None
+        else:
+            department_doc = await _resolve_department(task.company_id, department_id)
+            task.department_id = department_id if department_doc else None
+            task.department = department_doc.name if department_doc else None
     if start_date is not None:
         if start_date == '':
             task.start_date = None

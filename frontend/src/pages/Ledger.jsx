@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { DollarSign, RefreshCw, Search, Plus, Edit, X } from 'lucide-react'
+import { RefreshCw, X } from 'lucide-react'
 import { ledgerAPI } from '../api/ledger'
 import { useAuthStore } from '../store/authStore'
+import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -29,9 +30,6 @@ const Ledger = () => {
   
   const [tdsAmount, setTdsAmount] = useState('')
   const [submitting, setSubmitting] = useState(false)
-
-  const isCompanyAdmin = user?.role === 'company_admin'
-  const isLead = user?.role === 'lead'
 
   useEffect(() => {
     loadLedger()
@@ -495,4 +493,3 @@ const Ledger = () => {
 }
 
 export default Ledger
-

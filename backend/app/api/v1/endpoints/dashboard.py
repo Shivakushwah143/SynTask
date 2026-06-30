@@ -190,7 +190,10 @@ async def get_dashboard_stats(
         
         my_tickets = await Ticket.find({
             "company_id": current_user.company_id,
-            "created_by": str(current_user.id)
+            "$or": [
+                {"created_by": str(current_user.id)},
+                {"assigned_to": str(current_user.id)},
+            ],
         }).count()
         
         data = {
@@ -237,4 +240,3 @@ async def get_super_admin_analytics(
         "total_users": total_users,
         "users_by_role": users_by_role,
     }
-

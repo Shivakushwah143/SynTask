@@ -3,6 +3,7 @@ import { useAuthStore } from '../store/authStore'
 import { dashboardAPI } from '../api/dashboard'
 import { reportsAPI } from '../api/reports'
 import { tasksAPI } from '../api/tasks'
+import { ticketsAPI } from '../api/tickets'
 import {
   CheckSquare,
   CheckCircle2,
@@ -19,6 +20,7 @@ import { useNavigate } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import toast from 'react-hot-toast'
 import { SkeletonCard, SkeletonTable } from '../components/ui'
+import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 
 // ---- design tokens -------------------------------------------------------
 // Accent colors stay constant across themes (they're tinted badges, not
@@ -74,6 +76,7 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [recentTasks, setRecentTasks] = useState([])
+  const [recentTickets, setRecentTickets] = useState([])
   const [chartData, setChartData] = useState(null)
   const [exporting, setExporting] = useState(false)
 
@@ -159,8 +162,17 @@ const Dashboard = () => {
       const tasksData = await tasksAPI.listTasks({ limit: 8 })
       setRecentTasks(tasksData.tasks || [])
 
+      // Employees should also see recently assigned/created requests on the dashboard.
+      const dashboardRole = normalizeRole(statsData.role)
+      if (dashboardRole === ROLE.EMPLOYEE) {
+        const ticketsData = await ticketsAPI.listTickets({ limit: 8 })
+        setRecentTickets(ticketsData.tickets || [])
+      } else {
+        setRecentTickets([])
+      }
+
       // Fetch chart data (Company Admin and above)
-      if (statsData.role === 'company_admin' || statsData.role === 'super_admin') {
+      if (hasCompanyAdminAccess(dashboardRole)) {
         try {
           const charts = await reportsAPI.getAnalyticsCharts('month')
           setChartData(charts)
@@ -210,7 +222,9 @@ const Dashboard = () => {
 
   // Role-specific stats cards (label, value, subtitle, icon, accent color)
   const getStatsCards = () => {
-    if (stats.role === 'super_admin') {
+    const dashboardRole = normalizeRole(stats.role)
+
+    if (dashboardRole === ROLE.SUPER_ADMIN) {
       return [
         {
           name: 'Total Companies',
@@ -241,7 +255,7 @@ const Dashboard = () => {
           accent: 'purple',
         },
       ]
-    } else if (stats.role === 'company_admin') {
+    } else if (hasCompanyAdminAccess(dashboardRole)) {
       return [
         {
           name: 'Total Tasks',
@@ -272,7 +286,7 @@ const Dashboard = () => {
           accent: 'purple',
         },
       ]
-    } else if (stats.role === 'lead') {
+    } else if (dashboardRole === ROLE.LEAD) {
       return [
         {
           name: 'My Tasks',
@@ -305,6 +319,13 @@ const Dashboard = () => {
           subtitle: { type: 'plain', text: stats.my_tasks ? 'Assigned to you' : 'No tasks assigned' },
           icon: CheckCircle2,
           accent: 'blue',
+        },
+        {
+          name: 'My Requests',
+          value: stats.my_tickets || 0,
+          subtitle: { type: 'plain', text: stats.my_tickets ? 'Assigned or created' : 'No requests yet' },
+          icon: AlertCircle,
+          accent: 'purple',
         },
         {
           name: 'Active Tasks',
@@ -468,7 +489,7 @@ const Dashboard = () => {
       </div>
 
       {/* Export Reports Section */}
-      {(stats.role === 'company_admin' || stats.role === 'super_admin') && (
+      {hasCompanyAdminAccess(stats.role) && (
         <div className={`${card} p-5 sm:p-6`}>
           <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">Export reports</h3>
           <p className="text-sm text-slate-500 dark:text-gray-400 mb-4">
@@ -489,51 +510,61 @@ const Dashboard = () => {
       <div className={`${card} p-5 sm:p-6`}>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Recent Tasks</h3>
-            <p className="text-sm text-slate-500 dark:text-gray-500">Latest work moving across your board</p>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              {normalizeRole(stats?.role) === ROLE.EMPLOYEE ? 'Recent Requests' : 'Recent Tasks'}
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-gray-500">
+              {normalizeRole(stats?.role) === ROLE.EMPLOYEE
+                ? 'Latest requests assigned to or created by you'
+                : 'Latest work moving across your board'}
+            </p>
           </div>
           <button
-            onClick={() => navigate('/tasks')}
+            onClick={() => navigate(normalizeRole(stats?.role) === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}
             className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-500 dark:hover:text-blue-400"
           >
             View All
           </button>
         </div>
         <div className="space-y-2.5">
-          {recentTasks.length === 0 ? (
-            <p className="text-slate-500 dark:text-gray-500 text-sm text-center py-6">No recent tasks</p>
+          {(normalizeRole(stats?.role) === ROLE.EMPLOYEE ? recentTickets : recentTasks).length === 0 ? (
+            <p className="text-slate-500 dark:text-gray-500 text-sm text-center py-6">
+              {normalizeRole(stats?.role) === ROLE.EMPLOYEE ? 'No recent requests' : 'No recent tasks'}
+            </p>
           ) : (
-            recentTasks.map((task) => (
+            (normalizeRole(stats?.role) === ROLE.EMPLOYEE ? recentTickets : recentTasks).map((item) => (
               <div
-                key={task.id}
-                onClick={() => navigate('/tasks')}
+                key={item.id}
+                onClick={() => navigate(normalizeRole(stats?.role) === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}
                 className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3.5 cursor-pointer hover:bg-slate-100 transition-colors dark:border-white/[0.04] dark:bg-white/[0.02] dark:hover:bg-white/[0.05]"
               >
                 <div>
-                  <p className="text-sm font-medium text-slate-900 dark:text-white">{task.title}</p>
+                  <p className="text-sm font-medium text-slate-900 dark:text-white">{item.title}</p>
                   <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-500">
-                    {task.due_date ? `Due: ${new Date(task.due_date).toLocaleDateString()}` : 'No due date'}
+                    {normalizeRole(stats?.role) === ROLE.EMPLOYEE
+                      ? (item.created_at ? `Created: ${new Date(item.created_at).toLocaleDateString()}` : 'No date')
+                      : (item.due_date ? `Due: ${new Date(item.due_date).toLocaleDateString()}` : 'No due date')}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span
                     className="rounded-full px-2.5 py-1 text-xs font-medium capitalize"
                     style={{
-                      backgroundColor: `${STATUS_META[task.status?.toLowerCase()]?.color || ACCENT.blue}1A`,
-                      color: STATUS_META[task.status?.toLowerCase()]?.color || ACCENT.blue,
+                      backgroundColor: `${STATUS_META[(item.status || '').toLowerCase()]?.color || ACCENT.blue}1A`,
+                      color: STATUS_META[(item.status || '').toLowerCase()]?.color || ACCENT.blue,
                     }}
                   >
-                    {task.status?.replace('_', ' ')}
+                    {item.status?.replace('_', ' ')}
                   </span>
-                  {task.priority && (
+                  {item.priority && (
                     <span
                       className="rounded-full px-2.5 py-1 text-xs font-medium capitalize"
                       style={{
-                        backgroundColor: `${PRIORITY_META[task.priority?.toLowerCase()]?.color || ACCENT.purple}1A`,
-                        color: PRIORITY_META[task.priority?.toLowerCase()]?.color || ACCENT.purple,
+                        backgroundColor: `${PRIORITY_META[(item.priority || '').toLowerCase()]?.color || ACCENT.purple}1A`,
+                        color: PRIORITY_META[(item.priority || '').toLowerCase()]?.color || ACCENT.purple,
                       }}
                     >
-                      {task.priority}
+                      {item.priority}
                     </span>
                   )}
                 </div>

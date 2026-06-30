@@ -41,6 +41,41 @@ async def generate_ticket_number(company_id: str) -> str:
     return f"{prefix}{new_num:04d}"
 
 
+async def _ticket_visibility_user_ids(current_user: User) -> list[str]:
+    """Return the user IDs that the current user is allowed to see for ticket ownership/assignment."""
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return []
+
+    if current_user.role == UserRole.MANAGER:
+        subordinates = await current_user.get_all_subordinates()
+        user_ids = [str(sub.id) for sub in subordinates]
+        user_ids.append(str(current_user.id))
+        return user_ids
+
+    if current_user.role == UserRole.LEAD:
+        employees = await User.find(
+            User.reports_to == str(current_user.id),
+            User.role == UserRole.EMPLOYEE,
+        ).to_list()
+        user_ids = [str(emp.id) for emp in employees]
+        user_ids.append(str(current_user.id))
+        return user_ids
+
+    return [str(current_user.id)]
+
+
+async def _can_view_ticket(ticket: Ticket, current_user: User) -> bool:
+    """Check ticket visibility using both creator and assignee ownership."""
+    if current_user.role == UserRole.SUPER_ADMIN or current_user.role == UserRole.ADMIN:
+        return True
+
+    visible_user_ids = await _ticket_visibility_user_ids(current_user)
+    return (
+        ticket.created_by in visible_user_ids
+        or (ticket.assigned_to in visible_user_ids if ticket.assigned_to else False)
+    )
+
+
 @router.post("/")
 async def create_ticket(
     title: str = Form(...),
@@ -172,27 +207,28 @@ async def list_tickets(
         query = {"company_id": current_user.company_id}
     
     # Role-based visibility with hierarchical RBAC:
-    # - Employee: Only see tickets they created
-    # - Lead: See tickets created by their employees + their own tickets
-    # - Manager: See tickets created by all subordinates + their own tickets
-    # - Admin: See all tickets in company
+    # - Employee: See tickets they created or tickets assigned to them
+    # - Lead: See tickets created by their employees or assigned to them
+    # - Manager: See tickets created by subordinates or assigned to them
     if current_user.role == UserRole.EMPLOYEE:
-        query["created_by"] = str(current_user.id)
+        query["$or"] = [
+            {"created_by": str(current_user.id)},
+            {"assigned_to": str(current_user.id)},
+        ]
     elif current_user.role == UserRole.LEAD:
-        # Lead can see their own tickets + tickets from their employees
-        employees = await User.find(
-            User.reports_to == str(current_user.id),
-            User.role == UserRole.EMPLOYEE
-        ).to_list()
-        employee_ids = [str(emp.id) for emp in employees]
-        employee_ids.append(str(current_user.id))
-        query["created_by"] = {"$in": employee_ids}
+        # Lead can see tickets created by or assigned to their team
+        employee_ids = await _ticket_visibility_user_ids(current_user)
+        query["$or"] = [
+            {"created_by": {"$in": employee_ids}},
+            {"assigned_to": {"$in": employee_ids}},
+        ]
     elif current_user.role == UserRole.MANAGER:
-        # Manager can see tickets from all subordinates
-        subordinates = await current_user.get_all_subordinates()
-        subordinate_ids = [str(sub.id) for sub in subordinates]
-        subordinate_ids.append(str(current_user.id))
-        query["created_by"] = {"$in": subordinate_ids}
+        # Manager can see tickets created by or assigned to all subordinates
+        subordinate_ids = await _ticket_visibility_user_ids(current_user)
+        query["$or"] = [
+            {"created_by": {"$in": subordinate_ids}},
+            {"assigned_to": {"$in": subordinate_ids}},
+        ]
     # Admin and Super Admin see all tickets (no additional filter)
     
     # Apply filters
@@ -264,29 +300,11 @@ async def get_ticket(
     check_company_access(current_user, ticket.company_id)
     
     # Check visibility based on role
-    if current_user.role == UserRole.EMPLOYEE:
-        if ticket.created_by != str(current_user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only view tickets you created"
-            )
-    elif current_user.role == UserRole.LEAD:
-        # Lead can see their own tickets + tickets from their team
-        if ticket.created_by != str(current_user.id):
-            from app.models.user import Lead
-            lead_record = await Lead.get(str(current_user.id))
-            if lead_record and lead_record.managed_employee_ids:
-                if ticket.created_by not in [str(uid) for uid in lead_record.managed_employee_ids]:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You can only view tickets from your team"
-                    )
-            else:
-                if ticket.created_by != str(current_user.id):
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You can only view tickets you created"
-                    )
+    if not await _can_view_ticket(ticket, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view this ticket"
+        )
     
     # Get assigned user name if assigned
     assigned_to_name = None
@@ -339,22 +357,14 @@ async def update_ticket_status(
     
     # Check permissions
     can_update = False
-    
-    if current_user.role == UserRole.ADMIN or current_user.role == UserRole.SUPER_ADMIN:
+
+    if current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         can_update = True
-    elif current_user.role == UserRole.LEAD:
-        # Lead can update their own tickets or tickets from their team
-        if ticket.created_by == str(current_user.id):
-            can_update = True
+    elif await _can_view_ticket(ticket, current_user):
+        # Assignees and creators may update their own tickets; leads/managers may update team tickets
+        if current_user.role == UserRole.EMPLOYEE:
+            can_update = ticket.created_by == str(current_user.id) or ticket.assigned_to == str(current_user.id)
         else:
-            from app.models.user import Lead
-            lead_record = await Lead.get(str(current_user.id))
-            if lead_record and lead_record.managed_employee_ids:
-                if ticket.created_by in [str(uid) for uid in lead_record.managed_employee_ids]:
-                    can_update = True
-    elif current_user.role == UserRole.EMPLOYEE:
-        # Employee can update their own tickets
-        if ticket.created_by == str(current_user.id):
             can_update = True
     
     if not can_update:
@@ -479,28 +489,11 @@ async def get_ticket_comments(
     check_company_access(current_user, ticket.company_id)
     
     # Check visibility (same as get_ticket)
-    if current_user.role == UserRole.EMPLOYEE:
-        if ticket.created_by != str(current_user.id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only view tickets you created"
-            )
-    elif current_user.role == UserRole.LEAD:
-        if ticket.created_by != str(current_user.id):
-            from app.models.user import Lead
-            lead_record = await Lead.get(str(current_user.id))
-            if lead_record and lead_record.managed_employee_ids:
-                if ticket.created_by not in [str(uid) for uid in lead_record.managed_employee_ids]:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You can only view tickets from your team"
-                    )
-            else:
-                if ticket.created_by != str(current_user.id):
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You can only view tickets you created"
-                    )
+    if not await _can_view_ticket(ticket, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view this ticket"
+        )
     
     comments = await TicketComment.find({
         "ticket_id": ticket_id,

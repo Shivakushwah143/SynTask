@@ -14,23 +14,26 @@ import {
   FolderKanban,
   Ticket,
   MessageCircle,
+  Bot,
   Briefcase,
   FileText,
   X,
   DollarSign,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
+import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
 
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { user } = useAuthStore();
-  const userRole = user?.role === "admin" ? "company_admin" : user?.role;
+  const userRole = normalizeRole(user?.role);
   const hasModule = (module) =>
-    !module || user?.modules?.includes(module) || userRole === "super_admin";
+    !module || user?.modules?.includes(module) || isSuperAdminRole(userRole);
 
   // Desktop-only "rail" mode: shrinks to icons, expands on toggle.
   // Mobile drawer (isOpen/onClose) is unaffected by this and always shows the full sidebar.
@@ -55,128 +58,148 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: "Dashboard",
       href: "/dashboard",
       icon: LayoutDashboard,
-      roles: ["super_admin", "company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
       name: "Projects",
       href: "/projects",
       icon: FolderKanban,
-      roles: ["company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Requests",
       href: "/tickets",
       icon: Ticket,
-      roles: ["company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Chat",
       href: "/chat",
       icon: MessageCircle,
-      roles: ["company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Meetings",
       href: "/meetings",
       icon: Video,
-      roles: ["company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Calendar",
       href: "/calendar",
       icon: CalendarIcon,
-      roles: ["company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Timesheet",
       href: "/timesheet",
       icon: Clock,
-      roles: ["company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Reports",
       href: "/reports",
       icon: BarChart3,
-      roles: ["company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
+    },
+    {
+      name: "AI Copilot",
+      href: "/ai-prioritization",
+      icon: Sparkles,
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
+    },
+    {
+      name: "AI Assistant",
+      href: "/ai-assistant",
+      icon: Bot,
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Sales",
       href: "/sales",
       icon: TrendingUp,
-      roles: ["company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "sales",
     },
     {
       name: "Clients",
       href: "/clients",
       icon: Briefcase,
-      roles: ["company_admin"],
+      roles: [ROLE.ADMIN],
       module: "task",
     },
     {
       name: "Invoices",
       href: "/invoices",
       icon: FileText,
-      roles: ["company_admin"],
+      roles: [ROLE.ADMIN],
       module: "task",
     },
     {
       name: "MSA",
       href: "/msa",
       icon: FileText,
-      roles: ["company_admin", "lead"],
+      roles: [ROLE.ADMIN, ROLE.LEAD],
       module: "task",
     },
     {
       name: "Ledger",
       href: "/ledger",
       icon: DollarSign,
-      roles: ["company_admin"],
+      roles: [ROLE.ADMIN],
       module: "task",
     },
     {
       name: "Users",
       href: "/users",
       icon: Users,
-      roles: ["company_admin", "super_admin"],
+      roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
+    },
+    {
+      name: "Departments",
+      href: "/departments",
+      icon: Building2,
+      roles: [ROLE.ADMIN],
     },
     {
       name: "My Team",
       href: "/my-team",
       icon: Users,
-      roles: ["lead"],
+      roles: [ROLE.LEAD],
       module: "task",
     },
     {
       name: "Companies",
       href: "/companies",
       icon: Building2,
-      roles: ["super_admin"],
+      roles: [ROLE.SUPER_ADMIN],
     },
     {
       name: "Subscriptions",
       href: "/subscriptions",
       icon: CreditCard,
-      roles: ["company_admin"],
+      roles: [ROLE.ADMIN],
     },
     {
       name: "Activity Log",
       href: "/activity",
       icon: Clock,
-      roles: ["company_admin", "lead"],
+      roles: [ROLE.ADMIN, ROLE.LEAD],
     },
     {
       name: "Settings",
       href: "/settings",
       icon: Settings,
-      roles: ["super_admin", "company_admin", "lead", "employee", "manager"],
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
   ];
 
@@ -377,7 +400,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   {user?.first_name} {user?.last_name}
                 </p>
                 <p className="text-xs text-gray-500 capitalize truncate dark:text-gray-400">
-                  {user?.role?.replace("_", " ")}
+                  {getRoleLabel(user?.role)}
                 </p>
               </div>
 

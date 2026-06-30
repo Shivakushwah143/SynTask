@@ -20,9 +20,12 @@ class UserRole(str, Enum):
     @classmethod
     def from_legacy(cls, role_str: str) -> 'UserRole':
         """Convert legacy COMPANY_ADMIN to ADMIN"""
-        if role_str == "company_admin":
+        normalized = str(role_str).strip().lower().replace(" ", "_").replace("-", "_")
+        if normalized in {"company_admin", "companyadmin"}:
             return cls.ADMIN
-        return cls(role_str)
+        if normalized in {"superadmin", "super_admin"}:
+            return cls.SUPER_ADMIN
+        return cls(normalized)
 
 
 class UserStatus(str, Enum):
@@ -47,6 +50,7 @@ class User(Document):
     phone: Optional[str] = None
     avatar: Optional[str] = None
     company_id: Optional[str] = None  # For company users
+    department_id: Optional[str] = None  # Company Department document ID
     
     # Hierarchical Reporting Structure
     reports_to: Optional[str] = None  # User ID of the person this user reports to
@@ -226,5 +230,5 @@ class Employee(User):
     ]
     lead_id: Optional[str] = None  # Legacy field - use reports_to instead
     department: Optional[str] = None
+    department_id: Optional[str] = None
     designation: Optional[str] = None
-

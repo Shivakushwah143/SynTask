@@ -7,7 +7,7 @@ from datetime import datetime
 
 from app.models.time_tracking import TimeLog, TimeTrackingSummary
 from app.models.task import Task
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, check_company_access
 
 router = APIRouter()
@@ -201,7 +201,7 @@ async def delete_time_log(
     check_company_access(current_user, time_log.company_id)
     
     # Only allow deletion by the user who created it or admin
-    if time_log.user_id != str(current_user.id) and current_user.role.value not in ["super_admin", "company_admin"]:
+    if time_log.user_id != str(current_user.id) and current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only delete your own time logs"
@@ -242,7 +242,7 @@ async def get_user_time_logs(
 ):
     """Get time logs for a user"""
     # Check access
-    if user_id != str(current_user.id) and current_user.role.value not in ["super_admin", "company_admin"]:
+    if user_id != str(current_user.id) and current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only view your own time logs"
@@ -288,5 +288,4 @@ async def get_user_time_logs(
         "skip": skip,
         "limit": limit
     }
-
 

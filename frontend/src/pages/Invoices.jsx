@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { FileText, Plus, Edit, Trash2, X, Mail, Calendar, Search, Eye, Send, Download, ChevronDown } from 'lucide-react'
+import { FileText, Plus, Trash2, X, Search, Eye, Send } from 'lucide-react'
 import { invoicesAPI } from '../api/invoices'
 import { clientsAPI } from '../api/clients'
 import { useAuthStore } from '../store/authStore'
+import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -35,8 +36,8 @@ const Invoices = () => {
   const [clientDetails, setClientDetails] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const isCompanyAdmin = user?.role === 'company_admin'
-  const isLead = user?.role === 'lead'
+  const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
+  const isLead = isLeadRole(user?.role)
 
   useEffect(() => {
     loadInvoices()
@@ -244,7 +245,6 @@ const Invoices = () => {
     }
   }
 
-  const totals = calculateTotals()
   const filteredInvoices = invoices.filter(invoice => {
     const matchesSearch = !searchQuery || 
       invoice.invoice_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -831,5 +831,3 @@ const Invoices = () => {
 }
 
 export default Invoices
-
-

@@ -5,6 +5,7 @@ import { useTheme } from './hooks/useTheme'
 import { PageLoader } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Agentation } from "agentation";
+import { isSuperAdminRole } from './utils/roles'
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
@@ -20,6 +21,8 @@ const NewLanding = lazy(() => import('./pages/NewLanding'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Users = lazy(() => import('./pages/Users'))
+const Departments = lazy(() => import('./pages/Departments'))
+const AIPrioritization = lazy(() => import('./pages/AIPrioritization'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Subscriptions = lazy(() => import('./pages/Subscriptions'))
 const ActivityLog = lazy(() => import('./pages/ActivityLog'))
@@ -41,6 +44,7 @@ const Meetings = lazy(() => import('./pages/Meetings'))
 const Calendar = lazy(() => import('./pages/Calendar'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
+const AIChat = lazy(() => import('./pages/AIChat'))
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
 const SalesContacts = lazy(() => import('./pages/sales/SalesContacts'))
@@ -57,8 +61,6 @@ const TenantDetail = lazy(() => import('./pages/superadmin/TenantDetail'))
 const SubscriptionPlans = lazy(() => import('./pages/superadmin/SubscriptionPlans'))
 const UsageAnalytics = lazy(() => import('./pages/superadmin/UsageAnalytics'))
 const BillingRevenue = lazy(() => import('./pages/superadmin/BillingRevenue'))
-
-const isSuperAdminRole = (role) => ['super_admin', 'SuperAdmin'].includes(role)
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuthStore()
@@ -134,7 +136,10 @@ function App() {
           <Route path="calendar" element={withBoundary(<Calendar />)} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
           <Route path="reports" element={withBoundary(<Reports />)} />
+          <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
+          <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
+          <Route path="departments" element={withBoundary(<Departments />)} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
           <Route path="activity" element={withBoundary(<ActivityLog />)} />
