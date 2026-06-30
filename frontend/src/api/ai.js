@@ -6,6 +6,16 @@ export const aiAPI = {
     return response.data
   },
 
+  generateTaskBreakdown: async (payload = {}) => {
+    const response = await api.post('/ai/task-breakdown', payload)
+    return response.data
+  },
+
+  generateDailyReport: async (payload = {}) => {
+    const response = await api.post('/ai/daily-report', payload)
+    return response.data
+  },
+
   chat: async (payload = {}) => {
     const response = await api.post('/ai/chat', payload)
     return response.data

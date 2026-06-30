@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from app.ai.context_builder import ContextBuilder
 from app.ai.logger import AILogger
+from app.ai.memory import AIMemoryService
 from app.ai.prompt_manager import PromptManager
 from app.ai.provider import AIProvider
 from app.ai.providers.groq import GroqProvider
@@ -20,11 +21,20 @@ from app.models.task import TaskStatus
 from app.models.user import User, UserRole
 from app.schemas.ai import (
     AIDailyBlock,
+    AIDailyReportItem,
+    AIDailyReportLLMResponse,
+    AIDailyReportRequest,
+    AIDailyReportResponse,
+    AIDailyReportSection,
     AILogListItem,
     AIChatLLMResponse,
     AIChatRequest,
     AIChatResponse,
     AIInsightTaskItem,
+    AITaskBreakdownLLMResponse,
+    AITaskBreakdownRequest,
+    AITaskBreakdownResponse,
+    AITaskBreakdownTaskItem,
     AITaskPrioritizationLLMResponse,
     AITaskPrioritizationRequest,
     AITaskPrioritizationResponse,
@@ -43,6 +53,7 @@ class AIService:
         self.role_engine = role_engine or RoleEngine()
         self.tool_executor = tool_executor or ToolExecutor()
         self.response_parser = ResponseParser()
+        self.memory_service = AIMemoryService()
         self.provider = provider or self._build_provider()
 
     def _build_provider(self) -> AIProvider:
@@ -153,6 +164,318 @@ class AIService:
                 }
             )
         return actions[:3]
+
+    @staticmethod
+    def _estimate_task_breakdown_hours(task: dict[str, Any], subtask_count: int) -> float:
+        estimated_hours = task.get("estimated_hours")
+        if estimated_hours is not None:
+            return max(1.0, float(estimated_hours))
+
+        story_points = task.get("story_points")
+        if story_points is not None:
+            return max(1.0, float(story_points) * 1.5)
+
+        priority = (task.get("priority") or "medium").lower()
+        baseline = {
+            "critical": 12.0,
+            "high": 8.0,
+            "medium": 6.0,
+            "low": 4.0,
+        }.get(priority, 6.0)
+        return max(1.0, baseline + max(0, subtask_count - 4) * 0.5)
+
+    @staticmethod
+    def _build_task_breakdown_fallback_response(
+        context: dict[str, Any],
+        resolution: RoleResolution,
+        request: AITaskBreakdownRequest,
+    ) -> AITaskBreakdownResponse:
+        task = context["task"]
+        existing_subtasks = list(context.get("existing_subtasks") or [])
+        subtask_count = min(max(len(existing_subtasks) or request.max_subtasks, 3), request.max_subtasks)
+        total_hours = AIService._estimate_task_breakdown_hours(task, subtask_count)
+
+        subtasks: list[dict[str, Any]] = []
+        if existing_subtasks:
+            for index, item in enumerate(existing_subtasks[:subtask_count], start=1):
+                subtasks.append(
+                    {
+                        "order": index,
+                        "title": item["title"],
+                        "description": item.get("description") or f"Complete {item['title'].lower()} for {task['title']}.",
+                        "estimated_hours": float(item.get("estimated_hours") or round(total_hours / subtask_count, 1)),
+                        "dependencies": list(item.get("dependencies") or (context.get("existing_dependencies") or [])),
+                        "milestone": item.get("milestone") or "Execution",
+                    }
+                )
+        else:
+            generic_steps = [
+                ("Clarify scope and requirements", "Confirm the objective, expected output, and acceptance criteria."),
+                ("Prepare execution plan", "Break the task into concrete deliverables and confirm dependencies."),
+                ("Execute the core work", "Complete the main production or delivery work for the task."),
+                ("Review and quality check", "Validate the work, fix issues, and verify the result."),
+                ("Deliver and close out", "Share the final output and mark the task complete."),
+            ]
+            for index, (title, description) in enumerate(generic_steps[:subtask_count], start=1):
+                subtasks.append(
+                    {
+                        "order": index,
+                        "title": title,
+                        "description": description,
+                        "estimated_hours": round(total_hours / subtask_count, 1),
+                        "dependencies": list(context.get("existing_dependencies") or []),
+                        "milestone": "Planning" if index == 1 else "Execution" if index < subtask_count else "Delivery",
+                    }
+                )
+
+        milestones = [
+            {
+                "title": "Scope confirmed",
+                "description": "The task intent, success criteria, and dependencies are clear.",
+                "due_in_days": None,
+                "success_criteria": "No open questions remain before execution starts.",
+            },
+            {
+                "title": "Core work completed",
+                "description": "The main deliverable is finished and ready for review.",
+                "due_in_days": None,
+                "success_criteria": "The primary output is available for quality checks.",
+            },
+            {
+                "title": "Delivery ready",
+                "description": "The task has been reviewed and can be handed off or closed.",
+                "due_in_days": 0 if task.get("status") == TaskStatus.IN_REVIEW.value else None,
+                "success_criteria": "The work is ready to be marked complete.",
+            },
+        ]
+
+        response_task = AITaskBreakdownTaskItem(
+            task_id=task["task_id"],
+            title=task["title"],
+            description=task.get("description"),
+            status=task["status"],
+            priority=task["priority"],
+            due_date=task.get("due_date"),
+            estimated_hours=task.get("estimated_hours"),
+            project_id=task.get("project_id"),
+            project_name=task.get("project_name"),
+            department=task.get("department"),
+            assigned_to=task.get("assigned_to"),
+        )
+
+        dependencies = list(dict.fromkeys(context.get("existing_dependencies") or []))
+        if not dependencies and task.get("assigned_to"):
+            dependencies.append(f"Coordinate with assignee {task['assigned_to']}")
+        if not dependencies:
+            dependencies.append("Confirm scope with the task owner")
+
+        return AITaskBreakdownResponse(
+            summary=(
+                f"Broken down {task['title']} into {len(subtasks)} actionable steps "
+                f"for {context['team']['current_user_role']} execution."
+            ),
+            task=response_task,
+            subtasks=subtasks,
+            dependencies=dependencies,
+            milestones=milestones,
+            time_estimate_hours=round(total_hours, 1),
+            actions=[],
+            source="fallback",
+            provider=settings.AI_PROVIDER.lower().strip(),
+            model=settings.AI_MODEL_OPENAI if settings.AI_PROVIDER.lower().strip() == "openai" else settings.AI_MODEL_GROQ,
+            role=resolution.role_key,
+            prompt_version=resolution.prompt_version,
+            fallback_chain=list(resolution.fallback_chain),
+            fallback_used=resolution.fallback_used,
+            generated_at=datetime.utcnow(),
+            context=context,
+        )
+
+    @staticmethod
+    def _daily_report_task_item(
+        item: dict[str, Any],
+        note: str | None = None,
+    ) -> AIDailyReportItem:
+        return AIDailyReportItem(
+            item_type=item.get("item_type", "task"),
+            title=item.get("title") or item.get("ticket_number") or "Untitled item",
+            description=item.get("description"),
+            item_id=item.get("item_id") or item.get("id"),
+            status=item.get("status"),
+            priority=item.get("priority"),
+            due_date=item.get("due_date"),
+            estimated_hours=item.get("estimated_hours"),
+            assigned_to=item.get("assigned_to") or item.get("owner"),
+            project_name=item.get("project_name"),
+            note=note or item.get("note"),
+        )
+
+    @staticmethod
+    def _daily_report_metric_item(title: str, description: str, note: str | None = None) -> AIDailyReportItem:
+        return AIDailyReportItem(
+            item_type="metric",
+            title=title,
+            description=description,
+            note=note,
+        )
+
+    def _build_daily_report_fallback_response(
+        self,
+        context: dict[str, Any],
+        resolution: RoleResolution,
+        request: AIDailyReportRequest,
+    ) -> AIDailyReportResponse:
+        report_type = context.get("report_type") or resolution.role_key
+        report_scope = context.get("report_scope", "self")
+        tasks = list(context.get("tasks") or [])
+        tickets = list(context.get("tickets") or [])
+        completed_tasks = list(context.get("completed_tasks") or [])
+        pending_tasks = list(context.get("pending_tasks") or [])
+        blockers = list(context.get("blockers") or [])
+        tomorrow_priorities = list(context.get("tomorrow_priorities") or [])
+        open_tickets = list(context.get("open_tickets") or [])
+        overdue_tickets = list(context.get("overdue_tickets") or [])
+        project_summary = list(context.get("project_summary") or [])
+        task_count_by_owner = dict(context.get("task_count_by_owner") or {})
+        scope_summary = dict(context.get("scope_summary") or {})
+
+        sections: list[AIDailyReportSection]
+        if report_type == "lead":
+            sections = [
+                AIDailyReportSection(
+                    title="Team Progress",
+                    summary=f"{len(completed_tasks)} completed items and {len(pending_tasks)} pending items in the current team scope.",
+                    items=[
+                        *[self._daily_report_task_item(item, note="Completed item") for item in completed_tasks[: request.limit]],
+                        *[self._daily_report_task_item(item, note="Active ticket") for item in open_tickets[: max(0, request.limit - len(completed_tasks))]],
+                    ][: request.limit],
+                ),
+                AIDailyReportSection(
+                    title="Team Blockers",
+                    summary=f"{len(blockers) + len(overdue_tickets)} blockers and risks need follow-up.",
+                    items=[
+                        *[self._daily_report_task_item(item, note="Overdue or in-review work") for item in blockers[: request.limit]],
+                        *[self._daily_report_task_item(item, note="Open ticket") for item in overdue_tickets[: max(0, request.limit - len(blockers))]],
+                    ][: request.limit],
+                ),
+                AIDailyReportSection(
+                    title="Team Priorities",
+                    summary=f"{len(tomorrow_priorities)} near-term priorities are due soon.",
+                    items=[self._daily_report_task_item(item, note="Prioritize next") for item in tomorrow_priorities[: request.limit]],
+                ),
+            ]
+        elif report_type == "department":
+            top_owner = max(task_count_by_owner.items(), key=lambda item: item[1])[0] if task_count_by_owner else "Unassigned"
+            sections = [
+                AIDailyReportSection(
+                    title="Department Health",
+                    summary=(
+                        f"{scope_summary.get('completed_tasks', 0)} tasks completed, "
+                        f"{scope_summary.get('pending_tasks', 0)} still pending, and "
+                        f"{scope_summary.get('blockers', 0)} blockers in scope."
+                    ),
+                    items=[
+                        self._daily_report_metric_item("Completion", f"{scope_summary.get('completed_tasks', 0)} completed tasks today"),
+                        self._daily_report_metric_item("Pending work", f"{scope_summary.get('pending_tasks', 0)} tasks still open"),
+                        self._daily_report_metric_item("Top workload owner", top_owner, note=f"{task_count_by_owner.get(top_owner, 0)} tasks in scope"),
+                    ],
+                ),
+                AIDailyReportSection(
+                    title="Delayed Work",
+                    summary=f"{len(blockers)} delayed tasks and {len(overdue_tickets)} overdue tickets need attention.",
+                    items=[
+                        *[self._daily_report_task_item(item, note="Delayed task") for item in blockers[: request.limit]],
+                        *[self._daily_report_task_item(item, note="Overdue ticket") for item in overdue_tickets[: max(0, request.limit - len(blockers))]],
+                    ][: request.limit],
+                ),
+                AIDailyReportSection(
+                    title="Resource Risks",
+                    summary="Watch workload distribution and unresolved items across the department.",
+                    items=[
+                        self._daily_report_metric_item(owner or "Unassigned", f"{count} tasks assigned", note="Workload concentration")
+                        for owner, count in sorted(task_count_by_owner.items(), key=lambda item: (-item[1], item[0]))[: request.limit]
+                    ],
+                ),
+            ]
+        elif report_type == "admin":
+            sections = [
+                AIDailyReportSection(
+                    title="Company Progress",
+                    summary=f"{len(completed_tasks)} tasks completed and {len(pending_tasks)} tasks remain in the company scope.",
+                    items=[
+                        self._daily_report_metric_item("Tasks completed", f"{len(completed_tasks)} completed"),
+                        self._daily_report_metric_item("Tickets in play", f"{len(tickets)} tickets tracked"),
+                        self._daily_report_metric_item("Open tickets", f"{len(open_tickets)} open or active tickets"),
+                    ],
+                ),
+                AIDailyReportSection(
+                    title="Critical Risks",
+                    summary=f"{len(blockers) + len(overdue_tickets)} items need escalation or rapid follow-up.",
+                    items=[
+                        *[self._daily_report_task_item(item, note="Critical task risk") for item in blockers[: request.limit]],
+                        *[self._daily_report_task_item(item, note="Critical ticket risk") for item in overdue_tickets[: max(0, request.limit - len(blockers))]],
+                    ][: request.limit],
+                ),
+                AIDailyReportSection(
+                    title="Project Health",
+                    summary=f"{len(project_summary)} active project buckets were detected.",
+                    items=[
+                        self._daily_report_metric_item(
+                            project["project_name"],
+                            f"{project['completed_tasks']}/{project['total_tasks']} tasks complete",
+                            note=f"{project['pending_tasks']} remaining",
+                        )
+                        for project in project_summary[: request.limit]
+                    ],
+                ),
+            ]
+        else:
+            sections = [
+                AIDailyReportSection(
+                    title="Completed Tasks",
+                    summary=f"{len(completed_tasks)} completed tasks were found in verified context.",
+                    items=[self._daily_report_task_item(item, note="Completed today") for item in completed_tasks[: request.limit]],
+                ),
+                AIDailyReportSection(
+                    title="Pending Tasks",
+                    summary=f"{len(pending_tasks)} pending tasks remain in the personal scope.",
+                    items=[self._daily_report_task_item(item, note="Still open") for item in pending_tasks[: request.limit]],
+                ),
+                AIDailyReportSection(
+                    title="Blockers",
+                    summary=f"{len(blockers) + len(overdue_tickets)} blockers and unresolved tickets were identified.",
+                    items=[
+                        *[self._daily_report_task_item(item, note="Task blocker") for item in blockers[: request.limit]],
+                        *[self._daily_report_task_item(item, note="Ticket blocker") for item in overdue_tickets[: max(0, request.limit - len(blockers))]],
+                    ][: request.limit],
+                ),
+                AIDailyReportSection(
+                    title="Tomorrow Priorities",
+                    summary=f"{len(tomorrow_priorities)} near-term priorities should be handled first tomorrow.",
+                    items=[self._daily_report_task_item(item, note="Start early tomorrow") for item in tomorrow_priorities[: request.limit]],
+                ),
+            ]
+
+        summary = (
+            f"Generated a {report_type} daily report for {context['generated_for']['full_name']} "
+            f"using {report_scope} scope and {len(tasks)} tasks / {len(tickets)} tickets."
+        )
+
+        return AIDailyReportResponse(
+            report_type=report_type,
+            summary=summary,
+            sections=sections,
+            actions=[],
+            source="fallback",
+            provider=settings.AI_PROVIDER.lower().strip(),
+            model=settings.AI_MODEL_OPENAI if settings.AI_PROVIDER.lower().strip() == "openai" else settings.AI_MODEL_GROQ,
+            role=resolution.role_key,
+            prompt_version=resolution.prompt_version,
+            fallback_chain=list(resolution.fallback_chain),
+            fallback_used=resolution.fallback_used,
+            generated_at=datetime.utcnow(),
+            context=context,
+        )
 
     def _build_chat_fallback_response(
         self,
@@ -275,6 +598,285 @@ class AIService:
             generated_at=datetime.utcnow(),
             context=context,
         )
+
+    async def generate_task_breakdown(
+        self,
+        current_user: User,
+        request: AITaskBreakdownRequest,
+    ) -> AITaskBreakdownResponse:
+        context = await ContextBuilder.build_task_breakdown_context(
+            current_user=current_user,
+            task_id=request.task_id,
+            max_subtasks=request.max_subtasks,
+        )
+
+        resolution = self.role_engine.resolve(current_user)
+        prompt_schema = AITaskBreakdownLLMResponse.model_json_schema()
+        prompt_package = self.prompt_manager.render_role_prompt(
+            resolution,
+            feature_name="task_breakdown",
+            context=context,
+            output_schema=prompt_schema,
+        )
+
+        provider_name = settings.AI_PROVIDER.lower().strip()
+        model_name = settings.AI_MODEL_OPENAI if provider_name == "openai" else settings.AI_MODEL_GROQ
+        started_at = time.perf_counter()
+
+        try:
+            result = await self.provider.generate(
+                prompt=prompt_package.user_prompt,
+                context=context,
+                options={
+                    "system_prompt": prompt_package.system_prompt,
+                    "max_tokens": settings.AI_MAX_TOKENS,
+                    "temperature": settings.AI_TEMPERATURE,
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            model_name = result.model
+            parsed = self.response_parser.parse_json_model(result.content, AITaskBreakdownLLMResponse)
+            action_results = await self.tool_executor.execute_many(parsed.actions)
+            executed_actions = [
+                {
+                    "tool": item.tool_name,
+                    "success": item.success,
+                    "result": item.result,
+                }
+                for item in action_results
+            ]
+            response = AITaskBreakdownResponse(
+                summary=parsed.summary,
+                task=AITaskBreakdownTaskItem.model_validate(context["task"]),
+                subtasks=parsed.subtasks,
+                dependencies=parsed.dependencies,
+                milestones=parsed.milestones,
+                time_estimate_hours=parsed.time_estimate_hours,
+                actions=parsed.actions,
+                source="llm",
+                provider=provider_name,
+                model=result.model,
+                role=resolution.role_key,
+                prompt_version=prompt_package.prompt_version,
+                fallback_chain=list(prompt_package.fallback_chain),
+                fallback_used=prompt_package.fallback_used,
+                generated_at=datetime.utcnow(),
+                context={
+                    **context,
+                    "prompt_file": prompt_package.prompt_file,
+                    "prompt_role_key": prompt_package.prompt_role_key,
+                    "prompt_version": prompt_package.prompt_version,
+                    "role_resolution": {
+                        "role_key": prompt_package.role_key,
+                        "prompt_role_key": prompt_package.prompt_role_key,
+                        "fallback_chain": prompt_package.fallback_chain,
+                        "fallback_used": prompt_package.fallback_used,
+                        "fallback_reason": prompt_package.fallback_reason,
+                    },
+                    "executed_actions": executed_actions,
+                },
+            )
+
+            await AILogger.log_interaction(
+                feature="task_breakdown",
+                role=resolution.role_key,
+                provider=provider_name,
+                status="success",
+                company_id=current_user.company_id,
+                user_id=str(current_user.id),
+                target_user_id=context["task"].get("assigned_to"),
+                model=result.model,
+                prompt_version=prompt_package.prompt_version,
+                prompt_role_key=prompt_package.prompt_role_key,
+                prompt=prompt_package.user_prompt,
+                context=context,
+                raw_response=result.content,
+                parsed_response=response.model_dump(),
+                latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                total_tokens=result.total_tokens,
+                response_size_bytes=len(result.content.encode("utf-8")),
+                fallback_used=prompt_package.fallback_used,
+                fallback_chain=list(prompt_package.fallback_chain),
+                executed_actions=executed_actions,
+            )
+            return response
+        except Exception as error:
+            fallback = self._build_task_breakdown_fallback_response(context, resolution, request)
+            await AILogger.log_interaction(
+                feature="task_breakdown",
+                role=resolution.role_key,
+                provider=provider_name,
+                status="fallback",
+                company_id=current_user.company_id,
+                user_id=str(current_user.id),
+                target_user_id=context["task"].get("assigned_to"),
+                model=model_name,
+                prompt_version=prompt_package.prompt_version,
+                prompt_role_key=prompt_package.prompt_role_key,
+                prompt=prompt_package.user_prompt,
+                context=context,
+                raw_response=None,
+                parsed_response=fallback.model_dump(),
+                latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                prompt_tokens=None,
+                completion_tokens=None,
+                total_tokens=None,
+                response_size_bytes=len(fallback.model_dump_json().encode("utf-8")),
+                fallback_used=True,
+                fallback_chain=list(prompt_package.fallback_chain),
+                executed_actions=[],
+                error_message=str(error),
+            )
+            return fallback
+
+    async def generate_daily_report(
+        self,
+        current_user: User,
+        request: AIDailyReportRequest,
+    ) -> AIDailyReportResponse:
+        context = await ContextBuilder.build_daily_report_context(
+            current_user=current_user,
+            report_date=request.report_date,
+            limit=request.limit,
+        )
+
+        resolution = self.role_engine.resolve(current_user)
+        prompt_schema = AIDailyReportLLMResponse.model_json_schema()
+        prompt_package = self.prompt_manager.render_role_prompt(
+            resolution,
+            feature_name="daily_report",
+            context=context,
+            output_schema=prompt_schema,
+        )
+
+        provider_name = settings.AI_PROVIDER.lower().strip()
+        model_name = settings.AI_MODEL_OPENAI if provider_name == "openai" else settings.AI_MODEL_GROQ
+        started_at = time.perf_counter()
+
+        try:
+            result = await self.provider.generate(
+                prompt=prompt_package.user_prompt,
+                context=context,
+                options={
+                    "system_prompt": prompt_package.system_prompt,
+                    "max_tokens": settings.AI_MAX_TOKENS,
+                    "temperature": settings.AI_TEMPERATURE,
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            model_name = result.model
+            parsed = self.response_parser.parse_json_model(result.content, AIDailyReportLLMResponse)
+            action_results = await self.tool_executor.execute_many(parsed.actions)
+            executed_actions = [
+                {
+                    "tool": item.tool_name,
+                    "success": item.success,
+                    "result": item.result,
+                }
+                for item in action_results
+            ]
+            response = AIDailyReportResponse(
+                report_type=parsed.report_type,
+                summary=parsed.summary,
+                sections=parsed.sections,
+                actions=parsed.actions,
+                source="llm",
+                provider=provider_name,
+                model=result.model,
+                role=resolution.role_key,
+                prompt_version=prompt_package.prompt_version,
+                fallback_chain=list(prompt_package.fallback_chain),
+                fallback_used=prompt_package.fallback_used,
+                generated_at=datetime.utcnow(),
+                context={
+                    **context,
+                    "prompt_file": prompt_package.prompt_file,
+                    "prompt_role_key": prompt_package.prompt_role_key,
+                    "prompt_version": prompt_package.prompt_version,
+                    "role_resolution": {
+                        "role_key": prompt_package.role_key,
+                        "prompt_role_key": prompt_package.prompt_role_key,
+                        "fallback_chain": prompt_package.fallback_chain,
+                        "fallback_used": prompt_package.fallback_used,
+                        "fallback_reason": prompt_package.fallback_reason,
+                    },
+                    "executed_actions": executed_actions,
+                },
+            )
+
+            await AILogger.log_interaction(
+                feature="daily_report",
+                role=resolution.role_key,
+                provider=provider_name,
+                status="success",
+                company_id=current_user.company_id,
+                user_id=str(current_user.id),
+                target_user_id=None,
+                model=result.model,
+                prompt_version=prompt_package.prompt_version,
+                prompt_role_key=prompt_package.prompt_role_key,
+                prompt=prompt_package.user_prompt,
+                context=context,
+                raw_response=result.content,
+                parsed_response=response.model_dump(),
+                latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                total_tokens=result.total_tokens,
+                response_size_bytes=len(result.content.encode("utf-8")),
+                fallback_used=prompt_package.fallback_used,
+                fallback_chain=list(prompt_package.fallback_chain),
+                executed_actions=executed_actions,
+            )
+            try:
+                await self.memory_service.remember_report(
+                    current_user,
+                    report_type=response.report_type,
+                    summary=response.summary,
+                    context=context,
+                )
+            except Exception:
+                pass
+            return response
+        except Exception as error:
+            fallback = self._build_daily_report_fallback_response(context, resolution, request)
+            await AILogger.log_interaction(
+                feature="daily_report",
+                role=resolution.role_key,
+                provider=provider_name,
+                status="fallback",
+                company_id=current_user.company_id,
+                user_id=str(current_user.id),
+                target_user_id=None,
+                model=model_name,
+                prompt_version=prompt_package.prompt_version,
+                prompt_role_key=prompt_package.prompt_role_key,
+                prompt=prompt_package.user_prompt,
+                context=context,
+                raw_response=None,
+                parsed_response=fallback.model_dump(),
+                latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                prompt_tokens=None,
+                completion_tokens=None,
+                total_tokens=None,
+                response_size_bytes=len(fallback.model_dump_json().encode("utf-8")),
+                fallback_used=True,
+                fallback_chain=list(prompt_package.fallback_chain),
+                executed_actions=[],
+                error_message=str(error),
+            )
+            try:
+                await self.memory_service.remember_report(
+                    current_user,
+                    report_type=fallback.report_type,
+                    summary=fallback.summary,
+                    context=context,
+                )
+            except Exception:
+                pass
+            return fallback
 
     async def generate_task_prioritization(
         self,
@@ -517,6 +1119,15 @@ class AIService:
                 fallback_chain=list(prompt_package.fallback_chain),
                 executed_actions=executed_actions,
             )
+            try:
+                await self.memory_service.remember_chat(
+                    current_user,
+                    user_message=request.message,
+                    assistant_message=response.message,
+                    context=context,
+                )
+            except Exception:
+                pass
             return response
         except Exception as error:
             fallback = self._build_chat_fallback_response(context, resolution, request)
@@ -545,6 +1156,15 @@ class AIService:
                 executed_actions=[],
                 error_message=str(error),
             )
+            try:
+                await self.memory_service.remember_chat(
+                    current_user,
+                    user_message=request.message,
+                    assistant_message=fallback.message,
+                    context=context,
+                )
+            except Exception:
+                pass
             return fallback
 
     async def list_logs(

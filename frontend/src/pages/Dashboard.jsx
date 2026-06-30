@@ -21,6 +21,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import toast from 'react-hot-toast'
 import { SkeletonCard, SkeletonTable } from '../components/ui'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
+import AIBriefingCenter from '../components/AIBriefingCenter'
 
 // ---- design tokens -------------------------------------------------------
 // Accent colors stay constant across themes (they're tinted badges, not
@@ -361,6 +362,13 @@ const Dashboard = () => {
           Here&apos;s what&apos;s happening across your workspace today.
         </p>
       </div>
+
+      <AIBriefingCenter
+        user={user}
+        stats={stats}
+        recentTasks={recentTasks}
+        recentTickets={recentTickets}
+      />
 
       {/* Stats Grid */}
       <div className={`grid grid-cols-1 gap-4 sm:gap-5 sm:grid-cols-2 ${statsCards.length > 3 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
