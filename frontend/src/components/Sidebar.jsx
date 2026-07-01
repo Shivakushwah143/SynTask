@@ -14,14 +14,12 @@ import {
   FolderKanban,
   Ticket,
   MessageCircle,
-  Bot,
   Briefcase,
   FileText,
   X,
   DollarSign,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
@@ -106,20 +104,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: "Reports",
       href: "/reports",
       icon: BarChart3,
-      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "task",
-    },
-    {
-      name: "AI Copilot",
-      href: "/ai-prioritization",
-      icon: Sparkles,
-      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "task",
-    },
-    {
-      name: "AI Assistant",
-      href: "/ai-assistant",
-      icon: Bot,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },

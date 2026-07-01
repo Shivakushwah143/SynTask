@@ -8,8 +8,12 @@ from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.ai import (
     AILogListItem,
+    AIDailyReportRequest,
+    AIDailyReportResponse,
     AIChatRequest,
     AIChatResponse,
+    AITaskBreakdownRequest,
+    AITaskBreakdownResponse,
     AITaskPrioritizationRequest,
     AITaskPrioritizationResponse,
 )
@@ -36,6 +40,42 @@ async def generate_task_prioritization(
     current_user = await _require_company_context(current_user)
     try:
         return await ai_service.generate_task_prioritization(current_user, payload)
+    except ValueError as error:
+        message = str(error)
+        if "not found" in message.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from error
+        if "not allowed" in message.lower() or "belongs to the same company" in message.lower():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message) from error
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from error
+
+
+@router.post("/task-breakdown", response_model=AITaskBreakdownResponse)
+async def generate_task_breakdown(
+    payload: AITaskBreakdownRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a structured breakdown for a single task."""
+    current_user = await _require_company_context(current_user)
+    try:
+        return await ai_service.generate_task_breakdown(current_user, payload)
+    except ValueError as error:
+        message = str(error)
+        if "not found" in message.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from error
+        if "not allowed" in message.lower() or "belongs to the same company" in message.lower():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message) from error
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from error
+
+
+@router.post("/daily-report", response_model=AIDailyReportResponse)
+async def generate_daily_report(
+    payload: AIDailyReportRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a role-aware daily report for the current user."""
+    current_user = await _require_company_context(current_user)
+    try:
+        return await ai_service.generate_daily_report(current_user, payload)
     except ValueError as error:
         message = str(error)
         if "not found" in message.lower():

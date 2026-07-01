@@ -8,6 +8,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Clock3,
   Globe,
   Headphones,
@@ -29,8 +30,6 @@ import {
   CheckCircle,
   Heart,
   Phone,
-
-  
   FileText,
   Rocket,
   TrendingUp,
@@ -41,6 +40,10 @@ import {
   HardHat,
   Landmark,
   UtensilsCrossed,
+  User,
+  LogIn,
+  Settings,
+  HelpCircle,
 } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 
@@ -86,7 +89,7 @@ const features = [
   { icon: BrainCircuit, title: 'AI Insights', description: 'Spot risk, bottlenecks, and revenue opportunities faster.' },
 ]
 
-const testimonials = [
+const testimonialsData = [
   {
     quote: 'SynTask transformed our agency operations. We are 2x more efficient.',
     name: 'Sarah Chen',
@@ -184,8 +187,8 @@ const logos = [
 
 // Statistics Component Data
 const statsData = [
-  { value: 48, suffix: "h", label: "Average Team Deployment", sublabel: "From kickoff to first commit", icon: Clock, color: "#2563EB" },
-  { value: 250, suffix: "+", label: "Projects Delivered", sublabel: "Across 12 industries globally", icon: CheckCircle, color: "#4F46E5" },
+  { value: 48, suffix: "h", label: "Average Team Deployment", sublabel: "From kickoff to first commit", icon: Clock, color: "#25eb46" },
+  { value: 250, suffix: "+", label: "Projects Delivered", sublabel: "Across 12 industries globally", icon: CheckCircle, color: "#46b5e5" },
   { value: 95, suffix: "%", label: "Client Retention", sublabel: "Long-term partnership model", icon: Heart, color: "#7C3AED" },
   { value: 24, suffix: "/7", label: "Managed Support", sublabel: "Always-on NOC & L1–L3", icon: Headphones, color: "#10B981" },
   { label: "Global Delivery", sublabel: "USA + India Delivery Centers", icon: Globe, color: "#F59E0B", custom: "2 Hubs" },
@@ -1011,101 +1014,786 @@ function Industries() {
   );
 }
 
+// ---- Testimonials Component ----
+function TestimonialsSection() {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [direction, setDirection] = useState(0);
+
+  const nextTestimonial = () => {
+    setDirection(1);
+    setActiveIndex((prev) => (prev + 1) % testimonialsData.length);
+  };
+
+  const prevTestimonial = () => {
+    setDirection(-1);
+    setActiveIndex((prev) => (prev - 1 + testimonialsData.length) % testimonialsData.length);
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      nextTestimonial();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const slideVariants = {
+    enter: (direction) => ({
+      x: direction > 0 ? 100 : -100,
+      opacity: 0,
+      scale: 0.95
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      scale: 1,
+      transition: {
+        duration: 0.6,
+        ease: [0.4, 0, 0.2, 1]
+      }
+    },
+    exit: (direction) => ({
+      x: direction < 0 ? 100 : -100,
+      opacity: 0,
+      scale: 0.95,
+      transition: {
+        duration: 0.5,
+        ease: [0.4, 0, 0.2, 1]
+      }
+    })
+  };
+
+  const floatingAnimation = {
+    initial: { y: 0 },
+    animate: {
+      y: [0, -8, 0],
+      transition: {
+        duration: 4,
+        repeat: Infinity,
+        ease: "easeInOut"
+      }
+    }
+  };
+
+  return (
+    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
+      <motion.div 
+        variants={sectionVariants} 
+        initial="hidden" 
+        whileInView="visible" 
+        viewport={{ once: true, amount: 0.25 }}
+      >
+        <SectionHeading
+          eyebrow="Testimonials"
+          title="What our clients say about us"
+          description="Real stories from agencies that have transformed their operations with SynTask."
+        />
+      </motion.div>
+
+      <div className="mt-16">
+        <div className="relative overflow-hidden">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-[600px] h-[600px] rounded-full bg-gradient-to-br from-primary-100/20 to-violet-100/20 blur-3xl" />
+          </div>
+
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div
+              key={activeIndex}
+              custom={direction}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              className="relative z-10"
+            >
+              <div className="grid gap-8 lg:grid-cols-[1fr_0.6fr] items-center">
+                <div className="space-y-8">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.5, delay: 0.2 }}
+                    className="text-7xl font-serif text-primary-200 dark:text-primary-800"
+                  >
+                    "
+                  </motion.div>
+
+                  <motion.blockquote
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.3 }}
+                    className="text-2xl font-light leading-relaxed text-slate-700 dark:text-slate-200 sm:text-3xl lg:text-4xl"
+                  >
+                    {testimonialsData[activeIndex].quote}
+                  </motion.blockquote>
+
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.4 }}
+                    className="flex items-center gap-6 pt-4"
+                  >
+                    <div className="relative">
+                      <div className="h-16 w-16 overflow-hidden rounded-full ring-4 ring-primary-100 dark:ring-primary-900">
+                        <img
+                          src={testimonialsData[activeIndex].image}
+                          alt={testimonialsData[activeIndex].name}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <motion.div
+                        className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary-500 flex items-center justify-center"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.6 }}
+                      >
+                        <Check className="h-3 w-3 text-white" />
+                      </motion.div>
+                    </div>
+
+                    <div>
+                      <div className="text-xl font-bold text-slate-900 dark:text-white">
+                        {testimonialsData[activeIndex].name}
+                      </div>
+                      <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                        {testimonialsData[activeIndex].role}
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                    className="flex items-center gap-1 text-amber-400"
+                  >
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star key={i} className="h-5 w-5 fill-current" />
+                    ))}
+                  </motion.div>
+                </div>
+
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.6, delay: 0.3 }}
+                  className="relative flex justify-center"
+                >
+                  <div className="relative">
+                    <motion.div
+                      variants={floatingAnimation}
+                      initial="initial"
+                      animate="animate"
+                      className="relative rounded-3xl bg-gradient-to-br from-primary-500/10 to-violet-500/10 p-8 backdrop-blur-sm border border-primary-200/30 dark:border-primary-800/30"
+                    >
+                      <div className="grid grid-cols-2 gap-4">
+                        {[
+                          { label: 'Client Satisfaction', value: '98%', icon: Heart },
+                          { label: 'Faster Delivery', value: '2.4x', icon: Zap },
+                        ].map((stat, i) => {
+                          const Icon = stat.icon;
+                          return (
+                            <motion.div
+                              key={stat.label}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.5 + i * 0.1 }}
+                              className="rounded-2xl bg-white/80 dark:bg-slate-900/80 p-4 shadow-lg backdrop-blur"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="rounded-full bg-primary-100 dark:bg-primary-900 p-2">
+                                  <Icon className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                                </div>
+                                <div>
+                                  <div className="text-lg font-bold text-slate-900 dark:text-white">
+                                    {stat.value}
+                                  </div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                                    {stat.label}
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+
+                      <motion.div
+                        className="absolute -top-4 -right-4 h-20 w-20 rounded-full bg-primary-200/30 blur-xl"
+                        animate={{
+                          scale: [1, 1.2, 1],
+                          opacity: [0.5, 0.8, 0.5]
+                        }}
+                        transition={{
+                          duration: 3,
+                          repeat: Infinity,
+                          ease: "easeInOut"
+                        }}
+                      />
+                      <motion.div
+                        className="absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-violet-200/30 blur-xl"
+                        animate={{
+                          scale: [1, 1.3, 1],
+                          opacity: [0.4, 0.7, 0.4]
+                        }}
+                        transition={{
+                          duration: 4,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                          delay: 0.5
+                        }}
+                      />
+                    </motion.div>
+                  </div>
+                </motion.div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+
+          <div className="mt-12 flex items-center justify-center gap-4">
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={prevTestimonial}
+              className="rounded-full border border-slate-200 dark:border-slate-700 p-3 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              aria-label="Previous testimonial"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </motion.button>
+
+            <div className="flex gap-2">
+              {testimonialsData.map((_, index) => (
+                <motion.button
+                  key={index}
+                  onClick={() => {
+                    setDirection(index > activeIndex ? 1 : -1);
+                    setActiveIndex(index);
+                  }}
+                  whileHover={{ scale: 1.2 }}
+                  whileTap={{ scale: 0.8 }}
+                  className="relative h-3 w-3 rounded-full transition-all duration-300"
+                >
+                  <div
+                    className={`absolute inset-0 rounded-full transition-all duration-300 ${
+                      index === activeIndex
+                        ? 'bg-primary-600 scale-100'
+                        : 'bg-slate-300 dark:bg-slate-600 scale-75'
+                    }`}
+                  />
+                  {index === activeIndex && (
+                    <motion.div
+                      layoutId="activeDot"
+                      className="absolute inset-0 rounded-full bg-primary-600"
+                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    />
+                  )}
+                </motion.button>
+              ))}
+            </div>
+
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={nextTestimonial}
+              className="rounded-full border border-slate-200 dark:border-slate-700 p-3 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              aria-label="Next testimonial"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </motion.button>
+          </div>
+
+          <motion.div
+            className="mt-6 h-1 w-full max-w-xs mx-auto overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+          >
+            <motion.div
+              className="h-full rounded-full bg-gradient-to-r from-primary-500 to-violet-500"
+              initial={{ width: '0%' }}
+              animate={{ width: `${((activeIndex + 1) / testimonialsData.length) * 100}%` }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
+            />
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---- Enhanced Header Component ----
+const Header = () => {
+  const { theme, toggleTheme } = useTheme();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const menuItems = [
+    { icon: User, label: 'Profile', href: '#profile' },
+    { icon: Settings, label: 'Settings', href: '#settings' },
+    { icon: HelpCircle, label: 'Help', href: '#help' },
+  ];
+
+  // Get login URL from environment variables (Vite uses import.meta.env)
+  const loginUrl = import.meta.env.VITE_LOGIN_URL || '/login';
+
+  // Animation variants
+  const headerVariants = {
+    hidden: { y: -100, opacity: 0 },
+    visible: { 
+      y: 0, 
+      opacity: 1,
+      transition: { 
+        type: 'spring',
+        stiffness: 100,
+        damping: 20,
+        delay: 0.1
+      }
+    }
+  };
+
+  const navItemVariants = {
+    hidden: { y: -20, opacity: 0 },
+    visible: (i) => ({
+      y: 0,
+      opacity: 1,
+      transition: {
+        delay: 0.1 + i * 0.05,
+        type: 'spring',
+        stiffness: 100,
+        damping: 12
+      }
+    })
+  };
+
+  const buttonVariants = {
+    hover: { 
+      scale: 1.05,
+      transition: { type: 'spring', stiffness: 400, damping: 10 }
+    },
+    tap: { scale: 0.95 }
+  };
+
+  const dropdownVariants = {
+    hidden: { 
+      opacity: 0, 
+      y: -10,
+      scale: 0.95
+    },
+    visible: { 
+      opacity: 1, 
+      y: 0,
+      scale: 1,
+      transition: { 
+        type: 'spring',
+        stiffness: 300,
+        damping: 20,
+        duration: 0.2
+      }
+    },
+    exit: {
+      opacity: 0,
+      y: -10,
+      scale: 0.95,
+      transition: { duration: 0.15 }
+    }
+  };
+
+  const mobileMenuVariants = {
+    hidden: { 
+      opacity: 0, 
+      y: -20,
+      height: 0
+    },
+    visible: { 
+      opacity: 1, 
+      y: 0,
+      height: 'auto',
+      transition: { 
+        type: 'spring',
+        stiffness: 300,
+        damping: 25
+      }
+    },
+    exit: {
+      opacity: 0,
+      y: -20,
+      height: 0,
+      transition: { duration: 0.2 }
+    }
+  };
+
+  const menuDropdownVariants = {
+    hidden: { 
+      opacity: 0, 
+      y: -10,
+      scale: 0.95
+    },
+    visible: { 
+      opacity: 1, 
+      y: 0,
+      scale: 1,
+      transition: { 
+        type: 'spring',
+        stiffness: 300,
+        damping: 20,
+        duration: 0.2
+      }
+    },
+    exit: {
+      opacity: 0,
+      y: -10,
+      scale: 0.95,
+      transition: { duration: 0.15 }
+    }
+  };
+
+  return (
+    <motion.header
+      initial="hidden"
+      animate="visible"
+      variants={headerVariants}
+      className={`sticky top-0 z-50 transition-all duration-300 ${
+        scrolled 
+          ? 'border-b border-white/40 bg-white/95 backdrop-blur-xl shadow-lg dark:border-slate-700/40 dark:bg-slate-900/95' 
+          : 'border-b border-white/40 bg-white/80 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80'
+      }`}
+    >
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+        {/* Logo */}
+        <motion.a 
+          href="#top" 
+          className="flex items-center gap-3"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <motion.div 
+            className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-600 text-white shadow-lg shadow-primary-200 dark:shadow-primary-900/30"
+            whileHover={{ rotate: 180 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Layers3 className="h-6 w-6" />
+          </motion.div>
+          <div>
+            <div className="font-display text-lg font-extrabold tracking-tight dark:text-white">SynTask</div>
+            <div className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Agency OS</div>
+          </div>
+        </motion.a>
+
+        {/* Desktop Navigation */}
+        <nav className="hidden items-center gap-8 lg:flex">
+          {navItems.map((item, i) => (
+            <motion.a
+              key={item.href}
+              href={item.href}
+              custom={i}
+              initial="hidden"
+              animate="visible"
+              variants={navItemVariants}
+              whileHover={{ 
+                scale: 1.05,
+                color: '#0f172a'
+              }}
+              whileTap={{ scale: 0.95 }}
+              className="text-sm font-medium text-slate-600 transition hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
+            >
+              {item.label}
+            </motion.a>
+          ))}
+        </nav>
+
+        {/* Desktop Actions */}
+        <div className="hidden items-center gap-3 lg:flex">
+          {/* Theme Toggle */}
+          <motion.button
+            type="button"
+            onClick={toggleTheme}
+            variants={buttonVariants}
+            whileHover="hover"
+            whileTap="tap"
+            className={`inline-flex h-11 w-11 items-center justify-center rounded-full border transition hover:bg-slate-50 dark:hover:bg-slate-700 ${
+              theme === 'dark' 
+                ? 'border-slate-700 bg-slate-800 text-white' 
+                : 'border-slate-200 bg-white text-slate-700'
+            }`}
+            aria-label="Toggle theme"
+          >
+            <motion.div
+              initial={false}
+              animate={{ rotate: theme === 'dark' ? 180 : 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </motion.div>
+          </motion.button>
+
+          {/* Dedicated Menu Dropdown Button */}
+          <motion.div 
+            className="relative"
+            onMouseEnter={() => setIsMenuOpen(true)}
+            onMouseLeave={() => setIsMenuOpen(false)}
+          >
+            <motion.button
+              variants={buttonVariants}
+              whileHover="hover"
+              whileTap="tap"
+              className="inline-flex items-center gap-2 rounded-full bg-transparent px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800"
+            >
+              <Menu className="h-5 w-5" />
+              <span>Menu</span>
+              <motion.div
+                animate={{ rotate: isMenuOpen ? 180 : 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ChevronDown className="h-4 w-4" />
+              </motion.div>
+            </motion.button>
+
+            <AnimatePresence>
+              {isMenuOpen && (
+                <motion.div
+                  variants={menuDropdownVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <div className="space-y-1">
+                    {navItems.map((item, i) => (
+                      <motion.a
+                        key={item.href}
+                        href={item.href}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.05 * i }}
+                        whileHover={{ 
+                          scale: 1.02,
+                          backgroundColor: '#f1f5f9'
+                        }}
+                        whileTap={{ scale: 0.98 }}
+                        className="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-primary-500" />
+                        {item.label}
+                      </motion.a>
+                    ))}
+                  </div>
+
+                  <div className="my-2 border-t border-slate-200 dark:border-slate-700" />
+
+                  <div className="space-y-1">
+                    <motion.a
+                      href="#contact"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.25 }}
+                      whileHover={{ 
+                        scale: 1.02,
+                        backgroundColor: '#eff6ff'
+                      }}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium text-primary-600 transition hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-950/50"
+                    >
+                      <Rocket className="h-4 w-4" />
+                      Start Free Trial
+                    </motion.a>
+                    <motion.a
+                      href="#pricing"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 }}
+                      whileHover={{ 
+                        scale: 1.02,
+                        backgroundColor: '#f1f5f9'
+                      }}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800"
+                    >
+                      <BadgeDollarSign className="h-4 w-4" />
+                      View Pricing
+                    </motion.a>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+
+          {/* Login Button with Environment Variable */}
+          <motion.button
+            variants={buttonVariants}
+            whileHover="hover"
+            whileTap="tap"
+            onClick={() => {
+              window.location.href = loginUrl;
+            }}
+            className="inline-flex items-center gap-2 rounded-full bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 hover:shadow-md dark:bg-primary-500 dark:hover:bg-primary-600"
+          >
+            <User className="h-5 w-5" />
+            <span>Login</span>
+          </motion.button>
+
+          {/* CTA Button */}
+          <motion.a
+            href="#contact"
+            variants={buttonVariants}
+            whileHover="hover"
+            whileTap="tap"
+            className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+          >
+            Start Free Trial
+            <motion.span
+              animate={{ x: [0, 4, 0] }}
+              transition={{ 
+                duration: 1.5,
+                repeat: Infinity,
+                repeatType: 'loop'
+              }}
+            >
+              <ArrowRight className="h-4 w-4" />
+            </motion.span>
+          </motion.a>
+        </div>
+
+        {/* Mobile Menu Button */}
+        <motion.button
+          type="button"
+          variants={buttonVariants}
+          whileHover="hover"
+          whileTap="tap"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 lg:hidden dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label="Toggle navigation"
+        >
+          <motion.div
+            animate={{ rotate: mobileOpen ? 180 : 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </motion.div>
+        </motion.button>
+      </div>
+
+      {/* Mobile Menu */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.div
+            variants={mobileMenuVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="border-t border-slate-200 bg-white px-4 py-4 shadow-2xl lg:hidden dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="mx-auto flex max-w-7xl flex-col gap-3">
+              {navItems.map((item, i) => (
+                <motion.a
+                  key={item.href}
+                  href={item.href}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.05 * i }}
+                  whileHover={{ 
+                    scale: 1.02,
+                    backgroundColor: '#f1f5f9'
+                  }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setMobileOpen(false)}
+                  className="rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:text-white dark:hover:bg-slate-800"
+                >
+                  {item.label}
+                </motion.a>
+              ))}
+
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.25 }}
+                className="mt-2"
+              >
+                <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                  {/* Mobile Login Button */}
+                  <motion.a
+                    href={loginUrl}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setMobileOpen(false)}
+                    className="flex w-full items-center justify-center gap-2 rounded-full bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-700"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    Login
+                  </motion.a>
+
+                  {menuItems.map((item, i) => (
+                    <motion.a
+                      key={item.label}
+                      href={item.href}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.25 + 0.05 * i }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setMobileOpen(false)}
+                      className="flex items-center gap-3 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800"
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </motion.a>
+                  ))}
+
+                  <motion.button
+                    type="button"
+                    onClick={toggleTheme}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800"
+                  >
+                    {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                    Toggle Theme
+                  </motion.button>
+                </div>
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.header>
+  );
+};
+
 // ---- Main NewLanding Component ----
 function NewLanding() {
   const { theme, toggleTheme } = useTheme()
-  const [mobileOpen, setMobileOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState(0)
 
   return (
     <div className={`min-h-screen ${themeTheme.muted} ${themeTheme.text}`}>
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute left-[-10%] top-[-10%] h-96 w-96 rounded-full bg-primary-100/70 blur-3xl" />
-        <div className="absolute right-[-10%] top-24 h-[28rem] w-[28rem] rounded-full bg-violet-100/70 blur-3xl" />
-        <div className="absolute bottom-[-12%] left-1/3 h-[26rem] w-[26rem] rounded-full bg-sky-100/70 blur-3xl" />
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.5, ease: "easeOut" }}
+          className="absolute left-[-10%] top-[-10%] h-96 w-96 rounded-full bg-primary-100/70 blur-3xl"
+        />
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.5, delay: 0.3, ease: "easeOut" }}
+          className="absolute right-[-10%] top-24 h-[28rem] w-[28rem] rounded-full bg-violet-100/70 blur-3xl"
+        />
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.5, delay: 0.6, ease: "easeOut" }}
+          className="absolute bottom-[-12%] left-1/3 h-[26rem] w-[26rem] rounded-full bg-sky-100/70 blur-3xl"
+        />
       </div>
 
-      <header className="sticky top-0 z-50 border-b border-white/40 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <a href="#top" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-600 text-white shadow-lg shadow-primary-200">
-              <Layers3 className="h-6 w-6" />
-            </div>
-            <div>
-              <div className="font-display text-lg font-extrabold tracking-tight">SynTask</div>
-              <div className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">Agency OS</div>
-            </div>
-          </a>
-
-          <nav className="hidden items-center gap-8 lg:flex">
-            {navItems.map((item) => (
-              <a key={item.href} href={item.href} className="text-sm font-medium text-slate-600 transition hover:text-slate-950">
-                {item.label}
-              </a>
-            ))}
-          </nav>
-
-          <div className="hidden items-center gap-3 lg:flex">
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className={`inline-flex h-11 w-11 items-center justify-center rounded-full border ${themeTheme.border} bg-white text-slate-700 transition hover:bg-slate-50`}
-              aria-label="Toggle theme"
-            >
-              {theme === 'dark' ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
-            </button>
-            <a
-              href="#contact"
-              className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              Start Free Trial
-              <ArrowRight className="h-4 w-4" />
-            </a>
-          </div>
-
-          <button
-            type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 lg:hidden"
-            onClick={() => setMobileOpen((value) => !value)}
-            aria-label="Toggle navigation"
-          >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-        </div>
-
-        <AnimatePresence>
-          {mobileOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              className="border-t border-slate-200 bg-white px-4 py-4 shadow-2xl lg:hidden"
-            >
-              <div className="mx-auto flex max-w-7xl flex-col gap-3">
-                {navItems.map((item) => (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className="rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    {item.label}
-                  </a>
-                ))}
-                <button
-                  type="button"
-                  onClick={toggleTheme}
-                  className="mt-2 inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
-                >
-                  Toggle theme
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </header>
+      <Header />
 
       <main id="top">
+        {/* Hero Section */}
         <section className="mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 lg:px-8 lg:pb-28 lg:pt-24">
           <motion.div
             variants={staggerVariants}
@@ -1121,7 +1809,7 @@ function NewLanding() {
                 <Zap className="h-3.5 w-3.5" />
                 One platform for every agency workflow
               </motion.p>
-              <motion.h1 variants={itemVariants} className="font-display max-w-3xl text-5xl font-black leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
+              <motion.h1 variants={itemVariants} className="font-display max-w-3xl text-4xl font-black leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
                 The agency operating system you have been waiting for
               </motion.h1>
               <motion.p variants={itemVariants} className={`mt-7 max-w-2xl text-lg leading-8 sm:text-xl ${themeTheme.textSecondary}`}>
@@ -1129,20 +1817,24 @@ function NewLanding() {
               </motion.p>
 
               <motion.div variants={itemVariants} className="mt-10 flex flex-col gap-4 sm:flex-row">
-                <a
+                <motion.a
                   href="#contact"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-primary-600 px-7 py-4 text-sm font-semibold text-white shadow-lg shadow-primary-200 transition hover:bg-primary-700"
                 >
                   Start Free Trial
                   <ArrowRight className="h-4 w-4" />
-                </a>
-                <a
+                </motion.a>
+                <motion.a
                   href="#how-it-works"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-7 py-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
                 >
                   <Play className="h-4 w-4" />
                   Watch Demo
-                </a>
+                </motion.a>
               </motion.div>
 
               <motion.div variants={itemVariants} className="mt-10 grid gap-3 sm:grid-cols-3">
@@ -1209,7 +1901,6 @@ function NewLanding() {
           </motion.div>
         </section>
 
-        {/* TrustedBy Component */}
         <TrustedBy />
 
         <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
@@ -1234,7 +1925,6 @@ function NewLanding() {
           </motion.div>
         </section>
 
-        {/* Statistics Component */}
         <Statistics />
 
         <section id="solutions" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
@@ -1265,7 +1955,6 @@ function NewLanding() {
           </motion.div>
         </section>
 
-        {/* HowItWorks Component */}
         <HowItWorks />
 
         <section id="features" className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
@@ -1461,147 +2150,10 @@ function NewLanding() {
           </motion.div>
         </section>
 
-        {/* Industries Component */}
         <Industries />
 
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Team"
-              title="Give every role the workspace they need"
-              description="Operators, account managers, and leadership each get a clearer path to the information and actions they need."
-            />
-          </motion.div>
-
-          <div className="mt-10 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-            <motion.div
-              variants={itemVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.2 }}
-              whileHover={{ y: -5 }}
-              className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-8 text-white shadow-[0_24px_70px_rgba(15,23,42,0.2)]`}
-            >
-              <div className="absolute -right-10 top-8 h-40 w-40 rounded-full bg-primary-500/20 blur-3xl" />
-              <div className="absolute -bottom-16 left-0 h-40 w-40 rounded-full bg-violet-500/15 blur-3xl" />
-              <div className="relative">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.3em] text-white/80">
-                  <ShieldCheck className="h-3.5 w-3.5 text-sky-300" />
-                  Role-based control
-                </div>
-                <h3 className="mt-6 max-w-md font-display text-4xl font-black tracking-tight sm:text-5xl">
-                  Every role sees exactly what matters.
-                </h3>
-                <p className="mt-5 max-w-md text-base leading-8 text-slate-300">
-                  The workspace adapts to your team structure so operations, client management, and leadership can move faster without stepping on each other.
-                </p>
-
-                <div className="mt-8 grid grid-cols-3 gap-3">
-                  {[
-                    ['Ops', 'Approvals'],
-                    ['AMs', 'Client updates'],
-                    ['Leads', 'Forecasts'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-white/10 bg-white/6 p-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">{label}</div>
-                      <div className="mt-2 text-sm font-bold text-white">{value}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 space-y-4">
-                  {[
-                    { label: 'Operations Lead', pct: '92%', tone: 'bg-primary-500' },
-                    { label: 'Account Manager', pct: '88%', tone: 'bg-violet-500' },
-                    { label: 'Agency Founder', pct: '97%', tone: 'bg-emerald-500' },
-                  ].map((row) => (
-                    <div key={row.label} className="rounded-2xl border border-white/10 bg-white/6 p-4">
-                      <div className="flex items-center justify-between text-sm font-medium">
-                        <span>{row.label}</span>
-                        <span className="text-white/70">{row.pct} clarity</span>
-                      </div>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                        <div className={`h-full rounded-full ${row.tone}`} style={{ width: row.pct }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              variants={staggerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.15 }}
-              className="grid gap-5 sm:grid-cols-2"
-            >
-              {[
-                {
-                  name: 'Operations Lead',
-                  icon: Workflow,
-                  tag: 'Process owner',
-                  bullets: ['Approvals', 'Capacity planning', 'Billing visibility'],
-                  accent: 'from-primary-500/10 to-primary-50',
-                },
-                {
-                  name: 'Account Manager',
-                  icon: MessageSquare,
-                  tag: 'Client owner',
-                  bullets: ['Client communication', 'Project status', 'Ticket follow-up'],
-                  accent: 'from-violet-500/10 to-violet-50',
-                },
-                {
-                  name: 'Agency Founder',
-                  icon: BrainCircuit,
-                  tag: 'Decision maker',
-                  bullets: ['Revenue trends', 'Delivery health', 'Pipeline forecast'],
-                  accent: 'from-emerald-500/10 to-emerald-50',
-                },
-              ].map((person, index) => {
-                const Icon = person.icon
-                const isWide = index === 2
-                return (
-                  <motion.div
-                    key={person.name}
-                    variants={itemVariants}
-                    whileHover={{ y: -6 }}
-                    className={`relative overflow-hidden rounded-[2rem] border ${themeTheme.border} bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
-                      isWide ? 'sm:col-span-2' : ''
-                    }`}
-                  >
-                    <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${person.accent}`} />
-                    <div className={`absolute right-0 top-0 h-28 w-28 rounded-full bg-gradient-to-br ${person.accent} blur-2xl`} />
-                    <div className="relative">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-200">
-                            <Icon className="h-6 w-6" />
-                          </div>
-                          <div>
-                            <div className="text-xl font-black tracking-tight text-slate-950">{person.name}</div>
-                            <div className={`text-sm ${themeTheme.textSecondary}`}>{person.tag}</div>
-                          </div>
-                        </div>
-                        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
-                          Role {index + 1}
-                        </div>
-                      </div>
-                      <div className="mt-6 space-y-3">
-                        {person.bullets.map((bullet) => (
-                          <div key={bullet} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-                            <Check className="h-4 w-4 text-emerald-600" />
-                            {bullet}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </motion.div>
-                )
-              })}
-            </motion.div>
-          </div>
-        </section>
+        {/* Testimonials Section */}
+        <TestimonialsSection />
 
         <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
@@ -1731,46 +2283,6 @@ function NewLanding() {
               </div>
             </motion.div>
           </div>
-        </section>
-
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Testimonials"
-              title="Social proof from agencies that moved faster"
-              description="Teams using SynTask report stronger delivery visibility, cleaner handoffs, and a more professional client experience."
-            />
-          </motion.div>
-
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-6 lg:grid-cols-3"
-          >
-            {testimonials.map((item) => (
-              <motion.article
-                key={item.name}
-                variants={itemVariants}
-                className={`rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface} p-7 shadow-[0_18px_40px_rgba(15,23,42,0.05)]`}
-              >
-                <div className="flex items-center gap-1 text-amber-400">
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <Star key={index} className="h-4 w-4 fill-current" />
-                  ))}
-                </div>
-                <p className="mt-5 text-lg leading-8 text-slate-800">“{item.quote}”</p>
-                <div className="mt-7 flex items-center gap-4">
-                  <img src={item.image} alt={item.name} className="h-14 w-14 rounded-2xl object-cover" />
-                  <div>
-                    <div className="font-bold text-slate-900">{item.name}</div>
-                    <div className={`text-sm ${themeTheme.textSecondary}`}>{item.role}</div>
-                  </div>
-                </div>
-              </motion.article>
-            ))}
-          </motion.div>
         </section>
 
         <section id="pricing" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
