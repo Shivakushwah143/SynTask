@@ -8,8 +8,8 @@ import csv
 import io
 from pydantic import BaseModel
 
-from app.api.dependencies import get_current_user, require_module
-from app.models.user import User, UserRole
+from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_module
+from app.models.user import User, UserRole, UserStatus
 from app.models.sales_prospect import SalesProspect, InterestLevel, ProspectStatus
 from app.models.sales_contact import SalesContact
 from app.models.sales_category import SalesCategory
@@ -405,92 +405,173 @@ async def update_prospect(
 
 @router.post("/bulk-upload")
 async def bulk_upload_prospects(
-    assigned_to: str = Form(...),
+    strategy: str = Form(...),
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
+    target_user_id: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_company_admin_or_lead)
 ):
-    """Bulk upload prospects from CSV/Excel"""
-    _ensure_create_permission(current_user)
-    
+    """Bulk upload prospects from CSV with assignment strategies."""
+    if not file.filename.lower().endswith('.csv') and file.content_type != 'text/csv':
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Only CSV files are supported")
+
     content = await file.read()
-    text = content.decode('utf-8')
+    if not content:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded")
+
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="File too large. Max size is 10 MB")
+
+    text = content.decode('utf-8', errors='replace')
     reader = csv.DictReader(io.StringIO(text))
-    
-    required_cols = ["Country Code", "Phone", "First Name", "Last Name", "Category", "Product", "Interest Level", "Estimated Close Date"]
     headers = reader.fieldnames or []
-    missing = [c for c in required_cols if c not in headers]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing columns: {', '.join(missing)}")
-    
-    success_count = 0
-    failed_rows = []
-    
+    normalized_headers = [h.strip().lower() for h in headers]
+
+    if 'email' not in normalized_headers:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="CSV must include an 'email' column")
+    if not any(h in normalized_headers for h in ['name', 'first_name']):
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="CSV must include either 'name' or 'first_name' column")
+
+    assignable_users = await User.find(
+        {
+            "company_id": current_user.company_id,
+            "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+            "status": UserStatus.ACTIVE,
+        }
+    ).to_list()
+
+    if not assignable_users:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="No employees or leads found in your company. Add employees before uploading leads."
+        )
+
+    employee_ids = [str(user.id) for user in assignable_users]
+    assigned_counts = {user_id: 0 for user_id in employee_ids}
+
+    if strategy not in ['round-robin', 'evenly', 'manual']:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid strategy")
+
+    if strategy == 'manual':
+        if not target_user_id:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")
+        if target_user_id not in employee_ids:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Target user must be an active Lead or Employee in your company")
+
+    rows = []
+    skipped_rows = []
+    warnings = []
+    seen_emails = set()
+    all_emails = set()
     for idx, row in enumerate(reader, start=2):
-        try:
-            country_code = (row.get("Country Code") or "").strip()
-            phone = (row.get("Phone") or "").strip()
-            first_name = (row.get("First Name") or "").strip()
-            last_name = (row.get("Last Name") or "").strip()
-            category = (row.get("Category") or "").strip()
-            product = (row.get("Product") or "").strip()
-            interest_level = (row.get("Interest Level") or "").strip().lower()
-            estimated_close_date = (row.get("Estimated Close Date") or "").strip()
-            
-            if not all([country_code, phone, first_name, last_name, category, product, interest_level, estimated_close_date]):
-                failed_rows.append({"row": idx, "error": "Missing mandatory fields"})
-                continue
-            
-            # Check duplicate
-            existing = await SalesProspect.find_one(
-                {"country_code": country_code, "phone": phone, "deleted": False}
+        row_norm = {k.strip().lower(): (v or '').strip() for k, v in row.items()}
+        email = (row_norm.get('email') or '').lower()
+        if not email:
+            skipped_rows.append({"row": idx, "reason": "Missing email"})
+            continue
+        if email in seen_emails:
+            skipped_rows.append({"row": idx, "reason": "Duplicate email in CSV"})
+            continue
+        seen_emails.add(email)
+        all_emails.add(email)
+        rows.append((idx, row_norm))
+
+    existing_leads = []
+    if all_emails:
+        existing_leads = await SalesProspect.find(
+            {
+                "company_id": current_user.company_id,
+                "email": {"$in": list(all_emails)},
+                "deleted": False,
+            }
+        ).to_list()
+    existing_emails = {lead.email.lower() for lead in existing_leads if lead.email}
+
+    parsed_rows = []
+    for idx, row_norm in rows:
+        email = row_norm.get('email', '').lower()
+        if email in existing_emails:
+            skipped_rows.append({"row": idx, "reason": "Duplicate email already exists"})
+            continue
+
+        name = row_norm.get('name', '')
+        first_name = row_norm.get('first_name', '')
+        last_name = row_norm.get('last_name', '')
+        if not first_name and name:
+            parts = name.split()
+            first_name = parts[0]
+            last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
+        if not first_name:
+            skipped_rows.append({"row": idx, "reason": "Missing name"})
+            continue
+
+        parsed_rows.append(
+            {
+                "row": idx,
+                "first_name": first_name,
+                "last_name": last_name,
+                "email": email,
+                "company_name": row_norm.get('company') or row_norm.get('company_name') or None,
+                "phone": row_norm.get('phone') or None,
+                "status": row_norm.get('status') or 'active',
+                "source": row_norm.get('source') or 'bulk_upload',
+                "assigned_to": None,
+                "assigned_by": str(current_user.id),
+                "current_stage": row_norm.get('status') or 'new',
+                "remark": row_norm.get('remark') or None,
+                "company_id": current_user.company_id,
+                "created_by": str(current_user.id),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+        )
+
+    if not parsed_rows:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="No valid leads found in the uploaded CSV"
+        )
+
+    if strategy == 'manual':
+        assigned_user_id = target_user_id
+        for row in parsed_rows:
+            row['assigned_to'] = assigned_user_id
+            assigned_counts[assigned_user_id] += 1
+    else:
+        total = len(parsed_rows)
+        assign_count = len(employee_ids)
+        if assign_count == 0:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="No assignable employees or leads available"
             )
-            if existing:
-                failed_rows.append({"row": idx, "error": "Duplicate phone number"})
-                continue
-            
-            # Find category by name
-            category_obj = await SalesCategory.find_one({"name": {"$regex": category, "$options": "i"}, "deleted": False})
-            if not category_obj:
-                failed_rows.append({"row": idx, "error": f"Category '{category}' not found"})
-                continue
-            
-            # Find product by name
-            product_obj = await SalesProduct.find_one({"name": {"$regex": product, "$options": "i"}, "deleted": False})
-            if not product_obj:
-                failed_rows.append({"row": idx, "error": f"Product '{product}' not found"})
-                continue
-            
-            prospect = SalesProspect(
-                first_name=first_name,
-                last_name=last_name,
-                prospect_name=f"{first_name} {last_name}",
-                country_code=country_code,
-                phone=phone,
-                email=(row.get("Email Address") or "").strip().lower() or None,
-                category_id=str(category_obj.id),
-                product_ids=[str(product_obj.id)],
-                interest_level=InterestLevel(interest_level),
-                estimated_close_date=_parse_datetime(estimated_close_date),
-                assigned_to=assigned_to,
-                assigned_by=str(current_user.id),
-                current_stage="new",  # Default stage
-                company_name=(row.get("Company Name") or "").strip() or None,
-                channel=(row.get("Channel") or "").strip() or None,
-                nationality=_parse_multi_value(row.get("Nationality", "")),
-                language=_parse_multi_value(row.get("Language", "")),
-                tag=_parse_multi_value(row.get("Tag", "")),
-                company_id=current_user.company_id,
-                created_by=str(current_user.id),
-            )
-            await prospect.insert()
-            success_count += 1
-        except Exception as e:
-            failed_rows.append({"row": idx, "error": str(e)})
-    
+
+        if strategy == 'round-robin':
+            for idx, row in enumerate(parsed_rows):
+                assignee = employee_ids[idx % assign_count]
+                row['assigned_to'] = assignee
+                assigned_counts[assignee] += 1
+        elif strategy == 'evenly':
+            base = total // assign_count
+            remainder = total % assign_count
+            assignment_list = []
+            for idx_user, user_id in enumerate(employee_ids):
+                count = base + (1 if idx_user < remainder else 0)
+                assignment_list.extend([user_id] * count)
+            for row, assignee in zip(parsed_rows, assignment_list):
+                row['assigned_to'] = assignee
+                assigned_counts[assignee] += 1
+
+    # Write to the database in bulk
+    collection = SalesProspect.get_motor_collection()
+    await collection.insert_many(parsed_rows)
+
+    assigned_breakdown = {user_id: count for user_id, count in assigned_counts.items() if count}
     return {
-        "success_count": success_count,
-        "failed_count": len(failed_rows),
-        "failed_rows": failed_rows[:100]
+        "total_rows": len(rows) + len(skipped_rows),
+        "total_uploaded": len(parsed_rows),
+        "skipped_rows": len(skipped_rows),
+        "assigned_breakdown": assigned_breakdown,
+        "warnings": skipped_rows[:50],
     }
 
 

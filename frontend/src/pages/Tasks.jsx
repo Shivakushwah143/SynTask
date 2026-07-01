@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Calendar, User, MoreVertical, Search, Filter } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
@@ -8,11 +8,16 @@ import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { EmptyState, SkeletonKanban } from '../components/ui'
+import ViewToggle from '../components/layout/ViewToggle'
+import NaturalDateInput from '../components/tasks/NaturalDateInput'
+import { useViewStore } from '../store/viewStore'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 
 const Tasks = () => {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
+  const { view } = useViewStore()
   const userRole = normalizeRole(user?.role)
   const canManageTasks = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [tasks, setTasks] = useState([])
@@ -31,6 +36,7 @@ const Tasks = () => {
   const [departments, setDepartments] = useState([])
   const [loadingDepartments, setLoadingDepartments] = useState(false)
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
+  const [dueDateValue, setDueDateValue] = useState('')
 
   const statuses = [
     { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
@@ -121,6 +127,15 @@ const Tasks = () => {
   }, [navigate])
 
   useEffect(() => {
+    if (searchParams.get('createTask') === 'true') {
+      setShowCreateModal(true)
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('createTask')
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
+  useEffect(() => {
     // Debounce search
     const timer = setTimeout(() => {
       fetchTasks()
@@ -141,6 +156,7 @@ const Tasks = () => {
     if (submitting) return
     setShowCreateModal(false)
     setSelectedDepartmentId('')
+    setDueDateValue('')
   }
 
   // Handle create task
@@ -158,7 +174,7 @@ const Tasks = () => {
         description: formData.get('description') || '',
         assigned_to: formData.get('assigned_to') || '',
         priority: formData.get('priority') || 'medium',
-        due_date: formData.get('due_date') || '',
+        due_date: formData.get('due_date') || dueDateValue || '',
       }
 
       if (isCompanyAdmin && selectedDepartmentId) {
@@ -169,6 +185,7 @@ const Tasks = () => {
       toast.success('✅ Task created successfully!')
       setShowCreateModal(false)
       setSelectedDepartmentId('')
+      setDueDateValue('')
       await fetchTasks()
       e.target.reset()
     } catch (error) {
@@ -204,18 +221,21 @@ const Tasks = () => {
           <h1 className="text-lg font-bold text-gray-900">Tasks</h1>
           <p className="text-gray-600 text-xs mt-0.5">Manage and track your tasks</p>
         </div>
-        {canManageTasks && (
-          <button
-            onClick={() => {
-              setSelectedDepartmentId('')
-              setShowCreateModal(true)
-            }}
-            className="btn btn-primary flex items-center justify-center w-full sm:w-auto"
-          >
-            <Plus className="h-4 w-4 mr-1.5" />
-            Create Task
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <ViewToggle />
+          {canManageTasks && (
+            <button
+              onClick={() => {
+                setSelectedDepartmentId('')
+                setShowCreateModal(true)
+              }}
+              className="btn btn-primary flex items-center justify-center w-full sm:w-auto"
+            >
+              <Plus className="h-4 w-4 mr-1.5" />
+              Create Task
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -293,87 +313,127 @@ const Tasks = () => {
         )}
       </div>
 
-      {/* Kanban Board */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statuses.map((status) => {
-          const statusTasks = getTasksByStatus(status.id)
-          return (
-            <div key={status.id} className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-900">{status.label}</h3>
-                <span className="badge badge-secondary text-xs">
-                  {statusTasks.length}
-                </span>
-              </div>
-              <div className="space-y-3 min-h-[200px]">
-                {statusTasks.length === 0 ? (
-                  <EmptyState title="No tasks" description="Nothing is currently in this status." />
+      {view === 'list' ? (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Priority</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Due Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {tasks.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" className="px-4 py-6 text-center text-sm text-gray-500">
+                      No tasks yet.
+                    </td>
+                  </tr>
                 ) : (
-                  statusTasks.map((task) => (
-                    <div
+                  tasks.map((task) => (
+                    <tr
                       key={task.id}
                       onClick={() => handleTaskClick(task)}
-                      className="p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                      className="cursor-pointer hover:bg-gray-50"
                     >
-                      <div className="flex items-start justify-between mb-2">
-                        <p className="font-medium text-gray-900 text-sm flex-1">
-                          {task.title}
-                        </p>
-                        <div className="dropdown relative">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              // Handle menu
-                            }}
-                            className="p-1 hover:bg-gray-100 rounded"
-                          >
-                            <MoreVertical className="h-4 w-4 text-gray-500" />
-                          </button>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{task.title}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{task.status}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{priorities[task.priority]?.label || task.priority}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {task.due_date ? format(new Date(task.due_date), 'MMM d') : '—'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {statuses.map((status) => {
+            const statusTasks = getTasksByStatus(status.id)
+            return (
+              <div key={status.id} className="card">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-gray-900">{status.label}</h3>
+                  <span className="badge badge-secondary text-xs">
+                    {statusTasks.length}
+                  </span>
+                </div>
+                <div className="space-y-3 min-h-[200px]">
+                  {statusTasks.length === 0 ? (
+                    <EmptyState title="No tasks" description="Nothing is currently in this status." />
+                  ) : (
+                    statusTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        onClick={() => handleTaskClick(task)}
+                        className="p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <p className="font-medium text-gray-900 text-sm flex-1">
+                            {task.title}
+                          </p>
+                          <div className="dropdown relative">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                // Handle menu
+                              }}
+                              className="p-1 hover:bg-gray-100 rounded"
+                            >
+                              <MoreVertical className="h-4 w-4 text-gray-500" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      
-                      {task.description && (
-                        <p className="text-xs text-gray-500 mb-2 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-                      
-                      <div className="flex items-center justify-between mt-2">
-                        <span className={`badge ${priorities[task.priority]?.color || 'badge-secondary'} text-xs`}>
-                          {priorities[task.priority]?.label || task.priority}
-                        </span>
-                        {task.due_date && (
-                          <div className="flex items-center text-xs text-gray-500">
-                            <Calendar className="h-3 w-3 mr-1" />
-                            {format(new Date(task.due_date), 'MMM d')}
+                        
+                        {task.description && (
+                          <p className="text-xs text-gray-500 mb-2 line-clamp-2">
+                            {task.description}
+                          </p>
+                        )}
+                        
+                        <div className="flex items-center justify-between mt-2">
+                          <span className={`badge ${priorities[task.priority]?.color || 'badge-secondary'} text-xs`}>
+                            {priorities[task.priority]?.label || task.priority}
+                          </span>
+                          {task.due_date && (
+                            <div className="flex items-center text-xs text-gray-500">
+                              <Calendar className="h-3 w-3 mr-1" />
+                              {format(new Date(task.due_date), 'MMM d')}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {task.assigned_to && (
+                          <div className="flex items-center mt-2 text-xs text-gray-500">
+                            <User className="h-3 w-3 mr-1" />
+                            {(() => {
+                              const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
+                              return assignedUser 
+                                ? `${assignedUser.first_name} ${assignedUser.last_name}`
+                                : 'Assigned'
+                            })()}
+                          </div>
+                        )}
+                        {task.department && (
+                          <div className="mt-2 text-xs text-gray-500">
+                            Department: {task.department}
                           </div>
                         )}
                       </div>
-                      
-                      {task.assigned_to && (
-                        <div className="flex items-center mt-2 text-xs text-gray-500">
-                          <User className="h-3 w-3 mr-1" />
-                          {(() => {
-                            const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
-                            return assignedUser 
-                              ? `${assignedUser.first_name} ${assignedUser.last_name}`
-                              : 'Assigned'
-                          })()}
-                        </div>
-                      )}
-                      {task.department && (
-                        <div className="mt-2 text-xs text-gray-500">
-                          Department: {task.department}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Create Task Modal */}
       {canManageTasks && showCreateModal && (
@@ -470,11 +530,12 @@ const Tasks = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Due Date
                 </label>
-                <input
-                  type="datetime-local"
-                  name="due_date"
-                  className="input"
+                <NaturalDateInput
+                  value={dueDateValue}
+                  onChange={(value) => setDueDateValue(value)}
+                  onDateResolved={(date) => setDueDateValue(date ? date.toISOString() : '')}
                 />
+                <input type="hidden" name="due_date" value={dueDateValue} />
               </div>
               <div className="flex space-x-3 pt-4">
                 <button
