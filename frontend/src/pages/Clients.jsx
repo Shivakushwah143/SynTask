@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { EmptyState, SkeletonTable } from '../components/ui'
@@ -58,12 +58,7 @@ const Clients = () => {
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
 
-  useEffect(() => {
-    loadClients()
-    loadLeads()
-  }, [])
-
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
     try {
       setLoading(true)
       const params = {}
@@ -77,16 +72,21 @@ const Clients = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [statusFilter])
 
-  const loadLeads = async () => {
+  const loadLeads = useCallback(async () => {
     try {
       const data = await usersAPI.listUsers(null, 'lead')
       setLeads(data.users || [])
     } catch (error) {
       console.error('Error loading leads:', error)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadClients()
+    loadLeads()
+  }, [loadClients, loadLeads])
 
   const handleCreateClient = async (e) => {
     e.preventDefault()
