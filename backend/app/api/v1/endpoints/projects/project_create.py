@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.events import publish_event
+from app.events.factories import build_domain_event
 
 router = APIRouter()
 
@@ -229,6 +231,25 @@ async def create_project(
             related_type="project",
         )
         await notification.insert()
+
+    await publish_event(
+        build_domain_event(
+            event_name="ProjectCreated",
+            aggregate_type="project",
+            aggregate_id=str(project.id),
+            company_id=str(current_user.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "project_id": project.project_id,
+                "name": project.name,
+                "description": project.description,
+                "status": project.status.value if getattr(project, "status", None) else None,
+                "updated_at": project.updated_at.isoformat() if getattr(project, "updated_at", None) else None,
+            },
+            project_id=str(project.project_id or project.id),
+            metadata={"source": "project_create"},
+        )
+    )
     
     # Return ONLY user-provided project_id. Never return MongoDB _id as project_id.
     # Build response from final_project_id only (set from form at start of handler).
@@ -250,5 +271,3 @@ async def create_project(
         "id": str(project.id),
         "key": project.key
     }
-
-

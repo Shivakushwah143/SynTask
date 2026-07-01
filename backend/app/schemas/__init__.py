@@ -10,6 +10,10 @@ from app.schemas.ai import (
     AITaskPrioritizationLLMResponse,
     AITaskPrioritizationRequest,
     AITaskPrioritizationResponse,
+    TaskBreakdownLLMResponse,
+    TaskBreakdownRequest,
+    TaskBreakdownResponse,
+    TaskBreakdownStep,
 )
 
 __all__ = [
@@ -22,4 +26,8 @@ __all__ = [
     "AITaskPrioritizationLLMResponse",
     "AITaskPrioritizationRequest",
     "AITaskPrioritizationResponse",
+    "TaskBreakdownLLMResponse",
+    "TaskBreakdownRequest",
+    "TaskBreakdownResponse",
+    "TaskBreakdownStep",
 ]

@@ -27,7 +27,24 @@ from app.models.page import Page, PageStatus
 from app.models.client import Client, ClientStatus
 from app.models.department import Department
 from app.models.ai_log import AIInteractionLog
+from app.models.ai_conversation import AIConversation, AIConversationMessage, AIConversationState
+from app.models.ai_user_state import AIUserState, AIEmotionalState, AIWorkloadMetrics
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
+from app.models.knowledge import KnowledgeRecord, KnowledgeType, KnowledgeStatus, KnowledgeRelationshipType
+from app.models.creative_review import (
+    CreativeAssetMetadata,
+    CreativeCampaignReview,
+    CreativeFeedbackAction,
+    CreativeIssue,
+    CreativeIssueSeverity,
+    CreativeReview,
+    CreativeReviewContext,
+    CreativeReviewDecision,
+    CreativeReviewHistory,
+    CreativeReviewStatus,
+    CreativeSuggestion,
+    ReviewPolicy,
+)
 from app.models.invoice import Invoice, InvoiceType, InvoiceStatus
 from app.models.msa import MSA, MSAStatus
 from app.models.meeting import Meeting, MeetingStatus
@@ -86,7 +103,15 @@ __all__ = [
     "Department",
     # AI models
     "AIInteractionLog",
+    "AIConversation", "AIConversationMessage", "AIConversationState",
+    "AIUserState", "AIEmotionalState", "AIWorkloadMetrics",
     "CompanyMemory", "ProjectMemory", "UserMemory", "ClientMemory",
+    "KnowledgeRecord", "KnowledgeType", "KnowledgeStatus", "KnowledgeRelationshipType",
+    # Creative Director models
+    "CreativeAssetMetadata", "CreativeCampaignReview", "CreativeIssue", "CreativeSuggestion",
+    "CreativeReview", "CreativeReviewContext", "CreativeReviewHistory",
+    "CreativeIssueSeverity", "CreativeReviewStatus", "CreativeFeedbackAction", "CreativeReviewDecision",
+    "ReviewPolicy",
     # Invoice models
     "Invoice", "InvoiceType", "InvoiceStatus",
     # MSA models

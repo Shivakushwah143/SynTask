@@ -172,6 +172,7 @@ class ContextBuilder:
             "department": department_name,
             "assigned_to": task.assigned_to,
             "created_at": task.created_at,
+            "completed_at": task.completed_at,
         }
 
     @staticmethod
@@ -388,6 +389,87 @@ class ContextBuilder:
                 else "self"
             ),
         }
+
+    @staticmethod
+    async def build_task_breakdown_agent_context(
+        current_user: User,
+        task_title: str,
+        task_description: str | None = None,
+        max_steps: int = 5,
+    ) -> dict[str, Any]:
+        company = await Company.get(current_user.company_id) if current_user.company_id else None
+        recent_tasks: list[dict[str, Any]] = []
+        if current_user.company_id:
+            tasks = await Task.find(
+                Task.company_id == current_user.company_id,
+                Task.assigned_to == str(current_user.id),
+            ).sort("-updated_at").limit(max_steps * 2).to_list()
+            recent_tasks = [
+                {
+                    "id": str(task.id),
+                    "title": task.title,
+                    "status": task.status.value,
+                    "priority": task.priority.value,
+                    "due_date": task.due_date,
+                    "estimated_hours": task.estimated_hours,
+                    "department": getattr(task, "department", None),
+                }
+                for task in tasks
+            ]
+
+        return {
+            "company": {
+                "id": current_user.company_id,
+                "name": company.name if company else None,
+            },
+            "generated_for": {
+                "user_id": str(current_user.id),
+                "full_name": current_user.full_name(),
+                "first_name": current_user.first_name,
+                "role": current_user.role.value,
+                "department": getattr(current_user, "department", None),
+                "team_name": getattr(current_user, "team_name", None),
+            },
+            "task": {
+                "task_id": None,
+                "title": task_title,
+                "description": task_description,
+            },
+            "recent_tasks": recent_tasks,
+            "max_steps": max_steps,
+            "access_scope": (
+                "company"
+                if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}
+                else "team"
+                if current_user.role in {UserRole.MANAGER, UserRole.LEAD}
+                else "self"
+            ),
+        }
+
+    @staticmethod
+    async def build_semantic_knowledge_context(
+        current_user: User,
+        *,
+        query: str,
+        project_id: str | None = None,
+        campaign_id: str | None = None,
+        knowledge_type: str | None = None,
+        limit: int = 8,
+    ) -> dict[str, Any]:
+        from app.semantic.context_builder import KnowledgeContextBuilder
+        from app.semantic.runtime import knowledge_retriever
+
+        if not current_user.company_id:
+            return {}
+        context = await knowledge_retriever.retrieve(
+            company_id=str(current_user.company_id),
+            query=query,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            knowledge_type=knowledge_type,
+            limit=limit,
+        )
+        return KnowledgeContextBuilder.build_payload(context)
 
     @staticmethod
     async def build_daily_report_context(
@@ -639,6 +721,12 @@ class ContextBuilder:
         current_user: User,
         message: str,
         history: list[dict[str, Any]] | None = None,
+        conversation_id: str | None = None,
+        conversation_history: list[dict[str, Any]] | None = None,
+        conversation_state: dict[str, Any] | None = None,
+        emotional_state: dict[str, Any] | None = None,
+        workload_metrics: dict[str, Any] | None = None,
+        tone_guidance: dict[str, Any] | None = None,
         limit: int = 5,
     ) -> dict[str, Any]:
         company_id = current_user.company_id
@@ -735,6 +823,12 @@ class ContextBuilder:
             project_ids=project_ids,
             limit=limit,
         )
+        semantic_context = await ContextBuilder.build_semantic_knowledge_context(
+            current_user,
+            query=message,
+            project_id=project_ids[0] if project_ids else None,
+            limit=limit,
+        )
 
         return {
             "company": {
@@ -758,12 +852,23 @@ class ContextBuilder:
             "intent": intent,
             "query": message,
             "history": history,
+            "conversation": {
+                "conversation_id": conversation_id,
+                "history": conversation_history or [],
+                "state": conversation_state or {},
+            },
+            "emotion": {
+                "emotional_state": emotional_state or {},
+                "workload_metrics": workload_metrics or {},
+                "tone_guidance": tone_guidance or {},
+            },
             "permissions": list(getattr(current_user, "permissions", []) or []),
             "recent_tasks": serialized_tasks,
             "recent_tickets": serialized_tickets,
             "task_count": len(serialized_tasks),
             "ticket_count": len(serialized_tickets),
             "memory": memory_context,
+            "semantic_knowledge": semantic_context,
             "team_member_ids": team_member_ids,
             "company_summary": {
                 "name": company.name if company else None,

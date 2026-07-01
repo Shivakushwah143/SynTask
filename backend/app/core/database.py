@@ -32,7 +32,19 @@ from app.models.page import Page
 from app.models.client import Client
 from app.models.department import Department
 from app.models.ai_log import AIInteractionLog
+from app.models.ai_conversation import AIConversation
+from app.models.ai_user_state import AIUserState
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
+from app.models.knowledge import KnowledgeRecord
+from app.models.creative_review import (
+    CreativeAssetMetadata,
+    CreativeCampaignReview,
+    CreativeIssue,
+    CreativeReview,
+    CreativeReviewHistory,
+    CreativeSuggestion,
+    ReviewPolicy,
+)
 from app.models.invoice import Invoice
 from app.models.msa import MSA
 from app.models.meeting import Meeting
@@ -136,10 +148,20 @@ async def init_db():
                 Client,
                 Department,
                 AIInteractionLog,
+                AIConversation,
+                AIUserState,
                 CompanyMemory,
                 ProjectMemory,
                 UserMemory,
                 ClientMemory,
+                KnowledgeRecord,
+                CreativeAssetMetadata,
+                CreativeCampaignReview,
+                CreativeReview,
+                CreativeIssue,
+                CreativeSuggestion,
+                CreativeReviewHistory,
+                ReviewPolicy,
                 Invoice,
                 MSA,
                 Meeting,

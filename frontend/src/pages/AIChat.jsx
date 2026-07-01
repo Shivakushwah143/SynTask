@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ArrowRight, Bot, CheckSquare, Clock3, FileText, Send, Sparkles, Ticket, User } from 'lucide-react'
 import { format } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
@@ -22,6 +22,12 @@ const AIChat = () => {
   const [error, setError] = useState('')
   const [suggestedActions, setSuggestedActions] = useState([])
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [conversationId, setConversationId] = useState('')
+
+  useEffect(() => {
+    if (!user?.id) return
+    setConversationId(localStorage.getItem(`ai-chat-conversation:${user.id}`) || '')
+  }, [user?.id])
 
   const conversation = useMemo(() => messages, [messages])
   const actionCards = useMemo(() => {
@@ -82,6 +88,7 @@ const AIChat = () => {
       const response = await aiAPI.chat({
         message,
         history: nextMessages.slice(0, -1),
+        conversation_id: conversationId || undefined,
       })
 
       setMessages((current) => [
@@ -93,6 +100,12 @@ const AIChat = () => {
       ])
       setSuggestedActions(Array.isArray(response.suggested_actions) ? response.suggested_actions : [])
       setLastUpdated(response.generated_at)
+      if (response.conversation_id) {
+        setConversationId(response.conversation_id)
+        if (user?.id) {
+          localStorage.setItem(`ai-chat-conversation:${user.id}`, response.conversation_id)
+        }
+      }
     } catch (chatError) {
       console.error('Failed to generate AI chat response', chatError)
       setError(chatError.response?.data?.detail || chatError.message || 'Failed to generate assistant response')

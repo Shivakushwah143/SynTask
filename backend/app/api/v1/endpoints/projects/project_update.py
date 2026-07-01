@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
 from app.services.project_service import ProjectService
+from app.events import publish_event
+from app.events.factories import build_domain_event
 from .shared import *
 
 router = APIRouter()
@@ -37,6 +39,25 @@ async def update_project(
         assigned_to=assigned_to,
         start_date=start_date,
         delivery_date=delivery_date,
+    )
+
+    await publish_event(
+        build_domain_event(
+            event_name="ProjectUpdated",
+            aggregate_type="project",
+            aggregate_id=str(project.id),
+            company_id=str(current_user.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "project_id": project.project_id,
+                "name": project.name,
+                "description": project.description,
+                "status": project.status.value if getattr(project, "status", None) else None,
+                "updated_at": project.updated_at.isoformat() if getattr(project, "updated_at", None) else None,
+            },
+            project_id=str(project.project_id or project.id),
+            metadata={"source": "project_update"},
+        )
     )
 
     return {"message": "Project updated successfully"}

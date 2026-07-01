@@ -11,6 +11,11 @@ export const aiAPI = {
     return response.data
   },
 
+  generateBreakdown: async (payload = {}) => {
+    const response = await api.post('/ai/breakdown', payload)
+    return response.data
+  },
+
   generateDailyReport: async (payload = {}) => {
     const response = await api.post('/ai/daily-report', payload)
     return response.data
