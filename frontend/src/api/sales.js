@@ -20,6 +20,11 @@ export const salesApi = {
   getProspects: (params) => api.get('/sales/prospects/', { params }),
   getProspect: (id) => api.get(`/sales/prospects/${id}`),
   createProspect: (data) => api.post('/sales/prospects/', data instanceof FormData ? data : toFormData(data)),
+  bulkUploadProspects: (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/sales/prospects/bulk-upload', formData)
+  },
   updateProspect: (id, data) => api.put(`/sales/prospects/${id}`, data),
   updateStage: (id, stageId) => {
     const formData = new FormData()

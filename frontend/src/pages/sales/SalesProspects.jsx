@@ -1,19 +1,31 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link } from 'react-router-dom'
-import { Briefcase, Search } from 'lucide-react'
+import { Briefcase, Search, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { salesApi } from '../../api/sales'
 import { usersAPI } from '../../api/users'
 import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
+import BulkImportProspectsModal from '../../components/BulkImportProspectsModal'
 import { asArray, formatDate, getId } from '../phase4Utils'
 
 export default function SalesProspects() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
+  const [bulkImportOpen, setBulkImportOpen] = useState(false)
   const { data, isLoading, isError } = useQuery(['sales-prospects', search], () => salesApi.getProspects({ search, limit: 50 }))
   const prospects = asArray(data, ['prospects'])
+
+  const { data: categoriesData } = useQuery('sales-categories-for-page', salesApi.getCategories)
+  const { data: stagesData } = useQuery('sales-stages-for-page', salesApi.getStages)
+  const { data: productsData } = useQuery('sales-products-for-page', salesApi.getProducts)
+  const { data: usersData } = useQuery('assignable-users-for-page', () => usersAPI.getAssignableUsers())
+
+  const categories = asArray(categoriesData, ['categories'])
+  const stages = asArray(stagesData, ['stages'])
+  const products = asArray(productsData, ['products'])
+  const users = asArray(usersData, ['users'])
 
   const columns = [
     { key: 'prospect_name', header: 'Prospect', render: (row) => <Link className="font-medium text-primary-700" to={`/sales/prospects/${getId(row)}`}>{row.prospect_name || `${row.first_name || ''} ${row.last_name || ''}`}</Link> },
@@ -26,13 +38,34 @@ export default function SalesProspects() {
 
   return (
     <div className="p-6">
-      <PageHeader title="Prospects" description={`${prospects.length} active prospects`} actions={<Button onClick={() => setOpen(true)}>Add Prospect</Button>} />
+      <PageHeader 
+        title="Prospects" 
+        description={`${prospects.length} active prospects`} 
+        actions={(
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setBulkImportOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Bulk Import
+            </Button>
+            <Button onClick={() => setOpen(true)}>Add Prospect</Button>
+          </div>
+        )} 
+      />
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input className={`${inputClassName} pl-10`} placeholder="Search prospects..." value={search} onChange={(event) => setSearch(event.target.value)} />
       </div>
       {isLoading ? <SkeletonTable rows={6} cols={6} /> : isError ? <EmptyState icon={Briefcase} title="Could not load prospects" /> : prospects.length ? <Table columns={columns} data={prospects} /> : <EmptyState icon={Briefcase} title="No prospects yet" description="Create prospects to fill your pipeline." action={<Button onClick={() => setOpen(true)}>Add Prospect</Button>} />}
       <ProspectModal isOpen={open} onClose={() => setOpen(false)} onDone={() => { setOpen(false); queryClient.invalidateQueries('sales-prospects') }} />
+      <BulkImportProspectsModal 
+        isOpen={bulkImportOpen} 
+        onClose={() => setBulkImportOpen(false)} 
+        onSuccess={() => queryClient.invalidateQueries('sales-prospects')}
+        categories={categories}
+        stages={stages}
+        products={products}
+        users={users}
+      />
     </div>
   )
 }
