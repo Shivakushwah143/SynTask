@@ -10,7 +10,11 @@ import {
   FileText,
   MessageCircle,
   Sparkles,
+  Wand2,
+
   Ticket,
+  
+  
   Users,
   X,
   Zap,
@@ -317,7 +321,15 @@ const buildSuggestions = ({ stats, recentTasks, recentTickets }) => {
   return suggestions.slice(0, 4)
 }
 
-// ===== UI COMPONENTS =====
+const commandItems = [
+  { label: 'Prioritize My Day', icon: Sparkles, path: '/ai-prioritization', action: 'prioritize' },
+  { label: 'Creative Review', icon: Wand2, path: '/creative-director' },
+  { label: 'Break Down Tasks', icon: CheckSquare, path: '/ai-hub#breakdown' },
+  { label: 'Generate Daily Report', icon: FileText, action: 'report' },
+  { label: 'Analyze Team Risks', icon: Users, path: '/reports' },
+  { label: 'Review Tickets', icon: Ticket, path: '/tickets' },
+  { label: 'Ask AI', icon: MessageCircle, path: '/ai-assistant' },
+]
 
 // Particle Effect Component
 const ParticleEffect = ({ isActive, onComplete }) => {

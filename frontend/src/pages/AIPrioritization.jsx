@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Bot, Clock3, RefreshCw, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
+import { AlertTriangle, Bot, Clock3, RefreshCw, Sparkles, Target, TrendingUp, ShieldAlert } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
 import { Badge, Button, EmptyState, PageHeader } from '../components/ui'
 
-const AIPrioritization = () => {
+export default function AIPrioritization() {
   const [result, setResult] = useState(null)
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(false)
@@ -17,7 +18,6 @@ const AIPrioritization = () => {
       const data = await aiAPI.listLogs(10)
       setLogs(Array.isArray(data) ? data : [])
     } catch (loadError) {
-      console.error('Failed to load AI logs', loadError)
       setLogs([])
     } finally {
       setLoadingLogs(false)
@@ -39,8 +39,8 @@ const AIPrioritization = () => {
       setResult(data)
       await loadLogs()
     } catch (generateError) {
-      console.error('Failed to generate AI priorities', generateError)
-      setError(generateError.response?.data?.detail || generateError.message || 'Failed to generate task priorities')
+      setError(generateError.response?.data?.detail || generateError.message || 'Failed to generate strategy recommendations')
+      toast.error('Failed to generate strategy recommendations')
     } finally {
       setLoading(false)
     }
@@ -50,82 +50,47 @@ const AIPrioritization = () => {
   const breakdown = useMemo(() => result?.daily_breakdown || [], [result])
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="space-y-6">
       <PageHeader
-        title="AI Prioritization"
-        description="Generate a daily task plan for the current employee using the Groq-backed SynTask AI pipeline."
-        actions={
-          <Button onClick={handleGenerate} loading={loading}>
-            <Sparkles className="h-4 w-4" />
-            Generate priorities
-          </Button>
-        }
+        title="Marketing Strategist AI"
+        description="Campaign planning, risk detection, and performance-driven recommendations for the current day."
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge label="Strategic planning" colorKey="active" />
+            <Button onClick={handleGenerate} loading={loading}>
+              <Sparkles className="h-4 w-4" />
+              Generate strategy
+            </Button>
+          </div>
+        )}
       />
 
       {error ? (
-        <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
           {error}
         </div>
       ) : null}
 
       {result ? (
-        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500">Source</div>
-            <div className="mt-2 text-xl font-bold text-gray-900 dark:text-gray-100">{result.source}</div>
-            <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">{result.provider} / {result.model}</div>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500">Tasks reviewed</div>
-            <div className="mt-2 text-3xl font-black text-gray-900 dark:text-gray-100">{result.context?.task_count || 0}</div>
-            <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">Company scoped, employee specific.</div>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500">Generated for</div>
-            <div className="mt-2 text-xl font-bold text-gray-900 dark:text-gray-100">
-              {result.context?.generated_for?.full_name || 'Current user'}
-            </div>
-            <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {result.context?.generated_for?.role || 'employee'}
-            </div>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500">Generated at</div>
-            <div className="mt-2 flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-gray-100">
-              <Clock3 className="h-5 w-5 text-primary-600" />
-              {format(new Date(result.generated_at), 'MMM d, HH:mm')}
-            </div>
-            <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {result.source === 'fallback' ? 'Heuristic fallback was used.' : 'LLM output was validated successfully.'}
-            </div>
-          </div>
-        </div>
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Source" value={result.source} detail={`${result.provider || '-'} / ${result.model || '-'}`} />
+          <StatCard label="Tasks reviewed" value={result.context?.task_count || 0} detail="Campaign signals and delivery pressure." />
+          <StatCard label="Generated for" value={result.context?.generated_for?.full_name || 'Current user'} detail={result.context?.generated_for?.role || 'Strategist'} />
+          <StatCard label="Generated at" value={result.generated_at ? format(new Date(result.generated_at), 'MMM d, HH:mm') : '-'} detail={result.source === 'fallback' ? 'Heuristic fallback' : 'Validated output'} />
+        </section>
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="space-y-6">
-          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Top priorities</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Sorted by urgency, due dates, and status.</p>
-              </div>
-              {result ? <Badge label={result.source} colorKey={result.source === 'fallback' ? 'pending' : 'active'} /> : null}
-            </div>
-
+        <section className="space-y-6">
+          <Panel title="Campaign planning" icon={Target} description="Ranked actions that can shape the day’s marketing execution.">
             {priorities.length === 0 ? (
-              <EmptyState
-                icon={Bot}
-                title="No AI result yet"
-                description="Generate a prioritization plan to see the ranked task list."
-                action={<Button onClick={handleGenerate} loading={loading}>Generate priorities</Button>}
-              />
+              <EmptyState icon={Bot} title="No strategy yet" description="Generate a strategy view to see ranked recommendations." action={<Button onClick={handleGenerate} loading={loading}>Generate strategy</Button>} />
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                   <thead className="bg-gray-50 dark:bg-gray-950/40">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Task</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Opportunity</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Score</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Reason</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Action</th>
@@ -138,7 +103,7 @@ const AIPrioritization = () => {
                           <div className="font-semibold text-gray-900 dark:text-gray-100">{item.title}</div>
                           <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
                             <Badge label={item.priority} colorKey={item.priority} />
-                            <span>{item.status.replaceAll('_', ' ')}</span>
+                            <span>{String(item.status || '').replaceAll('_', ' ')}</span>
                             {item.department ? <span>{item.department}</span> : null}
                           </div>
                         </td>
@@ -151,87 +116,106 @@ const AIPrioritization = () => {
                 </table>
               </div>
             )}
-          </div>
+          </Panel>
 
-          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="mb-4">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Daily breakdown</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">A lightweight schedule for the current workday.</p>
-            </div>
+          <Panel title="Performance insights" icon={TrendingUp} description="A time-block view of the current marketing day.">
             {breakdown.length === 0 ? (
-              <EmptyState
-                icon={AlertTriangle}
-                title="No breakdown available"
-                description="Run prioritization to get a time-block plan."
-              />
+              <EmptyState icon={AlertTriangle} title="No performance plan" description="Generate strategy to populate the daily breakdown." />
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {breakdown.map((block) => (
                   <div key={`${block.time_block}-${block.task_id || block.focus}`} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
                     <div className="text-xs font-semibold uppercase tracking-[0.22em] text-primary-600">{block.time_block}</div>
                     <div className="mt-2 text-base font-semibold text-gray-900 dark:text-gray-100">{block.focus}</div>
-                    <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">{block.rationale}</div>
-                    {block.task_title ? (
-                      <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                        Task: {block.task_title}
-                      </div>
-                    ) : null}
+                    <div className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{block.rationale}</div>
+                    {block.task_title ? <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">Task: {block.task_title}</div> : null}
                   </div>
                 ))}
               </div>
             )}
-          </div>
-        </div>
+          </Panel>
+        </section>
 
-        <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Recent AI logs</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Audit trail for the pipeline during this session.</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={loadLogs} loading={loadingLogs}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {logs.length === 0 ? (
-            <EmptyState
-              icon={Bot}
-              title="No logs yet"
-              description="Generate a plan to create the first AI log entry."
-            />
-          ) : (
-            <div className="space-y-3">
-              {logs.map((log) => (
-                <div key={log.id} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-gray-900 dark:text-gray-100">{log.feature}</div>
-                      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {format(new Date(log.created_at), 'MMM d, HH:mm:ss')}
+        <aside className="space-y-6">
+          <Panel title="Risk alerts" icon={ShieldAlert} description="Operational risks surfaced by the strategy pass.">
+            {result?.risks?.length ? (
+              <div className="space-y-3">
+                {result.risks.map((risk, index) => (
+                  <div key={`${risk.title || 'risk'}-${index}`} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-gray-900 dark:text-gray-100">{risk.title || 'Risk'}</div>
+                        <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{risk.description || risk.reason}</p>
                       </div>
+                      <Badge label={risk.severity || 'medium'} colorKey={risk.severity === 'high' ? 'warning' : 'scheduled'} />
                     </div>
-                    <Badge label={log.status} colorKey={log.status === 'success' ? 'active' : 'pending'} />
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
-                    <div>Provider: {log.provider}</div>
-                    <div>Latency: {log.latency_ms ? `${log.latency_ms} ms` : '-'}</div>
-                    <div>Fallback: {log.fallback_used ? 'Yes' : 'No'}</div>
-                    <div>Model: {log.model || '-'}</div>
-                  </div>
-                  {log.error_message ? (
-                    <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/20 dark:text-red-200">
-                      {log.error_message}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+                ))}
+              </div>
+            ) : (
+              <EmptyState icon={ShieldAlert} title="No risk alerts" description="Risks will appear when the strategy engine detects pressure." />
+            )}
+          </Panel>
+
+          <Panel title="Recent AI logs" icon={Clock3} description="Audit trail for strategy generation.">
+            <div className="flex justify-end">
+              <Button variant="ghost" size="sm" onClick={loadLogs} loading={loadingLogs}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
             </div>
-          )}
-        </div>
+            {logs.length === 0 ? (
+              <EmptyState icon={Bot} title="No logs yet" description="Generate a strategy to create the first log entry." />
+            ) : (
+              <div className="space-y-3">
+                {logs.map((log) => (
+                  <div key={log.id} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-gray-900 dark:text-gray-100">{log.feature}</div>
+                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{log.created_at ? format(new Date(log.created_at), 'MMM d, HH:mm:ss') : '-'}</div>
+                      </div>
+                      <Badge label={log.status} colorKey={log.status === 'success' ? 'active' : 'pending'} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      <div>Provider: {log.provider || '-'}</div>
+                      <div>Latency: {log.latency_ms ? `${log.latency_ms} ms` : '-'}</div>
+                      <div>Fallback: {log.fallback_used ? 'Yes' : 'No'}</div>
+                      <div>Model: {log.model || '-'}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </aside>
       </div>
     </div>
   )
 }
 
-export default AIPrioritization
+function Panel({ title, icon: Icon, description, children }) {
+  return (
+    <section className="card p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>
+        </div>
+      </div>
+      <div className="mt-5">{children}</div>
+    </section>
+  )
+}
+
+function StatCard({ label, value, detail }) {
+  return (
+    <div className="card p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{detail}</p>
+    </div>
+  )
+}

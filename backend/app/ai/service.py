@@ -7,6 +7,9 @@ from datetime import date, datetime
 from typing import Any, Optional
 
 from app.ai.context_builder import ContextBuilder
+from app.ai.emotion_detector import EmotionDetector
+from app.ai.emotion_templates import EmotionTemplates
+from app.ai.agents.task_breakdown import TaskBreakdownAgent
 from app.ai.logger import AILogger
 from app.ai.memory import AIMemoryService
 from app.ai.prompt_manager import PromptManager
@@ -35,6 +38,8 @@ from app.schemas.ai import (
     AITaskBreakdownRequest,
     AITaskBreakdownResponse,
     AITaskBreakdownTaskItem,
+    TaskBreakdownRequest,
+    TaskBreakdownResponse,
     AITaskPrioritizationLLMResponse,
     AITaskPrioritizationRequest,
     AITaskPrioritizationResponse,
@@ -54,6 +59,13 @@ class AIService:
         self.tool_executor = tool_executor or ToolExecutor()
         self.response_parser = ResponseParser()
         self.memory_service = AIMemoryService()
+        self.emotion_detector = EmotionDetector()
+        self.task_breakdown_agent = TaskBreakdownAgent(
+            provider=provider,
+            prompt_manager=self.prompt_manager,
+            role_engine=self.role_engine,
+            emotion_detector=self.emotion_detector,
+        )
         self.provider = provider or self._build_provider()
 
     def _build_provider(self) -> AIProvider:
@@ -124,21 +136,66 @@ class AIService:
         intent = context.get("intent", "general")
         task_count = context.get("task_count", 0)
         ticket_count = context.get("ticket_count", 0)
+        emotion = context.get("emotion") or {}
+        state = emotion.get("emotional_state") or {}
+        guidance = emotion.get("tone_guidance") or {}
+        mood = EmotionTemplates.normalize_mood(state.get("mood"))
 
         greeting = f"Good morning, {first_name}." if any(word in message.lower() for word in ["morning", "hello", "hi", "hey"]) else f"{first_name},"
+        if mood in {"burnout_risk", "stressed", "overwhelmed"}:
+            if task_count:
+                message_text = (
+                    f"You have {task_count} relevant tasks in context. "
+                    f"Let’s keep this small: start with the most urgent item and avoid adding extra scope."
+                )
+            elif ticket_count:
+                message_text = (
+                    f"You have {ticket_count} relevant tickets in context. "
+                    f"Let’s keep the workload manageable by handling the oldest or most urgent one first."
+                )
+            else:
+                message_text = "I’ll keep this focused on the smallest useful next step so you can make progress without overload."
+            return EmotionTemplates.apply_tone(f"{greeting} {message_text}", state)
+
         if intent == "tasks" and task_count:
-            return f"{greeting} You have {task_count} relevant tasks in context. I would start with the highest-priority items and then block time for the remaining work."
-        if intent == "tickets" and ticket_count:
-            return f"{greeting} You have {ticket_count} relevant tickets in context. I would review the oldest or highest-priority ones first and then reply with clear next steps."
-        if intent == "team":
-            return f"{greeting} Here is the team view from your verified context. Focus on workload balance, blockers, and who needs follow-up today."
-        if intent == "reporting":
-            return f"{greeting} Here is the operational summary from your verified context. Focus on trends, blockers, and any risks that need escalation."
-        return f"{greeting} I reviewed your verified context and can help with the next best action based on your current work."
+            message_text = f"You have {task_count} relevant tasks in context. I would start with the highest-priority items and then block time for the remaining work."
+        elif intent == "tickets" and ticket_count:
+            message_text = f"You have {ticket_count} relevant tickets in context. I would review the oldest or highest-priority ones first and then reply with clear next steps."
+        elif intent == "team":
+            message_text = "Here is the team view from your verified context. Focus on workload balance, blockers, and who needs follow-up today."
+        elif intent == "reporting":
+            message_text = "Here is the operational summary from your verified context. Focus on trends, blockers, and any risks that need escalation."
+        elif mood in {"productive", "focused"}:
+            message_text = guidance.get("prefix") or "You are in a good execution rhythm, so I would keep the next step sharp and direct."
+        else:
+            message_text = "I reviewed your verified context and can help with the next best action based on your current work."
+        return EmotionTemplates.apply_tone(f"{greeting} {message_text}", state)
 
     @staticmethod
     def _build_chat_suggested_actions(context: dict[str, Any]) -> list[dict[str, Any]]:
         actions: list[dict[str, Any]] = []
+        emotion = context.get("emotion") or {}
+        state = emotion.get("emotional_state") or {}
+        mood = EmotionTemplates.normalize_mood(state.get("mood"))
+
+        if mood in {"burnout_risk", "stressed", "overwhelmed"}:
+            if context.get("task_count", 0):
+                actions.append(
+                    {
+                        "label": "Review smallest next step",
+                        "type": "navigate",
+                        "payload": {"path": "/ai-prioritization"},
+                    }
+                )
+            actions.append(
+                {
+                    "label": "Take a short reset",
+                    "type": "wellbeing",
+                    "payload": {"minutes": 10},
+                }
+            )
+            return actions[:2]
+
         if context.get("task_count", 0):
             actions.append(
                 {
@@ -162,6 +219,15 @@ class AIService:
                     "type": "navigate",
                     "payload": {"path": "/reports"},
                 }
+            )
+        if mood in {"productive", "focused"} and context.get("task_count", 0):
+            actions.insert(
+                0,
+                {
+                    "label": "Keep momentum going",
+                    "type": "navigate",
+                    "payload": {"path": "/ai-prioritization"},
+                },
             )
         return actions[:3]
 
@@ -486,6 +552,7 @@ class AIService:
         message = self._build_chat_message(context, request.message)
         suggested_actions = self._build_chat_suggested_actions(context)
         return AIChatResponse(
+            conversation_id=context.get("conversation", {}).get("conversation_id"),
             message=message,
             suggested_actions=suggested_actions,
             actions=[],
@@ -730,6 +797,13 @@ class AIService:
                 error_message=str(error),
             )
             return fallback
+
+    async def generate_breakdown(
+        self,
+        current_user: User,
+        request: TaskBreakdownRequest,
+    ) -> TaskBreakdownResponse:
+        return await self.task_breakdown_agent.generate(current_user, request)
 
     async def generate_daily_report(
         self,
@@ -1026,11 +1100,37 @@ class AIService:
         current_user: User,
         request: AIChatRequest,
     ) -> AIChatResponse:
-        history = [item.model_dump() for item in request.history]
+        conversation = await self.memory_service.get_or_create_conversation(
+            current_user,
+            request.conversation_id,
+        )
+        request_history = [item.model_dump() for item in request.history]
+        conversation_history = self.memory_service.get_conversation_history(conversation)
+        history = conversation_history or request_history
+        base_context = await ContextBuilder.build_chat_context(
+            current_user=current_user,
+            message=request.message,
+            history=history,
+            conversation_id=conversation.conversation_id,
+            conversation_history=conversation_history,
+            conversation_state=conversation.state.model_dump() if hasattr(conversation.state, "model_dump") else dict(conversation.state),
+        )
+        user_state = await self.emotion_detector.detect_and_store(
+            current_user,
+            message=request.message,
+            context=base_context,
+        )
+        emotion_context = self.emotion_detector.to_context_payload(user_state)
         context = await ContextBuilder.build_chat_context(
             current_user=current_user,
             message=request.message,
             history=history,
+            conversation_id=conversation.conversation_id,
+            conversation_history=conversation_history,
+            conversation_state=conversation.state.model_dump() if hasattr(conversation.state, "model_dump") else dict(conversation.state),
+            emotional_state=emotion_context.get("emotional_state"),
+            workload_metrics=emotion_context.get("workload_metrics"),
+            tone_guidance=emotion_context.get("tone_guidance"),
         )
         resolution = self.role_engine.resolve(current_user)
         prompt_schema = AIChatLLMResponse.model_json_schema()
@@ -1067,6 +1167,7 @@ class AIService:
                 for item in action_results
             ]
             response = AIChatResponse(
+                conversation_id=conversation.conversation_id,
                 message=parsed.message,
                 suggested_actions=parsed.suggested_actions,
                 actions=parsed.actions,
@@ -1128,6 +1229,16 @@ class AIService:
                 )
             except Exception:
                 pass
+            try:
+                await self.memory_service.remember_conversation_turn(
+                    conversation,
+                    user_message=request.message,
+                    assistant_message=response.message,
+                    context={**context, "suggested_actions": [action.model_dump() for action in response.suggested_actions]},
+                    assistant_tokens_used=result.total_tokens,
+                )
+            except Exception:
+                pass
             return response
         except Exception as error:
             fallback = self._build_chat_fallback_response(context, resolution, request)
@@ -1162,6 +1273,16 @@ class AIService:
                     user_message=request.message,
                     assistant_message=fallback.message,
                     context=context,
+                )
+            except Exception:
+                pass
+            try:
+                await self.memory_service.remember_conversation_turn(
+                    conversation,
+                    user_message=request.message,
+                    assistant_message=fallback.message,
+                    context={**context, "suggested_actions": [action.model_dump() for action in fallback.suggested_actions]},
+                    assistant_tokens_used=None,
                 )
             except Exception:
                 pass

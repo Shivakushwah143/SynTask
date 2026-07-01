@@ -16,6 +16,8 @@ celery_app = Celery(
         "app.worker.tasks.email_tasks",
         "app.worker.tasks.notification_tasks",
         "app.worker.tasks.webhook_tasks",
+        "app.worker.tasks.creative_review_tasks",
+        "app.worker.tasks.semantic_tasks",
     ],
 )
 

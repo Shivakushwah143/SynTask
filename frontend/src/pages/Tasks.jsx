@@ -1,98 +1,66 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Plus, Calendar, User, MoreVertical, Search, Filter } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Plus, Search, Filter, CheckSquare } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { EmptyState, SkeletonKanban } from '../components/ui'
+import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonTable, Table, inputClassName } from '../components/ui'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 
-const Tasks = () => {
-  const navigate = useNavigate()
+const TASK_COLUMNS = [
+  { key: 'title', header: 'Task' },
+  { key: 'priority', header: 'Priority' },
+  { key: 'status', header: 'Status' },
+  { key: 'assigned_to_name', header: 'Owner' },
+  { key: 'due_date', header: 'Due', render: (row) => (row.due_date ? format(new Date(row.due_date), 'MMM d, yyyy') : '—') },
+]
+
+const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 }
+
+export default function Tasks() {
   const { user } = useAuthStore()
-  const userRole = normalizeRole(user?.role)
-  const canManageTasks = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
+  const role = normalizeRole(user?.role)
+  const canCreate = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(role)
+  const isCompanyAdmin = hasCompanyAdminAccess(role)
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showFilters, setShowFilters] = useState(false)
-  const [filters, setFilters] = useState({
-    priority: '',
-    assigned_to: '',
-    department_id: '',
-  })
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [filters, setFilters] = useState({ priority: '', assigned_to: '', department_id: '' })
   const [assignableUsers, setAssignableUsers] = useState([])
-  const [loadingUsers, setLoadingUsers] = useState(false)
   const [departments, setDepartments] = useState([])
-  const [loadingDepartments, setLoadingDepartments] = useState(false)
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
 
-  const statuses = [
-    { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
-    { id: 'in_progress', label: 'In Progress', color: 'bg-blue-100' },
-    { id: 'in_review', label: 'Review', color: 'bg-yellow-100' },
-    { id: 'completed', label: 'Completed', color: 'bg-green-100' },
-  ]
-
-  const priorities = {
-    low: { label: 'Low', color: 'badge-secondary' },
-    medium: { label: 'Medium', color: 'badge-primary' },
-    high: { label: 'High', color: 'badge-warning' },
-    critical: { label: 'Critical', color: 'badge-danger' },
-  }
-
-  const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
-
-  // Fetch tasks
-  const loadAssignableUsers = useCallback(async () => {
+  const loadUsers = useCallback(async () => {
     try {
-      setLoadingUsers(true)
       const data = await usersAPI.getAssignableUsers()
       setAssignableUsers(data.users || [])
     } catch (error) {
       console.error('Error loading users:', error)
-      toast.error('Failed to load users')
       setAssignableUsers([])
-    } finally {
-      setLoadingUsers(false)
     }
   }, [])
 
   const loadDepartments = useCallback(async () => {
     if (!isCompanyAdmin) return
     try {
-      setLoadingDepartments(true)
       const data = await departmentsAPI.listDepartments()
       setDepartments(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error loading departments:', error)
       setDepartments([])
-    } finally {
-      setLoadingDepartments(false)
     }
   }, [isCompanyAdmin])
 
-  const fetchTasks = useCallback(async () => {
+  const loadTasks = useCallback(async () => {
     try {
       setLoading(true)
       const data = await tasksAPI.listTasks(filters)
-      let filteredTasks = data.tasks || []
-      
-      // Apply search filter
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase()
-        filteredTasks = filteredTasks.filter(task =>
-          task.title?.toLowerCase().includes(query) ||
-          task.description?.toLowerCase().includes(query)
-        )
-      }
-      
-      setTasks(filteredTasks)
+      setTasks(data.tasks || [])
     } catch (error) {
       console.error('Error loading tasks:', error)
       toast.error('Failed to load tasks')
@@ -100,406 +68,224 @@ const Tasks = () => {
     } finally {
       setLoading(false)
     }
-  }, [filters, searchQuery])
+  }, [filters])
+
+  useEffect(() => { loadUsers() }, [loadUsers])
+  useEffect(() => { loadDepartments() }, [loadDepartments])
+  useEffect(() => { loadTasks() }, [loadTasks])
 
   useEffect(() => {
-    loadAssignableUsers()
-  }, [loadAssignableUsers])
-
-  useEffect(() => {
-    loadDepartments()
-  }, [loadDepartments])
-
-  // Check if we need to open a task from notification
-  useEffect(() => {
-    const taskId = sessionStorage.getItem('open_task_id')
-    if (taskId) {
-      sessionStorage.removeItem('open_task_id')
-      const timer = setTimeout(() => navigate(`/tasks/${taskId}`), 500)
-      return () => clearTimeout(timer)
-    }
-  }, [navigate])
-
-  useEffect(() => {
-    // Debounce search
     const timer = setTimeout(() => {
-      fetchTasks()
-    }, 300)
+      if (!searchQuery.trim()) {
+        loadTasks()
+        return
+      }
+      setLoading(true)
+      tasksAPI.listTasks(filters)
+        .then((data) => {
+          const query = searchQuery.toLowerCase()
+          setTasks((data.tasks || []).filter((task) =>
+            task.title?.toLowerCase().includes(query) ||
+            task.description?.toLowerCase().includes(query) ||
+            task.id?.toLowerCase().includes(query),
+          ))
+        })
+        .catch(() => toast.error('Failed to load tasks'))
+        .finally(() => setLoading(false))
+    }, 250)
     return () => clearTimeout(timer)
-  }, [fetchTasks])
+  }, [filters, loadTasks, searchQuery])
 
-  // Get tasks by status
-  const getTasksByStatus = (status) => {
-    return tasks.filter(task => task.status === status)
-  }
+  const sortedTasks = useMemo(
+    () => [...tasks].sort((a, b) => (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99)),
+    [tasks],
+  )
+
+  const stats = useMemo(() => ({
+    total: tasks.length,
+    high: tasks.filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).length,
+    dueSoon: tasks.filter((task) => {
+      if (!task.due_date) return false
+      const diff = (new Date(task.due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      return diff <= 7
+    }).length,
+  }), [tasks])
 
   const visibleAssignableUsers = selectedDepartmentId
     ? assignableUsers.filter((item) => item.department_id === selectedDepartmentId)
     : assignableUsers
 
-  const closeCreateModal = () => {
+  const handleCreateTask = async (event) => {
+    event.preventDefault()
     if (submitting) return
-    setShowCreateModal(false)
-    setSelectedDepartmentId('')
-  }
-
-  // Handle create task
-  const handleCreateTask = async (e) => {
-    e.preventDefault()
-    if (submitting) return
-
-    const formData = new FormData(e.target)
-    
+    const formData = new FormData(event.target)
+    const taskData = {
+      title: formData.get('title'),
+      description: formData.get('description') || '',
+      assigned_to: formData.get('assigned_to') || '',
+      priority: formData.get('priority') || 'medium',
+      due_date: formData.get('due_date') || '',
+    }
+    if (isCompanyAdmin && selectedDepartmentId) taskData.department_id = selectedDepartmentId
     try {
       setSubmitting(true)
-      
-      const taskData = {
-        title: formData.get('title'),
-        description: formData.get('description') || '',
-        assigned_to: formData.get('assigned_to') || '',
-        priority: formData.get('priority') || 'medium',
-        due_date: formData.get('due_date') || '',
-      }
-
-      if (isCompanyAdmin && selectedDepartmentId) {
-        taskData.department_id = selectedDepartmentId
-      }
-
       await tasksAPI.createTask(taskData)
-      toast.success('✅ Task created successfully!')
+      toast.success('Task created successfully')
       setShowCreateModal(false)
       setSelectedDepartmentId('')
-      await fetchTasks()
-      e.target.reset()
+      event.target.reset()
+      await loadTasks()
     } catch (error) {
-      console.error('Error creating task:', error)
       toast.error(error.response?.data?.detail || 'Failed to create task')
     } finally {
       setSubmitting(false)
     }
   }
 
-  // Handle task click
-  const handleTaskClick = (task) => {
-    if (task.project_id) {
-      navigate(`/projects/${task.project_id}/tasks/${task.id}`)
-    } else {
-      navigate(`/tasks/${task.id}`)
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="p-4">
-        <SkeletonKanban cols={4} />
-      </div>
-    )
-  }
-
   return (
-    <div className="p-4">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Tasks</h1>
-          <p className="text-gray-600 text-xs mt-0.5">Manage and track your tasks</p>
-        </div>
-        {canManageTasks && (
-          <button
-            onClick={() => {
-              setSelectedDepartmentId('')
-              setShowCreateModal(true)
-            }}
-            className="btn btn-primary flex items-center justify-center w-full sm:w-auto"
-          >
-            <Plus className="h-4 w-4 mr-1.5" />
+    <div className="space-y-6">
+      <PageHeader
+        title="Tasks"
+        description="Table-first task management with fast filtering and creation."
+        actions={canCreate ? (
+          <Button onClick={() => setShowCreateModal(true)}>
+            <Plus className="h-4 w-4" />
             Create Task
-          </button>
-        )}
-      </div>
+          </Button>
+        ) : null}
+      />
 
-      {/* Search and Filters */}
-      <div className="card">
-        <div className="flex items-center space-x-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="card p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Total</p>
+          <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">{stats.total}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">High priority</p>
+          <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">{stats.high}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Due soon</p>
+          <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">{stats.dueSoon}</p>
+        </div>
+      </section>
+
+      <section className="card p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
-              type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tasks..."
-              className="input pl-10 w-full"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className={`${inputClassName} pl-10`}
+              placeholder="Search tasks by title, description, or ID"
             />
           </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'} flex items-center`}
-          >
-            <Filter className="h-4 w-4 mr-2" />
+          <Button variant={showFilters ? 'primary' : 'secondary'} onClick={() => setShowFilters((value) => !value)}>
+            <Filter className="h-4 w-4" />
             Filters
-          </button>
+          </Button>
+          <Button variant="secondary" onClick={() => setShowCreateModal(true)} className="lg:hidden">
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
         </div>
 
-        {showFilters && (
-          <div className="mt-4 grid grid-cols-2 gap-4 pt-4 border-t">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-              <select
-                value={filters.priority}
-                onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-                className="input"
-              >
-                <option value="">All Priorities</option>
+        {showFilters ? (
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <FormField label="Priority">
+              <select className={inputClassName} value={filters.priority} onChange={(event) => setFilters((state) => ({ ...state, priority: event.target.value }))}>
+                <option value="">All priorities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </FormField>
+            <FormField label="Assigned To">
+              <select className={inputClassName} value={filters.assigned_to} onChange={(event) => setFilters((state) => ({ ...state, assigned_to: event.target.value }))}>
+                <option value="">All users</option>
+                {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              </select>
+            </FormField>
+            {isCompanyAdmin ? (
+              <FormField label="Department">
+                <select className={inputClassName} value={filters.department_id} onChange={(event) => setFilters((state) => ({ ...state, department_id: event.target.value }))}>
+                  <option value="">All departments</option>
+                  {departments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </FormField>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="card p-0 overflow-hidden">
+        {loading ? (
+          <div className="p-4"><SkeletonTable rows={6} cols={5} /></div>
+        ) : sortedTasks.length ? (
+          <Table
+            columns={TASK_COLUMNS}
+            data={sortedTasks.map((task) => ({
+              ...task,
+              priority: <Badge label={task.priority || 'medium'} colorKey={task.priority || 'medium'} />,
+              status: <Badge label={(task.status || 'todo').replace(/_/g, ' ')} colorKey={task.status || 'todo'} />,
+            }))}
+            emptyMessage="No tasks found"
+          />
+        ) : (
+          <div className="p-6">
+            <EmptyState
+              icon={CheckSquare}
+              title="No tasks found"
+              description="Adjust filters or create a new task to populate the queue."
+              action={canCreate ? <Button onClick={() => setShowCreateModal(true)}><Plus className="h-4 w-4" /> Create Task</Button> : null}
+            />
+          </div>
+        )}
+      </section>
+
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create task">
+        <form onSubmit={handleCreateTask} className="space-y-4">
+          <FormField label="Title" required>
+            <input name="title" required className={inputClassName} placeholder="Task title" />
+          </FormField>
+          <FormField label="Description">
+            <textarea name="description" rows={3} className={inputClassName} placeholder="Task details" />
+          </FormField>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Priority">
+              <select name="priority" defaultValue="medium" className={inputClassName}>
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
                 <option value="critical">Critical</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
-              <select
-                value={filters.assigned_to}
-                onChange={(e) => setFilters({ ...filters, assigned_to: e.target.value })}
-                className="input"
-                >
-                  <option value="">All Users</option>
-                  {assignableUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.first_name} {u.last_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            {isCompanyAdmin && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                <select
-                  value={filters.department_id}
-                  onChange={(e) => setFilters({ ...filters, department_id: e.target.value })}
-                  className="input"
-                  disabled={loadingDepartments}
-                >
-                  <option value="">All Departments</option>
-                  {departments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            </FormField>
+            <FormField label="Due date">
+              <input type="datetime-local" name="due_date" className={inputClassName} />
+            </FormField>
           </div>
-        )}
-      </div>
-
-      {/* Kanban Board */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statuses.map((status) => {
-          const statusTasks = getTasksByStatus(status.id)
-          return (
-            <div key={status.id} className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-900">{status.label}</h3>
-                <span className="badge badge-secondary text-xs">
-                  {statusTasks.length}
-                </span>
-              </div>
-              <div className="space-y-3 min-h-[200px]">
-                {statusTasks.length === 0 ? (
-                  <EmptyState title="No tasks" description="Nothing is currently in this status." />
-                ) : (
-                  statusTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      onClick={() => handleTaskClick(task)}
-                      className="p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <p className="font-medium text-gray-900 text-sm flex-1">
-                          {task.title}
-                        </p>
-                        <div className="dropdown relative">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              // Handle menu
-                            }}
-                            className="p-1 hover:bg-gray-100 rounded"
-                          >
-                            <MoreVertical className="h-4 w-4 text-gray-500" />
-                          </button>
-                        </div>
-                      </div>
-                      
-                      {task.description && (
-                        <p className="text-xs text-gray-500 mb-2 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-                      
-                      <div className="flex items-center justify-between mt-2">
-                        <span className={`badge ${priorities[task.priority]?.color || 'badge-secondary'} text-xs`}>
-                          {priorities[task.priority]?.label || task.priority}
-                        </span>
-                        {task.due_date && (
-                          <div className="flex items-center text-xs text-gray-500">
-                            <Calendar className="h-3 w-3 mr-1" />
-                            {format(new Date(task.due_date), 'MMM d')}
-                          </div>
-                        )}
-                      </div>
-                      
-                      {task.assigned_to && (
-                        <div className="flex items-center mt-2 text-xs text-gray-500">
-                          <User className="h-3 w-3 mr-1" />
-                          {(() => {
-                            const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
-                            return assignedUser 
-                              ? `${assignedUser.first_name} ${assignedUser.last_name}`
-                              : 'Assigned'
-                          })()}
-                        </div>
-                      )}
-                      {task.department && (
-                        <div className="mt-2 text-xs text-gray-500">
-                          Department: {task.department}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Create Task Modal */}
-      {canManageTasks && showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Create New Task</h2>
-            <form onSubmit={handleCreateTask} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title *
-                </label>
-                <input
-                  type="text"
-                  name="title"
-                  required
-                  className="input"
-                  placeholder="Task title"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
-                </label>
-                <textarea
-                  name="description"
-                  rows="3"
-                  className="input"
-                  placeholder="Task description"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Assign To
-                </label>
-                <select
-                  name="assigned_to"
-                  className="input"
-                  disabled={loadingUsers}
-                >
-                  <option value="">Unassigned</option>
-                  {visibleAssignableUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.first_name} {u.last_name} ({u.role === 'lead' ? 'Lead' : 'Employee'})
-                    </option>
-                  ))}
-                </select>
-                {loadingUsers && (
-                  <p className="text-xs text-gray-500 mt-1">Loading users...</p>
-                )}
-                {!loadingUsers && visibleAssignableUsers.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {userRole === ROLE.ADMIN 
-                      ? 'No leads or employees available. Create users first.'
-                      : 'No employees available. Create employees first.'}
-                  </p>
-                )}
-              </div>
-              {isCompanyAdmin && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Department
-                  </label>
-                  <select
-                    name="department_id"
-                    value={selectedDepartmentId}
-                    onChange={(event) => setSelectedDepartmentId(event.target.value)}
-                    className="input"
-                    disabled={loadingDepartments}
-                  >
-                    <option value="">No department</option>
-                    {departments.map((department) => (
-                      <option key={department.id} value={department.id}>
-                        {department.name}
-                      </option>
-                    ))}
-                  </select>
-                  {loadingDepartments && (
-                    <p className="text-xs text-gray-500 mt-1">Loading departments...</p>
-                  )}
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Priority
-                </label>
-                <select name="priority" className="input" defaultValue="medium">
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="critical">Critical</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Due Date
-                </label>
-                <input
-                  type="datetime-local"
-                  name="due_date"
-                  className="input"
-                />
-              </div>
-              <div className="flex space-x-3 pt-4">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="btn btn-primary flex-1"
-                >
-                  {submitting ? 'Creating...' : 'Create Task'}
-                </button>
-                <button
-                  type="button"
-                  onClick={closeCreateModal}
-                  disabled={submitting}
-                  className="btn btn-secondary flex-1"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+          <FormField label="Assign to">
+            <select name="assigned_to" className={inputClassName} disabled={!visibleAssignableUsers.length}>
+              <option value="">Unassigned</option>
+              {visibleAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+            </select>
+          </FormField>
+          {isCompanyAdmin ? (
+            <FormField label="Department">
+              <select value={selectedDepartmentId} onChange={(event) => setSelectedDepartmentId(event.target.value)} className={inputClassName}>
+                <option value="">No department</option>
+                {departments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </FormField>
+          ) : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+            <Button type="submit" loading={submitting}>Create task</Button>
           </div>
-        </div>
-      )}
-
+        </form>
+      </Modal>
     </div>
   )
 }
-
-export default Tasks

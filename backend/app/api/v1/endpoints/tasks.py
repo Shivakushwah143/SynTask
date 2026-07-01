@@ -9,6 +9,8 @@ from bson import ObjectId
 from app.models.task import Task, TaskStatus, TaskPriority, TaskComment
 from app.models.department import Department
 from app.models.user import User, UserRole
+from app.events import publish_event
+from app.events.factories import build_domain_event
 from app.api.dependencies import (
     get_current_user,
     get_current_company_admin_or_lead,
@@ -333,6 +335,28 @@ async def create_task(
             logger = logging.getLogger(__name__)
             logger.error(f"Failed to create notification: {str(e)}")
 
+    await publish_event(
+        build_domain_event(
+            event_name="TaskCreated",
+            aggregate_type="task",
+            aggregate_id=str(task.id),
+            company_id=str(current_user.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "title": task.title,
+                "description": task.description,
+                "status": task.status.value,
+                "priority": task.priority.value,
+                "project_id": task.project_id,
+                "department_id": task.department_id,
+                "tags": task.tags,
+                "updated_at": task.updated_at.isoformat() if getattr(task, "updated_at", None) else None,
+            },
+            project_id=str(task.project_id) if task.project_id else None,
+            metadata={"source": "task_create"},
+        )
+    )
+
     return {
         "id": str(task.id),
         "title": task.title,
@@ -426,6 +450,28 @@ async def update_task_status(
     
     # Update status and trigger automation asynchronously when changed.
     task = await TaskService.update_status(task, task_status, str(current_user.id))
+
+    await publish_event(
+        build_domain_event(
+            event_name="TaskCompleted" if task.status == TaskStatus.COMPLETED else "TaskUpdated",
+            aggregate_type="task",
+            aggregate_id=str(task.id),
+            company_id=str(task.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "title": task.title,
+                "description": task.description,
+                "status": task.status.value,
+                "priority": task.priority.value,
+                "project_id": task.project_id,
+                "department_id": task.department_id,
+                "tags": task.tags,
+                "updated_at": task.updated_at.isoformat() if getattr(task, "updated_at", None) else None,
+            },
+            project_id=str(task.project_id) if task.project_id else None,
+            metadata={"source": "task_status_update"},
+        )
+    )
     
     return {
         "id": str(task.id),
@@ -507,6 +553,25 @@ async def add_task_comment(
     task.updated_at = datetime.utcnow()
     await task.save()
     await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
+
+    await publish_event(
+        build_domain_event(
+            event_name="TaskCommentAdded",
+            aggregate_type="task_comment",
+            aggregate_id=str(comment.id),
+            company_id=str(current_user.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "task_id": str(task.id),
+                "content": comment.content,
+                "user_id": comment.user_id,
+                "user_name": comment.user_name,
+                "created_at": comment.created_at.isoformat() if getattr(comment, "created_at", None) else None,
+            },
+            project_id=str(task.project_id) if task.project_id else None,
+            metadata={"source": "task_comment_create"},
+        )
+    )
     
     return {
         "id": str(comment.id),
@@ -667,6 +732,28 @@ async def update_task(
     
     task.updated_at = datetime.utcnow()
     await task.save()
+
+    await publish_event(
+        build_domain_event(
+            event_name="TaskUpdated",
+            aggregate_type="task",
+            aggregate_id=str(task.id),
+            company_id=str(current_user.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "title": task.title,
+                "description": task.description,
+                "status": task.status.value,
+                "priority": task.priority.value,
+                "project_id": task.project_id,
+                "department_id": task.department_id,
+                "tags": task.tags,
+                "updated_at": task.updated_at.isoformat() if getattr(task, "updated_at", None) else None,
+            },
+            project_id=str(task.project_id) if task.project_id else None,
+            metadata={"source": "task_update"},
+        )
+    )
     
     # Get assigned user details for response
     assigned_user = None
@@ -714,6 +801,24 @@ async def add_task_attachment(
         task.attachments.append(file_url)
         task.updated_at = datetime.utcnow()
         await task.save()
+
+        await publish_event(
+            build_domain_event(
+                event_name="TaskAttachmentAdded",
+                aggregate_type="task",
+                aggregate_id=str(task.id),
+                company_id=str(current_user.company_id),
+                actor_id=str(current_user.id),
+                payload={
+                    "file_url": file_url,
+                    "attachments": task.attachments,
+                    "updated_at": task.updated_at.isoformat() if getattr(task, "updated_at", None) else None,
+                },
+                project_id=str(task.project_id) if task.project_id else None,
+                correlation_id=str(task.id),
+                metadata={"source": "task_attachment_add"},
+            )
+        )
     
     return {
         "id": str(task.id),

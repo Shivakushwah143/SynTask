@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from beanie.odm.operators.find.comparison import In
 
+from app.models.ai_conversation import AIConversation, AIConversationMessage, AIConversationState
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
 from app.models.client import Client, ClientStatus
 from app.models.project import Project, ProjectStatus
@@ -37,6 +39,18 @@ class AIMemoryService:
         if len(normalized) <= max_length:
             return normalized
         return f"{normalized[: max_length - 3]}..."
+
+    @staticmethod
+    def _normalize_history_item(item: Any) -> dict[str, Any]:
+        if isinstance(item, dict):
+            return {
+                "role": item.get("role", "user"),
+                "content": item.get("content", ""),
+            }
+        return {
+            "role": getattr(item, "role", "user"),
+            "content": getattr(item, "content", ""),
+        }
 
     @staticmethod
     def _detect_memory_type(text: str) -> str:
@@ -292,6 +306,97 @@ class AIMemoryService:
                 created_at=now,
                 updated_at=now,
             ).insert()
+
+    async def get_or_create_conversation(
+        self,
+        current_user: User,
+        conversation_id: str | None = None,
+    ) -> AIConversation:
+        if conversation_id:
+            existing = await AIConversation.find_one(
+                AIConversation.conversation_id == conversation_id,
+            )
+            if existing:
+                if existing.user_id != str(current_user.id):
+                    raise ValueError("Conversation does not belong to the current user")
+                if existing.company_id and current_user.company_id and existing.company_id != current_user.company_id:
+                    raise ValueError("Conversation does not belong to the current company")
+                return existing
+
+        now = datetime.utcnow()
+        conversation = AIConversation(
+            conversation_id=conversation_id or str(uuid4()),
+            user_id=str(current_user.id),
+            company_id=current_user.company_id,
+            role=current_user.role.value,
+            messages=[],
+            state=AIConversationState(),
+            created_at=now,
+            updated_at=now,
+        )
+        await conversation.insert()
+        return conversation
+
+    @staticmethod
+    def get_conversation_history(conversation: AIConversation, limit: int = 10) -> list[dict[str, Any]]:
+        messages = list(conversation.messages or [])[-limit:]
+        return [
+            {
+                "id": message.id,
+                "role": message.role,
+                "content": message.content,
+                "timestamp": message.timestamp,
+                "intent": message.intent,
+                "tokens_used": message.tokens_used,
+            }
+            for message in messages
+        ]
+
+    async def remember_conversation_turn(
+        self,
+        conversation: AIConversation,
+        *,
+        user_message: str,
+        assistant_message: str,
+        context: dict[str, Any],
+        assistant_tokens_used: int | None = None,
+    ) -> AIConversation:
+        now = datetime.utcnow()
+        if isinstance(conversation.state, dict):
+            conversation.state = AIConversationState.model_validate(conversation.state)
+        intent = context.get("intent")
+        suggested_actions = list(context.get("suggested_actions") or [])
+        pending_action = context.get("pending_action")
+        if pending_action is None and suggested_actions:
+            first_action = suggested_actions[0]
+            if isinstance(first_action, dict):
+                pending_action = first_action.get("label") or first_action.get("type")
+            else:
+                pending_action = getattr(first_action, "label", None) or getattr(first_action, "type", None)
+
+        conversation.messages.extend(
+            [
+                AIConversationMessage(
+                    role="user",
+                    content=user_message,
+                    timestamp=now,
+                    intent=intent,
+                ),
+                AIConversationMessage(
+                    role="assistant",
+                    content=assistant_message,
+                    timestamp=now,
+                    intent=intent,
+                    tokens_used=assistant_tokens_used,
+                ),
+            ]
+        )
+        conversation.state.last_intent = intent or conversation.state.last_intent
+        conversation.state.pending_action = pending_action
+        conversation.state.conversation_phase = "active"
+        conversation.updated_at = now
+        await conversation.save()
+        return conversation
 
     async def remember_report(
         self,

@@ -121,6 +121,42 @@ class AITaskBreakdownLLMResponse(BaseModel):
     actions: List[dict[str, Any]] = Field(default_factory=list)
 
 
+class TaskBreakdownRequest(BaseModel):
+    task_title: str = Field(min_length=1, max_length=200)
+    task_description: Optional[str] = Field(default=None, max_length=2000)
+    task_id: Optional[str] = None
+    max_steps: int = Field(default=5, ge=3, le=10)
+
+
+class TaskBreakdownStep(BaseModel):
+    title: str
+    description: str
+    estimated_minutes: int = Field(ge=1)
+    dependencies: List[str] = Field(default_factory=list)
+    status: str = "pending"
+
+
+class TaskBreakdownLLMResponse(BaseModel):
+    task_id: str
+    task_title: str
+    steps: List[TaskBreakdownStep]
+
+
+class TaskBreakdownResponse(BaseModel):
+    task_id: str
+    task_title: str
+    steps: List[TaskBreakdownStep]
+    source: str
+    provider: str
+    model: str
+    role: str
+    prompt_version: str
+    fallback_chain: List[str] = Field(default_factory=list)
+    fallback_used: bool = False
+    generated_at: datetime
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
 class AIDailyReportRequest(BaseModel):
     report_date: date = Field(default_factory=date.today)
     limit: int = Field(default=10, ge=1, le=25)
@@ -175,6 +211,7 @@ class AIChatHistoryItem(BaseModel):
 
 
 class AIChatRequest(BaseModel):
+    conversation_id: Optional[str] = None
     message: str = Field(min_length=1, max_length=4000)
     history: List[AIChatHistoryItem] = Field(default_factory=list)
 
@@ -186,6 +223,7 @@ class AIChatSuggestedAction(BaseModel):
 
 
 class AIChatResponse(BaseModel):
+    conversation_id: Optional[str] = None
     message: str
     suggested_actions: List[AIChatSuggestedAction] = Field(default_factory=list)
     actions: List[dict[str, Any]] = Field(default_factory=list)
