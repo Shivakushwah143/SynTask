@@ -9,6 +9,17 @@ import { usersAPI } from '../../api/users'
 import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
 import { asArray, formatDate, getId } from '../phase4Utils'
 
+const normalizeLeadCsvHeader = (header = '') => {
+  const normalized = String(header)
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+
+  if (['email_address', 'email_id', 'e_mail'].includes(normalized)) return 'email'
+  return normalized
+}
+
 export default function SalesProspects() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -19,6 +30,7 @@ export default function SalesProspects() {
 
   const columns = [
     { key: 'prospect_name', header: 'Prospect', render: (row) => <Link className="font-medium text-primary-700" to={`/sales/prospects/${getId(row)}`}>{row.prospect_name || `${row.first_name || ''} ${row.last_name || ''}`}</Link> },
+    { key: 'email', header: 'Email', render: (row) => row.email || '-' },
     { key: 'company_name', header: 'Company', render: (row) => row.company_name || '-' },
     { key: 'interest_level', header: 'Interest', render: (row) => row.interest_level ? <Badge label={row.interest_level} colorKey={row.interest_level} /> : '-' },
     { key: 'current_stage', header: 'Stage', render: (row) => row.current_stage || '-' },
@@ -42,7 +54,7 @@ export default function SalesProspects() {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input className={`${inputClassName} pl-10`} placeholder="Search prospects..." value={search} onChange={(event) => setSearch(event.target.value)} />
       </div>
-      {isLoading ? <SkeletonTable rows={6} cols={6} /> : isError ? <EmptyState icon={Briefcase} title="Could not load prospects" /> : prospects.length ? <Table columns={columns} data={prospects} /> : <EmptyState icon={Briefcase} title="No prospects yet" description="Create prospects to fill your pipeline." action={<Button onClick={() => setOpen(true)}>Add Prospect</Button>} />}
+      {isLoading ? <SkeletonTable rows={6} cols={7} /> : isError ? <EmptyState icon={Briefcase} title="Could not load prospects" /> : prospects.length ? <Table columns={columns} data={prospects} /> : <EmptyState icon={Briefcase} title="No prospects yet" description="Create prospects to fill your pipeline." action={<Button onClick={() => setOpen(true)}>Add Prospect</Button>} />}
       <ProspectModal isOpen={open} onClose={() => setOpen(false)} onDone={() => { setOpen(false); queryClient.invalidateQueries('sales-prospects') }} />
       <BulkUploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} onDone={() => { setUploadOpen(false); queryClient.invalidateQueries('sales-prospects') }} />
     </div>
@@ -61,10 +73,23 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
 
   const mutation = useMutation((formData) => salesApi.bulkUploadProspects(formData), {
     onSuccess: (result) => {
+      console.group('[Bulk Lead Upload] Success')
+      console.log('Server response:', result)
+      console.log('Uploaded rows:', result.total_uploaded)
+      console.log('Skipped row details:', result.warnings || [])
+      console.groupEnd()
       toast.success(`Uploaded ${result.total_uploaded} leads. ${result.skipped_rows} skipped.`)
       onDone()
     },
     onError: (error) => {
+      console.group('[Bulk Lead Upload] Error')
+      console.error('Upload error:', error)
+      console.error('HTTP status:', error.response?.status)
+      console.error('Server error data:', error.response?.data)
+      console.log('Selected file:', file ? { name: file.name, size: file.size, type: file.type } : null)
+      console.log('Normalized headers:', headers)
+      console.log('Parsed preview data:', previewRows)
+      console.groupEnd()
       toast.error(error.response?.data?.detail || error.message || 'Upload failed')
     },
   })
@@ -91,15 +116,44 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
       header: true,
       skipEmptyLines: true,
       preview: 50,
+      transformHeader: normalizeLeadCsvHeader,
       complete: ({ data, meta, errors }) => {
+        console.group('[Bulk Lead Upload] CSV parsed')
+        console.log('File:', { name: selected.name, size: selected.size, type: selected.type })
+        console.log('Normalized headers:', meta.fields || [])
+        console.log('Parsed data:', data)
+        console.log('Parser errors:', errors)
+        console.groupEnd()
+
         if (errors.length) {
+          console.error('[Bulk Lead Upload] CSV parse failed:', errors)
           setFileError('Unable to parse CSV file.')
           setHeaders([])
           setPreviewRows([])
           return
         }
-        setHeaders(meta.fields || [])
+
+        const parsedHeaders = meta.fields || []
+        if (!parsedHeaders.includes('email')) {
+          const message = `Email column not found. Detected columns: ${parsedHeaders.join(', ') || 'none'}`
+          console.error('[Bulk Lead Upload] Header validation failed:', {
+            required: 'email',
+            detected: parsedHeaders,
+          })
+          setFileError(message)
+          setHeaders(parsedHeaders)
+          setPreviewRows(data)
+          return
+        }
+
+        setHeaders(parsedHeaders)
         setPreviewRows(data)
+      },
+      error: (error) => {
+        console.error('[Bulk Lead Upload] Could not read CSV file:', error)
+        setFileError(`Unable to read CSV file: ${error.message || 'Unknown error'}`)
+        setHeaders([])
+        setPreviewRows([])
       },
     })
   }
@@ -122,6 +176,10 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
       setFileError('Select an assignee for manual strategy.')
       return
     }
+    if (!headers.includes('email')) {
+      setFileError(`Email column not found. Detected columns: ${headers.join(', ') || 'none'}`)
+      return
+    }
 
     const formData = new FormData()
     formData.append('strategy', strategy)
@@ -129,6 +187,14 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
     if (strategy === 'manual') {
       formData.append('target_user_id', targetUserId)
     }
+
+    console.group('[Bulk Lead Upload] Submitting')
+    console.log('File:', { name: file.name, size: file.size, type: file.type })
+    console.log('Strategy:', strategy)
+    console.log('Target user ID:', targetUserId || null)
+    console.log('Normalized headers:', headers)
+    console.log('Parsed preview data:', previewRows)
+    console.groupEnd()
 
     mutation.mutate(formData)
   }
@@ -215,7 +281,7 @@ function ProspectModal({ isOpen, onClose, onDone }) {
     phone: '',
     category_id: '',
     product_ids: [],
-    interest_level: 'medium',
+    interest_level: 'warm',
     estimated_close_date: new Date().toISOString().slice(0, 10),
     assigned_to: '',
     current_stage: '',
@@ -302,9 +368,9 @@ function ProspectModal({ isOpen, onClose, onDone }) {
         </FormField>
         <FormField label="Interest level">
           <select className={inputClassName} value={form.interest_level} onChange={(event) => update('interest_level', event.target.value)}>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
+            <option value="cold">Cold</option>
+            <option value="warm">Warm</option>
+            <option value="hot">Hot</option>
           </select>
         </FormField>
         <FormField label="Estimated close date">

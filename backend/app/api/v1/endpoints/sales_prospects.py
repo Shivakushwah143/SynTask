@@ -18,6 +18,21 @@ from app.models.sales_product import SalesProduct
 
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
 
+def _normalize_lead_csv_header(header: str) -> str:
+    normalized = (
+        str(header or "")
+        .lstrip("\ufeff")
+        .strip()
+        .lower()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
+    while "__" in normalized:
+        normalized = normalized.replace("__", "_")
+    if normalized in {"email_address", "email_id", "e_mail"}:
+        return "email"
+    return normalized
+
 
 def _ensure_create_permission(user: User):
     # Allow all roles including EMPLOYEE to create prospects
@@ -33,6 +48,11 @@ def _parse_multi_value(value: str) -> List[str]:
     if not value or not value.strip():
         return []
     return [v.strip() for v in value.split("|") if v.strip()]
+
+def _parse_interest_level(value: str) -> InterestLevel:
+    normalized = (value or "").strip().lower()
+    legacy_values = {"high": "hot", "medium": "warm", "low": "cold"}
+    return InterestLevel(legacy_values.get(normalized, normalized))
 
 
 def _parse_datetime(date_str: str, time_str: Optional[str] = None) -> Optional[datetime]:
@@ -290,6 +310,7 @@ async def create_prospect(
     # Check duplicate: country_code + phone
     existing = await SalesProspect.find_one(
         {
+            "company_id": current_user.company_id,
             "country_code": country_code,
             "phone": phone,
             "deleted": False
@@ -314,7 +335,7 @@ async def create_prospect(
         contact_id=contact_id,
         category_id=category_id,
         product_ids=product_list,
-        interest_level=InterestLevel(interest_level.lower()),
+        interest_level=_parse_interest_level(interest_level),
         estimated_close_date=_parse_datetime(estimated_close_date),
         assigned_to=assigned_to,
         assigned_by=str(current_user.id),
@@ -390,7 +411,7 @@ async def update_prospect(
         product_list = [p.strip() for p in product_ids.replace(",", "|").split("|") if p.strip()]
         prospect.product_ids = product_list
     if interest_level:
-        prospect.interest_level = InterestLevel(interest_level.lower())
+        prospect.interest_level = _parse_interest_level(interest_level)
     if estimated_close_date:
         prospect.estimated_close_date = _parse_datetime(estimated_close_date)
     if reason_for_lost is not None:
@@ -421,10 +442,10 @@ async def bulk_upload_prospects(
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="File too large. Max size is 10 MB")
 
-    text = content.decode('utf-8', errors='replace')
+    text = content.decode('utf-8-sig', errors='replace')
     reader = csv.DictReader(io.StringIO(text))
     headers = reader.fieldnames or []
-    normalized_headers = [h.strip().lower() for h in headers]
+    normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
 
     if 'email' not in normalized_headers:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="CSV must include an 'email' column")
@@ -462,8 +483,14 @@ async def bulk_upload_prospects(
     warnings = []
     seen_emails = set()
     all_emails = set()
+    total_input_rows = 0
     for idx, row in enumerate(reader, start=2):
-        row_norm = {k.strip().lower(): (v or '').strip() for k, v in row.items()}
+        total_input_rows += 1
+        row_norm = {
+            _normalize_lead_csv_header(key): (value or '').strip()
+            for key, value in row.items()
+            if key is not None
+        }
         email = (row_norm.get('email') or '').lower()
         if not email:
             skipped_rows.append({"row": idx, "reason": "Missing email"})
@@ -504,24 +531,63 @@ async def bulk_upload_prospects(
             skipped_rows.append({"row": idx, "reason": "Missing name"})
             continue
 
+        status_value = (row_norm.get('status') or ProspectStatus.ACTIVE.value).lower()
+        if status_value not in {status.value for status in ProspectStatus}:
+            skipped_rows.append({
+                "row": idx,
+                "reason": f"Invalid status '{status_value}'. Use active, won, lost, or closed",
+            })
+            continue
+
+        interest_value = row_norm.get('interest_level') or InterestLevel.WARM.value
+        try:
+            parsed_interest_level = _parse_interest_level(interest_value)
+        except ValueError:
+            skipped_rows.append({
+                "row": idx,
+                "reason": (
+                    f"Invalid interest_level '{interest_value}'. "
+                    "Use hot, warm, cold, high, medium, or low"
+                ),
+            })
+            continue
+
+        estimated_close_date_value = row_norm.get('estimated_close_date')
+        estimated_close_date = (
+            _parse_datetime(estimated_close_date_value)
+            if estimated_close_date_value
+            else None
+        )
+        if estimated_close_date_value and estimated_close_date is None:
+            skipped_rows.append({
+                "row": idx,
+                "reason": "Invalid estimated_close_date. Use YYYY-MM-DD or DD-MM-YYYY",
+            })
+            continue
+
+        product_ids_value = row_norm.get('product_ids') or ''
         parsed_rows.append(
             {
                 "row": idx,
                 "first_name": first_name,
                 "last_name": last_name,
+                "prospect_name": f"{first_name} {last_name}".strip(),
+                "country_code": row_norm.get('country_code') or '+91',
                 "email": email,
                 "company_name": row_norm.get('company') or row_norm.get('company_name') or None,
-                "phone": row_norm.get('phone') or None,
-                "status": row_norm.get('status') or 'active',
+                "phone": row_norm.get('phone') or '',
+                "category_id": row_norm.get('category_id') or None,
+                "product_ids": _parse_multi_value(product_ids_value),
+                "interest_level": parsed_interest_level,
+                "estimated_close_date": estimated_close_date,
+                "status": status_value,
                 "source": row_norm.get('source') or 'bulk_upload',
                 "assigned_to": None,
                 "assigned_by": str(current_user.id),
-                "current_stage": row_norm.get('status') or 'new',
+                "current_stage": row_norm.get('stage') or row_norm.get('current_stage') or 'new',
                 "remark": row_norm.get('remark') or None,
                 "company_id": current_user.company_id,
                 "created_by": str(current_user.id),
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
             }
         )
 
@@ -561,14 +627,35 @@ async def bulk_upload_prospects(
                 row['assigned_to'] = assignee
                 assigned_counts[assignee] += 1
 
-    # Write to the database in bulk
-    collection = SalesProspect.get_motor_collection()
-    await collection.insert_many(parsed_rows)
+    # Build model instances before writing so bulk-created records receive the
+    # same validation and default fields as prospects created by POST /.
+    valid_prospects = []
+    for row in parsed_rows:
+        row_number = row.pop("row")
+        try:
+            valid_prospects.append(SalesProspect(**row))
+        except Exception as exc:
+            skipped_rows.append({
+                "row": row_number,
+                "reason": f"Invalid prospect data: {str(exc)[:300]}",
+            })
 
-    assigned_breakdown = {user_id: count for user_id, count in assigned_counts.items() if count}
+    if not valid_prospects:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="No valid leads found after database-model validation",
+        )
+
+    await SalesProspect.insert_many(valid_prospects)
+
+    assigned_breakdown = {}
+    for prospect in valid_prospects:
+        assigned_breakdown[prospect.assigned_to] = (
+            assigned_breakdown.get(prospect.assigned_to, 0) + 1
+        )
     return {
-        "total_rows": len(rows) + len(skipped_rows),
-        "total_uploaded": len(parsed_rows),
+        "total_rows": total_input_rows,
+        "total_uploaded": len(valid_prospects),
         "skipped_rows": len(skipped_rows),
         "assigned_breakdown": assigned_breakdown,
         "warnings": skipped_rows[:50],
