@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { FileText, Plus, Trash2, X, Search, Eye, Send } from 'lucide-react'
 import { invoicesAPI } from '../api/invoices'
 import { clientsAPI } from '../api/clients'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
@@ -9,6 +10,7 @@ import { format } from 'date-fns'
 
 const Invoices = () => {
   const { user } = useAuthStore()
+  const { confirm, showUndoNotification } = useConfirmation()
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState([])
@@ -233,11 +235,25 @@ const Invoices = () => {
   }
 
   const handleDelete = async (invoiceId) => {
-    if (!window.confirm('Are you sure you want to delete this invoice?')) return
+    const confirmed = await confirm({
+      title: 'Delete Invoice',
+      message: 'Are you sure you want to delete this invoice?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
 
     try {
       await invoicesAPI.deleteInvoice(invoiceId)
       toast.success('Invoice deleted successfully')
+      showUndoNotification({
+        message: 'Invoice deleted',
+        onUndo: async () => {
+          await loadInvoices()
+        },
+        duration: 3000,
+      })
       loadInvoices()
     } catch (error) {
       console.error('Error deleting invoice:', error)

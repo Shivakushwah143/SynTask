@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { ArrowRight, FolderKanban, Grid2x2, List, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
@@ -14,6 +15,7 @@ import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, 
 export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { confirm } = useConfirmation()
   const canCreateProjects = hasCompanyAdminAccess(user?.role)
   const [view, setView] = useState('grid')
   const [loading, setLoading] = useState(true)
@@ -153,7 +155,14 @@ export default function Projects() {
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this project?')) return
+    const confirmed = await confirm({
+      title: 'Delete Project',
+      message: 'Are you sure you want to delete this project?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
     try {
       await projectsApi.deleteProject(id)
       toast.success('Project deleted successfully')

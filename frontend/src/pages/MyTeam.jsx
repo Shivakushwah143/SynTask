@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Users, CheckSquare, Ticket, Mail, Phone, Briefcase, Calendar, Plus, MoreVertical } from 'lucide-react'
 import { usersAPI } from '../api/users'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
 const MyTeam = () => {
   const { user } = useAuthStore()
+  const { confirm, showUndoNotification } = useConfirmation()
   const [teamData, setTeamData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -75,10 +77,24 @@ const MyTeam = () => {
   }
 
   const handleDeleteMember = async (member) => {
-    if (!confirm(`Remove ${member.first_name} ${member.last_name} from your team?`)) return
+    const confirmed = await confirm({
+      title: 'Remove Member',
+      message: `Remove ${member.first_name} ${member.last_name} from your team?`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
     try {
       await usersAPI.deleteUser(member.id)
       toast.success('Member removed')
+      showUndoNotification({
+        message: 'Member removed',
+        onUndo: async () => {
+          await fetchTeam()
+        },
+        duration: 3000,
+      })
       await fetchTeam()
     } catch (error) {
       const msg = error.response?.data?.detail || 'Failed to remove member'

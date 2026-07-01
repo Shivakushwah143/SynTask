@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Bell, Lock, Shield, User } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { authAPI } from '../api/auth'
 import toast from 'react-hot-toast'
 import { Badge, Button, FormField, PageHeader, inputClassName } from '../components/ui'
 
 const Settings = () => {
   const { user } = useAuthStore()
+  const { confirm } = useConfirmation()
   const [activeTab, setActiveTab] = useState('profile')
   const [changingPassword, setChangingPassword] = useState(false)
   const [savingPreferences, setSavingPreferences] = useState(false)

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Clock, Plus, Trash2 } from 'lucide-react'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { timeTrackingApi } from '../api/timeTracking'
 import { tasksAPI } from '../api/tasks'
 import toast from 'react-hot-toast'
 
 const TimeTracking = () => {
+  const { confirm } = useConfirmation()
   const [tasks, setTasks] = useState([])
   const [selectedTask, setSelectedTask] = useState(null)
   const [timeLogs, setTimeLogs] = useState([])
@@ -69,7 +71,14 @@ const TimeTracking = () => {
   }
 
   const handleDeleteLog = async (logId) => {
-    if (!window.confirm('Are you sure you want to delete this time log?')) return
+    const confirmed = await confirm({
+      title: 'Delete Time Log',
+      message: 'Are you sure you want to delete this time log?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
 
     try {
       await timeTrackingApi.deleteTimeLog(logId)

@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { ArrowLeft, ArrowRight, Filter, Plus, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { projectsApi } from '../api/projects'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
@@ -22,6 +23,7 @@ export default function ProjectBoard() {
   const { projectId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { confirm } = useConfirmation()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const canManageColumns = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role)
   const [activeTab, setActiveTab] = useState('board')

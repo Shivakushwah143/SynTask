@@ -5,6 +5,7 @@ import {
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
   Zap, Sparkles
 } from 'lucide-react'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { aiAPI } from '../api/ai'
 import { tasksAPI } from '../api/tasks'
 import { filesAPI } from '../api/files'
@@ -19,6 +20,7 @@ import { format } from 'date-fns'
 const TaskDetail = () => {
   const { taskId, projectId } = useParams()
   const navigate = useNavigate()
+  const { confirm } = useConfirmation()
   const { user } = useAuthStore()
   const [task, setTask] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -207,7 +209,14 @@ const TaskDetail = () => {
   }
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this task?')) return
+    const confirmed = await confirm({
+      title: 'Delete Task',
+      message: 'Are you sure you want to delete this task?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
     if (!taskId) return
     
     try {
