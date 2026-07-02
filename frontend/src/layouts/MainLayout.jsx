@@ -44,7 +44,6 @@ const MainLayout = () => {
           onMenuClick={() => setSidebarOpen(true)}
           onSearchOpen={openSearch}
           onCommandOpen={openCommandPalette}
-          onLogout={() => setSidebarOpen(false)}
         />
       }
     >

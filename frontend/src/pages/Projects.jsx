@@ -32,6 +32,8 @@ export default function Projects() {
   const [components, setComponents] = useState([])
   const [versions, setVersions] = useState([])
   const [loadingDetails, setLoadingDetails] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
   const [formData, setFormData] = useState({ name: '', key: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
   const [formErrors, setFormErrors] = useState({})
 
@@ -139,8 +141,9 @@ export default function Projects() {
 
   const handleCreate = async (event) => {
     event.preventDefault()
-    if (!validateCreateForm()) return
+    if (submitting || !validateCreateForm()) return
     try {
+      setSubmitting(true)
       const payload = { ...formData }
       if (payload.start_date) payload.start_date = new Date(payload.start_date).toISOString()
       if (payload.delivery_date) payload.delivery_date = new Date(payload.delivery_date).toISOString()
@@ -151,10 +154,13 @@ export default function Projects() {
       await loadProjects()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create project')
+    } finally {
+      setSubmitting(false)
     }
   }
 
   const handleDelete = async (id) => {
+    if (deletingId) return
     const confirmed = await confirm({
       title: 'Delete Project',
       message: 'Are you sure you want to delete this project?',
@@ -164,11 +170,14 @@ export default function Projects() {
     })
     if (!confirmed) return
     try {
+      setDeletingId(id)
       await projectsApi.deleteProject(id)
       toast.success('Project deleted successfully')
       await loadProjects()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to delete project')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -294,7 +303,7 @@ export default function Projects() {
                       <ArrowRight className="h-4 w-4" />
                     </button>
                     {canCreateProjects ? (
-                      <button type="button" onClick={(event) => { event.stopPropagation(); handleDelete(project.id) }} className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300" aria-label={`Delete ${project.name}`}>
+                      <button type="button" disabled={Boolean(deletingId)} onClick={(event) => { event.stopPropagation(); handleDelete(project.id) }} className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-500/10 dark:hover:text-red-300" aria-label={deletingId === project.id ? `Deleting ${project.name}` : `Delete ${project.name}`} aria-busy={deletingId === project.id || undefined}>
                         <Trash2 className="h-4 w-4" />
                       </button>
                     ) : null}
@@ -341,7 +350,7 @@ export default function Projects() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button type="submit">Create project</Button>
+            <Button type="submit" loading={submitting} loadingText="Creating">Create project</Button>
           </div>
         </form>
       </Modal>

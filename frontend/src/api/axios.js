@@ -13,6 +13,8 @@ const axiosInstance = axios.create({
   },
 })
 
+let refreshPromise = null
+
 // Request interceptor - check storage for token
 axiosInstance.interceptors.request.use(
   (config) => {
@@ -69,7 +71,12 @@ axiosInstance.interceptors.response.use(
     const originalRequest = error.config
 
     // If the error is 401 and we haven't retried yet
-    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.skipAuthRefresh) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest?._retry &&
+      !originalRequest?.skipAuthRefresh &&
+      !useAuthStore.getState().isLoggingOut
+    ) {
       originalRequest._retry = true
 
       try {
@@ -80,29 +87,47 @@ axiosInstance.interceptors.response.use(
         }
 
         if (refreshToken) {
-          const response = await axios.post(`${API_URL}/auth/refresh`, {
-            refresh_token: refreshToken,
-          })
+          if (!refreshPromise) {
+            refreshPromise = axios.post(`${API_URL}/auth/refresh`, {
+              refresh_token: refreshToken,
+            }, {
+              withCredentials: true,
+            }).finally(() => {
+              refreshPromise = null
+            })
+          }
 
+          const response = await refreshPromise
           const { access_token } = response.data
+
+          const authState = useAuthStore.getState()
+          if (
+            authState.isLoggingOut ||
+            authState.refreshToken !== refreshToken ||
+            getRefreshToken() !== refreshToken
+          ) {
+            return Promise.reject(error)
+          }
 
           // Update token in storage
           updateAccessToken(access_token)
           
           // Update state
           useAuthStore.getState().setAuth(
-            useAuthStore.getState().user,
+            authState.user,
             access_token,
-            refreshToken
+            refreshToken,
           )
 
           originalRequest.headers.Authorization = `Bearer ${access_token}`
           return axiosInstance(originalRequest)
         }
       } catch (refreshError) {
-        useAuthStore.getState().clearAuth()
-        window.location.href = '/login'
-        toast.error('Session expired. Please login again.')
+        if (!useAuthStore.getState().isLoggingOut) {
+          useAuthStore.getState().clearAuth()
+          window.location.replace('/login')
+          toast.error('Session expired. Please login again.')
+        }
         return Promise.reject(refreshError)
       }
     }
