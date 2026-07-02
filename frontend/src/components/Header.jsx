@@ -5,9 +5,10 @@ import toast from 'react-hot-toast'
 import { useUIStore } from '../store/uiStore'
 
 const Header = ({ title, subtitle, onMenuClick, onSearchOpen, onCommandOpen, onLogout }) => {
-  const { logout } = useAuthStore()
+  const { logout, isLoggingOut } = useAuthStore()
   const navigate = useNavigate()
 
+<<<<<<< HEAD
   const handleLogout = () => {
     ;(async () => {
       useUIStore.getState().setLoading(true)
@@ -19,6 +20,13 @@ const Header = ({ title, subtitle, onMenuClick, onSearchOpen, onCommandOpen, onL
         navigate('/login')
       }
     })()
+=======
+  const handleLogout = async () => {
+    if (isLoggingOut) return
+    await logout()
+    toast.success('Logged out successfully')
+    navigate('/login', { replace: true })
+>>>>>>> 99943a0444c5216e640779533caf906547cb2156
   }
 
   return (
@@ -29,6 +37,7 @@ const Header = ({ title, subtitle, onMenuClick, onSearchOpen, onCommandOpen, onL
       onSearchOpen={onSearchOpen}
       onCommandOpen={onCommandOpen}
       onLogout={onLogout || handleLogout}
+      logoutLoading={isLoggingOut}
     />
   )
 }

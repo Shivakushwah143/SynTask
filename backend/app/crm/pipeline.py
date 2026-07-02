@@ -70,6 +70,15 @@ def _user_display_name(current_user: User) -> str:
     return full_name or str(getattr(current_user, "id", "system"))
 
 
+def _user_full_name(user: Optional[User], fallback: Optional[str] = None) -> str:
+    if not user:
+        return fallback or ""
+    first_name = getattr(user, "first_name", "") or ""
+    last_name = getattr(user, "last_name", "") or ""
+    full_name = f"{first_name} {last_name}".strip()
+    return full_name or getattr(user, "email", None) or fallback or str(getattr(user, "id", ""))
+
+
 def _can_write_pipeline(current_user: User, prospect: SalesProspect) -> bool:
     if current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]:
         return True
@@ -143,12 +152,17 @@ def _resolve_stage_name(value: Optional[str], stage_index: Dict[str, Dict[str, A
     return None
 
 
-def _serialize_lead(prospect: SalesProspect, resolved_stage: str) -> Dict[str, Any]:
+def _serialize_lead(prospect: SalesProspect, resolved_stage: str, owner_map: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     stage_entered_at = prospect.stage_entered_at or prospect.created_at
     now = datetime.utcnow()
     days_in_stage = prospect.days_in_stage
     if stage_entered_at:
         days_in_stage = max((now - stage_entered_at).days, 0)
+
+    owner_id = getattr(prospect, "assigned_to", None)
+    owner_name = getattr(prospect, "owner_name", None)
+    if owner_id:
+        owner_name = (owner_map or {}).get(str(owner_id)) or owner_name or str(owner_id)
 
     return {
         "id": str(prospect.id),
@@ -157,6 +171,10 @@ def _serialize_lead(prospect: SalesProspect, resolved_stage: str) -> Dict[str, A
         "contact_id": getattr(prospect, "contact_id", None),
         "assigned_to": getattr(prospect, "assigned_to", None),
         "assigned_by": getattr(prospect, "assigned_by", None),
+        "owner_id": owner_id,
+        "ownerId": owner_id,
+        "owner_name": owner_name,
+        "ownerName": owner_name,
         "current_stage": resolved_stage,
         "status": prospect.status.value if getattr(prospect, "status", None) else None,
         "phone": getattr(prospect, "phone", None),
@@ -226,6 +244,20 @@ class CRMPipelineService:
             ]
 
         prospects = await SalesProspect.find(query).sort("-updated_at").to_list()
+        owner_ids = {
+            str(prospect.assigned_to)
+            for prospect in prospects
+            if getattr(prospect, "assigned_to", None)
+        }
+        owner_map: Dict[str, str] = {}
+        if owner_ids:
+            owners = await User.find(
+                {
+                    "_id": {"$in": list(owner_ids)},
+                    "company_id": company_id,
+                }
+            ).to_list()
+            owner_map = {str(owner.id): _user_full_name(owner, str(owner.id)) for owner in owners}
 
         stage_lookup: Dict[str, Dict[str, Any]] = {
             stage["name"]: {**stage, "lead_count": 0} for stage in stage_catalog
@@ -249,7 +281,7 @@ class CRMPipelineService:
                 }
 
             stage_lookup[resolved_stage]["lead_count"] += 1
-            leads_by_stage[resolved_stage].append(_serialize_lead(prospect, resolved_stage))
+            leads_by_stage[resolved_stage].append(_serialize_lead(prospect, resolved_stage, owner_map))
 
         stages = sorted(stage_lookup.values(), key=lambda item: (item["order"], item["name"].lower()))
         stage_counts = [{"stage": stage["name"], "count": stage["lead_count"]} for stage in stages]

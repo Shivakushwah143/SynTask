@@ -4,11 +4,13 @@ import { ticketsAPI } from '../api/tickets'
 import { filesAPI } from '../api/files'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
+import { useConfirmation } from '../hooks/useConfirmation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
 const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMembers }) => {
   const { user } = useAuthStore()
+  const { confirm } = useConfirmation()
   const [comments, setComments] = useState([])
   const [newComment, setNewComment] = useState('')
   const [isInternal, setIsInternal] = useState(false)
@@ -140,7 +142,14 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
 
   const handleDelete = async () => {
     console.log('Delete button clicked')
-    if (!window.confirm('Are you sure you want to delete this request? This action cannot be undone.')) {
+    const confirmed = await confirm({
+      title: 'Delete Request',
+      message: 'Are you sure you want to delete this request? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) {
       return
     }
 

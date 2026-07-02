@@ -6,6 +6,7 @@ import {
   getStoredAuthData,
 } from '../utils/storage'
 import { normalizeRole } from '../utils/roles'
+import { queryClient } from '../api/queryClient'
 
 const normalizeUser = (user) => {
   if (!user) return user
@@ -37,6 +38,7 @@ const getInitialAuthState = () => {
 export const useAuthStore = create(
   (set, get) => ({
     ...getInitialAuthState(),
+    isLoggingOut: false,
 
     setAuth: (user, token, refreshToken, rememberMe) => {
       const normalizedUser = normalizeUser(user)
@@ -60,6 +62,7 @@ export const useAuthStore = create(
 
     clearAuth: () => {
       clearAuthStorage()
+      queryClient.clear()
       
       set({
         user: null,
@@ -70,14 +73,22 @@ export const useAuthStore = create(
     },
 
     logout: async () => {
-      const { refreshToken } = get()
+      const { token, refreshToken, isLoggingOut } = get()
+      if (isLoggingOut) return
+
+      set({ isLoggingOut: true })
+      get().clearAuth()
+
       try {
         const { authAPI } = await import('../api/auth')
-        await authAPI.logout(refreshToken)
+        if (token) {
+          await authAPI.logout(refreshToken, token)
+        }
       } catch (e) {
-        // Always clear client state, even if server-side revocation fails.
+        // Client state is already cleared; an unavailable API must not trap the user.
+      } finally {
+        set({ isLoggingOut: false })
       }
-      get().clearAuth()
     },
 
     initializeAuth: () => {

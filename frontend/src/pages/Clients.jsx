@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { EmptyState, SkeletonTable } from '../components/ui'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
@@ -11,6 +12,7 @@ import { format } from 'date-fns'
 
 const Clients = () => {
   const { user } = useAuthStore()
+  const { confirm, showUndoNotification } = useConfirmation()
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -143,11 +145,25 @@ const Clients = () => {
   }
 
   const handleDeleteClient = async (clientId) => {
-    if (!confirm('Are you sure you want to delete this client?')) return
+    const confirmed = await confirm({
+      title: 'Delete Client',
+      message: 'Are you sure you want to delete this client?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
 
     try {
       await clientsAPI.deleteClient(clientId)
       toast.success('Client deleted successfully')
+      showUndoNotification({
+        message: 'Client deleted',
+        onUndo: async () => {
+          await loadClients()
+        },
+        duration: 3000,
+      })
       loadClients()
     } catch (error) {
       console.error('Error deleting client:', error)

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Building2, Check, X, Plus, RefreshCw } from 'lucide-react'
 import { companiesAPI } from '../api/companies'
+import { useConfirmation } from '../hooks/useConfirmation'
 import toast from 'react-hot-toast'
 
 const Companies = () => {
+  const { confirm } = useConfirmation()
   const [companies, setCompanies] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -166,7 +168,14 @@ const Companies = () => {
 
   // Handle reject
   const handleReject = async (companyId) => {
-    if (!confirm('Are you sure you want to reject this company?')) return
+    const confirmed = await confirm({
+      title: 'Reject Company',
+      message: 'Are you sure you want to reject this company?',
+      confirmText: 'Reject',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
     
     try {
       await companiesAPI.updateCompanyStatus(companyId, 'cancelled')

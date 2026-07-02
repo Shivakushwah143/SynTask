@@ -5,6 +5,7 @@ import {
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
   Zap, Sparkles
 } from 'lucide-react'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { aiAPI } from '../api/ai'
 import { tasksAPI } from '../api/tasks'
 import { filesAPI } from '../api/files'
@@ -19,6 +20,7 @@ import { format } from 'date-fns'
 const TaskDetail = () => {
   const { taskId, projectId } = useParams()
   const navigate = useNavigate()
+  const { confirm } = useConfirmation()
   const { user } = useAuthStore()
   const [task, setTask] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -40,11 +42,19 @@ const TaskDetail = () => {
   const [breakdown, setBreakdown] = useState(null)
   const [breakdownLoading, setBreakdownLoading] = useState(false)
   const [breakdownError, setBreakdownError] = useState('')
+  const [commenting, setCommenting] = useState(false)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [updatingWatch, setUpdatingWatch] = useState(false)
+  const [updatingField, setUpdatingField] = useState(null)
 
   useEffect(() => {
     if (taskId) {
       loadTask()
     }
+    // loadTask intentionally refreshes the whole task workspace when the route ID changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId])
 
   const loadTask = async () => {
@@ -170,47 +180,65 @@ const TaskDetail = () => {
 
   const handleAddComment = async (e) => {
     e.preventDefault()
-    if (!newComment.trim() || !taskId) return
+    if (!newComment.trim() || !taskId || commenting) return
 
     try {
+      setCommenting(true)
       await tasksAPI.addComment(taskId, newComment)
       toast.success('Comment added')
       setNewComment('')
       await loadComments()
     } catch (error) {
       toast.error('Failed to add comment')
+    } finally {
+      setCommenting(false)
     }
   }
 
   const handleStatusChange = async (newStatus) => {
-    if (!taskId) return
+    if (!taskId || updatingStatus) return
     try {
+      setUpdatingStatus(true)
       await tasksAPI.updateTaskStatus(taskId, newStatus)
       setTaskStatus(newStatus)
       toast.success('Status updated')
       await loadTask()
     } catch (error) {
       toast.error('Failed to update status')
+    } finally {
+      setUpdatingStatus(false)
     }
   }
 
   const handleSaveEdit = async () => {
-    if (!taskId) return
+    if (!taskId || savingEdit) return
     try {
+      setSavingEdit(true)
       await tasksAPI.updateTask(taskId, editData)
       toast.success('Task updated successfully')
       setIsEditing(false)
       await loadTask()
     } catch (error) {
       toast.error('Failed to update task')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this task?')) return
+    if (deleting) return
+    const confirmed = await confirm({
+      title: 'Delete Task',
+      message: 'Are you sure you want to delete this task?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
     if (!taskId) return
     
     try {
+      setDeleting(true)
       await tasksAPI.deleteTask(taskId)
       toast.success('Task deleted successfully')
       if (projectId) {
@@ -220,6 +248,8 @@ const TaskDetail = () => {
       }
     } catch (error) {
       toast.error('Failed to delete task')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -270,8 +300,9 @@ const TaskDetail = () => {
   }
 
   const handleToggleWatch = async () => {
-    if (!taskId) return
+    if (!taskId || updatingWatch) return
     try {
+      setUpdatingWatch(true)
       if (isWatching) {
         await watchersApi.removeWatcher(taskId)
         toast.success('Stopped watching')
@@ -279,9 +310,11 @@ const TaskDetail = () => {
         await watchersApi.addWatcher(taskId)
         toast.success('Now watching')
       }
-      loadWatchers()
+      await loadWatchers()
     } catch (error) {
       toast.error('Failed to update watch status')
+    } finally {
+      setUpdatingWatch(false)
     }
   }
 
@@ -689,10 +722,11 @@ const TaskDetail = () => {
                         </div>
                         <button
                           type="submit"
-                          disabled={!newComment.trim()}
+                          disabled={!newComment.trim() || commenting}
+                          aria-busy={commenting || undefined}
                           className="btn btn-primary btn-sm"
                         >
-                          Comment
+                          {commenting ? 'Commenting...' : 'Comment'}
                         </button>
                       </div>
                       <p className="text-xs text-gray-400 mt-2">Press M to comment</p>
@@ -767,6 +801,8 @@ const TaskDetail = () => {
                 <select
                   value={taskStatus}
                   onChange={(e) => handleStatusChange(e.target.value)}
+                  disabled={updatingStatus}
+                  aria-busy={updatingStatus || undefined}
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-white"
                 >
                   {Object.entries(statuses).map(([key, status]) => (
@@ -804,14 +840,18 @@ const TaskDetail = () => {
                     <label className="text-xs font-medium text-gray-500 block mb-1">Assignee</label>
                     <select
                       value={task.assigned_to || ''}
+                      disabled={updatingField === 'assignee'}
                       onChange={async (e) => {
                         const newAssignee = e.target.value
                         try {
+                          setUpdatingField('assignee')
                           await tasksAPI.updateTask(task.id, { assigned_to: newAssignee || null })
                           toast.success('Task reassigned')
                           await loadTask()
                         } catch (error) {
                           toast.error('Failed to reassign task')
+                        } finally {
+                          setUpdatingField(null)
                         }
                       }}
                       className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
@@ -830,13 +870,17 @@ const TaskDetail = () => {
                     <label className="text-xs font-medium text-gray-500 block mb-1">Priority</label>
                     <select
                       value={task.priority}
+                      disabled={updatingField === 'priority'}
                       onChange={async (e) => {
                         try {
+                          setUpdatingField('priority')
                           await tasksAPI.updateTask(task.id, { priority: e.target.value })
                           toast.success('Priority updated')
                           await loadTask()
                         } catch (error) {
                           toast.error('Failed to update priority')
+                        } finally {
+                          setUpdatingField(null)
                         }
                       }}
                       className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
@@ -907,6 +951,8 @@ const TaskDetail = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleToggleWatch}
+                  disabled={updatingWatch}
+                  aria-busy={updatingWatch || undefined}
                   className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${
                     isWatching
                       ? 'bg-primary-100 text-primary-700'
@@ -914,10 +960,13 @@ const TaskDetail = () => {
                   }`}
                 >
                   <Eye className="h-4 w-4" />
-                  {isWatching ? 'Watching' : 'Watch'}
+                  {updatingWatch ? 'Updating...' : isWatching ? 'Watching' : 'Watch'}
                 </button>
                 <button
                   onClick={handleDelete}
+                  disabled={deleting}
+                  aria-busy={deleting || undefined}
+                  aria-label={deleting ? 'Deleting task' : 'Delete task'}
                   className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
                 >
                   <Trash2 className="h-4 w-4" />
