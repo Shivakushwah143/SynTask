@@ -26,6 +26,7 @@ export const salesApi = {
     formData.append('current_stage', stageId)
     return api.put(`/sales/prospects/${id}`, formData)
   },
+  bulkUploadProspects: (data) => api.post('/sales/prospects/bulk-upload', data),
   getProspectReport: (params) => api.get('/sales/reports/prospect', { params }),
   getSalesReport: (params) => api.get('/sales/reports/sales', { params }),
   getActivityReport: (params) => api.get('/sales/reports/team-activity', { params }),

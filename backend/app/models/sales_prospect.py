@@ -6,6 +6,7 @@ from typing import Optional, List
 from beanie import Document, Indexed
 from pydantic import EmailStr, Field
 from enum import Enum
+from pymongo import ASCENDING, IndexModel
 
 
 class InterestLevel(str, Enum):
@@ -49,6 +50,7 @@ class SalesProspect(Document):
     company_name: Optional[str] = None
     relationship_type: Optional[str] = None
     channel: Optional[str] = None
+    source: str = "bulk_upload"
 
     # Additional Information (from Contact or new)
     designation: Optional[str] = None
@@ -89,6 +91,10 @@ class SalesProspect(Document):
             "contact_id",
             "deleted",
             ("country_code", "phone"),  # For duplicate check
+            IndexModel([
+                ("company_id", ASCENDING),
+                ("email", ASCENDING),
+            ], unique=True, partialFilterExpression={"email": {"$type": "string"}}),
         ]
 
     def unique_key(self) -> str:
