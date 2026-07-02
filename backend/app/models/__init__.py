@@ -49,6 +49,15 @@ from app.models.invoice import Invoice, InvoiceType, InvoiceStatus
 from app.models.msa import MSA, MSAStatus
 from app.models.meeting import Meeting, MeetingStatus
 from app.models.timesheet import TimesheetEntry, TimesheetSummary, TimesheetStatus
+from app.models.sales_category import SalesCategory
+from app.models.sales_product import SalesProduct
+from app.models.sales_contact import SalesContact, ContactSharing
+from app.models.sales_prospect import SalesProspect
+from app.models.sales_pipeline_history import SalesPipelineHistory
+from app.models.sales_masters import (
+    SalesStage, ReasonForLost, SalesChannel, SalesTag,
+    Nationality, BusinessCategory, GreetingTemplate
+)
 
 __all__ = [
     # User models
@@ -120,4 +129,9 @@ __all__ = [
     "Meeting", "MeetingStatus",
     # Timesheet models
     "TimesheetEntry", "TimesheetSummary", "TimesheetStatus",
+    # Sales models
+    "SalesCategory", "SalesProduct", "SalesContact", "ContactSharing",
+    "SalesProspect", "SalesPipelineHistory",
+    "SalesStage", "ReasonForLost", "SalesChannel", "SalesTag",
+    "Nationality", "BusinessCategory", "GreetingTemplate",
 ]

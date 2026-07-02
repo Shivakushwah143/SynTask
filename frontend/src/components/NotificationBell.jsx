@@ -300,7 +300,7 @@ const NotificationBell = () => {
           e.stopPropagation()
           setShowDropdown(!showDropdown)
         }}
-        className="relative rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+        className="relative rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
         aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
         aria-expanded={showDropdown}
       >
@@ -316,7 +316,7 @@ const NotificationBell = () => {
       </button>
 
       {showDropdown && (
-        <div className="absolute right-0 z-50 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900 dark:shadow-none">
+        <div className="absolute right-0 z-50 mt-2 max-h-96 w-80 overflow-y-auto rounded-2xl border border-surface-border bg-white shadow-modal dark:border-gray-800 dark:bg-gray-900 dark:shadow-none">
           <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-800">
             <h3 className="font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
             {unreadCount > 0 && (
