@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, RefreshCw, X } from 'lucide-react'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
@@ -8,6 +9,7 @@ import toast from 'react-hot-toast'
 
 const Users = () => {
   const { user } = useAuthStore()
+  const { confirm } = useConfirmation()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -282,7 +284,14 @@ const Users = () => {
 
   // Handle delete
   const handleDelete = async (userId) => {
-    if (!confirm('Are you sure you want to delete this user?')) return
+    const confirmed = await confirm({
+      title: 'Delete User',
+      message: 'Are you sure you want to delete this user?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
     
     try {
       await usersAPI.deleteUser(userId)

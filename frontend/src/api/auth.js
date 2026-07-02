@@ -10,11 +10,12 @@ export const authAPI = {
     return response.data
   },
 
-  logout: async (refreshToken) => {
+  logout: async (refreshToken, accessToken) => {
     const response = await api.post('/auth/logout', refreshToken ? {
       refresh_token: refreshToken,
     } : undefined, {
       skipAuthRefresh: true,
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
     })
     return response.data
   },

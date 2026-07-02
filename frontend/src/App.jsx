@@ -4,6 +4,8 @@ import { useAuthStore } from './store/authStore'
 import { useTheme } from './hooks/useTheme'
 import { PageLoader } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import ConfirmDialog from './components/ConfirmDialog'
+import UndoBar from './components/UndoBar'
 import { Agentation } from "agentation";
 import { isSuperAdminRole } from './utils/roles'
 import { applySeoMeta, getSeoMeta } from './utils/seo'
@@ -208,6 +210,8 @@ function App() {
 
         <Route path="*" element={<NotFound />} />
       </Routes>
+      <ConfirmDialog />
+      <UndoBar />
       {import.meta.env.DEV && <Agentation />}
     </Suspense>
   )

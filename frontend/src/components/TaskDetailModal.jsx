@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, Trash2, Paperclip, Send, User, Plus, List, Edit, Save, Eye, Link2, History } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { filesAPI } from '../api/files'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { usersAPI } from '../api/users'
 import { watchersApi } from '../api/watchers'
 import { issueLinksApi } from '../api/issueLinks'
@@ -16,6 +17,7 @@ import { format } from 'date-fns'
 
 const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh }) => {
   const { user } = useAuthStore()
+  const { confirm } = useConfirmation()
   const [comments, setComments] = useState([])
   const [newComment, setNewComment] = useState('')
   const [attachments, setAttachments] = useState([])
@@ -824,7 +826,14 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                       </div>
                       <button
                         onClick={async () => {
-                          if (window.confirm('Delete this link?')) {
+                          const confirmed = await confirm({
+                            title: 'Delete Link',
+                            message: 'Delete this link?',
+                            confirmText: 'Delete',
+                            cancelText: 'Cancel',
+                            isDangerous: true,
+                          })
+                          if (confirmed) {
                             try {
                               await issueLinksApi.deleteLink(link.link_id)
                               toast.success('Link deleted')
