@@ -65,6 +65,9 @@ class SalesProspect(Document):
     closed_by: Optional[str] = None
     reason_for_lost: Optional[str] = None  # From master
     won_amount: Optional[float] = None
+    stage_entered_at: Optional[datetime] = None
+    stage_last_changed_at: Optional[datetime] = None
+    days_in_stage: int = 0
 
     # Metadata
     company_id: Optional[str] = None
@@ -91,4 +94,3 @@ class SalesProspect(Document):
     def unique_key(self) -> str:
         """Unique identifier: country_code + phone"""
         return f"{self.country_code}:{self.phone}"
-

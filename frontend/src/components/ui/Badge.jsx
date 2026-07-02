@@ -21,7 +21,7 @@ const COLORS = {
 export function Badge({ label, colorKey, className = '' }) {
   const key = String(colorKey || label || '').toLowerCase()
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${COLORS[key] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'} ${className}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${COLORS[key] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'} ${className}`}>
       {label}
     </span>
   )

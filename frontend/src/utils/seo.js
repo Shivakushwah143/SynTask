@@ -13,6 +13,7 @@ const ROUTE_META = [
   { pattern: /^\/creative-director\/?$/, title: 'Creative Director | SynTask', description: 'Review creative work and manage feedback.' },
   { pattern: /^\/reports(\/.*)?$/, title: 'Reports | SynTask', description: 'Review operational reports and insights.' },
   { pattern: /^\/meetings(\/.*)?$/, title: 'Meetings | SynTask', description: 'Schedule and manage meetings.' },
+  { pattern: /^\/crm(\/.*)?$/, title: 'CRM | SynTask', description: 'Manage CRM workspace, customer relationships, and future sales workflows.' },
   { pattern: /^\/sales(\/.*)?$/, title: 'Sales | SynTask', description: 'Manage sales contacts, prospects, and pipeline.' },
 ]
 
@@ -22,11 +23,11 @@ const getOrigin = () => {
 }
 
 export function getSeoMeta(pathname = '/') {
-  const match = ROUTE_META.find((entry) => entry.pattern.test(pathname))
+  const matchedEntry = ROUTE_META.find((entry) => entry.pattern.test(pathname))
   const canonical = `${getOrigin()}${pathname === '/' ? '/' : pathname.replace(/\/+$/, '') || '/'}`
   return {
-    title: match?.title || DEFAULT_TITLE,
-    description: match?.description || DEFAULT_DESCRIPTION,
+    title: matchedEntry?.title || DEFAULT_TITLE,
+    description: matchedEntry?.description || DEFAULT_DESCRIPTION,
     canonical,
     robots: pathname === '/' ? 'index,follow' : 'noindex,nofollow',
   }
@@ -52,7 +53,7 @@ export function applySeoMeta(meta) {
     let element = document.head.querySelector(selector)
     if (!element) {
       element = document.createElement(selector.startsWith('link') ? 'link' : 'meta')
-      const [tagName, match] = selector.split('[')
+      const [tagName] = selector.split('[')
       if (tagName === 'link') {
         element.setAttribute('rel', 'canonical')
       }
@@ -61,4 +62,3 @@ export function applySeoMeta(meta) {
     element.setAttribute(attribute, value)
   }
 }
-

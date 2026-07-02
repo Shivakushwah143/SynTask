@@ -49,10 +49,10 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-      <div ref={modalRef} className={`relative flex max-h-[90vh] w-full flex-col rounded-lg bg-white shadow-xl dark:bg-gray-900 dark:shadow-none ${sizes[size]}`}>
+      <div ref={modalRef} className={`relative flex max-h-[90vh] w-full flex-col rounded-2xl bg-white shadow-modal dark:bg-gray-900 dark:shadow-none ${sizes[size]}`}>
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-800">
           <h2 id={titleId} className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" aria-label="Close modal">
+          <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500/25 dark:text-gray-300 dark:hover:bg-gray-800" aria-label="Close modal">
             <X className="h-5 w-5" />
           </button>
         </div>

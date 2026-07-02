@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Mail, Lock, Loader2, Eye, EyeOff, Shield } from 'lucide-react'
+import { Mail, Lock, Eye, EyeOff, Shield } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { authAPI } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
-import toast from 'react-hot-toast'
+import { Button, inputClassName } from '../../components/ui'
 
 const Login = () => {
   const navigate = useNavigate()
@@ -41,131 +42,99 @@ const Login = () => {
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Header */}
-      <div className="text-left">
-        <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Welcome Back</h2>
-        <p className="text-gray-600 dark:text-gray-400">
-          Sign in to continue managing your projects, tickets, and team workflows.
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600">Welcome back</p>
+        <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">Sign in to SynTask</h2>
+        <p className="max-w-md text-sm leading-6 text-gray-600 dark:text-gray-400">
+          Continue to your workspace, reviews, and operational workflows.
         </p>
       </div>
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Email */}
-        <div>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Mail className="h-5 w-5 text-gray-400" />
-            </div>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              className="w-full px-4 py-3 pl-12 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              placeholder="Enter your email"
-            />
-          </div>
+        <div className="relative">
+          <Mail className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            required
+            className={`${inputClassName} pl-11`}
+            placeholder="Enter your email"
+          />
         </div>
 
-        {/* Password */}
-        <div>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Lock className="h-5 w-5 text-gray-400" />
-            </div>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              className="w-full px-4 py-3 pl-12 pr-12 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              placeholder="Enter your password"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            >
-              {showPassword ? (
-                <EyeOff className="h-5 w-5" />
-              ) : (
-                <Eye className="h-5 w-5" />
-              )}
-            </button>
-          </div>
+        <div className="relative">
+          <Lock className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
+          <input
+            type={showPassword ? 'text' : 'password'}
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            required
+            className={`${inputClassName} pl-11 pr-11`}
+            placeholder="Enter your password"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute inset-y-0 right-0 flex items-center px-4 text-gray-500 transition-colors hover:text-gray-700 dark:hover:text-gray-300"
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+          >
+            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+          </button>
         </div>
 
-        {/* Remember Me & Forgot Password */}
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input
               type="checkbox"
               id="remember_me"
               name="remember_me"
               checked={formData.remember_me}
               onChange={handleChange}
-              className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-purple-600 focus:ring-2 focus:ring-purple-500 cursor-pointer"
+              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
             />
-            <label htmlFor="remember_me" className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer select-none">
-              Remember Me
-            </label>
-          </div>
-          <Link to="/forgot-password" className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium">
-            Forgot Password?
+            Remember me
+          </label>
+          <Link
+            to="/forgot-password"
+            className="text-sm font-medium text-primary-600 transition-colors hover:text-primary-700"
+          >
+            Forgot password?
           </Link>
         </div>
 
-        {/* Sign In Button */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="animate-spin h-5 w-5" />
-              Signing in...
-            </>
-          ) : (
-            <>
-              <Shield className="h-5 w-5" />
-              Sign In
-            </>
-          )}
-        </button>
+        <Button type="submit" loading={loading} className="w-full" size="lg">
+          <Shield className="h-5 w-5" />
+          Sign in
+        </Button>
       </form>
 
-      {/* Divider */}
       <div className="flex items-center gap-3">
-        <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
-        <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">OR</span>
-        <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700"></div>
+        <div className="h-px flex-1 bg-surface-border" />
+        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">or</span>
+        <div className="h-px flex-1 bg-surface-border" />
       </div>
 
-      {/* Request Admin Account */}
-      <Link to="/admin-request" className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-700 hover:border-purple-500 dark:hover:border-purple-400 text-gray-900 dark:text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-all duration-200">
-        <span className="text-xl">👤</span>
-        Request Admin Account
+      <Link
+        to="/admin-request"
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-surface-border bg-white px-4 py-3 font-semibold text-gray-900 transition-colors hover:border-primary-300 hover:bg-gray-50 dark:bg-gray-950 dark:text-gray-100 dark:hover:bg-gray-900"
+      >
+        <span aria-hidden="true">👤</span>
+        Request admin account
       </Link>
 
       <p className="text-center text-sm text-gray-600 dark:text-gray-400">
         Need access? Request an account from your admin.
       </p>
 
-      {/* Security Feature */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-800 border border-blue-200 dark:border-gray-700 rounded-lg p-4 flex gap-3">
-        <div className="flex-shrink-0">
-          <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-        </div>
+      <div className="flex gap-3 rounded-2xl border border-primary-100 bg-primary-50/70 p-4 dark:border-primary-900/40 dark:bg-primary-950/30">
+        <Shield className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary-600 dark:text-primary-300" />
         <div>
-          <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
-            Secure Enterprise Access
-          </h3>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Secure enterprise access</h3>
+          <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-400">
             Protected with modern authentication and role-based permissions.
           </p>
         </div>
@@ -175,4 +144,3 @@ const Login = () => {
 }
 
 export default Login
-

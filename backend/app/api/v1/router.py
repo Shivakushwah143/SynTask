@@ -12,6 +12,8 @@ from app.api.v1.endpoints import (
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import creative
+from app.api.v1.endpoints import crm
+from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing
 from fastapi import Depends
@@ -81,6 +83,8 @@ api_router.include_router(search.router, tags=["Search"], dependencies=[Depends(
 # Sales Tracker module (new)
 sales_module_dependency = [Depends(require_module("sales"))]
 api_router.include_router(sales.router, prefix="/sales", tags=["Sales"], dependencies=sales_module_dependency)
+api_router.include_router(crm.router, prefix="/crm", tags=["CRM"], dependencies=sales_module_dependency)
+api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CRM Pipeline"], dependencies=sales_module_dependency)
 api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)
 api_router.include_router(sales_products.router, prefix="/sales/products", tags=["Sales Products"], dependencies=sales_module_dependency)
 api_router.include_router(sales_contacts.router, prefix="/sales/contacts", tags=["Sales Contacts"], dependencies=sales_module_dependency)

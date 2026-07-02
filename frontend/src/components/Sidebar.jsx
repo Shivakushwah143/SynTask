@@ -124,8 +124,9 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
-      name: "Sales",
-      href: "/sales",
+      name: "CRM",
+      href: "/crm/pipeline",
+      match: "/crm",
       icon: TrendingUp,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "sales",
@@ -207,6 +208,56 @@ const Sidebar = ({ isOpen, onClose }) => {
     (item) => item.roles.includes(userRole) && hasModule(item.module),
   );
 
+  const crmNavigation = [
+    {
+      name: "Pipeline",
+      href: "/crm/pipeline",
+      icon: TrendingUp,
+    },
+    {
+      name: "Dashboard",
+      href: "/crm/dashboard",
+      icon: LayoutDashboard,
+    },
+    {
+      name: "Leads",
+      href: "/crm/leads",
+      icon: Users,
+    },
+    {
+      name: "Companies",
+      href: "/crm/companies",
+      icon: Building2,
+    },
+    {
+      name: "Contacts",
+      href: "/crm/contacts",
+      icon: Users,
+    },
+    {
+      name: "Activities",
+      href: "/crm/activities",
+      icon: Clock,
+    },
+    {
+      name: "Calendar",
+      href: "/crm/calendar",
+      icon: CalendarIcon,
+    },
+    {
+      name: "Reports",
+      href: "/crm/reports",
+      icon: BarChart3,
+    },
+    {
+      name: "Settings",
+      href: "/crm/settings",
+      icon: Settings,
+    },
+  ];
+
+  const filteredCrmNavigation = crmNavigation.filter(() => hasModule("sales") || isSuperAdminRole(userRole));
+
   return (
     <>
       {/* Mobile Overlay */}
@@ -227,13 +278,13 @@ const Sidebar = ({ isOpen, onClose }) => {
           ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
-      <div className="relative flex h-full flex-col overflow-visible bg-white border-r border-gray-200 dark:bg-gray-950 dark:border-gray-800">   
+        <div className="relative flex h-full flex-col overflow-visible border-r border-surface-border/80 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-gray-800 dark:bg-gray-950/95">
           {/* Desktop collapse toggle */}
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="absolute -right-3.5 top-[22px] z-10 hidden h-8 w-8 items-center justify-center rounded-full border-2 border-gray-200 bg-white text-gray-600 shadow-md transition-all hover:scale-105 hover:border-primary-400 hover:text-primary-600 lg:flex dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
+            className="absolute -right-3.5 top-[22px] z-10 hidden h-8 w-8 items-center justify-center rounded-full border border-surface-border bg-white text-gray-600 shadow-md transition-all hover:scale-105 hover:border-primary-400 hover:text-primary-600 lg:flex dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
           >
             {collapsed ? (
               <ChevronRight className="h-4 w-4" />
@@ -244,7 +295,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
           {/* Logo */}
           <div
-            className={`h-16 flex items-center px-4 border-b border-gray-200 dark:border-gray-800 ${
+            className={`flex h-16 items-center border-b border-surface-border/80 px-4 dark:border-gray-800 ${
               collapsed ? "lg:justify-center lg:px-0" : "justify-between"
             }`}
           >
@@ -257,16 +308,14 @@ const Sidebar = ({ isOpen, onClose }) => {
                   e.target.style.display = "none";
                 }}
               />
-              <h1
-                className={`text-base font-bold text-primary-600 ${collapsed ? "lg:hidden" : ""}`}
-              >
+              <h1 className={`text-base font-bold text-primary-700 ${collapsed ? "lg:hidden" : ""}`}>
                 SynTask
               </h1>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg dark:hover:bg-gray-800"
+              className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 lg:hidden dark:text-gray-300 dark:hover:bg-gray-800"
               aria-label="Close navigation"
             >
               <X className="h-5 w-5 text-gray-600 dark:text-gray-300" />
@@ -275,14 +324,14 @@ const Sidebar = ({ isOpen, onClose }) => {
 
           {/* Navigation */}
           <nav
-  className={`flex-1 px-3 py-4 space-y-1 ${
-    collapsed
-      ? "overflow-visible"
-      : "overflow-y-auto"
-  }`}
->  
+            className={`flex-1 space-y-1 px-3 py-4 ${
+              collapsed ? "overflow-visible" : "overflow-y-auto"
+            }`}
+          >
             {filteredNavigation.map((item) => {
-              const isActive = location.pathname === item.href;
+              const isActive =
+                location.pathname === item.href ||
+                (item.match && location.pathname.startsWith(item.match));
               return (
                 <Link
                   key={item.name}
@@ -290,7 +339,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   aria-current={isActive ? "page" : undefined}
                   aria-label={item.name}
                   onClick={onClose}
-                  className={`group relative flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors ${
+                  className={`group relative flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                     collapsed ? "lg:justify-center lg:px-0" : ""
                   } ${
                     isActive
@@ -351,6 +400,45 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </Link>
               );
             })}
+
+            {filteredCrmNavigation.length ? (
+              <div className="mt-4 space-y-2">
+                <div className={`px-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 ${collapsed ? "lg:hidden" : ""}`}>
+                  CRM
+                </div>
+                <div className="space-y-1">
+                  {filteredCrmNavigation.map((item) => {
+                    const isActive =
+                      location.pathname === item.href ||
+                      location.pathname.startsWith(`${item.href}/`);
+
+                    return (
+                      <Link
+                        key={item.name}
+                        to={item.href}
+                        aria-current={isActive ? "page" : undefined}
+                        aria-label={item.name}
+                        onClick={onClose}
+                        className={`group relative flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                          collapsed ? "lg:justify-center lg:px-0" : "ml-2"
+                        } ${
+                          isActive
+                            ? "bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200"
+                            : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
+                        }`}
+                      >
+                        <item.icon
+                          className={`h-4 w-4 flex-shrink-0 mr-2.5 ${collapsed ? "lg:mr-0" : ""}`}
+                        />
+                        <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>
+                          {item.name}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </nav>
 
           {/* User Info */}
@@ -385,9 +473,9 @@ const Sidebar = ({ isOpen, onClose }) => {
                   />
                 ) : null}
                 <div
-                  className={`h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center ${user?.avatar ? "hidden" : ""}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 ${user?.avatar ? "hidden" : ""}`}
                 >
-                  <span className="text-primary-600 font-semibold text-sm">
+                  <span className="text-sm font-semibold text-primary-600">
                     {user?.first_name?.[0]}
                     {user?.last_name?.[0]}
                   </span>
