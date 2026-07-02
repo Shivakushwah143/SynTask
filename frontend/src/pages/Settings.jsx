@@ -93,12 +93,12 @@ const Settings = () => {
 
       {activeTab === 'security' && (
         <div className="grid gap-6 xl:grid-cols-2">
-          <section className="card p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <Lock className="h-5 w-5 text-primary-600" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Change Password</h3>
-            </div>
-            <form onSubmit={handleChangePassword} className="space-y-4">
+        <section className="card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Lock className="h-5 w-5 text-primary-600" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Change Password</h3>
+          </div>
+          <form onSubmit={handleChangePassword} className="space-y-4">
               <FormField label="Current Password" required>
                 <input type="password" name="old_password" required className={inputClassName} />
               </FormField>
@@ -128,7 +128,7 @@ const Settings = () => {
           <div className="space-y-3">
             {Object.entries(notificationPrefs).map(([key, value]) => (
               <label key={key} className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
-                <input type="checkbox" className="rounded border-gray-300" checked={value} onChange={(e) => setNotificationPrefs((current) => ({ ...current, [key]: e.target.checked }))} />
+                <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" checked={value} onChange={(e) => setNotificationPrefs((current) => ({ ...current, [key]: e.target.checked }))} />
                 <span className="capitalize">{key.replaceAll('_', ' ')}</span>
               </label>
             ))}

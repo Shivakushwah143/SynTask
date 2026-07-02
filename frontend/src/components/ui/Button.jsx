@@ -2,9 +2,9 @@ import { useRef, useState } from 'react'
 import { LoadingSpinner } from './LoadingSpinner'
 
 const VARIANTS = {
-  primary: 'bg-primary-600 hover:bg-primary-700 text-white',
+  primary: 'bg-primary-600 hover:bg-primary-700 text-white shadow-sm',
   secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-100',
-  danger: 'bg-red-600 hover:bg-red-700 text-white',
+  danger: 'bg-red-600 hover:bg-red-700 text-white shadow-sm',
   ghost: 'hover:bg-gray-100 text-gray-700 dark:hover:bg-gray-800 dark:text-gray-200',
 }
 

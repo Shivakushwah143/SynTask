@@ -13,6 +13,7 @@ import { applySeoMeta, getSeoMeta } from './utils/seo'
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
 const SalesLayout = lazy(() => import('./layouts/SalesLayout'))
+const CRMLayout = lazy(() => import('./layouts/CRMLayout'))
 const SuperAdminLayout = lazy(() => import('./layouts/SuperAdminLayout'))
 
 const Login = lazy(() => import('./pages/auth/Login'))
@@ -59,6 +60,14 @@ const ProspectDetail = lazy(() => import('./pages/sales/ProspectDetail'))
 const SalesPipeline = lazy(() => import('./pages/sales/SalesPipeline'))
 const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
 const SalesSettings = lazy(() => import('./pages/sales/SalesSettings'))
+const CRMPipelinePage = lazy(() => import('./pages/crm/pipeline/page'))
+const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
+const CRMCompaniesPage = lazy(() => import('./pages/crm/companies/page'))
+const CRMContactsPage = lazy(() => import('./pages/crm/contacts/page'))
+const CRMActivitiesPage = lazy(() => import('./pages/crm/activities/page'))
+const CRMCalendarPage = lazy(() => import('./pages/crm/calendar/page'))
+const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
+const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
 
 const AdminDashboard = lazy(() => import('./pages/superadmin/AdminDashboard'))
 const TenantManagement = lazy(() => import('./pages/superadmin/TenantManagement'))
@@ -145,21 +154,34 @@ function App() {
           <Route path="meetings" element={withBoundary(<Meetings />)} />
           <Route path="calendar" element={withBoundary(<Calendar />)} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
-          <Route path="reports" element={withBoundary(<Reports />)} />
-          <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
-          <Route path="ai-hub" element={withBoundary(<AIHub />)} />
-          <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />
-          <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
+        <Route path="reports" element={withBoundary(<Reports />)} />
+        <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
+        <Route path="ai-hub" element={withBoundary(<AIHub />)} />
+        <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />
+        <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="departments" element={withBoundary(<Departments />)} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
-          <Route path="activity" element={withBoundary(<ActivityLog />)} />
-          <Route path="my-team" element={withBoundary(<MyTeam />)} />
-          <Route path="settings" element={withBoundary(<Settings />)} />
-        </Route>
+        <Route path="activity" element={withBoundary(<ActivityLog />)} />
+        <Route path="my-team" element={withBoundary(<MyTeam />)} />
+        <Route path="settings" element={withBoundary(<Settings />)} />
 
-        <Route path="/sales" element={<ProtectedRoute><ModuleGuard module="sales"><SalesLayout /></ModuleGuard></ProtectedRoute>}>
+          <Route path="crm" element={<ProtectedRoute><ModuleGuard module="sales"><CRMLayout /></ModuleGuard></ProtectedRoute>}>
+            <Route index element={<Navigate to="pipeline" replace />} />
+            <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
+            <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
+            <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
+            <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
+            <Route path="contacts" element={withBoundary(<CRMContactsPage />)} />
+            <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
+            <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
+            <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
+            <Route path="settings" element={withBoundary(<CRMSettingsPage />)} />
+          </Route>
+      </Route>
+
+      <Route path="/sales" element={<ProtectedRoute><ModuleGuard module="sales"><SalesLayout /></ModuleGuard></ProtectedRoute>}>
           <Route index element={withBoundary(<SalesDashboard />)} />
           <Route path="contacts" element={withBoundary(<SalesContacts />)} />
           <Route path="contacts/:id" element={withBoundary(<ContactDetail />)} />

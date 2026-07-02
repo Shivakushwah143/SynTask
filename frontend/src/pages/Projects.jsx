@@ -274,7 +274,7 @@ export default function Projects() {
         ) : (
           <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
             {projectCards.map((project) => (
-              <button key={project.id} type="button" onClick={() => openProject(project)} className="group overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900">
+              <button key={project.id} type="button" onClick={() => openProject(project)} className="group overflow-hidden rounded-2xl border border-surface-border bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{project.key}</p>
@@ -299,7 +299,7 @@ export default function Projects() {
                     ))}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={(event) => { event.stopPropagation(); openProject(project) }} className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" aria-label={`Open ${project.name}`}>
+                    <button type="button" onClick={(event) => { event.stopPropagation(); openProject(project) }} className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" aria-label={`Open ${project.name}`}>
                       <ArrowRight className="h-4 w-4" />
                     </button>
                     {canCreateProjects ? (
@@ -405,7 +405,7 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => onOpenBoard(project)}>Open board</Button>
-            <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">×</button>
+            <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">×</button>
           </div>
         </div>
         <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">

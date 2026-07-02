@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Building2, CheckSquare, FileText, Search, Ticket, X } from 'lucide-react'
+import { Building2, CheckSquare, FileText, Search, Sparkles, Ticket, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 import { useDebounce } from '../hooks/useDebounce'
@@ -10,6 +10,7 @@ const icons = {
   project: FileText,
   ticket: Ticket,
   client: Building2,
+  crm: Sparkles,
 }
 
 export function GlobalSearch({ isOpen, onClose }) {
@@ -65,6 +66,7 @@ export function GlobalSearch({ isOpen, onClose }) {
       project: `/projects/${result.id}/board`,
       ticket: `/tickets/${result.id}`,
       client: `/clients/${result.id}`,
+      crm: '/crm/pipeline',
     }
     navigate(paths[result.type] || '/dashboard')
     onClose()
@@ -87,7 +89,7 @@ export function GlobalSearch({ isOpen, onClose }) {
             aria-label="Search query"
           />
           {query ? (
-            <button type="button" onClick={() => setQuery('')} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" aria-label="Clear search">
+            <button type="button" onClick={() => setQuery('')} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" aria-label="Clear search">
               <X className="h-4 w-4" />
             </button>
           ) : null}
@@ -96,7 +98,7 @@ export function GlobalSearch({ isOpen, onClose }) {
         <div className="max-h-96 overflow-y-auto p-2">
           {loading ? (
             <div className="space-y-2 p-2" role="status" aria-label="Searching">
-              {[1, 2, 3].map((item) => <Skeleton key={item} className="h-14 rounded-lg" />)}
+              {[1, 2, 3].map((item) => <Skeleton key={item} className="h-14 rounded-xl" />)}
             </div>
           ) : null}
           {!loading && query.length >= 2 && results.length === 0 ? (
@@ -112,9 +114,9 @@ export function GlobalSearch({ isOpen, onClose }) {
                 key={`${result.type}-${result.id}`}
                 type="button"
                 onClick={() => handleSelect(result)}
-                className="flex w-full items-center gap-3 rounded-lg p-3 text-left hover:bg-gray-50 focus:bg-gray-50 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
+                className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-gray-50 focus:bg-gray-50 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
               >
-                <span className="rounded-lg bg-gray-100 p-2 dark:bg-gray-800">
+                <span className="rounded-xl bg-gray-100 p-2 dark:bg-gray-800">
                   <Icon className="h-4 w-4 text-gray-600 dark:text-gray-300" />
                 </span>
                 <span className="min-w-0">

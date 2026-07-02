@@ -23,6 +23,7 @@ const MainLayout = () => {
 
   const shellTitle = useMemo(() => {
     const path = location.pathname
+    if (path.startsWith('/crm')) return 'CRM'
     if (path.startsWith('/projects')) return 'Projects'
     if (path.startsWith('/tasks')) return 'Tasks'
     if (path.startsWith('/calendar')) return 'Calendar'
@@ -40,7 +41,7 @@ const MainLayout = () => {
       header={
         <Header
           title={shellTitle}
-          subtitle="AI-first operating system for agency delivery"
+          subtitle={shellTitle === 'CRM' ? 'CRM workspace for agency relationships' : 'AI-first operating system for agency delivery'}
           onMenuClick={() => setSidebarOpen(true)}
           onSearchOpen={openSearch}
           onCommandOpen={openCommandPalette}
