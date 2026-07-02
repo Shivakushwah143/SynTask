@@ -210,7 +210,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
       }}
     >
       <div
-        className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-screen overflow-y-auto shadow-2xl"
+        className="bg-white rounded-2xl p-6 w-full max-w-3xl max-h-screen overflow-y-auto shadow-modal dark:bg-gray-950"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -242,7 +242,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                     }
                     handleEdit()
                   }}
-                  className="p-2 rounded text-primary-600 hover:text-primary-700 hover:bg-primary-50 transition-colors cursor-pointer border-2 border-primary-300 bg-primary-50/50"
+                  className="p-2 rounded-xl text-primary-600 hover:text-primary-700 hover:bg-primary-50 transition-colors cursor-pointer border border-primary-200 bg-primary-50/50"
                   title="Edit request"
                   style={{ minWidth: '40px', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
@@ -260,7 +260,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                     handleDelete()
                   }}
                   disabled={deleting}
-                  className="p-2 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer border-2 border-red-300 bg-red-50/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="p-2 rounded-xl text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer border border-red-200 bg-red-50/50 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Delete request"
                   style={{ minWidth: '40px', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
@@ -276,7 +276,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                   handleSaveEdit()
                 }}
                 disabled={saving}
-                className="p-2 rounded text-green-600 hover:text-green-700 hover:bg-green-50 transition-colors disabled:opacity-50 border-2 border-green-300 bg-green-50/50"
+                className="p-2 rounded-xl text-green-600 hover:text-green-700 hover:bg-green-50 transition-colors disabled:opacity-50 border border-green-200 bg-green-50/50"
                 title="Save changes"
                 style={{ minWidth: '40px', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
@@ -289,7 +289,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                 e.stopPropagation()
                 onClose()
               }}
-              className="p-2 rounded text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors border-2 border-gray-300"
+              className="p-2 rounded-xl text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors border border-gray-300"
               title="Close"
               style={{ minWidth: '40px', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
@@ -461,7 +461,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                 comments.map((comment) => (
                   <div
                     key={comment.id}
-                    className={`rounded-lg p-3 ${comment.is_internal ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-50'
+                    className={`rounded-xl p-3 ${comment.is_internal ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-50'
                       }`}
                   >
                     <div className="flex items-start justify-between mb-1">
@@ -582,5 +582,4 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
 }
 
 export default TicketDetailModal
-
 

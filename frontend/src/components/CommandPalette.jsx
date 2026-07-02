@@ -81,7 +81,7 @@ export function CommandPalette({ isOpen, onClose }) {
             aria-label="Command search"
           />
           {query ? (
-            <button type="button" onClick={() => setQuery('')} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" aria-label="Clear command search">
+            <button type="button" onClick={() => setQuery('')} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" aria-label="Clear command search">
               <X className="h-4 w-4" />
             </button>
           ) : (
@@ -106,9 +106,9 @@ export function CommandPalette({ isOpen, onClose }) {
                 key={command.id}
                 type="button"
                 onClick={() => selectCommand(command)}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-gray-50 focus:bg-gray-50 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
+                className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-gray-50 focus:bg-gray-50 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
               >
-                <span className="rounded-xl bg-gray-100 p-2 dark:bg-gray-800">
+                <span className="rounded-2xl bg-gray-100 p-2 dark:bg-gray-800">
                   <Icon className="h-4 w-4 text-gray-600 dark:text-gray-300" />
                 </span>
                 <span className="min-w-0">
