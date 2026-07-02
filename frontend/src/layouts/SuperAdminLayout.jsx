@@ -14,6 +14,7 @@ import {
   TrendingUp
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import { useUIStore } from '../store/uiStore'
 import ThemeToggle from '../components/ThemeToggle'
 
 const SuperAdminLayout = () => {
@@ -23,8 +24,15 @@ const SuperAdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const handleLogout = () => {
-    logout()
-    navigate('/login')
+    ;(async () => {
+      useUIStore.getState().setLoading(true)
+      try {
+        await logout()
+      } finally {
+        useUIStore.getState().setLoading(false)
+        navigate('/login')
+      }
+    })()
   }
 
   const navigation = [

@@ -55,8 +55,8 @@ const TaskDetail = () => {
       setTaskStatus(data.status)
       if (data.attachments) {
         // Convert attachment URLs to full URLs if needed
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
-        const BASE_URL = API_URL.replace('/api/v1', '') || 'http://localhost:8000'
+        const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
+        const BASE_URL = API_URL.replace('/api/v1', '') || ''
         
         const fullAttachments = data.attachments.map(url => {
           // Already a full URL
@@ -233,8 +233,8 @@ const TaskDetail = () => {
       const result = await filesAPI.uploadFile(file)
       
       // Get full file URL - convert relative path to full URL
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
-      const BASE_URL = API_BASE.replace('/api/v1', '') || 'http://localhost:8000'
+      const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
+      const BASE_URL = API_BASE.replace('/api/v1', '') || ''
       let fullFileUrl = result.file_url
       
       // If it's a relative path, convert to full URL

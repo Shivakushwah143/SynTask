@@ -4,6 +4,7 @@ import { Mail, Lock, Loader2, Eye, EyeOff, Shield } from 'lucide-react'
 import { authAPI } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
 import toast from 'react-hot-toast'
+import { useUIStore } from '../../store/uiStore'
 
 const Login = () => {
   const navigate = useNavigate()
@@ -27,6 +28,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
+    useUIStore.getState().setLoading(true)
 
     try {
       const response = await authAPI.login(formData.email, formData.password, formData.remember_me)
@@ -37,6 +39,7 @@ const Login = () => {
       toast.error(error.response?.data?.detail || 'Login failed')
     } finally {
       setLoading(false)
+      useUIStore.getState().setLoading(false)
     }
   }
 

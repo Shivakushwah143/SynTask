@@ -1,5 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import Loader from './components/Loader'
+import { useUIStore } from './store/uiStore'
 import { useAuthStore } from './store/authStore'
 import { useTheme } from './hooks/useTheme'
 import { PageLoader } from './components/ui'
@@ -109,13 +111,22 @@ const withBoundary = (element) => <ErrorBoundary>{element}</ErrorBoundary>
 function App() {
   useTheme()
   const location = useLocation()
+  const setLoading = useUIStore?.getState?.().setLoading
 
   useEffect(() => {
     applySeoMeta(getSeoMeta(location.pathname))
   }, [location.pathname])
 
+  // Show global loader briefly on route change to indicate navigation
+  useEffect(() => {
+    if (!setLoading) return
+    setLoading(true)
+    const t = setTimeout(() => setLoading(false), 500)
+    return () => clearTimeout(t)
+  }, [location.pathname, setLoading])
+
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<Loader force={true} />}>
       <Routes>
         <Route path="/" element={<NewLandingRoute />} />
         <Route path="/old-landing" element={<LandingRoute />} />
