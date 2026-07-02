@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
 
+const rootPath = fileURLToPath(new URL('.', import.meta.url))
 const srcPath = fileURLToPath(new URL('./src', import.meta.url))
 const manualChunkGroups = {
   'vendor-react': ['react', 'react-dom', 'react-router-dom'],
@@ -27,6 +28,7 @@ const manualChunks = (id) => {
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  root: rootPath,
   plugins: [react()],
   resolve: {
     alias: {

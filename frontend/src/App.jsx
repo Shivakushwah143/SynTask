@@ -59,6 +59,7 @@ const SalesPipeline = lazy(() => import('./pages/sales/SalesPipeline'))
 const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
 const SalesSettings = lazy(() => import('./pages/sales/SalesSettings'))
 const CRMPipelinePage = lazy(() => import('./pages/crm/pipeline/page'))
+const CRMLeadWorkspacePage = lazy(() => import('./pages/crm/leads/workspace'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
 const CRMCompaniesPage = lazy(() => import('./pages/crm/companies/page'))
 const CRMContactsPage = lazy(() => import('./pages/crm/contacts/page'))
@@ -169,6 +170,7 @@ function App() {
             <Route index element={<Navigate to="pipeline" replace />} />
             <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
             <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
+            <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />
             <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
             <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
             <Route path="contacts" element={withBoundary(<CRMContactsPage />)} />

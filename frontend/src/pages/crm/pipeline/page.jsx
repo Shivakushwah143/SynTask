@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { useOutletContext, useSearchParams } from 'react-router-dom'
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { CRMPage, CRMPageTitle, CRMSection } from '../../../components/crm'
 import { Button } from '../../../components/ui'
@@ -47,6 +47,7 @@ const usePipelineSearchContext = () => {
 
 export default function CRMPipelinePage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { searchValue = '', setSearchValue } = usePipelineSearchContext()
   const pipelineQuery = useQuery(PIPELINE_QUERY_KEY, crmApi.getPipeline, {
@@ -271,7 +272,7 @@ export default function CRMPipelinePage() {
               activeLeadId={activeLeadId}
               onMoveLeadToStage={handleLeadMove}
               onCopyLeadId={handleCopyLeadId}
-              onLeadSelect={(lead) => toast.success(`${lead.company_name || lead.prospect_name || 'Lead'} selected`)}
+              onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
               onResetFilters={clearFilters}
               visibleLeads={visibleLeads}
             />
