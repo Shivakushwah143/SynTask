@@ -215,7 +215,7 @@ function App() {
           <Route path="settings" element={withBoundary(<Settings />)} />
         </Route>
 
-        <Route path="*" element={<NotFound />} />
+        <Route path="/*" element={<NotFound />} />
       </Routes>
       {import.meta.env.DEV && <Agentation />}
     </Suspense>

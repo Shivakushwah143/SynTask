@@ -67,6 +67,7 @@ const Settings = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
+                aria-label={`${tab.label} settings`}
                 className={`inline-flex items-center rounded-xl px-4 py-2 text-sm font-medium transition ${activeTab === tab.id ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}`}
               >
                 <Icon className="mr-2 h-4 w-4" />
@@ -125,10 +126,18 @@ const Settings = () => {
           </div>
           <div className="space-y-3">
             {Object.entries(notificationPrefs).map(([key, value]) => (
-              <label key={key} className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
-                <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" checked={value} onChange={(e) => setNotificationPrefs((current) => ({ ...current, [key]: e.target.checked }))} />
-                <span className="capitalize">{key.replaceAll('_', ' ')}</span>
-              </label>
+              <div key={key} className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id={`notification-${key}`}
+                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  checked={value}
+                  onChange={(e) => setNotificationPrefs((current) => ({ ...current, [key]: e.target.checked }))}
+                />
+                <label htmlFor={`notification-${key}`} className="text-sm text-gray-700 dark:text-gray-300 capitalize cursor-pointer">
+                  {key.replaceAll('_', ' ')}
+                </label>
+              </div>
             ))}
           </div>
           <Button className="mt-4" onClick={handleSaveNotificationPreferences} loading={savingPreferences}>Save Preferences</Button>

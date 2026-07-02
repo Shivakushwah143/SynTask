@@ -15,12 +15,19 @@ from app.core.database import init_db, close_db
 from app.core.redis_client import close_redis, get_redis
 from app.api.v1.router import api_router
 from app.events.subscribers.knowledge import register_knowledge_subscribers
-from app.semantic.worker import register_semantic_subscribers
 from app.middleware.rate_limiter import (
     RateLimitExceeded,
     _rate_limit_exceeded_handler,
     limiter,
 )
+
+# Optional semantic imports - gracefully handle missing dependencies
+try:
+    from app.semantic.worker import register_semantic_subscribers
+    SEMANTIC_AVAILABLE = True
+except (ImportError, ModuleNotFoundError) as e:
+    logger.warning(f"Semantic module not available: {e}")
+    SEMANTIC_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(
@@ -132,8 +139,11 @@ async def startup_event():
     logger.info("Database initialized successfully")
     register_knowledge_subscribers()
     logger.info("Knowledge subscribers registered")
-    register_semantic_subscribers()
-    logger.info("Semantic subscribers registered")
+    if SEMANTIC_AVAILABLE:
+        register_semantic_subscribers()
+        logger.info("Semantic subscribers registered")
+    else:
+        logger.info("Semantic subscribers skipped (dependencies not available)")
     await get_redis()
     
     # Start background task for deadline checking
@@ -176,10 +186,20 @@ async def debug_backend():
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
 
-# Serve static files (uploads)
-# Serve static files (uploads)
+# Serve static files (uploads) with CORS headers
 uploads_dir = Path("uploads")
 uploads_dir.mkdir(parents=True, exist_ok=True)
+
+from starlette.middleware.base import BaseHTTPMiddleware
+class CORSMiddlewareForStaticFiles(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
+
+app.add_middleware(CORSMiddlewareForStaticFiles)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Root endpoint
