@@ -14,6 +14,8 @@ from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.core.redis_client import close_redis, get_redis
 from app.api.v1.router import api_router
+from app.events.subscribers.knowledge import register_knowledge_subscribers
+from app.semantic.worker import register_semantic_subscribers
 from app.middleware.rate_limiter import (
     RateLimitExceeded,
     _rate_limit_exceeded_handler,
@@ -49,6 +51,17 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    return response
 
 # Trusted Host Middleware (Security)
 if settings.ENVIRONMENT == "production":
@@ -117,6 +130,10 @@ async def startup_event():
 
     await init_db()
     logger.info("Database initialized successfully")
+    register_knowledge_subscribers()
+    logger.info("Knowledge subscribers registered")
+    register_semantic_subscribers()
+    logger.info("Semantic subscribers registered")
     await get_redis()
     
     # Start background task for deadline checking
@@ -174,4 +191,3 @@ async def root():
         "company": "SynTask",
         "copyright": "© 2025 SynTask. All Rights Reserved."
     }
-

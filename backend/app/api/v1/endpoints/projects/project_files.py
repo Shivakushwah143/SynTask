@@ -1,6 +1,11 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.events import publish_event
+from app.events.factories import build_domain_event
+from app.creative.service import CreativeReviewService
+
+creative_review_service = CreativeReviewService()
 
 router = APIRouter()
 
@@ -79,6 +84,49 @@ async def upload_project_file(
     project.updated_at = datetime.utcnow()
     
     await project.save()
+
+    try:
+        asset = await creative_review_service.orchestrator.create_asset_metadata(
+            company_id=str(current_user.company_id),
+            project_id=str(project.project_id or project.id),
+            asset_id=file_record["id"],
+            file_name=file.filename,
+            file_url=file_url,
+            source_type="project_file",
+            mime_type=file.content_type,
+            file_size=file_size,
+            uploaded_by=str(current_user.id),
+            metadata={"original_name": file.filename, "source": "project_upload"},
+        )
+        review = await creative_review_service.create_review_for_asset(
+            current_user=current_user,
+            project=project,
+            asset_metadata=asset,
+        )
+        from app.worker.tasks.creative_review_tasks import enqueue_creative_review_task
+
+        enqueue_creative_review_task.delay(str(review.id), str(current_user.id))
+        await publish_event(
+            build_domain_event(
+                event_name="DocumentUploaded",
+                aggregate_type="creative_review",
+                aggregate_id=str(review.id),
+                company_id=str(current_user.company_id),
+                actor_id=str(current_user.id),
+                payload={
+                    "project_id": str(project.project_id or project.id),
+                    "file_id": file_record["id"],
+                    "file_name": file_record["name"],
+                    "file_url": file_record["url"],
+                    "source_type": "project_file",
+                    "review_id": str(review.id),
+                },
+                project_id=str(project.project_id or project.id),
+                metadata={"source": "project_file_upload"},
+            )
+        )
+    except Exception:
+        logger.exception("Creative review enqueue failed for uploaded file %s", file.filename)
     
     return {
         "message": "File uploaded successfully",
@@ -130,5 +178,3 @@ async def delete_project_file(
         "message": "File deleted successfully",
         "file": removed_file,
     }
-
-

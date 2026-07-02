@@ -1,11 +1,12 @@
-import { Suspense, lazy } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Suspense, lazy, useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { useTheme } from './hooks/useTheme'
 import { PageLoader } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Agentation } from "agentation";
 import { isSuperAdminRole } from './utils/roles'
+import { applySeoMeta, getSeoMeta } from './utils/seo'
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
@@ -45,6 +46,8 @@ const Calendar = lazy(() => import('./pages/Calendar'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
+const AIHub = lazy(() => import('./pages/AIHub'))
+const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
 const SalesContacts = lazy(() => import('./pages/sales/SalesContacts'))
@@ -105,6 +108,11 @@ const withBoundary = (element) => <ErrorBoundary>{element}</ErrorBoundary>
 
 function App() {
   useTheme()
+  const location = useLocation()
+
+  useEffect(() => {
+    applySeoMeta(getSeoMeta(location.pathname))
+  }, [location.pathname])
 
   return (
     <Suspense fallback={<PageLoader />}>
@@ -137,6 +145,8 @@ function App() {
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
           <Route path="reports" element={withBoundary(<Reports />)} />
           <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
+          <Route path="ai-hub" element={withBoundary(<AIHub />)} />
+          <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />
           <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="departments" element={withBoundary(<Departments />)} />

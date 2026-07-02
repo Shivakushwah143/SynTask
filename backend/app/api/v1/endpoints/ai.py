@@ -16,6 +16,8 @@ from app.schemas.ai import (
     AITaskBreakdownResponse,
     AITaskPrioritizationRequest,
     AITaskPrioritizationResponse,
+    TaskBreakdownRequest,
+    TaskBreakdownResponse,
 )
 
 router = APIRouter()
@@ -67,6 +69,24 @@ async def generate_task_breakdown(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from error
 
 
+@router.post("/breakdown", response_model=TaskBreakdownResponse)
+async def generate_breakdown(
+    payload: TaskBreakdownRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a task breakdown for a free-form task description."""
+    current_user = await _require_company_context(current_user)
+    try:
+        return await ai_service.generate_breakdown(current_user, payload)
+    except ValueError as error:
+        message = str(error)
+        if "not found" in message.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from error
+        if "not allowed" in message.lower() or "belongs to the same company" in message.lower():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message) from error
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from error
+
+
 @router.post("/daily-report", response_model=AIDailyReportResponse)
 async def generate_daily_report(
     payload: AIDailyReportRequest,
@@ -88,11 +108,14 @@ async def generate_daily_report(
 @router.post("/chat", response_model=AIChatResponse)
 async def generate_chat_response(
     payload: AIChatRequest,
+    conversation_id: str | None = Query(default=None),
     current_user: User = Depends(get_current_user),
 ):
     """Generate a role-aware personal assistant response."""
     current_user = await _require_company_context(current_user)
     try:
+        if conversation_id and payload.conversation_id != conversation_id:
+            payload = payload.model_copy(update={"conversation_id": conversation_id})
         return await ai_service.generate_chat_response(current_user, payload)
     except ValueError as error:
         message = str(error)

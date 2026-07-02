@@ -1,195 +1,152 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FolderKanban, Plus, Trash2, GitBranch, Calendar, Package, Tag, X, Users, BarChart3, Columns3 } from 'lucide-react'
+import { format } from 'date-fns'
+import { ArrowRight, FolderKanban, Grid2x2, List, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { useAuthStore } from '../store/authStore'
 import { projectsApi } from '../api/projects'
+import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
-import { usersAPI } from '../api/users'
-import { useAuthStore } from '../store/authStore'
-import toast from 'react-hot-toast'
-import { format } from 'date-fns'
-import { EmptyState, FormField, SkeletonCard, inputClassName } from '../components/ui'
 import { hasCompanyAdminAccess } from '../utils/roles'
+import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, Table, inputClassName } from '../components/ui'
 
-const Projects = () => {
+export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const canCreateProjects = hasCompanyAdminAccess(user?.role)
-  const canEditProjects = hasCompanyAdminAccess(user?.role)
-  const [projects, setProjects] = useState([])
+  const [view, setView] = useState('grid')
   const [loading, setLoading] = useState(true)
+  const [projects, setProjects] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filters, setFilters] = useState({ status: '', type: '', owner: '' })
+  const [showFilters, setShowFilters] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [formData, setFormData] = useState({
-    name: '',
-    key: '',
-    description: '',
-    type: 'software',
-    lead_id: '',
-    assigned_to: '',
-    start_date: '',
-    delivery_date: ''
-  })
-  const [formErrors, setFormErrors] = useState({})
   const [assignableUsers, setAssignableUsers] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
-  const [showProjectDetails, setShowProjectDetails] = useState(false)
-  const [components, setComponents] = useState([])
-  const [versions, setVersions] = useState([])
-  const [showComponentModal, setShowComponentModal] = useState(false)
-  const [showVersionModal, setShowVersionModal] = useState(false)
-  const [componentForm, setComponentForm] = useState({ name: '', description: '' })
-  const [versionForm, setVersionForm] = useState({ name: '', description: '', release_date: '' })
+  const [showDetails, setShowDetails] = useState(false)
   const [projectDetails, setProjectDetails] = useState(null)
   const [projectTasks, setProjectTasks] = useState([])
+  const [components, setComponents] = useState([])
+  const [versions, setVersions] = useState([])
   const [loadingDetails, setLoadingDetails] = useState(false)
-  const [isEditingProject, setIsEditingProject] = useState(false)
-  const [projectEditForm, setProjectEditForm] = useState({
-    name: '',
-    key: '',
-    description: '',
-    type: 'software',
-    assigned_to: '',
-    start_date: '',
-    delivery_date: '',
-  })
+  const [formData, setFormData] = useState({ name: '', key: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+  const [formErrors, setFormErrors] = useState({})
 
-  useEffect(() => {
-    loadProjects()
-  }, [])
-
-  // Check if we need to open a project from notification
-  useEffect(() => {
-    const projectId = sessionStorage.getItem('open_project_id')
-    if (projectId && projects.length > 0) {
-      sessionStorage.removeItem('open_project_id')
-      // Wait a bit for projects to be fully loaded, then open the modal
-      const timer = setTimeout(async () => {
-        try {
-          const project = projects.find(p => p.id === projectId)
-          if (project) {
-            setSelectedProject(project)
-            setShowProjectDetails(true)
-            await loadProjectDetails(project.id)
-          }
-        } catch (error) {
-          console.error('Error loading project from notification:', error)
-        }
-      }, 500)
-      return () => clearTimeout(timer)
-    }
-  }, [projects])
-
-  useEffect(() => {
-    if (selectedProject) {
-      loadComponents()
-      loadVersions()
-    }
-  }, [selectedProject])
-
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     try {
       setLoading(true)
       const response = await projectsApi.getProjects()
-      const projects = response.data.projects || []
-      // Remove duplicates by creating a map with unique IDs
-      const uniqueProjectsMap = new Map()
-      projects.forEach(project => {
-        if (project && project.id && !uniqueProjectsMap.has(project.id)) {
-          uniqueProjectsMap.set(project.id, project)
-        }
-      })
-      setProjects(Array.from(uniqueProjectsMap.values()))
+      setProjects(response.data.projects || [])
     } catch (error) {
       toast.error('Failed to load projects')
-      console.error(error)
+      setProjects([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const loadAssignableUsers = async () => {
+  const loadAssignableUsers = useCallback(async () => {
     try {
       const response = await usersAPI.getAssignableUsers()
-      const users = response.users || []
-      // Remove duplicates by creating a map with unique IDs
-      const uniqueUsersMap = new Map()
-      users.forEach(user => {
-        if (user && user.id && !uniqueUsersMap.has(user.id)) {
-          uniqueUsersMap.set(user.id, user)
-        }
-      })
-      setAssignableUsers(Array.from(uniqueUsersMap.values()))
+      setAssignableUsers(response.users || [])
     } catch (error) {
-      console.error('Error loading assignable users:', error)
+      setAssignableUsers([])
     }
-  }
+  }, [])
 
   useEffect(() => {
-    if (showCreateModal) {
-      loadAssignableUsers()
+    loadProjects()
+  }, [loadProjects])
+
+  useEffect(() => {
+    if (showCreateModal) loadAssignableUsers()
+  }, [showCreateModal, loadAssignableUsers])
+
+  useEffect(() => {
+    const projectId = sessionStorage.getItem('open_project_id')
+    if (projectId && projects.length) {
+      sessionStorage.removeItem('open_project_id')
+      const project = projects.find((item) => item.id === projectId)
+      if (project) openProject(project)
     }
-  }, [showCreateModal])
+  }, [projects])
 
-  const resetCreateForm = () => {
-    setFormData({
-      name: '',
-      key: '',
-      description: '',
-      type: 'software',
-      lead_id: '',
-      assigned_to: '',
-      start_date: '',
-      delivery_date: ''
+  const filteredProjects = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return projects.filter((project) => {
+      const matchesQuery = !query || [project.name, project.key, project.description, project.status, project.type]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+      const matchesStatus = !filters.status || (project.status || '').toLowerCase() === filters.status
+      const matchesType = !filters.type || (project.type || '').toLowerCase() === filters.type
+      const matchesOwner = !filters.owner || project.assigned_to === filters.owner || project.lead_id === filters.owner
+      return matchesQuery && matchesStatus && matchesType && matchesOwner
     })
-    setFormErrors({})
-  }
+  }, [filters.owner, filters.status, filters.type, projects, searchQuery])
 
-  const updateCreateForm = (field, value) => {
-    setFormData((current) => ({ ...current, [field]: value }))
-    setFormErrors((current) => ({ ...current, [field]: '' }))
+  const summary = useMemo(() => ({
+    total: projects.length,
+    active: projects.filter((project) => ['active', 'in_progress'].includes((project.status || '').toLowerCase())).length,
+    overdue: projects.filter((project) => (project.days_until_delivery ?? 999) < 0).length,
+  }), [projects])
+
+  const projectCards = useMemo(() => filteredProjects.map((project) => ({
+    ...project,
+    statusLabel: (project.status || 'active').replace(/_/g, ' '),
+    progress: typeof project.progress_percentage === 'number'
+      ? project.progress_percentage
+      : project.task_count
+        ? Math.min(100, Math.round(((project.completed_task_count || 0) / project.task_count) * 100))
+        : 0,
+  })), [filteredProjects])
+
+  const openProject = async (project) => {
+    setSelectedProject(project)
+    setShowDetails(true)
+    setLoadingDetails(true)
+    try {
+      const [detailsResponse, tasksResponse, componentsResponse, versionsResponse] = await Promise.all([
+        projectsApi.getProject(project.id, { include_tasks: true }),
+        projectsApi.getProject(project.id, { include_tasks: true }),
+        componentsApi.getComponents(project.id),
+        versionsApi.getVersions(project.id),
+      ])
+      const details = detailsResponse.data
+      setProjectDetails(details)
+      setProjectTasks(tasksResponse.data.tasks || [])
+      setComponents(componentsResponse.data.components || [])
+      setVersions(versionsResponse.data.versions || [])
+    } catch (error) {
+      toast.error('Failed to load project details')
+    } finally {
+      setLoadingDetails(false)
+    }
   }
 
   const validateCreateForm = () => {
     const nextErrors = {}
-    const keyPattern = /^[A-Z0-9]{2,10}$/
-
     if (!formData.name.trim()) nextErrors.name = 'Project name is required.'
-    if (!formData.key.trim()) {
-      nextErrors.key = 'Project key is required.'
-    } else if (!keyPattern.test(formData.key.trim())) {
-      nextErrors.key = 'Use 2-10 uppercase letters or numbers.'
+    if (!formData.key.trim()) nextErrors.key = 'Project key is required.'
+    if (formData.start_date && formData.delivery_date && new Date(formData.delivery_date) < new Date(formData.start_date)) {
+      nextErrors.delivery_date = 'Delivery date must be after the start date.'
     }
-
-    if (formData.start_date && formData.delivery_date) {
-      const startDate = new Date(formData.start_date)
-      const deliveryDate = new Date(formData.delivery_date)
-      if (deliveryDate < startDate) {
-        nextErrors.delivery_date = 'Delivery date must be after the start date.'
-      }
-    }
-
     setFormErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
 
-  const handleCreate = async (e) => {
-    e.preventDefault()
+  const handleCreate = async (event) => {
+    event.preventDefault()
     if (!validateCreateForm()) return
     try {
-      // Convert datetime-local format to ISO string for backend
-      const submitData = { ...formData }
-      if (submitData.start_date) {
-        submitData.start_date = new Date(submitData.start_date).toISOString()
-      }
-      if (submitData.delivery_date) {
-        submitData.delivery_date = new Date(submitData.delivery_date).toISOString()
-      }
-      
-      await projectsApi.createProject(submitData)
+      const payload = { ...formData }
+      if (payload.start_date) payload.start_date = new Date(payload.start_date).toISOString()
+      if (payload.delivery_date) payload.delivery_date = new Date(payload.delivery_date).toISOString()
+      await projectsApi.createProject(payload)
       toast.success('Project created successfully')
       setShowCreateModal(false)
-      resetCreateForm()
-      loadProjects()
+      setFormData({ name: '', key: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+      await loadProjects()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create project')
     }
@@ -197,974 +154,331 @@ const Projects = () => {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this project?')) return
-    
     try {
       await projectsApi.deleteProject(id)
       toast.success('Project deleted successfully')
-      loadProjects()
+      await loadProjects()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to delete project')
     }
   }
 
-  const loadComponents = async () => {
-    if (!selectedProject) return
-    try {
-      const response = await componentsApi.getComponents(selectedProject.id)
-      setComponents(response.data.components || [])
-    } catch (error) {
-      console.error('Error loading components:', error)
-    }
-  }
-
-  const loadVersions = async () => {
-    if (!selectedProject) return
-    try {
-      const response = await versionsApi.getVersions(selectedProject.id)
-      setVersions(response.data.versions || [])
-    } catch (error) {
-      console.error('Error loading versions:', error)
-    }
-  }
-
-  const handleCreateComponent = async (e) => {
-    e.preventDefault()
-    if (!selectedProject) return
-    try {
-      await componentsApi.createComponent(selectedProject.id, componentForm)
-      toast.success('Component created')
-      setShowComponentModal(false)
-      setComponentForm({ name: '', description: '' })
-      loadComponents()
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to create component')
-    }
-  }
-
-  const handleCreateVersion = async (e) => {
-    e.preventDefault()
-    if (!selectedProject) return
-    try {
-      await versionsApi.createVersion(selectedProject.id, versionForm)
-      toast.success('Version created')
-      setShowVersionModal(false)
-      setVersionForm({ name: '', description: '', release_date: '' })
-      loadVersions()
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to create version')
-    }
-  }
-
-  const toDateTimeLocal = (value) => {
-    if (!value) return ''
-    const d = new Date(value)
-    if (Number.isNaN(d.getTime())) return ''
-    return d.toISOString().slice(0, 16)
-  }
-
-  const handleViewProject = async (project) => {
-    setSelectedProject(project)
-    // Prepare edit form with current project data
-    setProjectEditForm({
-      name: project.name || '',
-      key: project.key || '',
-      description: project.description || '',
-      type: project.type || 'software',
-      assigned_to: project.assigned_to || '',
-      start_date: toDateTimeLocal(project.start_date),
-      delivery_date: toDateTimeLocal(project.delivery_date),
-    })
-    setIsEditingProject(false)
-    setShowProjectDetails(true)
-    await Promise.all([
-      loadProjectDetails(project.id),
-      loadAssignableUsers(),
-    ])
-  }
-
-  const handleUpdateProject = async () => {
-    if (!selectedProject) return
-    try {
-      const submitData = { ...projectEditForm }
-      // Convert datetime-local back to ISO for backend
-      if (submitData.start_date) {
-        submitData.start_date = new Date(submitData.start_date).toISOString()
-      }
-      if (submitData.delivery_date) {
-        submitData.delivery_date = new Date(submitData.delivery_date).toISOString()
-      }
-
-      await projectsApi.updateProject(selectedProject.id, submitData)
-      toast.success('Project updated successfully')
-      setIsEditingProject(false)
-      await loadProjects()
-      await loadProjectDetails(selectedProject.id)
-    } catch (error) {
-      console.error('Error updating project:', error)
-      toast.error(error.response?.data?.detail || 'Failed to update project')
-    }
-  }
-
-  const loadProjectDetails = async (projectId) => {
-    try {
-      setLoadingDetails(true)
-      const response = await projectsApi.getProject(projectId, { include_tasks: true })
-      setProjectDetails(response.data)
-      setProjectTasks(response.data.tasks || [])
-    } catch (error) {
-      toast.error('Failed to load project details')
-      console.error(error)
-    } finally {
-      setLoadingDetails(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
-        {[1, 2, 3, 4, 5, 6].map((item) => <SkeletonCard key={item} lines={4} actions />)}
-      </div>
-    )
-  }
+  const projectTableColumns = [
+    { key: 'name', header: 'Project' },
+    { key: 'status', header: 'Status', render: (row) => <Badge label={row.statusLabel || 'active'} colorKey={row.status || 'active'} /> },
+    { key: 'progress', header: 'Progress', render: (row) => <ProgressBar value={row.progress || 0} /> },
+    { key: 'task_count', header: 'Tasks' },
+    { key: 'delivery_date', header: 'Delivery', render: (row) => (row.delivery_date ? format(new Date(row.delivery_date), 'MMM d, yyyy') : '—') },
+  ]
 
   return (
-    <div className="p-4">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Projects</h1>
-          <p className="text-gray-600 text-xs mt-0.5">Manage your projects and teams</p>
-        </div>
-        {canCreateProjects && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center justify-center px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 w-full sm:w-auto"
-          >
-            <Plus className="h-4 w-4 mr-1.5" />
-            New Project
-          </button>
-        )}
-      </div>
-
-      {/* Projects Grid */}
-      {projects.length === 0 ? (
-        <EmptyState
-          icon={FolderKanban}
-          title="No projects yet"
-          description={canCreateProjects ? 'Get started by creating your first project.' : 'No projects have been assigned to you yet.'}
-          action={canCreateProjects ? <button type="button" onClick={() => setShowCreateModal(true)} className="btn btn-primary">Create Project</button> : null}
-        />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {projects.map((project) => (
-            <div
-              key={project.id}
-              className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => handleViewProject(project)}
-            >
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-900 truncate">{project.name}</h3>
-                  <p className="text-xs text-gray-500 font-mono">{project.key}</p>
-                </div>
-                {canCreateProjects && (
-                  <div className="flex gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDelete(project.id)
-                      }}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded"
-                      title="Delete project"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-              
-              {project.description && (
-                <p className="text-xs text-gray-600 mb-3 line-clamp-2">{project.description}</p>
-              )}
-              
-              {/* Priority Badge */}
-              {project.priority && (
-                <div className="mb-2">
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                    project.priority === 'urgent' || project.priority === 'overdue' ? 'bg-red-100 text-red-700' :
-                    project.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                    project.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-gray-100 text-gray-700'
-                  }`}>
-                    {project.priority === 'overdue' ? '⚠️ Overdue' :
-                     project.priority === 'urgent' ? '🔴 Urgent' :
-                     project.priority === 'high' ? '⚡ High Priority' :
-                     project.priority === 'medium' ? '📅 Medium Priority' :
-                     'Normal Priority'}
-                  </span>
-                </div>
-              )}
-
-              {/* Delivery Date */}
-              {project.delivery_date && (
-                <div className="mb-1.5 flex items-center text-xs text-gray-600">
-                  <Calendar className="h-3 w-3 mr-1" />
-                  <span className="truncate">Delivery: {format(new Date(project.delivery_date), 'MMM d, yyyy')}</span>
-                  {project.days_until_delivery !== null && (
-                    <span className="ml-1 text-[10px] whitespace-nowrap">
-                      ({project.days_until_delivery < 0 ? `${Math.abs(project.days_until_delivery)}d overdue` :
-                        project.days_until_delivery === 0 ? 'Due today' :
-                        `${project.days_until_delivery}d left`})
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Assigned To */}
-              {project.assigned_to_name && (
-                <div className="mb-1.5 flex items-center text-xs text-gray-600">
-                  <Users className="h-3 w-3 mr-1" />
-                  <span className="truncate">Assigned to: {project.assigned_to_name}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center">
-                    <GitBranch className="h-3 w-3 mr-1" />
-                    <span>{project.task_count || 0} tasks</span>
-                  </div>
-                  <span className="capitalize">{project.type}</span>
-                </div>
-                <span className="capitalize px-1.5 py-0.5 bg-gray-100 rounded text-[10px]">
-                  {project.status}
-                </span>
-              </div>
-              
-              {/* View Board Button */}
-              <div className="mt-3 pt-3 border-t">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    navigate(`/projects/${project.id}/board`)
-                  }}
-                  className="w-full flex items-center justify-center px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-                >
-                  <Columns3 className="h-3.5 w-3.5 mr-1.5" />
-                  View Board
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] flex flex-col dark:bg-gray-900">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Create New Project</h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreateModal(false)
-                  resetCreateForm()
-                }}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                aria-label="Close create project dialog"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={handleCreate} className="flex flex-col flex-1 overflow-hidden">
-              <div className="overflow-y-auto flex-1 p-6">
-                <div className="space-y-4">
-                  <FormField label="Project Name" error={formErrors.name} required>
-                    <input
-                      type="text"
-                      required
-                      value={formData.name}
-                      onChange={(e) => updateCreateForm('name', e.target.value)}
-                      className={inputClassName}
-                      aria-invalid={Boolean(formErrors.name)}
-                    />
-                  </FormField>
-                  
-                  <FormField label="Project Key" error={formErrors.key} required>
-                    <input
-                      type="text"
-                      required
-                      maxLength={10}
-                      value={formData.key}
-                      onChange={(e) => updateCreateForm('key', e.target.value.toUpperCase())}
-                      className={`${inputClassName} font-mono`}
-                      placeholder="e.g., WEB, DEV"
-                      aria-invalid={Boolean(formErrors.key)}
-                    />
-                    <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">Unique key for this project</p>
-                  </FormField>
-                  
-                  <FormField label="Type">
-                    <select
-                      value={formData.type}
-                      onChange={(e) => updateCreateForm('type', e.target.value)}
-                      className={inputClassName}
-                    >
-                      <option value="software">Software</option>
-                      <option value="business">Business</option>
-                      <option value="marketing">Marketing</option>
-                      <option value="operations">Operations</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </FormField>
-                  
-                  <FormField label="Description">
-                    <textarea
-                      value={formData.description}
-                      onChange={(e) => updateCreateForm('description', e.target.value)}
-                      rows={3}
-                      className={inputClassName}
-                    />
-                  </FormField>
-
-                  <FormField label="Start Date">
-                    <input
-                      type="datetime-local"
-                      value={formData.start_date}
-                      onChange={(e) => updateCreateForm('start_date', e.target.value)}
-                      className={inputClassName}
-                    />
-                  </FormField>
-
-                  <FormField label="Delivery Date" error={formErrors.delivery_date}>
-                    <input
-                      type="datetime-local"
-                      value={formData.delivery_date}
-                      onChange={(e) => updateCreateForm('delivery_date', e.target.value)}
-                      className={inputClassName}
-                      aria-invalid={Boolean(formErrors.delivery_date)}
-                    />
-                    <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">Projects are ranked by delivery date (nearest first)</p>
-                  </FormField>
-
-                  <FormField label="Assign To">
-                    <select
-                      value={formData.assigned_to}
-                      onChange={(e) => updateCreateForm('assigned_to', e.target.value)}
-                      className={inputClassName}
-                    >
-                      <option value="">Unassigned</option>
-                      {assignableUsers.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.first_name} {u.last_name} ({u.role.replace('_', ' ')})
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">Assigned user will receive a notification</p>
-                  </FormField>
-                </div>
-              </div>
-              
-              <div className="flex gap-3 p-6 border-t border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950">
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-                >
-                  Create Project
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateModal(false)
-                    resetCreateForm()
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Project Details Modal */}
-      {showProjectDetails && selectedProject && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-6xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <div className="space-y-1">
-                {isEditingProject ? (
-                  <>
-                    <input
-                      type="text"
-                      value={projectEditForm.name}
-                      onChange={(e) =>
-                        setProjectEditForm({ ...projectEditForm, name: e.target.value })
-                      }
-                      className="text-2xl font-bold border border-gray-300 rounded px-2 py-1 w-full"
-                    />
-                    <input
-                      type="text"
-                      value={projectEditForm.key}
-                      onChange={(e) =>
-                        setProjectEditForm({ ...projectEditForm, key: e.target.value.toUpperCase() })
-                      }
-                      className="text-gray-500 font-mono border border-gray-300 rounded px-2 py-1 w-full max-w-xs"
-                    />
-                  </>
-                ) : (
-                  <>
-                    <h2 className="text-2xl font-bold">{selectedProject.name}</h2>
-                    <p className="text-gray-500 font-mono">{selectedProject.key}</p>
-                  </>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {!isEditingProject && canEditProjects && (
-                  <button
-                    onClick={() => setIsEditingProject(true)}
-                    className="px-3 py-1 text-sm bg-primary-50 text-primary-700 rounded border border-primary-200 hover:bg-primary-100"
-                  >
-                    Edit Project
-                  </button>
-                )}
-                {isEditingProject && (
-                  <>
-                    <button
-                      onClick={handleUpdateProject}
-                      className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
-                    >
-                      Save Changes
-                    </button>
-                    <button
-                      onClick={() => {
-                        // Reset form back to selected project values
-                        if (selectedProject) {
-                          setProjectEditForm({
-                            name: selectedProject.name || '',
-                            key: selectedProject.key || '',
-                            description: selectedProject.description || '',
-                            type: selectedProject.type || 'software',
-                            assigned_to: selectedProject.assigned_to || '',
-                            start_date: toDateTimeLocal(selectedProject.start_date),
-                            delivery_date: toDateTimeLocal(selectedProject.delivery_date),
-                          })
-                        }
-                        setIsEditingProject(false)
-                      }}
-                      className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded border border-gray-300 hover:bg-gray-200"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={() => {
-                    setShowProjectDetails(false)
-                    setSelectedProject(null)
-                    setProjectDetails(null)
-                    setProjectTasks([])
-                    setIsEditingProject(false)
-                  }}
-                  className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Project basic info + assignment */}
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 border-b pb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
-                </label>
-                {isEditingProject ? (
-                  <textarea
-                    value={projectEditForm.description}
-                    onChange={(e) =>
-                      setProjectEditForm({ ...projectEditForm, description: e.target.value })
-                    }
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                ) : (
-                  <p className="text-sm text-gray-700">
-                    {selectedProject.description || 'No description'}
-                  </p>
-                )}
-              </div>
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assign To
-                  </label>
-                  {isEditingProject ? (
-                    <select
-                      value={projectEditForm.assigned_to}
-                      onChange={(e) =>
-                        setProjectEditForm({ ...projectEditForm, assigned_to: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    >
-                      <option value="">Unassigned</option>
-                      {assignableUsers.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.first_name} {u.last_name} ({u.role.replace('_', ' ')})
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="text-sm text-gray-700">
-                      {projectDetails?.assigned_to_name ||
-                        selectedProject.assigned_to_name ||
-                        'Unassigned'}
-                    </p>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Start Date
-                    </label>
-                    {isEditingProject ? (
-                      <input
-                        type="datetime-local"
-                        value={projectEditForm.start_date}
-                        onChange={(e) =>
-                          setProjectEditForm({ ...projectEditForm, start_date: e.target.value })
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    ) : selectedProject.start_date ? (
-                      <p className="text-sm text-gray-700">
-                        {format(new Date(selectedProject.start_date), 'MMM d, yyyy h:mm a')}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-gray-400">Not set</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Delivery Date
-                    </label>
-                    {isEditingProject ? (
-                      <input
-                        type="datetime-local"
-                        value={projectEditForm.delivery_date}
-                        onChange={(e) =>
-                          setProjectEditForm({ ...projectEditForm, delivery_date: e.target.value })
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      />
-                    ) : selectedProject.delivery_date ? (
-                      <p className="text-sm text-gray-700">
-                        {format(new Date(selectedProject.delivery_date), 'MMM d, yyyy h:mm a')}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-gray-400">Not set</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {loadingDetails ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-              </div>
-            ) : projectDetails ? (
-              <>
-                {/* Statistics Section */}
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <BarChart3 className="h-5 w-5 mr-2" />
-                    Project Statistics
-                  </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <div className="bg-blue-50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600">Total Tasks</div>
-                      <div className="text-2xl font-bold text-blue-600">{projectDetails.task_count || 0}</div>
-                    </div>
-                    <div className="bg-green-50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600">Completed</div>
-                      <div className="text-2xl font-bold text-green-600">
-                        {projectDetails.statistics?.completed_count || 0}
-                      </div>
-                    </div>
-                    <div className="bg-yellow-50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600">In Progress</div>
-                      <div className="text-2xl font-bold text-yellow-600">
-                        {projectDetails.statistics?.in_progress_count || 0}
-                      </div>
-                    </div>
-                    <div className="bg-purple-50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600">Completion</div>
-                      <div className="text-2xl font-bold text-purple-600">
-                        {projectDetails.statistics?.completion_percentage || 0}%
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Status Breakdown */}
-                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
-                    <div className="text-center p-3 bg-gray-50 rounded-lg">
-                      <div className="text-lg font-semibold">{projectDetails.statistics?.tasks_by_status?.todo || 0}</div>
-                      <div className="text-xs text-gray-600">To Do</div>
-                    </div>
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <div className="text-lg font-semibold text-blue-600">
-                        {projectDetails.statistics?.tasks_by_status?.in_progress || 0}
-                      </div>
-                      <div className="text-xs text-gray-600">In Progress</div>
-                    </div>
-                    <div className="text-center p-3 bg-yellow-50 rounded-lg">
-                      <div className="text-lg font-semibold text-yellow-600">
-                        {projectDetails.statistics?.tasks_by_status?.in_review || 0}
-                      </div>
-                      <div className="text-xs text-gray-600">In Review</div>
-                    </div>
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-lg font-semibold text-green-600">
-                        {projectDetails.statistics?.tasks_by_status?.completed || 0}
-                      </div>
-                      <div className="text-xs text-gray-600">Completed</div>
-                    </div>
-                    <div className="text-center p-3 bg-gray-50 rounded-lg">
-                      <div className="text-lg font-semibold">{projectDetails.statistics?.tasks_by_status?.on_hold || 0}</div>
-                      <div className="text-xs text-gray-600">On Hold</div>
-                    </div>
-                    <div className="text-center p-3 bg-red-50 rounded-lg">
-                      <div className="text-lg font-semibold text-red-600">
-                        {projectDetails.statistics?.tasks_by_status?.cancelled || 0}
-                      </div>
-                      <div className="text-xs text-gray-600">Cancelled</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Tasks by Assignee */}
-                {projectDetails.assigned_tasks_by_user && projectDetails.assigned_tasks_by_user.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <Users className="h-5 w-5 mr-2" />
-                      Tasks by Assignee
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {projectDetails.assigned_tasks_by_user
-                        .filter((userData, index, self) => 
-                          index === self.findIndex(u => u.user_id === userData.user_id)
-                        )
-                        .map((userData, index) => (
-                        <div key={`user-task-${userData.user_id || index}`} className="bg-gray-50 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <div>
-                              <div className="font-semibold">{userData.user_name || 'Unknown'}</div>
-                              <div className="text-xs text-gray-500">{userData.user_email}</div>
-                              <div className="text-xs text-gray-500 capitalize">{userData.user_role}</div>
-                            </div>
-                            <div className="text-2xl font-bold text-primary-600">{userData.task_count}</div>
-                          </div>
-                          <div className="text-sm text-gray-600">tasks assigned</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* All Tasks List */}
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold mb-4">All Tasks ({projectTasks.length})</h3>
-                  {projectTasks.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg">
-                      <p className="text-gray-500">No tasks in this project yet</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="bg-gray-50 border-b">
-                            <th className="text-left p-3 text-sm font-semibold text-gray-700">Task</th>
-                            <th className="text-left p-3 text-sm font-semibold text-gray-700">Status</th>
-                            <th className="text-left p-3 text-sm font-semibold text-gray-700">Priority</th>
-                            <th className="text-left p-3 text-sm font-semibold text-gray-700">Assigned To</th>
-                            <th className="text-left p-3 text-sm font-semibold text-gray-700">Due Date</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {projectTasks
-                            .filter((task, index, self) => 
-                              index === self.findIndex(t => t.id === task.id)
-                            )
-                            .map((task, index) => (
-                            <tr key={`task-${task.id || index}`} className="border-b hover:bg-gray-50">
-                              <td className="p-3">
-                                <div className="font-medium text-sm">{task.title}</div>
-                                {task.description && (
-                                  <div className="text-xs text-gray-500 mt-1 line-clamp-1">{task.description}</div>
-                                )}
-                              </td>
-                              <td className="p-3">
-                                <span className={`px-2 py-1 rounded text-xs capitalize ${
-                                  task.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                  task.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                                  task.status === 'in_review' ? 'bg-yellow-100 text-yellow-700' :
-                                  task.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                                  'bg-gray-100 text-gray-700'
-                                }`}>
-                                  {task.status.replace('_', ' ')}
-                                </span>
-                              </td>
-                              <td className="p-3">
-                                <span className={`px-2 py-1 rounded text-xs ${
-                                  task.priority === 'critical' ? 'bg-red-100 text-red-700' :
-                                  task.priority === 'high' ? 'bg-orange-100 text-orange-700' :
-                                  task.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
-                                  'bg-gray-100 text-gray-700'
-                                }`}>
-                                  {task.priority}
-                                </span>
-                              </td>
-                              <td className="p-3">
-                                {task.assigned_to_name ? (
-                                  <div className="flex items-center text-sm">
-                                    <Users className="h-4 w-4 mr-1 text-gray-400" />
-                                    {task.assigned_to_name}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-400 text-sm">Unassigned</span>
-                                )}
-                              </td>
-                              <td className="p-3">
-                                {task.due_date ? (
-                                  <div className="flex items-center text-sm text-gray-600">
-                                    <Calendar className="h-4 w-4 mr-1" />
-                                    {new Date(task.due_date).toLocaleDateString()}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-400 text-sm">No due date</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                {/* Components and Versions Section */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                  {/* Components */}
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold flex items-center">
-                        <Package className="h-5 w-5 mr-2" />
-                        Components
-                      </h3>
-                      <button
-                        onClick={() => setShowComponentModal(true)}
-                        className="text-primary-600 hover:text-primary-700 text-sm flex items-center"
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                  {components.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No components yet</p>
-                  ) : (
-                    components.map((c) => (
-                      <div key={c.id} className="p-3 bg-gray-50 rounded-lg">
-                        <div className="font-medium text-sm">{c.name}</div>
-                        {c.description && (
-                          <div className="text-xs text-gray-500 mt-1">{c.description}</div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-                  {/* Versions */}
-                  <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold flex items-center">
-                    <Tag className="h-5 w-5 mr-2" />
-                    Versions
-                  </h3>
-                  <button
-                    onClick={() => setShowVersionModal(true)}
-                    className="text-primary-600 hover:text-primary-700 text-sm flex items-center"
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {versions.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No versions yet</p>
-                  ) : (
-                    versions.map((v) => (
-                      <div key={v.id} className="p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div className="font-medium text-sm">{v.name}</div>
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            v.released ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            {v.released ? 'Released' : 'Unreleased'}
-                          </span>
-                        </div>
-                        {v.description && (
-                          <div className="text-xs text-gray-500 mt-1">{v.description}</div>
-                        )}
-                        {v.release_date && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Release: {new Date(v.release_date).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => {
-                  setShowProjectDetails(false)
-                  setSelectedProject(null)
-                  setProjectDetails(null)
-                  setProjectTasks([])
-                }}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-              >
-                Close
-              </button>
-            </div>
-              </>
+    <div className="space-y-6">
+      <PageHeader
+        title="Projects"
+        description="Premium workspace for project health, team ownership, and AI insights."
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant={view === 'grid' ? 'primary' : 'secondary'} size="sm" onClick={() => setView('grid')}>
+              <Grid2x2 className="h-4 w-4" />
+              Grid
+            </Button>
+            <Button variant={view === 'list' ? 'primary' : 'secondary'} size="sm" onClick={() => setView('list')}>
+              <List className="h-4 w-4" />
+              List
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowFilters((value) => !value)}>
+              <SlidersHorizontal className="h-4 w-4" />
+              Filters
+            </Button>
+            {canCreateProjects ? (
+              <Button size="sm" onClick={() => setShowCreateModal(true)}>
+                <Plus className="h-4 w-4" />
+                New Project
+              </Button>
             ) : null}
           </div>
-        </div>
-      )}
+        )}
+      />
 
-      {/* Component Modal */}
-      {showComponentModal && selectedProject && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-bold mb-4">Create Component</h3>
-            <form onSubmit={handleCreateComponent}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={componentForm.name}
-                    onChange={(e) => setComponentForm({ ...componentForm, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={componentForm.description}
-                    onChange={(e) => setComponentForm({ ...componentForm, description: e.target.value })}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-                >
-                  Create
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowComponentModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <section className="grid gap-4 md:grid-cols-3">
+        <MetricCard title="Total projects" value={summary.total} />
+        <MetricCard title="Active projects" value={summary.active} />
+        <MetricCard title="At risk" value={summary.overdue} />
+      </section>
 
-      {/* Version Modal */}
-      {showVersionModal && selectedProject && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-bold mb-4">Create Version</h3>
-            <form onSubmit={handleCreateVersion}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={versionForm.name}
-                    onChange={(e) => setVersionForm({ ...versionForm, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    placeholder="e.g., 1.0.0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={versionForm.description}
-                    onChange={(e) => setVersionForm({ ...versionForm, description: e.target.value })}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Release Date
-                  </label>
-                  <input
-                    type="date"
-                    value={versionForm.release_date}
-                    onChange={(e) => setVersionForm({ ...versionForm, release_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-                >
-                  Create
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowVersionModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+      <section className="card p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input className={`${inputClassName} pl-10`} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search projects by name, key, status, or description" />
           </div>
+          {showFilters ? (
+            <div className="grid gap-3 md:grid-cols-3 lg:flex-1">
+              <select className={inputClassName} value={filters.status} onChange={(event) => setFilters((state) => ({ ...state, status: event.target.value }))}>
+                <option value="">All statuses</option>
+                <option value="active">Active</option>
+                <option value="in_progress">In progress</option>
+                <option value="on_hold">On hold</option>
+                <option value="completed">Completed</option>
+              </select>
+              <select className={inputClassName} value={filters.type} onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}>
+                <option value="">All types</option>
+                <option value="software">Software</option>
+                <option value="marketing">Marketing</option>
+                <option value="business">Business</option>
+                <option value="operations">Operations</option>
+              </select>
+              <select className={inputClassName} value={filters.owner} onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}>
+                <option value="">All owners</option>
+                {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              </select>
+            </div>
+          ) : null}
         </div>
-      )}
+      </section>
+
+      <section className="card p-0 overflow-hidden">
+        {loading ? (
+          <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((item) => <SkeletonCard key={item} lines={4} />)}
+          </div>
+        ) : !projectCards.length ? (
+          <div className="p-6">
+            <EmptyState
+              icon={FolderKanban}
+              title="No projects found"
+              description="Use search or filters to refine the workspace."
+              action={canCreateProjects ? <Button onClick={() => setShowCreateModal(true)}><Plus className="h-4 w-4" /> Create Project</Button> : null}
+            />
+          </div>
+        ) : view === 'list' ? (
+          <Table columns={projectTableColumns} data={projectCards} />
+        ) : (
+          <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {projectCards.map((project) => (
+              <button key={project.id} type="button" onClick={() => openProject(project)} className="group overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{project.key}</p>
+                    <h3 className="mt-2 truncate text-base font-semibold text-gray-900 dark:text-gray-100">{project.name}</h3>
+                  </div>
+                  <Badge label={project.statusLabel || 'active'} colorKey={project.status || 'active'} />
+                </div>
+                <p className="mt-3 line-clamp-2 text-sm text-gray-500 dark:text-gray-400">{project.description || 'No description available.'}</p>
+                <div className="mt-4 space-y-3">
+                  <ProgressBar value={project.progress || 0} />
+                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>{project.task_count || 0} tasks</span>
+                    <span>{project.delivery_date ? format(new Date(project.delivery_date), 'MMM d') : 'No delivery date'}</span>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-3 dark:border-gray-800">
+                  <div className="flex -space-x-2">
+                    {(project.team_members || assignableUsers.slice(0, 3)).slice(0, 3).map((member, index) => (
+                      <div key={`${project.id}-${index}`} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-gray-100 text-xs font-semibold text-gray-700 dark:border-gray-900 dark:bg-gray-800 dark:text-gray-200">
+                        {(member.first_name || member.name || '?').slice(0, 1)}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={(event) => { event.stopPropagation(); openProject(project) }} className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" aria-label={`Open ${project.name}`}>
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                    {canCreateProjects ? (
+                      <button type="button" onClick={(event) => { event.stopPropagation(); handleDelete(project.id) }} className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300" aria-label={`Delete ${project.name}`}>
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create project">
+        <form onSubmit={handleCreate} className="space-y-4">
+          <FormField label="Project name" error={formErrors.name} required>
+            <input className={inputClassName} value={formData.name} onChange={(event) => setFormData((state) => ({ ...state, name: event.target.value }))} />
+          </FormField>
+          <FormField label="Project key" error={formErrors.key} required>
+            <input className={`${inputClassName} font-mono`} value={formData.key} onChange={(event) => setFormData((state) => ({ ...state, key: event.target.value.toUpperCase() }))} />
+          </FormField>
+          <FormField label="Description">
+            <textarea className={inputClassName} rows={4} value={formData.description} onChange={(event) => setFormData((state) => ({ ...state, description: event.target.value }))} />
+          </FormField>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Type">
+              <select className={inputClassName} value={formData.type} onChange={(event) => setFormData((state) => ({ ...state, type: event.target.value }))}>
+                <option value="software">Software</option>
+                <option value="business">Business</option>
+                <option value="marketing">Marketing</option>
+                <option value="operations">Operations</option>
+              </select>
+            </FormField>
+            <FormField label="Lead">
+              <select className={inputClassName} value={formData.lead_id} onChange={(event) => setFormData((state) => ({ ...state, lead_id: event.target.value }))}>
+                <option value="">Select lead</option>
+                {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Start date">
+              <input type="datetime-local" className={inputClassName} value={formData.start_date} onChange={(event) => setFormData((state) => ({ ...state, start_date: event.target.value }))} />
+            </FormField>
+            <FormField label="Delivery date" error={formErrors.delivery_date}>
+              <input type="datetime-local" className={inputClassName} value={formData.delivery_date} onChange={(event) => setFormData((state) => ({ ...state, delivery_date: event.target.value }))} />
+            </FormField>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+            <Button type="submit">Create project</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <ProjectDetailsPanel
+        isOpen={showDetails}
+        project={selectedProject}
+        loading={loadingDetails}
+        details={projectDetails}
+        tasks={projectTasks}
+        components={components}
+        versions={versions}
+        onClose={() => setShowDetails(false)}
+        onOpenBoard={(project) => navigate(`/projects/${project.id}/board`)}
+      />
     </div>
   )
 }
 
-export default Projects
+function MetricCard({ title, value }) {
+  return (
+    <div className="card p-4">
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{title}</div>
+      <div className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">{value}</div>
+    </div>
+  )
+}
+
+function ProgressBar({ value = 0 }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+        <span>Progress</span>
+        <span>{value}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+        <div className="h-full rounded-full bg-primary-600" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, components, versions, onClose, onOpenBoard }) {
+  if (!isOpen || !project) return null
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50">
+      <div className="ml-auto flex h-full w-full max-w-6xl flex-col bg-white shadow-2xl dark:bg-gray-950 lg:w-[88vw]">
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Project details</p>
+            <h2 className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{project.name}</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => onOpenBoard(project)}>Open board</Button>
+            <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">×</button>
+          </div>
+        </div>
+        <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
+          <div className="min-h-0 overflow-y-auto px-5 py-5">
+            {loading ? <SkeletonDetails /> : (
+              <div className="space-y-6">
+                <section className="grid gap-4 md:grid-cols-4">
+                  <MetricCard title="Tasks" value={details?.task_count || tasks.length || 0} />
+                  <MetricCard title="Complete" value={details?.statistics?.completed_count || 0} />
+                  <MetricCard title="In progress" value={details?.statistics?.in_progress_count || 0} />
+                  <MetricCard title="Completion" value={`${details?.statistics?.completion_percentage || 0}%`} />
+                </section>
+                <section className="card p-4">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Overview</h3>
+                  <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{details?.description || project.description || 'No project description available.'}</p>
+                </section>
+                <section className="card p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Tasks</h3>
+                    <Badge label={`${tasks.length} tasks`} colorKey="scheduled" />
+                  </div>
+                  <div className="space-y-2">
+                    {tasks.slice(0, 8).map((task) => (
+                      <div key={task.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{task.title}</p>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{task.description || 'No description.'}</p>
+                          </div>
+                          <Badge label={task.status?.replace(/_/g, ' ') || 'todo'} colorKey={task.status || 'todo'} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+                <section className="grid gap-6 xl:grid-cols-2">
+                  <section className="card p-4">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Files</h3>
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Project files remain accessible from the project header.</p>
+                  </section>
+                  <section className="card p-4">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Meetings</h3>
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Meeting context is managed from the meetings workspace.</p>
+                  </section>
+                </section>
+              </div>
+            )}
+          </div>
+          <aside className="min-h-0 overflow-y-auto border-l border-gray-200 px-5 py-5 dark:border-gray-800">
+            <div className="space-y-4">
+              <section className="card p-4">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">AI briefing</h3>
+                <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">Project context, health, and next actions should be derived from live project signals only.</p>
+              </section>
+              <section className="card p-4">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Team</h3>
+                <div className="mt-3 flex -space-x-2">
+                  {(details?.assigned_tasks_by_user || []).slice(0, 5).map((item, index) => (
+                    <div key={`${item.user_id || index}`} className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-gray-100 text-xs font-semibold text-gray-700 dark:border-gray-950 dark:bg-gray-800 dark:text-gray-200">
+                      {(item.user_name || '?').slice(0, 1)}
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="card p-4">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Analytics</h3>
+                <div className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                  <p>Completion: {details?.statistics?.completion_percentage || 0}%</p>
+                  <p>Tasks: {details?.task_count || 0}</p>
+                  <p>Files: {details?.files?.length || 0}</p>
+                  <p>Pages: {details?.pages?.length || 0}</p>
+                  <p>Components: {components.length}</p>
+                  <p>Versions: {versions.length}</p>
+                </div>
+              </section>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SkeletonDetails() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-4">
+        {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={3} />)}
+      </div>
+      <SkeletonCard lines={4} />
+      <SkeletonTable rows={6} cols={3} />
+    </div>
+  )
+}

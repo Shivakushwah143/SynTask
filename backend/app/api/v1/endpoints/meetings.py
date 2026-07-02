@@ -8,6 +8,8 @@ import logging
 
 from app.models.meeting import Meeting, MeetingStatus
 from app.models.user import User, UserRole
+from app.events import publish_event
+from app.events.factories import build_domain_event
 from app.api.dependencies import (
     get_current_user,
     get_current_company_admin_or_lead,
@@ -112,6 +114,27 @@ async def create_meeting(
         )
         
         await meeting.insert()
+
+        await publish_event(
+            build_domain_event(
+                event_name="MeetingCreated",
+                aggregate_type="meeting",
+                aggregate_id=str(meeting.id),
+                company_id=str(current_user.company_id),
+                actor_id=str(current_user.id),
+                payload={
+                    "title": meeting.title,
+                    "description": meeting.description,
+                    "meeting_date": meeting.meeting_date.isoformat(),
+                    "meeting_time": meeting.meeting_time,
+                    "duration": meeting.duration,
+                    "participant_ids": meeting.participant_ids,
+                    "status": meeting.status.value,
+                },
+                project_id=None,
+                metadata={"source": "meeting_create"},
+            )
+        )
         
         # Get participant details for response
         participants = []
@@ -330,10 +353,29 @@ async def delete_meeting(
         except Exception as e:
             logger.warning(f"Failed to delete Zoom meeting: {str(e)}")
     
+    await publish_event(
+        build_domain_event(
+            event_name="MeetingDeleted",
+            aggregate_type="meeting",
+            aggregate_id=str(meeting.id),
+            company_id=str(current_user.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "title": meeting.title,
+                "description": meeting.description,
+                "meeting_date": meeting.meeting_date.isoformat(),
+                "meeting_time": meeting.meeting_time,
+                "duration": meeting.duration,
+                "participant_ids": meeting.participant_ids,
+                "status": meeting.status.value,
+            },
+            metadata={"source": "meeting_delete"},
+        )
+    )
+
     await meeting.delete()
     
     return {
         "success": True,
         "message": "Meeting deleted successfully"
     }
-

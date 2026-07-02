@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from app.events import publish_event
+from app.events.factories import build_domain_event
 from .shared import *
 
 router = APIRouter()
@@ -34,6 +36,25 @@ async def delete_project(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete project with existing tasks"
         )
+
+    await publish_event(
+        build_domain_event(
+            event_name="ProjectArchived",
+            aggregate_type="project",
+            aggregate_id=str(project.id),
+            company_id=str(current_user.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "project_id": project.project_id,
+                "name": project.name,
+                "description": project.description,
+                "status": project.status.value if getattr(project, "status", None) else None,
+                "updated_at": datetime.utcnow().isoformat(),
+            },
+            project_id=str(project.project_id or project.id),
+            metadata={"source": "project_delete"},
+        )
+    )
     
     await project.delete()
     await cache_delete(project_list_key(project.company_id))
@@ -43,5 +64,3 @@ async def delete_project(
 
 
 # Epic Endpoints
-
-

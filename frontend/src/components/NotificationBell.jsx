@@ -305,14 +305,14 @@ const NotificationBell = () => {
         aria-expanded={showDropdown}
       >
         <Bell className="h-5 w-5" />
-        {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
-        )}
-        {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
+          {unreadCount > 0 && (
+            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" aria-hidden="true"></span>
+          )}
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white" aria-hidden="true">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
       </button>
 
       {showDropdown && (
@@ -321,9 +321,11 @@ const NotificationBell = () => {
             <h3 className="font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
             {unreadCount > 0 && (
               <button
+                type="button"
                 onClick={handleMarkAllAsRead}
                 disabled={loading}
                 className="text-xs text-primary-600 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-300"
+                aria-label="Mark all notifications as read"
               >
                 Mark all read
               </button>
@@ -356,10 +358,10 @@ const NotificationBell = () => {
                       </p>
                     </div>
                     {!notif.is_read && (
-                      <div className="h-2 w-2 bg-primary-600 rounded-full ml-2 mt-1"></div>
-                    )}
-                  </div>
+                    <div className="ml-2 mt-1 h-2 w-2 rounded-full bg-primary-600" aria-hidden="true"></div>
+                  )}
                 </div>
+              </div>
               ))
             )}
           </div>
@@ -370,4 +372,3 @@ const NotificationBell = () => {
 }
 
 export default NotificationBell
-

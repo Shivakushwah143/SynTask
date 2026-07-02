@@ -1,11 +1,23 @@
 import { useEffect } from 'react'
 
-export function useKeyboardShortcut(key, callback, { metaKey = false, ctrlKey = false } = {}) {
+export function useKeyboardShortcut(
+  key,
+  callback,
+  { metaKey = false, ctrlKey = false, shiftKey = false, altKey = false } = {},
+) {
   useEffect(() => {
     const handler = (event) => {
       const metaMatches = !metaKey || event.metaKey
       const ctrlMatches = !ctrlKey || event.ctrlKey
-      if (event.key.toLowerCase() === key.toLowerCase() && metaMatches && ctrlMatches) {
+      const shiftMatches = !shiftKey || event.shiftKey
+      const altMatches = !altKey || event.altKey
+      if (
+        event.key.toLowerCase() === key.toLowerCase() &&
+        metaMatches &&
+        ctrlMatches &&
+        shiftMatches &&
+        altMatches
+      ) {
         event.preventDefault()
         callback(event)
       }
@@ -13,5 +25,5 @@ export function useKeyboardShortcut(key, callback, { metaKey = false, ctrlKey = 
 
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [callback, ctrlKey, key, metaKey])
+  }, [altKey, callback, ctrlKey, key, metaKey, shiftKey])
 }

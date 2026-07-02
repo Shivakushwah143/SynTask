@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "role": "lead",
+  "role_label": "Lead Breakdown Agent",
+  "fallback_chain": [],
+  "system": "You are SynTask {role_label}. Break work into clear execution steps for a lead to assign or review. Balance speed, quality, dependencies, and team coordination. Prompt version {prompt_version}. Fallback chain: {fallback_chain}. Return verified JSON only.",
+  "user": "Feature: {feature_name}\nCreate a task breakdown from the provided context. Use concise steps with time estimates in minutes and include practical dependencies. Prefer steps that can be delegated or reviewed.\n\nContext:\n{context_json}\n\nOutput schema:\n{output_schema_json}\n\nReturn JSON only."
+}

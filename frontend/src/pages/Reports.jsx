@@ -16,14 +16,70 @@ export default function Reports() {
   const trend = data?.completion_trend || data?.trend || taskRows
 
   return (
-    <div className="p-6">
-      <PageHeader title="Reports" description="Task, project, time, and ticket analytics." actions={<div className="flex gap-2">{['week', 'month', 'quarter'].map((item) => <Button key={item} variant={period === item ? 'primary' : 'secondary'} onClick={() => setPeriod(item)}>{item}</Button>)}</div>} />
-      {isLoading ? <ReportsSkeleton /> : isError ? <EmptyState icon={BarChart3} title="Could not load reports" /> : (
+    <div className="space-y-6">
+      <PageHeader
+        title="Analytics & Reports"
+        description="Operational reporting for tasks, projects, time, and delivery signals."
+        actions={(
+          <div className="flex flex-wrap gap-2">
+            {['week', 'month', 'quarter'].map((item) => (
+              <Button key={item} variant={period === item ? 'primary' : 'secondary'} size="sm" onClick={() => setPeriod(item)}>
+                {item}
+              </Button>
+            ))}
+          </div>
+        )}
+      />
+
+      {isLoading ? (
+        <ReportsSkeleton />
+      ) : isError ? (
+        <EmptyState icon={BarChart3} title="Could not load reports" description="The reporting data could not be loaded right now." />
+      ) : (
         <div className="grid gap-6 xl:grid-cols-2">
-          <ChartCard title="Tasks by status"><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={taskRows} dataKey="value" nameKey="name" label>{taskRows.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></ChartCard>
-          <ChartCard title="Tasks by priority"><ResponsiveContainer width="100%" height={280}><BarChart data={priorityRows}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#f59e0b" /></BarChart></ResponsiveContainer></ChartCard>
-          <ChartCard title="Ticket resolution"><ResponsiveContainer width="100%" height={280}><BarChart data={tickets}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#16a34a" /></BarChart></ResponsiveContainer></ChartCard>
-          <ChartCard title="Completion trend"><ResponsiveContainer width="100%" height={280}><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Line dataKey="value" stroke="#2563eb" strokeWidth={2} /></LineChart></ResponsiveContainer></ChartCard>
+          <ChartCard title="Tasks by status">
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie data={taskRows} dataKey="value" nameKey="name" label>
+                  {taskRows.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </ChartCard>
+          <ChartCard title="Tasks by priority">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={priorityRows}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="#f59e0b" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+          <ChartCard title="Ticket resolution">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={tickets}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="#16a34a" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+          <ChartCard title="Completion trend">
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={trend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Line dataKey="value" stroke="#2563eb" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
         </div>
       )}
     </div>
@@ -31,7 +87,12 @@ export default function Reports() {
 }
 
 function ChartCard({ title, children }) {
-  return <section className="rounded-lg border border-gray-200 bg-white p-4"><h2 className="mb-4 font-semibold text-gray-900">{title}</h2>{children}</section>
+  return (
+    <section className="card p-5">
+      <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+      {children}
+    </section>
+  )
 }
 
 function ReportsSkeleton() {
