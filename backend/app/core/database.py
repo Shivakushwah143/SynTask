@@ -53,6 +53,7 @@ from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct
 from app.models.sales_contact import SalesContact, ContactSharing
 from app.models.sales_prospect import SalesProspect
+from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.sales_masters import (
     SalesStage, ReasonForLost, SalesChannel, SalesTag,
@@ -173,6 +174,7 @@ async def init_db():
                 SalesContact,
                 ContactSharing,
                 SalesProspect,
+                SalesLeadNote,
                 SalesPipelineHistory,
                 SalesStage,
                 ReasonForLost,

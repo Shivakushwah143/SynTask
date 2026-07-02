@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
 from app.models.sales_pipeline_history import SalesPipelineHistory
+from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_prospect import SalesProspect
 from app.models.user import User, UserRole
 
@@ -46,6 +47,8 @@ async def _load_actor_map(actor_ids: set[str], company_id: str) -> Dict[str, str
 
 
 def _category_for_event(event_type: str) -> str:
+    if event_type.startswith("comment_"):
+        return "comments"
     if event_type in {"lead_created", "lead_updated"}:
         return "system"
     if event_type == "lead_stage_changed":
@@ -141,6 +144,63 @@ def _build_stage_event(item: SalesPipelineHistory, actor_name: str) -> Dict[str,
     )
 
 
+def _build_note_created_event(note: SalesLeadNote, actor_name: str) -> Dict[str, Any]:
+    return _build_event(
+        event_id=f"lead-note-created-{note.id}",
+        event_type="comment_added",
+        title="Note added",
+        description=note.content,
+        timestamp=note.created_at or datetime.utcnow(),
+        actor=actor_name,
+        metadata={
+            "note_id": str(note.id),
+            "content": note.content,
+            "created_by": note.created_by,
+            "updated_by": note.updated_by,
+            "deleted": note.deleted,
+        },
+        expanded=True,
+    )
+
+
+def _build_note_updated_event(note: SalesLeadNote, actor_name: str) -> Dict[str, Any]:
+    return _build_event(
+        event_id=f"lead-note-updated-{note.id}",
+        event_type="comment_updated",
+        title="Note updated",
+        description=note.content,
+        timestamp=note.edited_at or note.updated_at or note.created_at or datetime.utcnow(),
+        actor=actor_name,
+        metadata={
+            "note_id": str(note.id),
+            "content": note.content,
+            "created_by": note.created_by,
+            "updated_by": note.updated_by,
+            "deleted": note.deleted,
+        },
+        expanded=True,
+    )
+
+
+def _build_note_deleted_event(note: SalesLeadNote, actor_name: str) -> Dict[str, Any]:
+    return _build_event(
+        event_id=f"lead-note-deleted-{note.id}",
+        event_type="comment_deleted",
+        title="Note deleted",
+        description=note.content,
+        timestamp=note.deleted_at or note.updated_at or note.created_at or datetime.utcnow(),
+        actor=actor_name,
+        metadata={
+            "note_id": str(note.id),
+            "content": note.content,
+            "created_by": note.created_by,
+            "updated_by": note.updated_by,
+            "deleted_by": note.deleted_by,
+        },
+        expanded=True,
+    )
+
+
 class CRMLeadTimelineService:
     @staticmethod
     async def load_timeline(current_user: User, lead_id: str) -> Dict[str, Any]:
@@ -156,6 +216,12 @@ class CRMLeadTimelineService:
                 "lead_id": str(prospect.id),
             }
         ).sort("-transitioned_at").to_list()
+        notes = await SalesLeadNote.find(
+            {
+                "company_id": str(prospect.company_id),
+                "lead_id": str(prospect.id),
+            }
+        ).sort("-updated_at").to_list()
 
         actor_ids: set[str] = set()
         for candidate in [prospect.created_by, prospect.assigned_by, prospect.closed_by]:
@@ -164,6 +230,10 @@ class CRMLeadTimelineService:
         for history in history_items:
             if history.user_id:
                 actor_ids.add(str(history.user_id))
+        for note in notes:
+            for candidate in [note.created_by, note.updated_by, note.deleted_by]:
+                if candidate:
+                    actor_ids.add(str(candidate))
 
         actor_map = await _load_actor_map(actor_ids, str(prospect.company_id))
 
@@ -178,6 +248,19 @@ class CRMLeadTimelineService:
         for history in history_items:
             items.append(_build_stage_event(history, actor_map.get(str(history.user_id), history.user_name or "System")))
 
+        for note in notes:
+            note_actor = actor_map.get(str(note.created_by), note.created_by_name or "System")
+            items.append(_build_note_created_event(note, note_actor))
+            if note.deleted:
+                if note.edited_at and note.created_at and note.edited_at > note.created_at:
+                    updated_actor = actor_map.get(str(note.updated_by), note.updated_by_name or note_actor)
+                    items.append(_build_note_updated_event(note, updated_actor))
+                deleted_actor = actor_map.get(str(note.deleted_by), note.deleted_by_name or note_actor)
+                items.append(_build_note_deleted_event(note, deleted_actor))
+            elif note.updated_at and note.created_at and note.updated_at > note.created_at:
+                updated_actor = actor_map.get(str(note.updated_by), note.updated_by_name or note_actor)
+                items.append(_build_note_updated_event(note, updated_actor))
+
         items.sort(key=lambda item: item["timestamp"], reverse=True)
 
         grouped_by_day: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -191,7 +274,7 @@ class CRMLeadTimelineService:
             "system": sum(1 for item in items if item["category"] == "system"),
             "meetings": 0,
             "files": 0,
-            "comments": 0,
+            "comments": sum(1 for item in items if item["category"] == "comments"),
             "future_ai": 0,
             "last_activity_at": items[0]["timestamp"] if items else None,
         }
