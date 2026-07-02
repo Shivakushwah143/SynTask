@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { ticketsAPI } from '../api/tickets'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
@@ -184,6 +185,7 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
 const Tickets = () => {
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)
+  const canManageRequests = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -577,6 +579,15 @@ const Tickets = () => {
               <Settings className="h-4 w-4 mr-1.5" />
               Columns
             </button>
+          )}
+          {canManageRequests && userRole === ROLE.LEAD && (
+            <Link
+              to="/tasks?createTask=true"
+              className="btn btn-outline flex items-center justify-center w-full sm:w-auto"
+            >
+              <Plus className="h-4 w-4 mr-1.5" />
+              Add Task
+            </Link>
           )}
           <button
             onClick={() => setShowCreateModal(true)}
