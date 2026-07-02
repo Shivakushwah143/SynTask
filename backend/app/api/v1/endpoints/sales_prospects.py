@@ -428,30 +428,11 @@ async def update_prospect(
 
 @router.post("/bulk-upload")
 async def bulk_upload_prospects(
-<<<<<<< HEAD
-=======
     strategy: str = Form(...),
->>>>>>> bf9c74a11722b6733a5e59ff953f1fb033516934
     file: UploadFile = File(...),
     target_user_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
-<<<<<<< HEAD
-    """Create prospects in the database from the CSV used by the prospects page."""
-    _ensure_create_permission(current_user)
-    
-    content = await file.read()
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="The CSV file must use UTF-8 encoding")
-    reader = csv.DictReader(io.StringIO(text))
-    
-    required_cols = [
-        "First Name", "Last Name", "Phone", "Category", "Stage",
-        "Owner", "Interest Level", "Estimated Close Date", "Products"
-    ]
-=======
     """Bulk upload prospects from CSV with assignment strategies."""
     if not file.filename.lower().endswith('.csv') and file.content_type != 'text/csv':
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Only CSV files are supported")
@@ -465,7 +446,6 @@ async def bulk_upload_prospects(
 
     text = content.decode('utf-8-sig', errors='replace')
     reader = csv.DictReader(io.StringIO(text))
->>>>>>> bf9c74a11722b6733a5e59ff953f1fb033516934
     headers = reader.fieldnames or []
     normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
 
@@ -563,117 +543,6 @@ async def bulk_upload_prospects(
 
         interest_value = row_norm.get('interest_level') or InterestLevel.WARM.value
         try:
-<<<<<<< HEAD
-            country_code = (row.get("Country Code") or "+91").strip()
-            phone = (row.get("Phone") or "").strip()
-            first_name = (row.get("First Name") or "").strip()
-            last_name = (row.get("Last Name") or "").strip()
-            category = (row.get("Category") or "").strip()
-            product_names = [
-                value.strip() for value in (row.get("Products") or "").split("|") if value.strip()
-            ]
-            stage_name = (row.get("Stage") or "").strip()
-            owner_name = (row.get("Owner") or "").strip()
-            interest_level = (row.get("Interest Level") or "").strip().lower()
-            estimated_close_date = (row.get("Estimated Close Date") or "").strip()
-            
-            if not all([
-                phone, first_name, last_name, category, product_names, stage_name,
-                owner_name, interest_level, estimated_close_date
-            ]):
-                failed_rows.append({"row": idx, "error": "Missing mandatory fields"})
-                continue
-            
-            # Check duplicate
-            existing = await SalesProspect.find_one(
-                {"country_code": country_code, "phone": phone, "deleted": False}
-            )
-            if existing:
-                failed_rows.append({"row": idx, "error": "Duplicate phone number"})
-                continue
-            
-            # Find category by name
-            company_filter = {} if current_user.role == UserRole.SUPER_ADMIN else {
-                "company_id": current_user.company_id
-            }
-            category_obj = await SalesCategory.find_one({
-                **company_filter,
-                "name": {"$regex": f"^{re.escape(category)}$", "$options": "i"},
-                "deleted": False,
-            })
-            if not category_obj:
-                failed_rows.append({"row": idx, "error": f"Category '{category}' not found"})
-                continue
-            
-            product_ids = []
-            missing_product = None
-            for product_name in product_names:
-                product_obj = await SalesProduct.find_one({
-                    **company_filter,
-                    "name": {"$regex": f"^{re.escape(product_name)}$", "$options": "i"},
-                    "deleted": False,
-                })
-                if not product_obj:
-                    missing_product = product_name
-                    break
-                product_ids.append(str(product_obj.id))
-            if missing_product:
-                failed_rows.append({"row": idx, "error": f"Product '{missing_product}' not found"})
-                continue
-
-            stage_obj = await SalesStage.find_one({
-                **company_filter,
-                "name": {"$regex": f"^{re.escape(stage_name)}$", "$options": "i"},
-                "deleted": False,
-            })
-            if not stage_obj:
-                failed_rows.append({"row": idx, "error": f"Stage '{stage_name}' not found"})
-                continue
-
-            owner_parts = owner_name.split(maxsplit=1)
-            owner_query = {
-                **company_filter,
-                "first_name": {"$regex": f"^{re.escape(owner_parts[0])}$", "$options": "i"},
-                "status": "active",
-            }
-            if len(owner_parts) > 1:
-                owner_query["last_name"] = {
-                    "$regex": f"^{re.escape(owner_parts[1])}$", "$options": "i"
-                }
-            owner_obj = await User.find_one(owner_query)
-            if not owner_obj:
-                failed_rows.append({"row": idx, "error": f"Owner '{owner_name}' not found"})
-                continue
-            
-            prospect = SalesProspect(
-                first_name=first_name,
-                last_name=last_name,
-                prospect_name=f"{first_name} {last_name}",
-                country_code=country_code,
-                phone=phone,
-                email=(row.get("Email") or "").strip().lower() or None,
-                category_id=str(category_obj.id),
-                product_ids=product_ids,
-                interest_level=InterestLevel(interest_level),
-                estimated_close_date=_parse_datetime(estimated_close_date),
-                assigned_to=str(owner_obj.id),
-                assigned_by=str(current_user.id),
-                current_stage=str(stage_obj.id),
-                company_name=(row.get("Company") or "").strip() or None,
-                remark=(row.get("Remark") or "").strip() or None,
-                channel=(row.get("Channel") or "").strip() or None,
-                nationality=_parse_multi_value(row.get("Nationality", "")),
-                language=_parse_multi_value(row.get("Language", "")),
-                tag=_parse_multi_value(row.get("Tag", "")),
-                company_id=current_user.company_id,
-                created_by=str(current_user.id),
-            )
-            await prospect.insert()
-            success_count += 1
-        except Exception as e:
-            failed_rows.append({"row": idx, "error": str(e)})
-    
-=======
             parsed_interest_level = _parse_interest_level(interest_value)
         except ValueError:
             skipped_rows.append({
@@ -786,7 +655,6 @@ async def bulk_upload_prospects(
         assigned_breakdown[prospect.assigned_to] = (
             assigned_breakdown.get(prospect.assigned_to, 0) + 1
         )
->>>>>>> bf9c74a11722b6733a5e59ff953f1fb033516934
     return {
         "total_rows": total_input_rows,
         "total_uploaded": len(valid_prospects),
