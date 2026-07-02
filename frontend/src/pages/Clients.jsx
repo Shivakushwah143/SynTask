@@ -69,7 +69,13 @@ const Clients = () => {
       setClients(data.clients || [])
     } catch (error) {
       console.error('Error loading clients:', error)
-      toast.error('Failed to load clients')
+      if (error.response?.status === 403) {
+        toast.error('You do not have permission to view clients. Please contact your administrator.')
+      } else if (error.response?.status === 401) {
+        toast.error('Please login to view clients')
+      } else {
+        toast.error('Failed to load clients')
+      }
       setClients([])
     } finally {
       setLoading(false)

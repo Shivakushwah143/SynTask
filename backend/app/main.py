@@ -56,7 +56,9 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+    expose_headers=["Content-Type", "Authorization"],
+    max_age=600,
 )
 
 
@@ -67,7 +69,11 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    # Allow cross-origin access to uploaded files (images, documents)
+    if request.url.path.startswith("/uploads/") or request.url.path.startswith("/api/v1/files/"):
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
+    else:
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
     return response
 
 # Trusted Host Middleware (Security)
@@ -186,20 +192,9 @@ async def debug_backend():
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
 
-# Serve static files (uploads) with CORS headers
+# Serve static files (uploads)
 uploads_dir = Path("uploads")
 uploads_dir.mkdir(parents=True, exist_ok=True)
-
-from starlette.middleware.base import BaseHTTPMiddleware
-class CORSMiddlewareForStaticFiles(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-        return response
-
-app.add_middleware(CORSMiddlewareForStaticFiles)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Root endpoint

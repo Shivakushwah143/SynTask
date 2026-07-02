@@ -130,8 +130,10 @@ async def list_clients(
     current_user: User = Depends(get_current_user),
 ):
     """List all clients for the current user's company"""
-    # Super admins can see all clients across all companies
+    # Super admins and admins with no company can see all clients
     if current_user.role == UserRole.SUPER_ADMIN:
+        query = {}
+    elif current_user.role == UserRole.ADMIN and not current_user.company_id:
         query = {}
     else:
         query = {"company_id": current_user.company_id}
