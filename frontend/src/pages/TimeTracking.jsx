@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Clock, Plus, Trash2 } from 'lucide-react'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { timeTrackingApi } from '../api/timeTracking'
 import { tasksAPI } from '../api/tasks'
 import toast from 'react-hot-toast'
 
 const TimeTracking = () => {
+  const { confirm } = useConfirmation()
   const [tasks, setTasks] = useState([])
   const [selectedTask, setSelectedTask] = useState(null)
   const [timeLogs, setTimeLogs] = useState([])
@@ -17,6 +19,8 @@ const TimeTracking = () => {
     is_billable: false,
   })
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [deletingLogId, setDeletingLogId] = useState(null)
 
   useEffect(() => {
     loadTasks()
@@ -55,30 +59,44 @@ const TimeTracking = () => {
 
   const handleLogTime = async (e) => {
     e.preventDefault()
-    if (!selectedTask) return
+    if (!selectedTask || submitting) return
 
     try {
+      setSubmitting(true)
       await timeTrackingApi.logTime(selectedTask, formData)
       toast.success('Time logged successfully')
       setShowLogModal(false)
       setFormData({ hours: '', minutes: '0', description: '', is_billable: false })
-      loadTimeData(selectedTask)
+      await loadTimeData(selectedTask)
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to log time')
+    } finally {
+      setSubmitting(false)
     }
   }
 
   const handleDeleteLog = async (logId) => {
-    if (!window.confirm('Are you sure you want to delete this time log?')) return
+    if (deletingLogId) return
+    const confirmed = await confirm({
+      title: 'Delete Time Log',
+      message: 'Are you sure you want to delete this time log?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
 
     try {
+      setDeletingLogId(logId)
       await timeTrackingApi.deleteTimeLog(logId)
       toast.success('Time log deleted')
       if (selectedTask) {
-        loadTimeData(selectedTask)
+        await loadTimeData(selectedTask)
       }
     } catch (error) {
       toast.error('Failed to delete time log')
+    } finally {
+      setDeletingLogId(null)
     }
   }
 
@@ -190,8 +208,12 @@ const TimeTracking = () => {
                           </div>
                         </div>
                         <button
+                          type="button"
+                          disabled={Boolean(deletingLogId)}
                           onClick={() => handleDeleteLog(log.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded"
+                          aria-busy={deletingLogId === log.id || undefined}
+                          aria-label={deletingLogId === log.id ? 'Deleting time log' : 'Delete time log'}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -276,9 +298,11 @@ const TimeTracking = () => {
               <div className="flex gap-3 mt-6">
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                  disabled={submitting}
+                  aria-busy={submitting || undefined}
+                  className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Log Time
+                  {submitting ? 'Logging...' : 'Log Time'}
                 </button>
                 <button
                   type="button"

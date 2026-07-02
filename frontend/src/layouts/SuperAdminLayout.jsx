@@ -7,6 +7,7 @@ import {
   Settings, 
   Activity,
   LogOut,
+  Loader2,
   Menu,
   X,
   Package,
@@ -19,12 +20,13 @@ import ThemeToggle from '../components/ThemeToggle'
 const SuperAdminLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, logout } = useAuthStore()
+  const { user, logout, isLoggingOut } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
+  const handleLogout = async () => {
+    if (isLoggingOut) return
+    await logout()
+    navigate('/login', { replace: true })
   }
 
   const navigation = [
@@ -150,10 +152,11 @@ const SuperAdminLayout = () => {
             </div>
             <button
               onClick={handleLogout}
+              disabled={isLoggingOut}
               className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-              aria-label="Logout"
+              aria-label={isLoggingOut ? 'Logging out' : 'Logout'}
             >
-              <LogOut className="h-5 w-5" />
+              {isLoggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
             </button>
           </div>
         </div>

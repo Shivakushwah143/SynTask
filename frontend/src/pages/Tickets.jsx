@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2 } from 'lucide-react'
+import { useConfirmation } from '../hooks/useConfirmation'
 import { Link } from 'react-router-dom'
 import { ticketsAPI } from '../api/tickets'
 import { usersAPI } from '../api/users'
@@ -184,6 +185,7 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
 
 const Tickets = () => {
   const { user } = useAuthStore()
+  const { confirm } = useConfirmation()
   const userRole = normalizeRole(user?.role)
   const canManageRequests = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [tickets, setTickets] = useState([])
@@ -500,7 +502,14 @@ const Tickets = () => {
       return
     }
 
-    if (window.confirm(`Are you sure you want to delete the "${column.label}" column?`)) {
+    const confirmed = await confirm({
+      title: 'Delete Column',
+      message: `Are you sure you want to delete the "${column.label}" column?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (confirmed) {
       const newStatuses = statuses.filter(s => s.id !== column.id).sort((a, b) => a.order - b.order)
       saveStatuses(newStatuses)
       toast.success('Column deleted successfully')

@@ -41,6 +41,7 @@ export default function ProjectBoard() {
   const [selectedStatus, setSelectedStatus] = useState('todo')
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES)
   const [submitting, setSubmitting] = useState(false)
+  const [updatingTaskId, setUpdatingTaskId] = useState(null)
 
   useEffect(() => {
     loadProjectInfo()
@@ -134,12 +135,16 @@ export default function ProjectBoard() {
   }, [boardData])
 
   const handleTaskStatusChange = async (taskId, newStatus) => {
+    if (updatingTaskId) return
     try {
+      setUpdatingTaskId(taskId)
       await tasksAPI.updateTaskStatus(taskId, newStatus)
       toast.success('Task updated')
       await loadBoardData()
     } catch (error) {
       toast.error('Failed to update task')
+    } finally {
+      setUpdatingTaskId(null)
     }
   }
 
@@ -316,7 +321,7 @@ export default function ProjectBoard() {
                           {task.assigned_to_name ? <Badge label={task.assigned_to_name} colorKey="scheduled" /> : <Badge label="Unassigned" colorKey="scheduled" />}
                         </div>
                         <div className="mt-4 flex items-center justify-between gap-2">
-                          <select className={`${inputClassName} text-xs`} value={task.status} onChange={(event) => handleTaskStatusChange(task.id, event.target.value)} aria-label={`Move ${task.title}`}>
+                          <select className={`${inputClassName} text-xs`} value={task.status} disabled={Boolean(updatingTaskId)} onChange={(event) => handleTaskStatusChange(task.id, event.target.value)} aria-label={updatingTaskId === task.id ? `Moving ${task.title}` : `Move ${task.title}`} aria-busy={updatingTaskId === task.id || undefined}>
                             {statuses.map((option) => <option key={option.id} value={option.id}>{option.label || option.id}</option>)}
                           </select>
                           <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}/tasks/${task.id}`)}>

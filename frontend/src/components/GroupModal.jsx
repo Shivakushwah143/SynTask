@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { X, Users, Search, UserPlus, UserMinus, Shield, ShieldOff, Check } from 'lucide-react'
 import { chatAPI } from '../api/chat'
+import { useConfirmation } from '../hooks/useConfirmation'
 import toast from 'react-hot-toast'
 
 const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupCreated, onGroupUpdated }) => {
+  const { confirm } = useConfirmation()
   const [groupName, setGroupName] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -178,7 +180,14 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
   }
 
   const handleRemoveMember = async (userId, userName) => {
-    if (!confirm(`Are you sure you want to remove ${userName} from the group?`)) {
+    const confirmed = await confirm({
+      title: 'Remove Member',
+      message: `Are you sure you want to remove ${userName} from the group?`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) {
       return
     }
 
