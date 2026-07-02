@@ -7,7 +7,7 @@ export default function CRMLeadsPage() {
       <CRMRoutePlaceholder
         title="Leads"
         routeLabel="Leads"
-        description="Lead workspace placeholder for CRM intake."
+        description="Open a lead from the pipeline to view the lead workspace."
         icon={Users}
       />
     </CRMPage>
