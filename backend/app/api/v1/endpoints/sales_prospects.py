@@ -9,8 +9,8 @@ import io
 import re
 from pydantic import BaseModel
 
-from app.api.dependencies import get_current_user, require_module
-from app.models.user import User, UserRole
+from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_module
+from app.models.user import User, UserRole, UserStatus
 from app.models.sales_prospect import SalesProspect, InterestLevel, ProspectStatus
 from app.models.sales_contact import SalesContact
 from app.models.sales_category import SalesCategory
@@ -19,6 +19,21 @@ from app.models.sales_masters import SalesStage
 
 
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
+
+def _normalize_lead_csv_header(header: str) -> str:
+    normalized = (
+        str(header or "")
+        .lstrip("\ufeff")
+        .strip()
+        .lower()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
+    while "__" in normalized:
+        normalized = normalized.replace("__", "_")
+    if normalized in {"email_address", "email_id", "e_mail"}:
+        return "email"
+    return normalized
 
 
 def _ensure_create_permission(user: User):
@@ -35,6 +50,11 @@ def _parse_multi_value(value: str) -> List[str]:
     if not value or not value.strip():
         return []
     return [v.strip() for v in value.split("|") if v.strip()]
+
+def _parse_interest_level(value: str) -> InterestLevel:
+    normalized = (value or "").strip().lower()
+    legacy_values = {"high": "hot", "medium": "warm", "low": "cold"}
+    return InterestLevel(legacy_values.get(normalized, normalized))
 
 
 def _parse_datetime(date_str: str, time_str: Optional[str] = None) -> Optional[datetime]:
@@ -292,6 +312,7 @@ async def create_prospect(
     # Check duplicate: country_code + phone
     existing = await SalesProspect.find_one(
         {
+            "company_id": current_user.company_id,
             "country_code": country_code,
             "phone": phone,
             "deleted": False
@@ -316,7 +337,7 @@ async def create_prospect(
         contact_id=contact_id,
         category_id=category_id,
         product_ids=product_list,
-        interest_level=InterestLevel(interest_level.lower()),
+        interest_level=_parse_interest_level(interest_level),
         estimated_close_date=_parse_datetime(estimated_close_date),
         assigned_to=assigned_to,
         assigned_by=str(current_user.id),
@@ -392,7 +413,7 @@ async def update_prospect(
         product_list = [p.strip() for p in product_ids.replace(",", "|").split("|") if p.strip()]
         prospect.product_ids = product_list
     if interest_level:
-        prospect.interest_level = InterestLevel(interest_level.lower())
+        prospect.interest_level = _parse_interest_level(interest_level)
     if estimated_close_date:
         prospect.estimated_close_date = _parse_datetime(estimated_close_date)
     if reason_for_lost is not None:
@@ -407,9 +428,15 @@ async def update_prospect(
 
 @router.post("/bulk-upload")
 async def bulk_upload_prospects(
+<<<<<<< HEAD
+=======
+    strategy: str = Form(...),
+>>>>>>> bf9c74a11722b6733a5e59ff953f1fb033516934
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
+    target_user_id: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_company_admin_or_lead)
 ):
+<<<<<<< HEAD
     """Create prospects in the database from the CSV used by the prospects page."""
     _ensure_create_permission(current_user)
     
@@ -424,16 +451,119 @@ async def bulk_upload_prospects(
         "First Name", "Last Name", "Phone", "Category", "Stage",
         "Owner", "Interest Level", "Estimated Close Date", "Products"
     ]
+=======
+    """Bulk upload prospects from CSV with assignment strategies."""
+    if not file.filename.lower().endswith('.csv') and file.content_type != 'text/csv':
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Only CSV files are supported")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded")
+
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="File too large. Max size is 10 MB")
+
+    text = content.decode('utf-8-sig', errors='replace')
+    reader = csv.DictReader(io.StringIO(text))
+>>>>>>> bf9c74a11722b6733a5e59ff953f1fb033516934
     headers = reader.fieldnames or []
-    missing = [c for c in required_cols if c not in headers]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing columns: {', '.join(missing)}")
-    
-    success_count = 0
-    failed_rows = []
-    
+    normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
+
+    if 'email' not in normalized_headers:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="CSV must include an 'email' column")
+    if not any(h in normalized_headers for h in ['name', 'first_name']):
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="CSV must include either 'name' or 'first_name' column")
+
+    assignable_users = await User.find(
+        {
+            "company_id": current_user.company_id,
+            "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+            "status": UserStatus.ACTIVE,
+        }
+    ).to_list()
+
+    if not assignable_users:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="No employees or leads found in your company. Add employees before uploading leads."
+        )
+
+    employee_ids = [str(user.id) for user in assignable_users]
+    assigned_counts = {user_id: 0 for user_id in employee_ids}
+
+    if strategy not in ['round-robin', 'evenly', 'manual']:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid strategy")
+
+    if strategy == 'manual':
+        if not target_user_id:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")
+        if target_user_id not in employee_ids:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Target user must be an active Lead or Employee in your company")
+
+    rows = []
+    skipped_rows = []
+    warnings = []
+    seen_emails = set()
+    all_emails = set()
+    total_input_rows = 0
     for idx, row in enumerate(reader, start=2):
+        total_input_rows += 1
+        row_norm = {
+            _normalize_lead_csv_header(key): (value or '').strip()
+            for key, value in row.items()
+            if key is not None
+        }
+        email = (row_norm.get('email') or '').lower()
+        if not email:
+            skipped_rows.append({"row": idx, "reason": "Missing email"})
+            continue
+        if email in seen_emails:
+            skipped_rows.append({"row": idx, "reason": "Duplicate email in CSV"})
+            continue
+        seen_emails.add(email)
+        all_emails.add(email)
+        rows.append((idx, row_norm))
+
+    existing_leads = []
+    if all_emails:
+        existing_leads = await SalesProspect.find(
+            {
+                "company_id": current_user.company_id,
+                "email": {"$in": list(all_emails)},
+                "deleted": False,
+            }
+        ).to_list()
+    existing_emails = {lead.email.lower() for lead in existing_leads if lead.email}
+
+    parsed_rows = []
+    for idx, row_norm in rows:
+        email = row_norm.get('email', '').lower()
+        if email in existing_emails:
+            skipped_rows.append({"row": idx, "reason": "Duplicate email already exists"})
+            continue
+
+        name = row_norm.get('name', '')
+        first_name = row_norm.get('first_name', '')
+        last_name = row_norm.get('last_name', '')
+        if not first_name and name:
+            parts = name.split()
+            first_name = parts[0]
+            last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
+        if not first_name:
+            skipped_rows.append({"row": idx, "reason": "Missing name"})
+            continue
+
+        status_value = (row_norm.get('status') or ProspectStatus.ACTIVE.value).lower()
+        if status_value not in {status.value for status in ProspectStatus}:
+            skipped_rows.append({
+                "row": idx,
+                "reason": f"Invalid status '{status_value}'. Use active, won, lost, or closed",
+            })
+            continue
+
+        interest_value = row_norm.get('interest_level') or InterestLevel.WARM.value
         try:
+<<<<<<< HEAD
             country_code = (row.get("Country Code") or "+91").strip()
             phone = (row.get("Phone") or "").strip()
             first_name = (row.get("First Name") or "").strip()
@@ -543,10 +673,126 @@ async def bulk_upload_prospects(
         except Exception as e:
             failed_rows.append({"row": idx, "error": str(e)})
     
+=======
+            parsed_interest_level = _parse_interest_level(interest_value)
+        except ValueError:
+            skipped_rows.append({
+                "row": idx,
+                "reason": (
+                    f"Invalid interest_level '{interest_value}'. "
+                    "Use hot, warm, cold, high, medium, or low"
+                ),
+            })
+            continue
+
+        estimated_close_date_value = row_norm.get('estimated_close_date')
+        estimated_close_date = (
+            _parse_datetime(estimated_close_date_value)
+            if estimated_close_date_value
+            else None
+        )
+        if estimated_close_date_value and estimated_close_date is None:
+            skipped_rows.append({
+                "row": idx,
+                "reason": "Invalid estimated_close_date. Use YYYY-MM-DD or DD-MM-YYYY",
+            })
+            continue
+
+        product_ids_value = row_norm.get('product_ids') or ''
+        parsed_rows.append(
+            {
+                "row": idx,
+                "first_name": first_name,
+                "last_name": last_name,
+                "prospect_name": f"{first_name} {last_name}".strip(),
+                "country_code": row_norm.get('country_code') or '+91',
+                "email": email,
+                "company_name": row_norm.get('company') or row_norm.get('company_name') or None,
+                "phone": row_norm.get('phone') or '',
+                "category_id": row_norm.get('category_id') or None,
+                "product_ids": _parse_multi_value(product_ids_value),
+                "interest_level": parsed_interest_level,
+                "estimated_close_date": estimated_close_date,
+                "status": status_value,
+                "source": row_norm.get('source') or 'bulk_upload',
+                "assigned_to": None,
+                "assigned_by": str(current_user.id),
+                "current_stage": row_norm.get('stage') or row_norm.get('current_stage') or 'new',
+                "remark": row_norm.get('remark') or None,
+                "company_id": current_user.company_id,
+                "created_by": str(current_user.id),
+            }
+        )
+
+    if not parsed_rows:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="No valid leads found in the uploaded CSV"
+        )
+
+    if strategy == 'manual':
+        assigned_user_id = target_user_id
+        for row in parsed_rows:
+            row['assigned_to'] = assigned_user_id
+            assigned_counts[assigned_user_id] += 1
+    else:
+        total = len(parsed_rows)
+        assign_count = len(employee_ids)
+        if assign_count == 0:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="No assignable employees or leads available"
+            )
+
+        if strategy == 'round-robin':
+            for idx, row in enumerate(parsed_rows):
+                assignee = employee_ids[idx % assign_count]
+                row['assigned_to'] = assignee
+                assigned_counts[assignee] += 1
+        elif strategy == 'evenly':
+            base = total // assign_count
+            remainder = total % assign_count
+            assignment_list = []
+            for idx_user, user_id in enumerate(employee_ids):
+                count = base + (1 if idx_user < remainder else 0)
+                assignment_list.extend([user_id] * count)
+            for row, assignee in zip(parsed_rows, assignment_list):
+                row['assigned_to'] = assignee
+                assigned_counts[assignee] += 1
+
+    # Build model instances before writing so bulk-created records receive the
+    # same validation and default fields as prospects created by POST /.
+    valid_prospects = []
+    for row in parsed_rows:
+        row_number = row.pop("row")
+        try:
+            valid_prospects.append(SalesProspect(**row))
+        except Exception as exc:
+            skipped_rows.append({
+                "row": row_number,
+                "reason": f"Invalid prospect data: {str(exc)[:300]}",
+            })
+
+    if not valid_prospects:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="No valid leads found after database-model validation",
+        )
+
+    await SalesProspect.insert_many(valid_prospects)
+
+    assigned_breakdown = {}
+    for prospect in valid_prospects:
+        assigned_breakdown[prospect.assigned_to] = (
+            assigned_breakdown.get(prospect.assigned_to, 0) + 1
+        )
+>>>>>>> bf9c74a11722b6733a5e59ff953f1fb033516934
     return {
-        "success_count": success_count,
-        "failed_count": len(failed_rows),
-        "failed_rows": failed_rows[:100]
+        "total_rows": total_input_rows,
+        "total_uploaded": len(valid_prospects),
+        "skipped_rows": len(skipped_rows),
+        "assigned_breakdown": assigned_breakdown,
+        "warnings": skipped_rows[:50],
     }
 
 
