@@ -1,9 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
 import { memo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, BadgeInfo, CalendarClock, Clock3, FileText, History, Lock, Mail, MessageSquare, Sparkles, StickyNote, Video, Wand2 } from 'lucide-react'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
-import { Badge, Button, EmptyState } from '../../../components/ui'
+import { Badge, Button, EmptyState, inputClassName } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
 
 export const LEAD_TABS = [
@@ -67,7 +67,7 @@ export const LeadWorkspaceLayout = memo(function LeadWorkspaceLayout({ body, sid
 })
 
 export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [] }) {
-  const companyName = lead?.company_name || lead?.prospect_name || 'Lead'
+  const companyName = lead?.crm_company_name || lead?.company_name || lead?.prospect_name || 'Lead'
   const contactName = getLeadContactLabel(lead)
   const ownerName = getLeadOwnerLabel(lead)
   const leadTags = getLeadTags(lead)
@@ -175,8 +175,8 @@ export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
 
 export const LeadOverview = memo(function LeadOverview({ lead }) {
   const items = [
-    { label: 'Company', value: lead?.company_name || '-' },
-    { label: 'Primary Contact', value: lead?.primary_contact || lead?.contact_name || lead?.prospect_name || '-' },
+    { label: 'Company', value: lead?.crm_company_name || lead?.company_name || '-' },
+    { label: 'Primary Contact', value: lead?.crm_contact_name || lead?.primary_contact || lead?.contact_name || lead?.prospect_name || '-' },
     { label: 'Owner', value: lead?.owner_name || lead?.assigned_to_name || lead?.assigned_to || '-' },
     { label: 'Stage', value: lead?.current_stage || '-' },
     { label: 'Priority', value: lead?.priority || lead?.interest_level || '-' },
@@ -213,12 +213,17 @@ export const LeadSummaryCards = memo(function LeadSummaryCards({ lead }) {
   )
 })
 
-export const LeadSidebar = memo(function LeadSidebar() {
+export const LeadSidebar = memo(function LeadSidebar({ lead }) {
   const navigate = useNavigate()
+  const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
   return (
     <div className="space-y-6">
       <CRMSection title="Quick Actions" description="Shortcuts for lead workflows that already exist.">
         <div className="grid gap-2">
+          <Link className="btn btn-secondary justify-between" to={activityPath}>
+            <span>Lead activities</span>
+            <ArrowRight className="h-4 w-4" />
+          </Link>
           <Button type="button" variant="primary" className="justify-between" onClick={() => navigate('/crm/pipeline')}>
             <span>Back to pipeline</span>
             <ArrowRight className="h-4 w-4" />
@@ -367,15 +372,160 @@ export const LeadEmailsTab = memo(function LeadEmailsTab() {
   )
 })
 
-export const LeadProposalTab = memo(function LeadProposalTab() {
+export const LeadProposalTab = memo(function LeadProposalTab({
+  deal = null,
+  proposals = [],
+  form,
+  onChange,
+  onSubmit,
+  onArchive,
+  isSaving = false,
+  isLoading = false,
+  errorMessage = '',
+  onRetry,
+}) {
+  if (isLoading) {
+    return (
+      <CRMSection title="Proposal" description="Loading the deal and proposal history.">
+        <div className="space-y-3">
+          {[1, 2].map((item) => (
+            <div key={item} className="h-32 animate-pulse rounded-3xl bg-gray-100 dark:bg-gray-800" />
+          ))}
+        </div>
+      </CRMSection>
+    )
+  }
+
+  if (errorMessage) {
+    return (
+      <CRMSection title="Proposal" description="Could not load deal data.">
+        <EmptyState
+          icon={Wand2}
+          title="Proposal unavailable"
+          description={errorMessage}
+          action={(
+            <Button type="button" variant="primary" onClick={onRetry}>
+              Retry
+            </Button>
+          )}
+        />
+      </CRMSection>
+    )
+  }
+
   return (
-    <CRMSection title="Proposal" description="Proposal generation is intentionally disabled here.">
-      <CRMEmptyState
-        icon={Wand2}
-        title="Proposal coming soon"
-        description="Proposal workflows remain out of scope for this sprint."
-      />
-    </CRMSection>
+    <div className="space-y-6">
+      <CRMSection title="Deal" description="One deal owns multiple proposal versions.">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryChip label="Value" value={formatCurrency(deal?.value ?? 0)} />
+          <SummaryChip label="Stage" value={deal?.stage || '-'} />
+          <SummaryChip label="Probability" value={`${deal?.probability ?? 0}%`} />
+          <SummaryChip label="Expected close" value={formatShortDate(deal?.expected_close_date)} />
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Decision maker</p>
+            <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{deal?.decision_maker || 'Not set'}</p>
+          </article>
+          <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Competitors</p>
+            <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+              {Array.isArray(deal?.competitors) && deal.competitors.length ? deal.competitors.join(', ') : 'None recorded'}
+            </p>
+          </article>
+        </div>
+      </CRMSection>
+
+      <CRMSection title="Proposal composer" description="Create or update proposal versions without leaving the lead workspace.">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Title</span>
+            <input className={inputClassName} value={form.title} onChange={(event) => onChange('title', event.target.value)} placeholder="Proposal v1" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Status</span>
+            <select className={inputClassName} value={form.status} onChange={(event) => onChange('status', event.target.value)}>
+              <option value="draft">Draft</option>
+              <option value="sent">Sent</option>
+              <option value="viewed">Viewed</option>
+              <option value="accepted">Accepted</option>
+              <option value="rejected">Rejected</option>
+              <option value="expired">Expired</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Deal value</span>
+            <input className={inputClassName} type="number" value={form.deal_value} onChange={(event) => onChange('deal_value', event.target.value)} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Probability %</span>
+            <input className={inputClassName} type="number" min="0" max="100" value={form.probability} onChange={(event) => onChange('probability', event.target.value)} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Expected close date</span>
+            <input className={inputClassName} type="datetime-local" value={form.expected_close_date} onChange={(event) => onChange('expected_close_date', event.target.value)} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Decision maker</span>
+            <input className={inputClassName} value={form.decision_maker} onChange={(event) => onChange('decision_maker', event.target.value)} />
+          </label>
+          <label className="block lg:col-span-2">
+            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Competitors</span>
+            <input className={inputClassName} value={form.competitors} onChange={(event) => onChange('competitors', event.target.value)} placeholder="Comma separated competitors" />
+          </label>
+          <label className="block lg:col-span-2">
+            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Negotiation notes</span>
+            <textarea className={`${inputClassName} min-h-28`} value={form.negotiation_notes} onChange={(event) => onChange('negotiation_notes', event.target.value)} />
+          </label>
+          <label className="block lg:col-span-2">
+            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Summary</span>
+            <textarea className={`${inputClassName} min-h-24`} value={form.summary} onChange={(event) => onChange('summary', event.target.value)} />
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          {proposals[0] && !proposals[0].archived ? (
+            <Button type="button" variant="secondary" onClick={() => onArchive?.(proposals[0])}>Archive latest</Button>
+          ) : null}
+          <Button type="button" variant="primary" onClick={onSubmit} disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save proposal version'}
+          </Button>
+        </div>
+      </CRMSection>
+
+      <CRMSection title="Proposal versions" description="Version history for the current deal.">
+        <div className="space-y-3">
+          {proposals.length ? proposals.map((proposal) => (
+            <article key={proposal.id} className="rounded-3xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{proposal.title}</h3>
+                    <Badge label={`v${proposal.version}`} colorKey="draft" />
+                    <Badge label={proposal.status} colorKey={proposal.status === 'accepted' ? 'completed' : proposal.status === 'rejected' ? 'critical' : 'scheduled'} />
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{proposal.summary || 'No summary provided.'}</p>
+                </div>
+                <div className="text-right text-xs text-gray-500 dark:text-gray-400">
+                  <p>Created {formatShortDate(proposal.created_at)}</p>
+                  <p className="mt-1">{proposal.archived ? 'Archived' : 'Active'}</p>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge label={`Value ${formatCurrency(proposal.deal_value || 0)}`} colorKey="draft" />
+                <Badge label={`Close ${formatShortDate(proposal.expected_close_date)}`} colorKey="draft" />
+                <Badge label={`Probability ${proposal.probability ?? 0}%`} colorKey="draft" />
+              </div>
+            </article>
+          )) : (
+            <CRMEmptyState
+              icon={Wand2}
+              title="No proposals yet"
+              description="Create the first proposal version for this deal."
+            />
+          )}
+        </div>
+      </CRMSection>
+    </div>
   )
 })
 

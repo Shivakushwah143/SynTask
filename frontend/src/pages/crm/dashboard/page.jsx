@@ -1,5 +1,5 @@
 import { useQuery } from 'react-query'
-import { Activity, ArrowRight, CalendarDays, Clock3, TrendingUp, Users } from 'lucide-react'
+import { Activity, ArrowRight, CalendarDays, Clock3, LineChart, TrendingUp, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { activityAPI } from '../../../api/activity'
@@ -46,6 +46,13 @@ export default function CRMDashboardPage() {
 
   const currency = dashboard?.sales?.meta?.currency || 'INR'
   const stats = dashboard?.sales?.summary || {}
+  const analytics = dashboard?.analytics || {}
+  const revenue = analytics?.revenue || {}
+  const kpis = analytics?.kpis || {}
+  const leaderboards = Array.isArray(analytics?.leaderboards) ? analytics.leaderboards : []
+  const pipelineAnalytics = analytics?.pipeline || {}
+  const clientRevenue = Array.isArray(analytics?.analytics?.revenue_by_client) ? analytics.analytics.revenue_by_client : []
+  const stageConversion = Array.isArray(kpis?.stage_conversion) ? kpis.stage_conversion : []
 
   const today = new Date()
   const todayActivities = activities.filter((item) => {
@@ -124,6 +131,90 @@ export default function CRMDashboardPage() {
               helper="Closed business last month."
               tone="slate"
             />
+          </div>
+        )}
+      </CRMSection>
+
+      <CRMSection title="Sales Analytics" description="Revenue, KPI and pipeline intelligence from CRM deals and proposals.">
+        {loading ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[1, 2, 3, 4].map((item) => (
+              <div key={item} className="rounded-2xl border border-surface-border/80 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">
+                <Skeleton className="h-5 w-10" />
+                <Skeleton className="mt-3 h-8 w-32" />
+                <Skeleton className="mt-3 h-4 w-40" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <CRMStatCard icon={TrendingUp} label="Total Revenue" value={formatCurrency(revenue.total_revenue ?? 0, currency)} tone="blue" />
+              <CRMStatCard icon={TrendingUp} label="Monthly Revenue" value={formatCurrency(revenue.monthly_revenue ?? 0, currency)} tone="emerald" />
+              <CRMStatCard icon={TrendingUp} label="Forecast Revenue" value={formatCurrency(revenue.forecast_revenue ?? 0, currency)} tone="amber" />
+              <CRMStatCard icon={TrendingUp} label="Weighted Pipeline" value={formatCurrency(revenue.weighted_pipeline_value ?? 0, currency)} tone="slate" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <CRMStatCard icon={LineChart} label="Total Deals" value={String(kpis.total_deals ?? 0)} tone="blue" />
+              <CRMStatCard icon={LineChart} label="Won Deals" value={String(kpis.won_deals ?? 0)} tone="emerald" />
+              <CRMStatCard icon={LineChart} label="Win Rate" value={`${kpis.win_rate ?? 0}%`} tone="amber" />
+              <CRMStatCard icon={LineChart} label="Avg Deal Size" value={formatCurrency(kpis.average_deal_size ?? 0, currency)} tone="slate" />
+            </div>
+            <div className="grid gap-6 xl:grid-cols-2">
+              <CRMSection title="Pipeline Analytics" description="Value, stuck deals, and closing pressure.">
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">Pipeline Value: {formatCurrency(pipelineAnalytics.pipeline_value ?? 0, currency)}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">Stuck Deals: {pipelineAnalytics.stuck_deals ?? 0}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">Expected Close This Month: {pipelineAnalytics.expected_close_this_month ?? 0}</p>
+                  <div className="space-y-2">
+                    {(Array.isArray(pipelineAnalytics.deals_by_stage) ? pipelineAnalytics.deals_by_stage : []).map((stage) => (
+                      <div key={stage.stage} className="flex items-center justify-between rounded-xl border border-surface-border/80 p-3">
+                        <span className="text-sm font-medium">{stage.stage}</span>
+                        <span className="text-xs text-gray-500">{stage.count} · {formatCurrency(stage.value || 0, currency)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CRMSection>
+              <CRMSection title="Leaderboards" description="Salesperson performance from closed deals.">
+                <div className="space-y-2">
+                  {leaderboards.length ? leaderboards.map((row) => (
+                    <article key={row.salesperson} className="rounded-xl border border-surface-border/80 p-3">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{row.salesperson}</p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Revenue {formatCurrency(row.revenue || 0, currency)} · Wins {row.deals_closed || 0} · Win Rate {row.win_rate || 0}%
+                      </p>
+                    </article>
+                  )) : (
+                    <CRMEmptyState icon={LineChart} title="No leaderboard data" description="Closed deals will populate this list." />
+                  )}
+                </div>
+              </CRMSection>
+            </div>
+            <CRMSection title="Revenue by Client" description="Closed revenue by client.">
+              <div className="space-y-2">
+                {clientRevenue.length ? clientRevenue.map((row) => (
+                  <div key={row.client} className="flex items-center justify-between rounded-xl border border-surface-border/80 p-3">
+                    <span className="text-sm">{row.client}</span>
+                    <span className="text-xs text-gray-500">{formatCurrency(row.revenue || 0, currency)}</span>
+                  </div>
+                )) : (
+                  <CRMEmptyState icon={Users} title="No client revenue yet" description="Won deals will appear here." />
+                )}
+              </div>
+            </CRMSection>
+            <CRMSection title="Stage Conversion" description="Conversion percentage between pipeline stages.">
+              <div className="space-y-2">
+                {stageConversion.length ? stageConversion.map((item) => (
+                  <div key={`${item.from}-${item.to}`} className="flex items-center justify-between rounded-xl border border-surface-border/80 p-3">
+                    <span className="text-sm">{item.from} → {item.to}</span>
+                    <span className="text-xs text-gray-500">{item.conversion_percent}%</span>
+                  </div>
+                )) : (
+                  <CRMEmptyState icon={LineChart} title="No conversion data yet" description="Stage movement data will appear as deals progress." />
+                )}
+              </div>
+            </CRMSection>
           </div>
         )}
       </CRMSection>

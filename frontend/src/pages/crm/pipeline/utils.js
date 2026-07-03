@@ -53,6 +53,8 @@ export const formatShortDate = (value) => {
 export const buildLeadSearchText = (lead) => {
   const values = [
     lead?.company_name,
+    lead?.crm_company_name,
+    lead?.crm_contact_name,
     ...CONTACT_FIELDS.map((field) => lead?.[field]),
     ...OWNER_FIELDS.map((field) => lead?.[field]),
     lead?.prospect_name,
@@ -87,7 +89,7 @@ export const getLeadOwnerLabel = (lead) => {
 }
 
 export const getLeadContactLabel = (lead) => {
-  const contact = lead?.primary_contact || lead?.primary_contact_name || lead?.contact_name || lead?.contact || lead?.prospect_name
+  const contact = lead?.crm_contact_name || lead?.primary_contact || lead?.primary_contact_name || lead?.contact_name || lead?.contact || lead?.prospect_name
   return contact ? String(contact) : 'Unassigned contact'
 }
 

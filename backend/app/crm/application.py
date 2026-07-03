@@ -6,6 +6,7 @@ from app.models.user import User, UserRole
 from app.services.crm_dashboard_service import (
     build_crm_workspace_config,
     build_sales_dashboard_summary,
+    build_sales_analytics_summary,
 )
 
 
@@ -24,9 +25,11 @@ def build_crm_workspace_manifest(current_user: User) -> Dict[str, Any]:
 async def build_crm_dashboard(current_user: User) -> Dict[str, Any]:
     workspace_manifest = build_crm_workspace_manifest(current_user)
     sales_summary = await build_sales_dashboard_summary(current_user)
+    sales_analytics = await build_sales_analytics_summary(current_user)
     return {
         "workspace": workspace_manifest["workspace"],
         "sales": sales_summary,
+        "analytics": sales_analytics,
         "navigation": workspace_manifest["navigation"],
         "feature_flags": workspace_manifest["feature_flags"],
         "permissions": workspace_manifest["permissions"],

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_module
 from app.models.user import User, UserRole, UserStatus
+from app.models.crm_company import CRMCompany
 from app.models.sales_prospect import SalesProspect, InterestLevel, ProspectStatus
 from app.models.sales_contact import SalesContact
 from app.models.sales_category import SalesCategory
@@ -205,6 +206,7 @@ async def list_prospects(
                 "assigned_by": p.assigned_by,
                 "category_id": p.category_id,
                 "product_ids": p.product_ids,
+                "crm_company_id": p.crm_company_id,
                 "current_stage": p.current_stage,
                 "status": p.status.value,
                 "interest_level": p.interest_level.value,
@@ -248,6 +250,7 @@ async def get_prospect(
         "phone": prospect.phone,
         "email": prospect.email,
         "contact_id": prospect.contact_id,
+        "crm_company_id": prospect.crm_company_id,
         "category_id": prospect.category_id,
         "product_ids": prospect.product_ids,
         "interest_level": prospect.interest_level.value,
@@ -295,6 +298,7 @@ async def create_prospect(
     due_time: Optional[str] = Form(None),  # HH:MM AM/PM
     remark: Optional[str] = Form(None),
     company_name: Optional[str] = Form(None),
+    crm_company_id: Optional[str] = Form(None),
     relationship_type: Optional[str] = Form(None),
     channel: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
@@ -326,6 +330,14 @@ async def create_prospect(
     
     # Parse product_ids
     product_list = [p.strip() for p in product_ids.replace(",", "|").split("|") if p.strip()]
+    resolved_company_name = company_name.strip() if company_name else None
+    if crm_company_id:
+        company = await CRMCompany.get(crm_company_id)
+        if not company or company.deleted:
+            raise HTTPException(status_code=400, detail="Company not found")
+        if current_user.role != UserRole.SUPER_ADMIN and company.company_id != current_user.company_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        resolved_company_name = company.name
     
     prospect = SalesProspect(
         first_name=first_name.strip(),
@@ -345,7 +357,8 @@ async def create_prospect(
         due_date=_parse_datetime(due_date, due_time) if due_date else None,
         due_time=due_time,
         remark=remark.strip() if remark else None,
-        company_name=company_name.strip() if company_name else None,
+        company_name=resolved_company_name,
+        crm_company_id=crm_company_id,
         relationship_type=relationship_type,
         channel=channel,
         designation=designation.strip() if designation else None,
@@ -378,6 +391,7 @@ async def update_prospect(
     estimated_close_date: Optional[str] = Form(None),
     reason_for_lost: Optional[str] = Form(None),
     won_amount: Optional[float] = Form(None),
+    crm_company_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
     """Update prospect (stage, status, etc.)"""
@@ -416,6 +430,14 @@ async def update_prospect(
         prospect.interest_level = _parse_interest_level(interest_level)
     if estimated_close_date:
         prospect.estimated_close_date = _parse_datetime(estimated_close_date)
+    if crm_company_id is not None:
+        company = await CRMCompany.get(crm_company_id) if crm_company_id else None
+        if crm_company_id and (not company or company.deleted):
+            raise HTTPException(status_code=400, detail="Company not found")
+        if company and current_user.role != UserRole.SUPER_ADMIN and company.company_id != current_user.company_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        prospect.crm_company_id = crm_company_id
+        prospect.company_name = company.name if company else prospect.company_name
     if reason_for_lost is not None:
         prospect.reason_for_lost = reason_for_lost.strip() if reason_for_lost else None
     if won_amount is not None:
@@ -707,4 +729,3 @@ async def search_contact_for_prospect(
             for c in contacts
         ]
     }
-

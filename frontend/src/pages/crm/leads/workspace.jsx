@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useQuery, useQueryClient } from 'react-query'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -20,6 +20,17 @@ export default function CRMLeadWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [timelineSearch, setTimelineSearch] = useState('')
   const [timelineFilter, setTimelineFilter] = useState('all')
+  const [proposalForm, setProposalForm] = useState({
+    title: '',
+    summary: '',
+    status: 'draft',
+    deal_value: '',
+    expected_close_date: '',
+    probability: '0',
+    negotiation_notes: '',
+    competitors: '',
+    decision_maker: '',
+  })
 
   const activeTab = searchParams.get(ACTIVE_TAB_KEY) || 'overview'
 
@@ -58,8 +69,36 @@ export default function CRMLeadWorkspacePage() {
     }
   )
 
+  const proposalQuery = useQuery(
+    [WORKSPACE_QUERY_KEY, leadId, 'proposal'],
+    () => crmApi.getLeadProposals(leadId),
+    {
+      enabled: Boolean(leadId) && activeTab === 'proposal',
+      retry: false,
+      staleTime: 60 * 1000,
+    }
+  )
+
   const lead = leadQuery.data || null
   const errorStatus = leadQuery.error?.response?.status
+  const deal = proposalQuery.data?.deal || null
+  const proposals = useMemo(() => Array.isArray(proposalQuery.data?.proposals) ? proposalQuery.data.proposals : [], [proposalQuery.data])
+
+  useEffect(() => {
+    if (!deal) return
+    setProposalForm((state) => ({
+      ...state,
+      title: proposals[0]?.title || state.title,
+      summary: proposals[0]?.summary || state.summary,
+      status: proposals[0]?.status || state.status,
+      deal_value: String(deal.value ?? proposals[0]?.deal_value ?? state.deal_value ?? ''),
+      expected_close_date: proposals[0]?.expected_close_date || deal.expected_close_date || state.expected_close_date || '',
+      probability: String(proposals[0]?.probability ?? deal.probability ?? state.probability ?? 0),
+      negotiation_notes: proposals[0]?.negotiation_notes || deal.negotiation_notes || state.negotiation_notes,
+      competitors: Array.isArray(proposals[0]?.competitors) ? proposals[0].competitors.join(', ') : (Array.isArray(deal.competitors) ? deal.competitors.join(', ') : state.competitors),
+      decision_maker: proposals[0]?.decision_maker || deal.decision_maker || state.decision_maker,
+    }))
+  }, [deal, proposals])
 
   const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId], { exact: true })
@@ -80,12 +119,81 @@ export default function CRMLeadWorkspacePage() {
     }, { replace: true })
   }, [setSearchParams])
 
+  const updateProposalMutation = useMutation(
+    (payload) => crmApi.updateLeadDeal(leadId, payload),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'proposal'], { exact: true })
+      },
+    }
+  )
+
+  const saveProposalMutation = useMutation(
+    (payload) => crmApi.createLeadProposal(leadId, payload),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'proposal'], { exact: true })
+      },
+    }
+  )
+
+  const archiveProposalMutation = useMutation(
+    (proposalId) => crmApi.archiveLeadProposal(leadId, proposalId),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'proposal'], { exact: true })
+      },
+    }
+  )
+
+  const handleProposalChange = useCallback((key, value) => {
+    setProposalForm((state) => ({ ...state, [key]: value }))
+  }, [])
+
+  const handleProposalSubmit = useCallback(() => {
+    const payload = {
+      title: proposalForm.title,
+      summary: proposalForm.summary,
+      status: proposalForm.status,
+      deal_value: proposalForm.deal_value ? Number(proposalForm.deal_value) : undefined,
+      expected_close_date: proposalForm.expected_close_date ? new Date(proposalForm.expected_close_date).toISOString() : undefined,
+      probability: proposalForm.probability ? Number(proposalForm.probability) : undefined,
+      negotiation_notes: proposalForm.negotiation_notes,
+      competitors: String(proposalForm.competitors || '').split(',').map((item) => item.trim()).filter(Boolean),
+      decision_maker: proposalForm.decision_maker,
+    }
+    saveProposalMutation.mutate(payload)
+    updateProposalMutation.mutate({
+      value: payload.deal_value,
+      probability: payload.probability,
+      expected_close_date: payload.expected_close_date,
+      decision_maker: payload.decision_maker,
+      competitors: payload.competitors,
+      negotiation_notes: payload.negotiation_notes,
+    })
+  }, [proposalForm, saveProposalMutation, updateProposalMutation])
+
   let body
   if (activeTab === 'notes') body = <LeadNotesTab leadId={leadId} lead={lead} />
   else if (activeTab === 'files') body = <LeadFilesTab leadId={leadId} lead={lead} />
   else if (activeTab === 'meetings') body = <LeadMeetingsTab />
   else if (activeTab === 'emails') body = <LeadEmailsTab />
-  else if (activeTab === 'proposal') body = <LeadProposalTab />
+  else if (activeTab === 'proposal') {
+    body = (
+      <LeadProposalTab
+        deal={deal}
+        proposals={proposals}
+        form={proposalForm}
+        onChange={handleProposalChange}
+        onSubmit={handleProposalSubmit}
+        onArchive={(proposal) => archiveProposalMutation.mutate(proposal.id)}
+        isSaving={saveProposalMutation.isLoading || updateProposalMutation.isLoading || archiveProposalMutation.isLoading}
+        isLoading={proposalQuery.isLoading}
+        errorMessage={proposalQuery.isError ? proposalQuery.error?.response?.data?.detail || 'Proposal data could not be loaded.' : ''}
+        onRetry={() => proposalQuery.refetch()}
+      />
+    )
+  }
   else if (activeTab === 'ai') body = <LeadAITab />
   else if (activeTab === 'timeline') {
     body = (
@@ -181,7 +289,7 @@ export default function CRMLeadWorkspacePage() {
         }
       }}
       body={body}
-      sidebar={<LeadSidebar />}
+      sidebar={<LeadSidebar lead={lead} />}
     />
   )
 }

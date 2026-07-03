@@ -8,6 +8,10 @@ import logging
 from app.core.config import settings
 from app.models.user import User, SuperAdmin, CompanyAdmin, Admin, Manager, Lead, Employee
 from app.models.company import Company, Subscription
+from app.models.crm_company import CRMCompany
+from app.models.crm_activity import CRMActivity
+from app.models.crm_deal import CRMDeal
+from app.models.crm_proposal import CRMProposal
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.company_subscription import CompanySubscription
 from app.models.usage_tracking import UsageTracking
@@ -116,6 +120,10 @@ async def init_db():
                 Lead,
                 Employee,
                 Company,
+                CRMCompany,
+                CRMActivity,
+                CRMDeal,
+                CRMProposal,
                 Subscription,
                 SubscriptionPlan,
                 CompanySubscription,
