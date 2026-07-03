@@ -78,7 +78,7 @@ const SuperAdminLayout = () => {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-gray-50 dark:bg-gray-950">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -163,7 +163,7 @@ const SuperAdminLayout = () => {
       </aside>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+      <div className="min-w-0 max-w-full lg:pl-64">
         {/* Top bar */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 dark:border-gray-800 dark:bg-gray-950 lg:px-6">
           <button
@@ -183,7 +183,7 @@ const SuperAdminLayout = () => {
         </header>
 
         {/* Page content */}
-        <main className="p-4 lg:p-6">
+        <main className="min-w-0 max-w-full overflow-x-hidden p-4 lg:p-6">
           <Outlet />
         </main>
       </div>

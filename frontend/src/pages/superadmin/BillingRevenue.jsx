@@ -1,8 +1,9 @@
 import { useQuery } from 'react-query'
-import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Line, LineChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { CreditCard } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
 import { EmptyState, PageHeader, SkeletonTable, Table } from '../../components/ui'
+import { ChartTooltip } from '../../components/charts/ChartTooltip'
 import { asArray, formatDate, formatMoney } from '../phase4Utils'
 
 export default function BillingRevenue() {
@@ -26,7 +27,7 @@ export default function BillingRevenue() {
             <Stat label="ARR" value={formatMoney(revenue.data?.arr || revenue.data?.annual_recurring_revenue)} />
             <Stat label="Collected" value={formatMoney(revenue.data?.total_collected || revenue.data?.total_revenue)} />
           </div>
-          {trend.length ? <section className="rounded-lg border border-gray-200 bg-white p-4"><h2 className="mb-4 font-semibold">Revenue trend</h2><div className="h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis /><Tooltip /><Line dataKey="revenue" stroke="#2563eb" strokeWidth={2} /></LineChart></ResponsiveContainer></div></section> : null}
+          {trend.length ? <section className="rounded-lg border border-gray-200 bg-white p-4"><h2 className="mb-4 font-semibold">Revenue trend</h2><div className="h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis /><ChartTooltip cursor={{ stroke: '#2563eb', strokeDasharray: '4 4', strokeOpacity: 0.45 }} valueFormatter={(value) => formatMoney(value)} /><Line dataKey="revenue" name="Revenue" stroke="#2563eb" strokeWidth={2} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }} /></LineChart></ResponsiveContainer></div></section> : null}
           {rows.length ? <Table columns={columns} data={rows} /> : <EmptyState icon={CreditCard} title="No transactions found" />}
         </div>
       )}

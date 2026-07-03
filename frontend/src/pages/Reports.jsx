@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from 'react-query'
-import { Bar, BarChart, CartesianGrid, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Line, LineChart, Pie, PieChart, ResponsiveContainer, XAxis, YAxis, Cell } from 'recharts'
 import { BarChart3 } from 'lucide-react'
 import { reportsAPI } from '../api/reports'
 import { Button, EmptyState, PageHeader, SkeletonCard } from '../components/ui'
+import { ChartTooltip } from '../components/charts/ChartTooltip'
 
 const COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626']
 
@@ -43,7 +44,7 @@ export default function Reports() {
                 <Pie data={taskRows} dataKey="value" nameKey="name" label>
                   {taskRows.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
                 </Pie>
-                <Tooltip />
+                <ChartTooltip cursor={false} />
               </PieChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -53,8 +54,8 @@ export default function Reports() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#f59e0b" />
+                <ChartTooltip />
+                <Bar dataKey="value" name="Tasks" fill="#f59e0b" activeBar={{ stroke: '#b45309', strokeWidth: 2, fillOpacity: 0.85 }} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -64,8 +65,8 @@ export default function Reports() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#16a34a" />
+                <ChartTooltip />
+                <Bar dataKey="value" name="Tickets" fill="#16a34a" activeBar={{ stroke: '#047857', strokeWidth: 2, fillOpacity: 0.85 }} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -75,8 +76,8 @@ export default function Reports() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />
-                <Tooltip />
-                <Line dataKey="value" stroke="#2563eb" strokeWidth={2} />
+                <ChartTooltip cursor={{ stroke: '#2563eb', strokeDasharray: '4 4', strokeOpacity: 0.45 }} />
+                <Line dataKey="value" name="Completed" stroke="#2563eb" strokeWidth={2} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>

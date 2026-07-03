@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye } from 'lucide-react'
+import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
-import { EmptyState, SkeletonTable } from '../components/ui'
+import { Button, EmptyState, FormField, LoadingSpinner, Modal, SkeletonTable, inputClassName } from '../components/ui'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
@@ -53,6 +53,12 @@ const Clients = () => {
     delivery_date: '',
   })
   const [creatingProject, setCreatingProject] = useState(false)
+  const [showAddProjectModal, setShowAddProjectModal] = useState(false)
+  const [availableProjects, setAvailableProjects] = useState([])
+  const [loadingProjects, setLoadingProjects] = useState(false)
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [projectSearch, setProjectSearch] = useState('')
+  const [assigningProject, setAssigningProject] = useState(false)
   const [showDocumentModal, setShowDocumentModal] = useState(false)
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
@@ -283,6 +289,87 @@ const Clients = () => {
       setCreatingProject(false)
     }
   }
+
+  const closeAddProjectModal = () => {
+    if (assigningProject) return
+    setShowAddProjectModal(false)
+    setSelectedProjectId('')
+    setProjectSearch('')
+    setAvailableProjects([])
+  }
+
+  const loadAvailableProjects = useCallback(async () => {
+    if (!selectedClient) return
+
+    try {
+      setLoadingProjects(true)
+      const response = await projectsApi.getProjects({ limit: 100 })
+      const projects = response.data?.projects || response.projects || []
+      const linkedProjectIds = new Set([
+        ...(selectedClient.project_ids || []),
+        ...(selectedClient.projects || []).map((project) => project.id),
+      ].map(String))
+
+      setAvailableProjects(
+        projects.filter((project) => project?.id && !linkedProjectIds.has(String(project.id)))
+      )
+    } catch (error) {
+      console.error('Error loading available projects:', error)
+      setAvailableProjects([])
+      toast.error('Failed to load available projects')
+    } finally {
+      setLoadingProjects(false)
+    }
+  }, [selectedClient])
+
+  useEffect(() => {
+    if (showAddProjectModal) {
+      loadAvailableProjects()
+    }
+  }, [loadAvailableProjects, showAddProjectModal])
+
+  const handleAddExistingProject = async (event) => {
+    event.preventDefault()
+    if (!selectedClient || !selectedProjectId || assigningProject) return
+
+    const alreadyLinked = (selectedClient.project_ids || []).some(
+      (projectId) => String(projectId) === String(selectedProjectId)
+    )
+    if (alreadyLinked) {
+      toast.error('This project is already assigned to the client')
+      return
+    }
+
+    try {
+      setAssigningProject(true)
+      await clientsAPI.addProjectToClient(selectedClient.id, selectedProjectId)
+      const refreshedClient = await clientsAPI.getClient(selectedClient.id)
+      setSelectedClient(refreshedClient)
+      await loadClients()
+      toast.success('Project added to client successfully')
+      setShowAddProjectModal(false)
+      setSelectedProjectId('')
+      setProjectSearch('')
+      setAvailableProjects([])
+    } catch (error) {
+      console.error('Error adding project to client:', error)
+      const detail = error.response?.data?.detail
+      const errorMessage = typeof detail === 'string'
+        ? detail
+        : detail?.msg || 'Failed to add project to client'
+      toast.error(errorMessage)
+    } finally {
+      setAssigningProject(false)
+    }
+  }
+
+  const filteredAvailableProjects = availableProjects.filter((project) => {
+    const query = projectSearch.trim().toLowerCase()
+    if (!query) return true
+    return [project.name, project.key, project.project_id]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query))
+  })
 
   // Load assignable users when create project modal opens
   useEffect(() => {
@@ -844,25 +931,40 @@ const Clients = () => {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-semibold text-gray-700">Projects</h3>
                   {(isCompanyAdmin || isLead) && (
-                    <button
-                      onClick={() => {
-                        setProjectForm({
-                          name: '',
-                          key: '',
-                          description: '',
-                          type: 'software',
-                          assigned_to: '',
-                          budget: '',
-                          start_date: '',
-                          delivery_date: '',
-                        })
-                        setShowCreateProjectModal(true)
-                      }}
-                      className="btn btn-sm btn-primary flex items-center space-x-1"
-                    >
-                      <Plus className="h-3 w-3" />
-                      <span>Create Project</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedProjectId('')
+                          setProjectSearch('')
+                          setShowAddProjectModal(true)
+                        }}
+                        className="btn btn-sm btn-secondary flex items-center space-x-1"
+                      >
+                        <FolderKanban className="h-3 w-3" />
+                        <span>Add Project</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProjectForm({
+                            name: '',
+                            key: '',
+                            description: '',
+                            type: 'software',
+                            assigned_to: '',
+                            budget: '',
+                            start_date: '',
+                            delivery_date: '',
+                          })
+                          setShowCreateProjectModal(true)
+                        }}
+                        className="btn btn-sm btn-primary flex items-center space-x-1"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>Create Project</span>
+                      </button>
+                    </div>
                   )}
                 </div>
                 {selectedClient.projects && selectedClient.projects.length > 0 ? (
@@ -956,6 +1058,87 @@ const Clients = () => {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={showAddProjectModal && Boolean(selectedClient)}
+        onClose={closeAddProjectModal}
+        title={`Add Project to ${selectedClient?.name || 'Client'}`}
+        size="md"
+      >
+        <form onSubmit={handleAddExistingProject} className="space-y-5">
+          {loadingProjects ? (
+            <div className="flex min-h-40 items-center justify-center" role="status">
+              <LoadingSpinner label="Loading projects" />
+            </div>
+          ) : availableProjects.length === 0 ? (
+            <EmptyState
+              icon={FolderKanban}
+              title="No projects available"
+              description="All accessible projects are already assigned to this client, or no projects have been created yet."
+            />
+          ) : (
+            <>
+              <FormField label="Search projects" htmlFor="client-project-search">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    id="client-project-search"
+                    type="search"
+                    value={projectSearch}
+                    onChange={(event) => {
+                      setProjectSearch(event.target.value)
+                      setSelectedProjectId('')
+                    }}
+                    className={`${inputClassName} pl-10`}
+                    placeholder="Search by project name, key, or ID"
+                    disabled={assigningProject}
+                  />
+                </div>
+              </FormField>
+
+              <FormField label="Project" htmlFor="client-project-select" required>
+                <select
+                  id="client-project-select"
+                  value={selectedProjectId}
+                  onChange={(event) => setSelectedProjectId(event.target.value)}
+                  className={inputClassName}
+                  disabled={assigningProject || filteredAvailableProjects.length === 0}
+                  required
+                >
+                  <option value="">
+                    {filteredAvailableProjects.length ? 'Select a project' : 'No matching projects'}
+                  </option>
+                  {filteredAvailableProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name} ({project.key}){project.project_id ? ` · ${project.project_id}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+
+              {filteredAvailableProjects.length === 0 ? (
+                <p className="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  No projects match your search.
+                </p>
+              ) : null}
+            </>
+          )}
+
+          <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
+            <Button type="button" variant="secondary" onClick={closeAddProjectModal} disabled={assigningProject}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              loading={assigningProject}
+              loadingText="Adding"
+              disabled={loadingProjects || !selectedProjectId || availableProjects.length === 0}
+            >
+              Add Project
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Create Project Modal */}
       {showCreateProjectModal && selectedClient && (

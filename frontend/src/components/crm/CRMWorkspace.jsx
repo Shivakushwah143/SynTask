@@ -121,7 +121,7 @@ export function CRMToolbar({
 export function CRMSearch({ value, onChange, onSubmit, placeholder = 'Search workspace' }) {
   return (
     <form
-      className="relative"
+      className="relative w-full sm:w-auto"
       onSubmit={(event) => {
         event.preventDefault()
         onSubmit?.(value)
@@ -136,7 +136,7 @@ export function CRMSearch({ value, onChange, onSubmit, placeholder = 'Search wor
         value={value}
         onChange={(event) => onChange?.(event.target.value)}
         placeholder={placeholder}
-        className="input min-w-[16rem] pl-10"
+        className="input min-w-0 pl-10 sm:min-w-[16rem]"
         aria-label="CRM search"
       />
     </form>

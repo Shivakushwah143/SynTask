@@ -5,6 +5,15 @@
 @tailwind utilities;
 
 @layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100%;
+    overflow-x: clip;
+  }
+
   html {
     font-size: 90%;
   }
@@ -43,6 +52,7 @@
 
   body {
     @apply antialiased;
+    margin: 0;
     background: var(--color-app-bg);
     color: var(--color-app-text);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -60,6 +70,45 @@
   select,
   textarea {
     touch-action: manipulation;
+  }
+
+  main,
+  main > *,
+  section,
+  form {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  img,
+  video,
+  canvas {
+    max-width: 100%;
+  }
+
+  :where([class~='flex'], [class~='grid']) > * {
+    min-width: 0;
+  }
+}
+
+/* Keep chart feedback consistent across mouse, pen, and touch interactions. */
+.recharts-bar-rectangle path,
+.recharts-line-dot,
+.recharts-pie-sector .recharts-sector {
+  transition: filter 140ms ease-out, opacity 140ms ease-out, stroke-width 140ms ease-out;
+}
+
+.recharts-pie-sector:hover .recharts-sector {
+  filter: brightness(1.06) drop-shadow(0 2px 3px rgb(15 23 42 / 0.22));
+  stroke: white;
+  stroke-width: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recharts-bar-rectangle path,
+  .recharts-line-dot,
+  .recharts-pie-sector .recharts-sector {
+    transition: none;
   }
 }
 
@@ -86,7 +135,7 @@
   }
   
   .card {
-    @apply rounded-2xl border p-4 dark:shadow-none;
+    @apply min-w-0 max-w-full rounded-2xl border p-4 dark:shadow-none;
     background: var(--color-app-surface);
     border-color: var(--color-app-border);
     box-shadow: var(--shadow-sm);
@@ -124,6 +173,15 @@
   
   .badge-secondary {
     @apply bg-gray-100 text-gray-800;
+  }
+}
+
+@layer utilities {
+  .viewport-scroll-x {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
