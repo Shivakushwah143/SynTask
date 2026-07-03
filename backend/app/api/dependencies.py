@@ -42,6 +42,8 @@ async def get_current_user(token: str = Depends(get_token_from_header)) -> User:
 def require_module(module_name: str):
     """Dependency factory to ensure the current user has access to a specific module."""
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role == UserRole.SUPER_ADMIN:
+            return current_user
         modules = getattr(current_user, "modules", []) or []
         if module_name not in modules:
             raise HTTPException(
@@ -172,4 +174,3 @@ async def get_project_by_id(project_identifier: str, company_id: Optional[str] =
             pass
     
     return project, user_project_id
-
