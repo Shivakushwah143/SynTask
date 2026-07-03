@@ -5,7 +5,8 @@ import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
 import { Button } from '../../../components/ui'
-import { LeadAITab, LeadAccessDeniedState, LeadEmailsTab, LeadFilesTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadWorkspace } from './components'
+import { LeadAITab, LeadAccessDeniedState, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadWorkspace } from './components'
+import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
 import { LEAD_NOTES_QUERY_KEY, LeadNotesTab } from './notes'
 import { LeadTimelineTab } from './timeline'
 
@@ -62,6 +63,7 @@ export default function CRMLeadWorkspacePage() {
 
   const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId], { exact: true })
+    queryClient.invalidateQueries([LEAD_FILES_QUERY_KEY, leadId], { exact: true })
     queryClient.invalidateQueries([LEAD_NOTES_QUERY_KEY, leadId], { exact: true })
     leadQuery.refetch()
   }, [leadId, leadQuery, queryClient])
@@ -80,7 +82,7 @@ export default function CRMLeadWorkspacePage() {
 
   let body
   if (activeTab === 'notes') body = <LeadNotesTab leadId={leadId} lead={lead} />
-  else if (activeTab === 'files') body = <LeadFilesTab />
+  else if (activeTab === 'files') body = <LeadFilesTab leadId={leadId} lead={lead} />
   else if (activeTab === 'meetings') body = <LeadMeetingsTab />
   else if (activeTab === 'emails') body = <LeadEmailsTab />
   else if (activeTab === 'proposal') body = <LeadProposalTab />

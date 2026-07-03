@@ -52,6 +52,7 @@ from app.models.timesheet import TimesheetEntry, TimesheetSummary, TimesheetStat
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct
 from app.models.sales_contact import SalesContact, ContactSharing
+from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_prospect import SalesProspect
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_pipeline_history import SalesPipelineHistory
@@ -131,7 +132,7 @@ __all__ = [
     # Timesheet models
     "TimesheetEntry", "TimesheetSummary", "TimesheetStatus",
     # Sales models
-    "SalesCategory", "SalesProduct", "SalesContact", "ContactSharing",
+    "SalesCategory", "SalesProduct", "SalesContact", "ContactSharing", "SalesLeadFile",
     "SalesProspect", "SalesLeadNote", "SalesPipelineHistory",
     "SalesStage", "ReasonForLost", "SalesChannel", "SalesTag",
     "Nationality", "BusinessCategory", "GreetingTemplate",
