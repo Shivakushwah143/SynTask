@@ -148,7 +148,7 @@ const ApiPerformanceDashboard = () => {
                 <p className="text-sm text-gray-500 dark:text-gray-400">Sorted by max response time first.</p>
               </div>
             </div>
-            <div className="max-h-[520px] overflow-y-auto">
+            <div className="viewport-scroll-x max-h-[520px] overflow-y-auto">
               <table className="w-full border-separate border-spacing-0">
                 <thead className="sticky top-0 bg-white dark:bg-gray-900">
                   <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
@@ -209,7 +209,7 @@ const ApiPerformanceDashboard = () => {
               </div>
             </div>
 
-            <div className="max-h-[520px] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-800">
+            <div className="viewport-scroll-x max-h-[520px] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-800">
               <table className="w-full border-separate border-spacing-0">
                 <thead className="sticky top-0 bg-white dark:bg-gray-900">
                   <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">

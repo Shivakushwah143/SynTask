@@ -366,7 +366,7 @@ const MSA = () => {
       </div>
 
       {/* MSAs Table */}
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="viewport-scroll-x bg-white rounded-lg shadow-sm">
         {loading ? (
           <div className="p-8 text-center text-gray-500">Loading...</div>
         ) : filteredMSAs.length === 0 ? (

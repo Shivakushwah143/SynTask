@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 
+from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_prospect import SalesProspect
@@ -201,6 +202,52 @@ def _build_note_deleted_event(note: SalesLeadNote, actor_name: str) -> Dict[str,
     )
 
 
+def _build_file_uploaded_event(file_record: SalesLeadFile, actor_name: str) -> Dict[str, Any]:
+    return _build_event(
+        event_id=f"lead-file-uploaded-{file_record.id}",
+        event_type="file_uploaded",
+        title="File uploaded",
+        description=file_record.original_name or file_record.file_name,
+        timestamp=file_record.created_at or datetime.utcnow(),
+        actor=actor_name,
+        metadata={
+            "file_id": str(file_record.id),
+            "file_name": file_record.file_name,
+            "original_name": file_record.original_name,
+            "file_url": file_record.file_url,
+            "file_size": file_record.file_size,
+            "file_type": file_record.file_type,
+            "mime_type": file_record.mime_type,
+            "uploaded_by": file_record.uploaded_by,
+            "uploaded_by_name": file_record.uploaded_by_name,
+        },
+        expanded=True,
+    )
+
+
+def _build_file_deleted_event(file_record: SalesLeadFile, actor_name: str) -> Dict[str, Any]:
+    return _build_event(
+        event_id=f"lead-file-deleted-{file_record.id}",
+        event_type="file_deleted",
+        title="File deleted",
+        description=file_record.original_name or file_record.file_name,
+        timestamp=file_record.deleted_at or file_record.updated_at or file_record.created_at or datetime.utcnow(),
+        actor=actor_name,
+        metadata={
+            "file_id": str(file_record.id),
+            "file_name": file_record.file_name,
+            "original_name": file_record.original_name,
+            "file_url": file_record.file_url,
+            "file_size": file_record.file_size,
+            "file_type": file_record.file_type,
+            "mime_type": file_record.mime_type,
+            "deleted_by": file_record.deleted_by,
+            "deleted_by_name": file_record.deleted_by_name,
+        },
+        expanded=True,
+    )
+
+
 class CRMLeadTimelineService:
     @staticmethod
     async def load_timeline(current_user: User, lead_id: str) -> Dict[str, Any]:
@@ -222,6 +269,12 @@ class CRMLeadTimelineService:
                 "lead_id": str(prospect.id),
             }
         ).sort("-updated_at").to_list()
+        files = await SalesLeadFile.find(
+            {
+                "company_id": str(prospect.company_id),
+                "lead_id": str(prospect.id),
+            }
+        ).sort("-updated_at").to_list()
 
         actor_ids: set[str] = set()
         for candidate in [prospect.created_by, prospect.assigned_by, prospect.closed_by]:
@@ -232,6 +285,10 @@ class CRMLeadTimelineService:
                 actor_ids.add(str(history.user_id))
         for note in notes:
             for candidate in [note.created_by, note.updated_by, note.deleted_by]:
+                if candidate:
+                    actor_ids.add(str(candidate))
+        for file_record in files:
+            for candidate in [file_record.uploaded_by, file_record.deleted_by]:
                 if candidate:
                     actor_ids.add(str(candidate))
 
@@ -261,6 +318,13 @@ class CRMLeadTimelineService:
                 updated_actor = actor_map.get(str(note.updated_by), note.updated_by_name or note_actor)
                 items.append(_build_note_updated_event(note, updated_actor))
 
+        for file_record in files:
+            file_actor = actor_map.get(str(file_record.uploaded_by), file_record.uploaded_by_name or "System")
+            items.append(_build_file_uploaded_event(file_record, file_actor))
+            if file_record.deleted:
+                deleted_actor = actor_map.get(str(file_record.deleted_by), file_record.deleted_by_name or file_actor)
+                items.append(_build_file_deleted_event(file_record, deleted_actor))
+
         items.sort(key=lambda item: item["timestamp"], reverse=True)
 
         grouped_by_day: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -273,7 +337,7 @@ class CRMLeadTimelineService:
             "sales": sum(1 for item in items if item["category"] == "sales"),
             "system": sum(1 for item in items if item["category"] == "system"),
             "meetings": 0,
-            "files": 0,
+            "files": sum(1 for item in items if item["category"] == "files"),
             "comments": sum(1 for item in items if item["category"] == "comments"),
             "future_ai": 0,
             "last_activity_at": items[0]["timestamp"] if items else None,

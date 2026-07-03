@@ -5,6 +5,15 @@
 @tailwind utilities;
 
 @layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100%;
+    overflow-x: clip;
+  }
+
   html {
     font-size: 90%;
   }
@@ -43,6 +52,7 @@
 
   body {
     @apply antialiased;
+    margin: 0;
     background: var(--color-app-bg);
     color: var(--color-app-text);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -60,6 +70,24 @@
   select,
   textarea {
     touch-action: manipulation;
+  }
+
+  main,
+  main > *,
+  section,
+  form {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  img,
+  video,
+  canvas {
+    max-width: 100%;
+  }
+
+  :where([class~='flex'], [class~='grid']) > * {
+    min-width: 0;
   }
 }
 
@@ -107,7 +135,7 @@
   }
   
   .card {
-    @apply rounded-2xl border p-4 dark:shadow-none;
+    @apply min-w-0 max-w-full rounded-2xl border p-4 dark:shadow-none;
     background: var(--color-app-surface);
     border-color: var(--color-app-border);
     box-shadow: var(--shadow-sm);
@@ -145,6 +173,15 @@
   
   .badge-secondary {
     @apply bg-gray-100 text-gray-800;
+  }
+}
+
+@layer utilities {
+  .viewport-scroll-x {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
   }
 }
 

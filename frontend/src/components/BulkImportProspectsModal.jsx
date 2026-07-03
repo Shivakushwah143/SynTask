@@ -351,7 +351,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
                 <CheckCircle className="h-4 w-4" />
                 {data.length} prospect{data.length !== 1 ? 's' : ''} ready to import
               </p>
-              <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200">
+              <div className="viewport-scroll-x max-h-64 overflow-y-auto rounded-lg border border-gray-200">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-gray-50">
                     <tr>

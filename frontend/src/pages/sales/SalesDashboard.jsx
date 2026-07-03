@@ -25,7 +25,7 @@ export default function SalesDashboard() {
   ).map(([stage, count]) => ({ stage, count }))
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <PageHeader
         title="Sales Dashboard"
         description="Pipeline, contact, and revenue snapshot."

@@ -771,7 +771,7 @@ const Invoices = () => {
                 </div>
 
                 {/* Items Table */}
-                <div className="border-t pt-4">
+                <div className="viewport-scroll-x border-t pt-4">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b">

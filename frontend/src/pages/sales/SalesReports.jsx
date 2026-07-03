@@ -23,7 +23,7 @@ export default function SalesReports() {
   }, {})).map(([name, count]) => ({ name, count }))
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <PageHeader title="Sales Reports" description="Pipeline, conversion, and activity analytics." />
       {prospects.isLoading ? <div className="grid gap-6 xl:grid-cols-2">{[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={6} />)}</div> : data.length ? (
         <div className="grid gap-6 xl:grid-cols-2">

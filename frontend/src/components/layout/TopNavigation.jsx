@@ -23,7 +23,7 @@ export function TopNavigation({ title, subtitle, onMenuClick, onSearchOpen, onCo
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <Button variant="ghost" size="sm" onClick={onCommandOpen} className="hidden md:inline-flex">
             <span className="inline-flex items-center gap-2">
               <Search className="h-4 w-4" />
