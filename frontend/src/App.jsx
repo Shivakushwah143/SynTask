@@ -62,8 +62,8 @@ const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
 const SalesSettings = lazy(() => import('./pages/sales/SalesSettings'))
 const CRMPipelinePage = lazy(() => import('./pages/crm/pipeline/page'))
 const CRMLeadWorkspacePage = lazy(() => import('./pages/crm/leads/workspace'))
-const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
 const CRMCompaniesPage = lazy(() => import('./pages/crm/companies/page'))
+const CRMCompanyWorkspacePage = lazy(() => import('./pages/crm/companies/workspace'))
 const CRMContactsPage = lazy(() => import('./pages/crm/contacts/page'))
 const CRMActivitiesPage = lazy(() => import('./pages/crm/activities/page'))
 const CRMCalendarPage = lazy(() => import('./pages/crm/calendar/page'))
@@ -173,8 +173,9 @@ function App() {
             <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
             <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
             <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />
-            <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
+            <Route path="leads" element={withBoundary(<CRMLeadWorkspacePage />)} />
             <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
+            <Route path="companies/:companyId" element={withBoundary(<CRMCompanyWorkspacePage />)} />
             <Route path="contacts" element={withBoundary(<CRMContactsPage />)} />
             <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />

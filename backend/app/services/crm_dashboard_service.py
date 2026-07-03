@@ -9,9 +9,11 @@ builder.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
+from app.models.crm_deal import CRMDeal
+from app.models.crm_proposal import CRMProposal
 from app.models.sales_product import SalesProduct
 from app.models.sales_prospect import SalesProspect, ProspectStatus
 from app.models.sales_contact import SalesContact
@@ -68,6 +70,187 @@ def _pipeline_breakdown(prospects: List[SalesProspect], product_map: Dict[str, S
         bucket["value"] += _prospect_product_value(prospect, product_map)
 
     return sorted(grouped.values(), key=lambda item: (-item["count"], item["stage"].lower()))
+
+
+def _safe_amount(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except Exception:
+        return 0.0
+
+
+def _proposal_amount(proposal: CRMProposal) -> float:
+    return _safe_amount(getattr(proposal, "deal_value", 0))
+
+
+def _deal_amount(deal: CRMDeal) -> float:
+    return _safe_amount(getattr(deal, "value", 0))
+
+
+def _stage_weight(stage: str) -> float:
+    normalized = str(stage or "").strip().lower()
+    if normalized in {"won", "closed-won", "closed won"}:
+        return 1.0
+    if normalized in {"proposal sent", "negotiation"}:
+        return 0.75
+    if normalized in {"qualified"}:
+        return 0.5
+    if normalized in {"contacted", "discovery scheduled", "discovery completed"}:
+        return 0.25
+    return 0.15
+
+
+async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    quarter_start_month = ((now.month - 1) // 3) * 3 + 1
+    quarter_start = now.replace(month=quarter_start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+    year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    prospects = await SalesProspect.find({"company_id": current_user.company_id, "deleted": False}).to_list()
+    deals = await CRMDeal.find({"company_id": current_user.company_id, "archived": False}).to_list()
+    proposals = await CRMProposal.find({"company_id": current_user.company_id, "archived": False}).sort("-updated_at").to_list()
+
+    won_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.WON)
+    lost_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.LOST)
+    total_revenue = won_revenue
+    monthly_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.WON and p.closed_date and p.closed_date >= month_start)
+    quarterly_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.WON and p.closed_date and p.closed_date >= quarter_start)
+    yearly_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.WON and p.closed_date and p.closed_date >= year_start)
+
+    forecast_revenue = sum(_proposal_amount(p) for p in proposals if p.status in {"sent", "viewed"})
+    weighted_pipeline_value = sum(_deal_amount(deal) * _stage_weight(deal.stage) for deal in deals)
+    pipeline_value = sum(_deal_amount(deal) for deal in deals)
+
+    active_deals = [deal for deal in deals if str(deal.stage).lower() not in {"won", "lost"}]
+    won_deals = [deal for deal in deals if str(deal.stage).lower() == "won"]
+    lost_deals = [deal for deal in deals if str(deal.stage).lower() == "lost"]
+
+    average_deal_size = round((sum(_deal_amount(deal) for deal in deals) / len(deals)), 2) if deals else 0.0
+    average_sales_cycle = 0.0
+    cycle_days = [
+        (p.closed_date - p.created_at).days
+        for p in prospects
+        if p.status == ProspectStatus.WON and p.closed_date and p.created_at
+    ]
+    if cycle_days:
+        average_sales_cycle = round(sum(cycle_days) / len(cycle_days), 2)
+
+    stage_counts: Dict[str, int] = defaultdict(int)
+    stage_values: Dict[str, float] = defaultdict(float)
+    for deal in deals:
+        stage_counts[deal.stage] += 1
+        stage_values[deal.stage] += _deal_amount(deal)
+
+    stage_conversion = []
+    ordered_stages = ["Lead", "Contacted", "Discovery Scheduled", "Discovery Completed", "Qualified", "Proposal Sent", "Negotiation", "Won", "Lost"]
+    for index, stage in enumerate(ordered_stages[:-1]):
+        next_stage = ordered_stages[index + 1]
+        current_count = stage_counts.get(stage, 0)
+        next_count = stage_counts.get(next_stage, 0)
+        conversion = round((next_count / current_count) * 100, 2) if current_count else 0.0
+        stage_conversion.append({"from": stage, "to": next_stage, "conversion_percent": conversion})
+
+    owner_counts: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"revenue": 0.0, "won_deals": 0, "total_deals": 0, "deal_value_sum": 0.0})
+    for prospect in prospects:
+        owner = str(prospect.assigned_to or prospect.created_by or "unassigned")
+        bucket = owner_counts[owner]
+        bucket["total_deals"] += 1
+        if prospect.status == ProspectStatus.WON:
+            bucket["won_deals"] += 1
+            bucket["revenue"] += _safe_amount(prospect.won_amount)
+        bucket["deal_value_sum"] += _safe_amount(prospect.won_amount)
+
+    owner_map = {}
+    owner_ids = [owner_id for owner_id in owner_counts.keys() if owner_id and owner_id != "unassigned"]
+    if owner_ids:
+        owners = await User.find({"_id": {"$in": owner_ids}, "company_id": current_user.company_id}).to_list()
+        owner_map = {str(owner.id): f"{owner.first_name} {owner.last_name}".strip() or owner.email or str(owner.id) for owner in owners}
+
+    leaderboard = sorted(
+        [
+            {
+                "salesperson": owner_map.get(owner_id, owner_id),
+                "revenue": round(bucket["revenue"], 2),
+                "deals_closed": bucket["won_deals"],
+                "win_rate": round((bucket["won_deals"] / bucket["total_deals"]) * 100, 2) if bucket["total_deals"] else 0.0,
+                "average_deal_value": round((bucket["deal_value_sum"] / bucket["total_deals"]), 2) if bucket["total_deals"] else 0.0,
+            }
+            for owner_id, bucket in owner_counts.items()
+        ],
+        key=lambda row: (-row["revenue"], row["salesperson"].lower()),
+    )
+
+    company_revenue: Dict[str, float] = defaultdict(float)
+    industry_revenue: Dict[str, float] = defaultdict(float)
+    source_revenue: Dict[str, float] = defaultdict(float)
+    service_revenue: Dict[str, float] = defaultdict(float)
+    company_map: Dict[str, str] = {}
+    if prospects:
+        company_ids = list({str(p.crm_company_id) for p in prospects if getattr(p, "crm_company_id", None)})
+        if company_ids:
+            companies = await SalesContact.find({"crm_company_id": {"$in": company_ids}, "company_id": current_user.company_id}).to_list()
+            for company_id in company_ids:
+                linked = next((c for c in companies if str(c.crm_company_id) == company_id), None)
+                if linked:
+                    company_map[company_id] = linked.company_name or company_id
+    for prospect in prospects:
+        amount = _safe_amount(prospect.won_amount)
+        if prospect.status == ProspectStatus.WON:
+            if prospect.crm_company_id:
+                company_revenue[company_map.get(str(prospect.crm_company_id), prospect.company_name or str(prospect.crm_company_id))] += amount
+            if prospect.channel:
+                source_revenue[prospect.channel] += amount
+            if prospect.category_id:
+                service_revenue[str(prospect.category_id)] += amount
+            if prospect.company_name:
+                industry_revenue[prospect.company_name] += amount
+
+    aging_deals = []
+    stuck_deals = 0
+    for deal in deals:
+        age_days = (now - deal.updated_at).days if deal.updated_at else 0
+        if age_days >= 14:
+            stuck_deals += 1
+        aging_deals.append({"deal_id": str(deal.id), "lead_id": deal.lead_id, "stage": deal.stage, "age_days": age_days, "value": _deal_amount(deal)})
+
+    return {
+        "revenue": {
+            "total_revenue": total_revenue,
+            "monthly_revenue": monthly_revenue,
+            "quarterly_revenue": quarterly_revenue,
+            "yearly_revenue": yearly_revenue,
+            "won_revenue": won_revenue,
+            "lost_revenue": lost_revenue,
+            "forecast_revenue": forecast_revenue,
+            "weighted_pipeline_value": weighted_pipeline_value,
+        },
+        "kpis": {
+            "total_deals": len(deals),
+            "won_deals": len(won_deals),
+            "lost_deals": len(lost_deals),
+            "active_deals": len(active_deals),
+            "win_rate": round((len(won_deals) / len(deals)) * 100, 2) if deals else 0.0,
+            "loss_rate": round((len(lost_deals) / len(deals)) * 100, 2) if deals else 0.0,
+            "average_deal_size": average_deal_size,
+            "average_sales_cycle": average_sales_cycle,
+            "stage_conversion": stage_conversion,
+        },
+        "leaderboards": leaderboard,
+        "analytics": {
+            "revenue_by_client": [{"client": key, "revenue": round(value, 2)} for key, value in sorted(company_revenue.items(), key=lambda item: -item[1])],
+            "revenue_by_service": [{"service": key, "revenue": round(value, 2)} for key, value in sorted(service_revenue.items(), key=lambda item: -item[1])],
+            "revenue_by_lead_source": [{"source": key, "revenue": round(value, 2)} for key, value in sorted(source_revenue.items(), key=lambda item: -item[1])],
+            "revenue_by_industry": [{"industry": key, "revenue": round(value, 2)} for key, value in sorted(industry_revenue.items(), key=lambda item: -item[1])],
+        },
+        "pipeline": {
+            "pipeline_value": pipeline_value,
+            "deals_by_stage": [{"stage": stage, "count": count, "value": round(stage_values.get(stage, 0.0), 2)} for stage, count in stage_counts.items()],
+            "stuck_deals": stuck_deals,
+            "aging_deals": sorted(aging_deals, key=lambda item: (-item["age_days"], -item["value"])),
+            "expected_close_this_month": len([deal for deal in deals if deal.expected_close_date and deal.expected_close_date.month == now.month and deal.expected_close_date.year == now.year]),
+        },
+    }
 
 
 async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
@@ -220,9 +403,9 @@ def build_crm_workspace_config(current_user: User) -> Dict[str, Any]:
         "feature_flags": {
             "dashboard": True,
             "pipeline": False,
-            "leads": False,
-            "companies": False,
-            "contacts": False,
+            "leads": True,
+            "companies": True,
+            "contacts": True,
             "activities": False,
             "calendar": False,
             "reports": False,
@@ -231,9 +414,9 @@ def build_crm_workspace_config(current_user: User) -> Dict[str, Any]:
         "navigation": [
             {"key": "dashboard", "label": "Dashboard", "path": "/crm/dashboard", "status": "active"},
             {"key": "pipeline", "label": "Pipeline", "path": "/crm/pipeline", "status": "planned"},
-            {"key": "leads", "label": "Leads", "path": "/crm/leads", "status": "planned"},
-            {"key": "companies", "label": "Companies", "path": "/crm/companies", "status": "planned"},
-            {"key": "contacts", "label": "Contacts", "path": "/crm/contacts", "status": "planned"},
+            {"key": "leads", "label": "Leads", "path": "/crm/leads", "status": "active"},
+            {"key": "companies", "label": "Companies", "path": "/crm/companies", "status": "active"},
+            {"key": "contacts", "label": "Contacts", "path": "/crm/contacts", "status": "active"},
             {"key": "activities", "label": "Activities", "path": "/crm/activities", "status": "planned"},
             {"key": "calendar", "label": "Calendar", "path": "/crm/calendar", "status": "planned"},
             {"key": "reports", "label": "Reports", "path": "/crm/reports", "status": "planned"},

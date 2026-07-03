@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
 from app.models.sales_lead_file import SalesLeadFile
+from app.models.crm_activity import CRMActivity
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_prospect import SalesProspect
@@ -248,6 +249,44 @@ def _build_file_deleted_event(file_record: SalesLeadFile, actor_name: str) -> Di
     )
 
 
+def _activity_category(activity_type: str) -> str:
+    normalized = str(activity_type or "").lower()
+    if normalized == "meeting":
+        return "meetings"
+    if normalized in {"note"}:
+        return "comments"
+    if normalized in {"file"}:
+        return "files"
+    if normalized in {"pipeline_change"}:
+        return "sales"
+    return "sales"
+
+
+def _build_activity_event(activity: CRMActivity, actor_name: str) -> Dict[str, Any]:
+    timestamp = activity.scheduled_at or activity.due_date or activity.completed_at or activity.updated_at or activity.created_at
+    return _build_event(
+        event_id=f"lead-activity-{activity.id}",
+        event_type=f"crm_activity_{activity.activity_type}",
+        title=activity.title,
+        description=activity.description or activity.title,
+        timestamp=timestamp,
+        actor=actor_name,
+        metadata={
+            "activity_id": str(activity.id),
+            "activity_type": activity.activity_type,
+            "status": activity.status.value if getattr(activity, "status", None) else None,
+            "priority": activity.priority.value if getattr(activity, "priority", None) else None,
+            "owner_id": activity.owner_id,
+            "owner_name": activity.owner_name,
+            "due_date": activity.due_date,
+            "scheduled_at": activity.scheduled_at,
+            "completed_at": activity.completed_at,
+            "metadata": activity.metadata,
+        },
+        expanded=True,
+    )
+
+
 class CRMLeadTimelineService:
     @staticmethod
     async def load_timeline(current_user: User, lead_id: str) -> Dict[str, Any]:
@@ -275,6 +314,14 @@ class CRMLeadTimelineService:
                 "lead_id": str(prospect.id),
             }
         ).sort("-updated_at").to_list()
+        activities = await CRMActivity.find(
+            {
+                "company_id": str(prospect.company_id),
+                "entity_type": "lead",
+                "entity_id": str(prospect.id),
+                "deleted": False,
+            }
+        ).sort("-updated_at").to_list()
 
         actor_ids: set[str] = set()
         for candidate in [prospect.created_by, prospect.assigned_by, prospect.closed_by]:
@@ -289,6 +336,10 @@ class CRMLeadTimelineService:
                     actor_ids.add(str(candidate))
         for file_record in files:
             for candidate in [file_record.uploaded_by, file_record.deleted_by]:
+                if candidate:
+                    actor_ids.add(str(candidate))
+        for activity in activities:
+            for candidate in [activity.owner_id, activity.created_by, activity.updated_by, activity.completed_by, activity.deleted_by]:
                 if candidate:
                     actor_ids.add(str(candidate))
 
@@ -324,6 +375,18 @@ class CRMLeadTimelineService:
             if file_record.deleted:
                 deleted_actor = actor_map.get(str(file_record.deleted_by), file_record.deleted_by_name or file_actor)
                 items.append(_build_file_deleted_event(file_record, deleted_actor))
+
+        for activity in activities:
+            activity_actor = (
+                actor_map.get(str(activity.created_by))
+                or actor_map.get(str(activity.updated_by))
+                or actor_map.get(str(activity.owner_id))
+                or activity.created_by_name
+                or activity.updated_by_name
+                or activity.owner_name
+                or "System"
+            )
+            items.append(_build_activity_event(activity, activity_actor))
 
         items.sort(key=lambda item: item["timestamp"], reverse=True)
 

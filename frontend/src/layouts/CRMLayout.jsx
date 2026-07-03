@@ -13,8 +13,23 @@ const CRMLayout = () => {
     return pathname
   }, [location.pathname])
 
-  const title = CRM_ROUTE_LABELS[routePath] || 'CRM'
-  const description = CRM_ROUTE_DESCRIPTIONS[routePath] || 'Workspace foundation for agency relationships.'
+  const title = routePath.startsWith('/crm/companies/')
+    ? 'Companies'
+    : routePath.startsWith('/crm/leads/')
+      ? 'Leads'
+      : CRM_ROUTE_LABELS[routePath] || 'CRM'
+  const description = routePath.startsWith('/crm/companies/')
+    ? 'Company workspace for account management and related contacts.'
+    : routePath.startsWith('/crm/leads/')
+      ? 'Lead workspace for the selected CRM record.'
+      : CRM_ROUTE_DESCRIPTIONS[routePath] || 'Workspace foundation for agency relationships.'
+  const searchPlaceholder = routePath.startsWith('/crm/companies')
+    ? 'Search companies'
+    : routePath.startsWith('/crm/contacts')
+      ? 'Search contacts'
+      : routePath === '/crm/pipeline'
+        ? 'Search pipeline leads'
+        : 'Search CRM records'
 
   return (
     <CRMWorkspace
@@ -47,7 +62,7 @@ const CRMLayout = () => {
       toolbar={{
         searchValue,
         onSearchChange: setSearchValue,
-        searchPlaceholder: routePath === '/crm/pipeline' ? 'Search pipeline leads' : 'Search CRM records',
+        searchPlaceholder,
         onSearchSubmit: () => undefined,
       }}
     >

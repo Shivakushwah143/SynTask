@@ -14,6 +14,10 @@ from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import creative
 from app.api.v1.endpoints import crm
 from app.api.v1.endpoints import crm_files
+from app.api.v1.endpoints import crm_companies
+from app.api.v1.endpoints import crm_contacts
+from app.api.v1.endpoints import crm_activities
+from app.api.v1.endpoints import crm_deals
 from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports
@@ -87,6 +91,10 @@ sales_module_dependency = [Depends(require_module("sales"))]
 api_router.include_router(sales.router, prefix="/sales", tags=["Sales"], dependencies=sales_module_dependency)
 api_router.include_router(crm.router, prefix="/crm", tags=["CRM"], dependencies=sales_module_dependency)
 api_router.include_router(crm_files.router, prefix="/crm", tags=["CRM Files"], dependencies=sales_module_dependency)
+api_router.include_router(crm_companies.router, prefix="/crm/companies", tags=["CRM Companies"], dependencies=sales_module_dependency)
+api_router.include_router(crm_contacts.router, prefix="/crm/contacts", tags=["CRM Contacts"], dependencies=sales_module_dependency)
+api_router.include_router(crm_activities.router, prefix="/crm/activities", tags=["CRM Activities"], dependencies=sales_module_dependency)
+api_router.include_router(crm_deals.router, prefix="/crm", tags=["CRM Deals"], dependencies=sales_module_dependency)
 api_router.include_router(crm_notes.router, prefix="/crm", tags=["CRM Notes"], dependencies=sales_module_dependency)
 api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CRM Pipeline"], dependencies=sales_module_dependency)
 api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)

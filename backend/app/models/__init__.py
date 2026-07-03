@@ -3,6 +3,10 @@ Database Models
 """
 from app.models.user import User, UserRole, UserStatus, SuperAdmin, CompanyAdmin, Admin, Manager, Lead, Employee
 from app.models.company import Company, CompanyStatus, Subscription, SubscriptionStatus
+from app.models.crm_company import CRMCompany
+from app.models.crm_activity import CRMActivity, CRMActivityType, CRMActivityStatus, CRMActivityPriority
+from app.models.crm_deal import CRMDeal
+from app.models.crm_proposal import CRMProposal, CRMProposalStatus
 from app.models.subscription_plan import SubscriptionPlan, BillingCycle, PlanStatus
 from app.models.company_subscription import CompanySubscription, CompanySubscriptionStatus
 from app.models.usage_tracking import UsageTracking
@@ -65,7 +69,13 @@ __all__ = [
     # User models
     "User", "UserRole", "UserStatus", "SuperAdmin", "CompanyAdmin", "Admin", "Manager", "Lead", "Employee",
     # Company models
-    "Company", "CompanyStatus", "Subscription", "SubscriptionStatus",
+    "Company", "CompanyStatus", "Subscription", "SubscriptionStatus", "CRMCompany",
+    # CRM activity models
+    "CRMActivity", "CRMActivityType", "CRMActivityStatus", "CRMActivityPriority",
+    # CRM deal models
+    "CRMDeal",
+    # CRM proposal models
+    "CRMProposal", "CRMProposalStatus",
     # Subscription Plan models
     "SubscriptionPlan", "BillingCycle", "PlanStatus",
     # Company Subscription models

@@ -47,6 +47,8 @@ class SalesContact(Document):
     owner_name: Optional[str] = None
     owner_contact_no: Optional[str] = None
     tag: Optional[List[str]] = Field(default_factory=list)  # Multi-select
+    crm_company_id: Optional[str] = None
+    is_primary_contact: bool = False
 
     # Greeting Preferences
     greeting_preference: Optional[str] = None  # Both / Birthday / Anniversary / N/A
@@ -56,7 +58,10 @@ class SalesContact(Document):
     # Metadata
     company_id: Optional[str] = None
     created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+    deleted_by: Optional[str] = None
     deleted: bool = False
+    deleted_at: Optional[datetime] = None
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -70,6 +75,8 @@ class SalesContact(Document):
             "deleted",
             "email",
             "company_name",
+            "crm_company_id",
+            "is_primary_contact",
         ]
 
     def unique_key(self) -> str:
@@ -98,4 +105,3 @@ class ContactSharing(Document):
             "shared_with_user_id",
             "company_id",
         ]
-

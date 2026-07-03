@@ -48,6 +48,7 @@ class SalesProspect(Document):
 
     # Company Information (from Contact or new)
     company_name: Optional[str] = None
+    crm_company_id: Optional[str] = None
     relationship_type: Optional[str] = None
     channel: Optional[str] = None
     source: str = "bulk_upload"
@@ -95,6 +96,7 @@ class SalesProspect(Document):
                 ("company_id", ASCENDING),
                 ("email", ASCENDING),
             ], unique=True, partialFilterExpression={"email": {"$type": "string"}}),
+            "crm_company_id",
         ]
 
     def unique_key(self) -> str:

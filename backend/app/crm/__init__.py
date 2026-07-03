@@ -1,4 +1,8 @@
 from .application import build_crm_dashboard, build_crm_workspace_manifest
+from .activities import CRMActivitiesService
+from .companies import CRMCompanyService
+from .contacts import CRMContactService
+from .company_timeline import CRMCompanyTimelineService
 from .lead_files import CRMLeadFilesService
 from .lead_notes import CRMLeadNotesService
 from .lead_timeline import CRMLeadTimelineService
