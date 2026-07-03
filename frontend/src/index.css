@@ -63,6 +63,27 @@
   }
 }
 
+/* Keep chart feedback consistent across mouse, pen, and touch interactions. */
+.recharts-bar-rectangle path,
+.recharts-line-dot,
+.recharts-pie-sector .recharts-sector {
+  transition: filter 140ms ease-out, opacity 140ms ease-out, stroke-width 140ms ease-out;
+}
+
+.recharts-pie-sector:hover .recharts-sector {
+  filter: brightness(1.06) drop-shadow(0 2px 3px rgb(15 23 42 / 0.22));
+  stroke: white;
+  stroke-width: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recharts-bar-rectangle path,
+  .recharts-line-dot,
+  .recharts-pie-sector .recharts-sector {
+    transition: none;
+  }
+}
+
 @layer components {
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50;

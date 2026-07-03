@@ -527,7 +527,39 @@ const DataVisualization = ({ data, type = 'bar' }) => {
 
     d3.select(chartRef.current).selectAll('*').remove()
 
-    const svg = d3.select(chartRef.current)
+    const container = d3.select(chartRef.current)
+    const tooltip = container
+      .append('div')
+      .attr('class', 'pointer-events-none absolute z-20 hidden min-w-[10rem] max-w-[18rem] rounded-lg border border-gray-200 bg-white/95 p-3 text-xs shadow-xl backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95')
+      .attr('role', 'status')
+      .attr('aria-live', 'polite')
+
+    const showTooltip = (event, point) => {
+      tooltip.selectAll('*').remove()
+      tooltip
+        .classed('hidden', false)
+        .append('p')
+        .attr('class', 'mb-2 border-b border-gray-100 pb-2 font-semibold text-gray-900 dark:border-gray-700 dark:text-gray-100')
+        .text(point.label)
+
+      Object.entries(point)
+        .filter(([key, value]) => key !== 'label' && value !== null && value !== undefined && ['string', 'number', 'boolean'].includes(typeof value))
+        .forEach(([key, value]) => {
+          const row = tooltip.append('div').attr('class', 'mt-1.5 flex items-center justify-between gap-5')
+          row.append('span').attr('class', 'capitalize text-gray-500 dark:text-gray-400').text(key.replace(/_/g, ' '))
+          row.append('span').attr('class', 'font-semibold tabular-nums text-gray-900 dark:text-gray-100').text(
+            typeof value === 'number' ? value.toLocaleString() : String(value)
+          )
+        })
+
+      const bounds = chartRef.current.getBoundingClientRect()
+      const tooltipNode = tooltip.node()
+      const left = Math.min(event.clientX - bounds.left + 14, bounds.width - tooltipNode.offsetWidth - 8)
+      const top = Math.max(8, Math.min(event.clientY - bounds.top + 14, bounds.height - tooltipNode.offsetHeight - 8))
+      tooltip.style('left', `${Math.max(8, left)}px`).style('top', `${top}px`)
+    }
+
+    const svg = container
       .append('svg')
       .attr('width', width)
       .attr('height', height)
@@ -559,7 +591,7 @@ const DataVisualization = ({ data, type = 'bar' }) => {
       .attr('offset', '100%')
       .attr('style', 'stop-color: #8b5cf6; stop-opacity: 0.3')
 
-    svg.selectAll('.bar')
+    const bars = svg.selectAll('.bar')
       .data(data)
       .enter()
       .append('rect')
@@ -570,6 +602,23 @@ const DataVisualization = ({ data, type = 'bar' }) => {
       .attr('width', x.bandwidth())
       .attr('rx', 4)
       .attr('fill', 'url(#chart-gradient)')
+
+    bars
+      .attr('tabindex', 0)
+      .attr('aria-label', d => `${d.label}: ${d.value}`)
+      .on('pointerenter pointermove pointerdown', function (event, point) {
+        d3.select(this).attr('stroke', '#fff').attr('stroke-width', 2).style('filter', 'brightness(1.12)')
+        showTooltip(event, point)
+      })
+      .on('pointerleave blur', function () {
+        d3.select(this).attr('stroke', null).style('filter', null)
+        tooltip.classed('hidden', true)
+      })
+      .on('focus', function (event, point) {
+        const bounds = this.getBoundingClientRect()
+        showTooltip({ clientX: bounds.left + bounds.width / 2, clientY: bounds.top }, point)
+        d3.select(this).attr('stroke', '#fff').attr('stroke-width', 2)
+      })
       .transition()
       .duration(800)
       .delay((_, i) => i * 100)
@@ -599,7 +648,7 @@ const DataVisualization = ({ data, type = 'bar' }) => {
   return (
     <div 
       ref={chartRef} 
-      className="w-full rounded-lg bg-white/5 p-2 backdrop-blur-sm"
+      className="relative w-full touch-manipulation rounded-lg bg-white/5 p-2 backdrop-blur-sm"
       role="img"
       aria-label={`${type} chart showing ${data.length} data points`}
     />

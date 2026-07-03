@@ -1,8 +1,9 @@
 import { useQuery } from 'react-query'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { BarChart3 } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
 import { EmptyState, PageHeader, SkeletonTable, Table } from '../../components/ui'
+import { ChartTooltip } from '../../components/charts/ChartTooltip'
 import { asArray } from '../phase4Utils'
 
 export default function UsageAnalytics() {
@@ -24,7 +25,7 @@ export default function UsageAnalytics() {
       <PageHeader title="Usage Analytics" description="Company usage and plan adoption." />
       {isLoading ? <SkeletonTable rows={6} cols={5} /> : isError ? <EmptyState icon={BarChart3} title="Could not load usage analytics" /> : companies.length ? (
         <div className="space-y-6">
-          <section className="rounded-lg border border-gray-200 bg-white p-4"><h2 className="mb-4 font-semibold text-gray-900">Top companies</h2><div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="users" fill="#2563eb" /><Bar dataKey="tasks" fill="#16a34a" /></BarChart></ResponsiveContainer></div></section>
+          <section className="rounded-lg border border-gray-200 bg-white p-4"><h2 className="mb-4 font-semibold text-gray-900">Top companies</h2><div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><ChartTooltip /><Bar dataKey="users" name="Users" fill="#2563eb" activeBar={{ stroke: '#1d4ed8', strokeWidth: 2, fillOpacity: 0.85 }} /><Bar dataKey="tasks" name="Tasks" fill="#16a34a" activeBar={{ stroke: '#047857', strokeWidth: 2, fillOpacity: 0.85 }} /></BarChart></ResponsiveContainer></div></section>
           <Table columns={columns} data={companies} />
         </div>
       ) : <EmptyState icon={BarChart3} title="No usage data yet" />}

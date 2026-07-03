@@ -1,9 +1,10 @@
 import { useQuery } from 'react-query'
 import { Link } from 'react-router-dom'
-import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { BarChart, Bar, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { Briefcase, IndianRupee, TrendingUp, Users } from 'lucide-react'
 import { salesApi } from '../../api/sales'
 import { Button, EmptyState, PageHeader, SkeletonCard } from '../../components/ui'
+import { ChartTooltip } from '../../components/charts/ChartTooltip'
 import { asArray, formatMoney, sumBy } from '../phase4Utils'
 
 export default function SalesDashboard() {
@@ -50,8 +51,8 @@ export default function SalesDashboard() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="stage" />
                   <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  <ChartTooltip />
+                  <Bar dataKey="count" name="Prospects" fill="#2563eb" radius={[4, 4, 0, 0]} activeBar={{ stroke: '#1d4ed8', strokeWidth: 2, fillOpacity: 0.85 }} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
