@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Building2, CheckCircle2, RefreshCcw, Sparkles, TrendingUp } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
+import { clientsAPI } from '../../../api/clients'
+import { projectsApi } from '../../../api/projects'
 import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
-import { Button } from '../../../components/ui'
+import { Badge, Button, Modal } from '../../../components/ui'
 import { LeadAITab, LeadAccessDeniedState, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadWorkspace } from './components'
 import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
 import { LEAD_NOTES_QUERY_KEY, LeadNotesTab } from './notes'
@@ -20,6 +24,8 @@ export default function CRMLeadWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [timelineSearch, setTimelineSearch] = useState('')
   const [timelineFilter, setTimelineFilter] = useState('all')
+  const [wonModalOpen, setWonModalOpen] = useState(false)
+  const [handoffState, setHandoffState] = useState({ status: 'idle', error: '', client: null, project: null, log: null })
   const [proposalForm, setProposalForm] = useState({
     title: '',
     summary: '',
@@ -83,6 +89,8 @@ export default function CRMLeadWorkspacePage() {
   const errorStatus = leadQuery.error?.response?.status
   const deal = proposalQuery.data?.deal || null
   const proposals = useMemo(() => Array.isArray(proposalQuery.data?.proposals) ? proposalQuery.data.proposals : [], [proposalQuery.data])
+  const leadLabel = lead?.company_name || lead?.prospect_name || 'Lead'
+  const isWon = String(lead?.status || '').toLowerCase() === 'won' || String(lead?.current_stage || '').toLowerCase() === 'won'
 
   useEffect(() => {
     if (!deal) return

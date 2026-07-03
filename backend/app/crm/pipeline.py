@@ -8,8 +8,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
 from app.crm.timeline import publish_crm_timeline_event
+from app.crm.deal_automation import handle_won_deal_automation
 from app.models.sales_masters import SalesStage
 from app.models.sales_pipeline_history import SalesPipelineHistory
+from app.models.crm_deal import CRMDeal
 from app.models.sales_prospect import ProspectStatus, SalesProspect
 from app.models.crm_company import CRMCompany
 from app.models.user import User, UserRole
@@ -419,6 +421,26 @@ class CRMPipelineService:
                 "workflow": "pipeline",
             },
         )
+
+        if normalized_stage == "won":
+            deal = await CRMDeal.find_one(
+                {
+                    "company_id": company_id,
+                    "lead_id": str(prospect.id),
+                }
+            )
+            try:
+                if deal:
+                    now = datetime.utcnow()
+                    deal.stage = "won"
+                    deal.updated_by = str(getattr(current_user, "id", ""))
+                    deal.updated_by_name = _user_display_name(current_user)
+                    deal.updated_at = now
+                    await deal.save()
+                await handle_won_deal_automation(current_user, prospect, deal)
+            except Exception:
+                # Preserve the deal win transition even if handoff automation fails.
+                pass
 
         return {
             "lead": _serialize_lead(prospect, resolved_stage),
