@@ -343,18 +343,6 @@ export const LeadTimelineTab = memo(function LeadTimelineTab() {
   )
 })
 
-export const LeadFilesTab = memo(function LeadFilesTab() {
-  return (
-    <CRMSection title="Files" description="File uploads are not implemented in this sprint.">
-      <CRMEmptyState
-        icon={FileText}
-        title="Files coming soon"
-        description="Documents and attachments will live here once file storage is wired."
-      />
-    </CRMSection>
-  )
-})
-
 export const LeadMeetingsTab = memo(function LeadMeetingsTab() {
   return (
     <CRMSection title="Meetings" description="Meeting coordination will be added later.">
