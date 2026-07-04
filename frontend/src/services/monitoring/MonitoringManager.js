@@ -8,7 +8,7 @@ class MonitoringManager {
 
   /**
    * Allows hot-swapping providers in the future (Desktop Agent, Chrome Extension)
-   * @param {MonitoringProvider} providerInstance
+   * @param {import('./MonitoringProvider').MonitoringProvider} providerInstance
    */
   setProvider(providerInstance) {
     if (this.provider) {
@@ -43,6 +43,16 @@ class MonitoringManager {
 
   getScreenStatus() {
     return this.provider.getScreenStatus()
+  }
+
+  /** Returns the live MediaStream for camera */
+  getCameraStream() {
+    return this.provider.getCameraStream?.() ?? null
+  }
+
+  /** Returns the live MediaStream for screen share */
+  getScreenStream() {
+    return this.provider.getScreenStream?.() ?? null
   }
 }
 

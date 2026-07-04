@@ -87,13 +87,13 @@ const AttendanceReports = () => {
     ]),
     {
       key: 'login_time',
-      header: 'Login Time',
-      render: (row) => row.login_time ? format(new Date(row.login_time), 'hh:mm:ss a') : '—'
+      header: 'Login',
+      render: (row) => row.login_time ? format(new Date(row.login_time), 'hh:mm a') : '—'
     },
     {
       key: 'logout_time',
-      header: 'Logout Time',
-      render: (row) => row.logout_time ? format(new Date(row.logout_time), 'hh:mm:ss a') : 'Active'
+      header: 'Logout',
+      render: (row) => row.logout_time ? format(new Date(row.logout_time), 'hh:mm a') : 'Active'
     },
     {
       key: 'total_working_hours',
@@ -105,8 +105,43 @@ const AttendanceReports = () => {
       }
     },
     {
+      key: 'work_type',
+      header: 'Work Type',
+      render: (row) => {
+        const wt = row.work_type || 'Under Time'
+        const colorMap = {
+          'Overtime': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+          'Full Time': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+          'Under Time': 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+        }
+        return (
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${colorMap[wt] || colorMap['Under Time']}`}>
+            {wt}
+          </span>
+        )
+      }
+    },
+    {
+      key: 'overtime_seconds',
+      header: 'Overtime',
+      render: (row) => {
+        const secs = row.overtime_seconds || 0
+        if (secs <= 0) return <span className="text-gray-400">—</span>
+        const hrs = Math.floor(secs / 3600)
+        const mins = Math.floor((secs % 3600) / 60)
+        return <span className="text-amber-600 dark:text-amber-400 font-semibold">+{hrs}h {mins}m</span>
+      }
+    },
+    {
+      key: 'is_late',
+      header: 'Late',
+      render: (row) => row.is_late
+        ? <span className="text-rose-600 dark:text-rose-400 font-semibold text-xs">Yes</span>
+        : <span className="text-gray-400 text-xs">No</span>
+    },
+    {
       key: 'break_duration',
-      header: 'Break Time',
+      header: 'Break',
       render: (row) => {
         const hrs = Math.floor(row.break_duration / 3600)
         const mins = Math.floor((row.break_duration % 3600) / 60)
@@ -114,31 +149,12 @@ const AttendanceReports = () => {
       }
     },
     {
-      key: 'camera_permission_status',
-      header: 'Camera',
-      render: (row) => (
-        <Badge
-          label={row.camera_permission_status}
-          colorKey={row.camera_permission_status === 'Connected' || row.camera_permission_status === 'Granted' ? 'completed' : 'rejected'}
-        />
-      )
-    },
-    {
-      key: 'screen_sharing_status',
-      header: 'Screen Share',
-      render: (row) => (
-        <Badge
-          label={row.screen_sharing_status}
-          colorKey={row.screen_sharing_status === 'Sharing' || row.screen_sharing_status === 'Granted' ? 'completed' : 'rejected'}
-        />
-      )
-    },
-    {
       key: 'status',
-      header: 'Final Status',
+      header: 'Status',
       render: (row) => <Badge label={row.status} colorKey={row.status} />
     }
   ]
+
 
   return (
     <div className="space-y-6">
