@@ -13,6 +13,8 @@ import toast from 'react-hot-toast'
 import AIBriefingCenter from '../components/AIBriefingCenter'
 import { Badge, Button, EmptyState, PageHeader, SkeletonCard, SkeletonTable, Table } from '../components/ui'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
+import { attendanceAPI } from '../api/attendance'
+
 
 const Dashboard = () => {
   const { user } = useAuthStore()
@@ -24,6 +26,9 @@ const Dashboard = () => {
   const [upcomingMeetings, setUpcomingMeetings] = useState([])
   const [projects, setProjects] = useState([])
   const [exporting, setExporting] = useState(false)
+  const [attendanceToday, setAttendanceToday] = useState(null)
+  const [attendanceStats, setAttendanceStats] = useState(null)
+
 
   useEffect(() => {
     let active = true
@@ -49,6 +54,28 @@ const Dashboard = () => {
         setRecentTickets(ticketsData.tickets || [])
         setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
         setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
+
+        // Load attendance metrics
+        if (dashboardRole === ROLE.EMPLOYEE) {
+          try {
+            const attTodayRes = await attendanceAPI.getTodayAttendance()
+            if (attTodayRes && attTodayRes.data) {
+              setAttendanceToday(attTodayRes.data)
+            }
+          } catch (e) {
+            console.error(e)
+          }
+        } else {
+          try {
+            const attStatsRes = await attendanceAPI.getDashboardStats()
+            if (attStatsRes && attStatsRes.data) {
+              setAttendanceStats(attStatsRes.data)
+            }
+          } catch (e) {
+            console.error(e)
+          }
+        }
+
       } catch (error) {
         console.error('Error loading dashboard:', error)
       } finally {
@@ -108,9 +135,17 @@ const Dashboard = () => {
     { key: 'delivery_date', header: 'Delivery', render: (row) => row.delivery_date ? format(new Date(row.delivery_date), 'MMM d') : '—' },
   ]
 
+  const formatDuration = (totalSeconds) => {
+    if (!totalSeconds) return '00:00'
+    const hrs = Math.floor(totalSeconds / 3600)
+    const mins = Math.floor((totalSeconds % 3600) / 60)
+    return `${hrs}h ${mins}m`
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
+
         title="Dashboard"
         description="Command center for work, meetings, and AI briefings."
         actions={(
@@ -163,7 +198,87 @@ const Dashboard = () => {
         </div>
       </section>
 
+      {/* Employee Attendance Widget */}
+      {role === ROLE.EMPLOYEE && attendanceToday ? (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 bg-emerald-50/20 dark:bg-emerald-950/10 p-4 rounded-2xl border border-emerald-500/20">
+          <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 shadow-sm">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance Status</p>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-base font-bold text-gray-800 dark:text-gray-250">{attendanceToday.status}</span>
+              <Badge label={attendanceToday.status} colorKey={attendanceToday.status} />
+            </div>
+          </div>
+          <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 shadow-sm">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Working Hours Today</p>
+            <p className="mt-2 text-2xl font-bold font-mono text-gray-800 dark:text-gray-250">
+              {formatDuration(attendanceToday.total_working_hours)}
+            </p>
+          </div>
+          <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 shadow-sm">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Camera Status</p>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Permission</span>
+              <Badge
+                label={attendanceToday.camera_permission_status || 'Denied'}
+                colorKey={attendanceToday.camera_permission_status === 'Connected' || attendanceToday.camera_permission_status === 'Granted' ? 'completed' : 'rejected'}
+              />
+            </div>
+          </div>
+          <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 shadow-sm">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Screen Share</p>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+              <Badge
+                label={attendanceToday.screen_sharing_status || 'Denied'}
+                colorKey={attendanceToday.screen_sharing_status === 'Sharing' || attendanceToday.screen_sharing_status === 'Granted' ? 'completed' : 'rejected'}
+              />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Managers Attendance Dashboard Stats */}
+      {role !== ROLE.EMPLOYEE && attendanceStats ? (
+        <section className="bg-primary-50/20 dark:bg-primary-950/10 p-5 rounded-2xl border border-primary-500/20 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-primary-800 dark:text-primary-300 uppercase tracking-wider flex items-center">
+              <span className="relative flex h-2 w-2 mr-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-450 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary-500"></span>
+              </span>
+              Workplace Attendance & Monitoring
+            </h3>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/live-monitor')} className="text-primary-700 dark:text-primary-300">
+              Live Monitor Board <ArrowRight className="h-4 w-4 ml-1 inline" />
+            </Button>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
+              <p className="text-xs font-semibold text-gray-500 uppercase">Total Employees</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-150">{attendanceStats.total_employees}</p>
+            </div>
+            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
+              <p className="text-xs font-semibold text-gray-500">Present Today</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-150">{attendanceStats.present_today}</p>
+            </div>
+            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
+              <p className="text-xs font-semibold text-gray-500">Working Now</p>
+              <p className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">{attendanceStats.working_now}</p>
+            </div>
+            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
+              <p className="text-xs font-semibold text-gray-500">On Break</p>
+              <p className="mt-2 text-2xl font-bold text-amber-600 dark:text-amber-400">{attendanceStats.on_break}</p>
+            </div>
+            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
+              <p className="text-xs font-semibold text-gray-500">Offline</p>
+              <p className="mt-2 text-2xl font-bold text-gray-400">{attendanceStats.offline}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
+
 
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
         <div className="card p-5">

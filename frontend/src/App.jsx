@@ -51,6 +51,10 @@ const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
 const AIHub = lazy(() => import('./pages/AIHub'))
 const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
+const Attendance = lazy(() => import('./pages/attendance/Attendance'))
+const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
+const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
+
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
 const SalesContacts = lazy(() => import('./pages/sales/SalesContacts'))
@@ -155,6 +159,10 @@ function App() {
           <Route path="meetings" element={withBoundary(<Meetings />)} />
           <Route path="calendar" element={withBoundary(<Calendar />)} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
+          <Route path="attendance" element={withBoundary(<Attendance />)} />
+          <Route path="live-monitor" element={withBoundary(<LiveMonitor />)} />
+          <Route path="attendance-reports" element={withBoundary(<AttendanceReports />)} />
+
         <Route path="reports" element={withBoundary(<Reports />)} />
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
         <Route path="ai-hub" element={withBoundary(<AIHub />)} />
