@@ -20,6 +20,7 @@ from app.api.v1.endpoints import crm_activities
 from app.api.v1.endpoints import crm_deals
 from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
+from app.api.v1.endpoints import content_calendar
 from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing
 from fastapi import Depends
@@ -81,6 +82,7 @@ api_router.include_router(msa.router, prefix="/msa", tags=["MSA"])
 api_router.include_router(ledger.router, prefix="/ledger", tags=["Ledger"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"], dependencies=[Depends(require_module("task"))])
+api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])

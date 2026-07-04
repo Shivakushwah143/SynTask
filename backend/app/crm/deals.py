@@ -78,6 +78,12 @@ def _serialize_proposal(proposal: CRMProposal) -> Dict[str, Any]:
         "title": proposal.title,
         "summary": proposal.summary,
         "status": proposal.status.value if proposal.status else CRMProposalStatus.DRAFT.value,
+        "draft_at": proposal.draft_at,
+        "sent_at": proposal.sent_at,
+        "viewed_at": proposal.viewed_at,
+        "accepted_at": proposal.accepted_at,
+        "rejected_at": proposal.rejected_at,
+        "expired_at": proposal.expired_at,
         "deal_value": proposal.deal_value,
         "expected_close_date": proposal.expected_close_date,
         "probability": proposal.probability,
@@ -118,6 +124,39 @@ def _proposal_timeline_event(status: CRMProposalStatus, archived: bool = False) 
         CRMProposalStatus.EXPIRED: "ProposalExpired",
     }
     return mapping.get(status, "ProposalCreated")
+
+
+_PROPOSAL_STATUS_TRANSITIONS: Dict[CRMProposalStatus, set[CRMProposalStatus]] = {
+    CRMProposalStatus.DRAFT: {CRMProposalStatus.SENT, CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.SENT: {CRMProposalStatus.VIEWED, CRMProposalStatus.ACCEPTED, CRMProposalStatus.REJECTED, CRMProposalStatus.EXPIRED, CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.VIEWED: {CRMProposalStatus.ACCEPTED, CRMProposalStatus.REJECTED, CRMProposalStatus.EXPIRED, CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.ACCEPTED: {CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.REJECTED: {CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.EXPIRED: {CRMProposalStatus.ARCHIVED},
+    CRMProposalStatus.ARCHIVED: set(),
+}
+
+
+def _apply_proposal_status_transition(proposal: CRMProposal, next_status: CRMProposalStatus, now: datetime) -> None:
+    current_status = proposal.status or CRMProposalStatus.DRAFT
+    if current_status == next_status:
+        return
+    if next_status not in _PROPOSAL_STATUS_TRANSITIONS.get(current_status, set()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid proposal status transition")
+
+    proposal.status = next_status
+    if next_status == CRMProposalStatus.DRAFT:
+        proposal.draft_at = proposal.draft_at or now
+    elif next_status == CRMProposalStatus.SENT:
+        proposal.sent_at = proposal.sent_at or now
+    elif next_status == CRMProposalStatus.VIEWED:
+        proposal.viewed_at = proposal.viewed_at or now
+    elif next_status == CRMProposalStatus.ACCEPTED:
+        proposal.accepted_at = proposal.accepted_at or now
+    elif next_status == CRMProposalStatus.REJECTED:
+        proposal.rejected_at = proposal.rejected_at or now
+    elif next_status == CRMProposalStatus.EXPIRED:
+        proposal.expired_at = proposal.expired_at or now
 
 
 class CRMDealService:
@@ -240,7 +279,7 @@ class CRMDealService:
             version=version,
             title=str(payload.get("title") or f"Proposal v{version}").strip(),
             summary=str(payload.get("summary") or "").strip() or None,
-            status=_normalize_status(payload.get("status")),
+            status=CRMProposalStatus.DRAFT,
             deal_value=float(payload.get("deal_value") or deal.value or 0),
             expected_close_date=payload.get("expected_close_date") or deal.expected_close_date,
             probability=max(0, min(100, int(payload.get("probability") if payload.get("probability") is not None else deal.probability or 0))),
@@ -254,6 +293,11 @@ class CRMDealService:
             created_at=now,
             updated_at=now,
         )
+        target_status = _normalize_status(payload.get("status"))
+        if target_status == CRMProposalStatus.DRAFT:
+            proposal.draft_at = now
+        else:
+            _apply_proposal_status_transition(proposal, target_status, now)
         await proposal.insert()
         await publish_crm_timeline_event(
             event_name=_proposal_timeline_event(proposal.status),
@@ -271,15 +315,17 @@ class CRMDealService:
         prospect = await _load_lead(current_user, lead_id)
         company_id = _company_id_for_user(current_user)
         proposal = await CRMProposal.get(proposal_id)
-        if not proposal or proposal.archived or proposal.lead_id != str(prospect.id) or proposal.company_id != company_id:
+        if not proposal or proposal.lead_id != str(prospect.id) or proposal.company_id != company_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+        if proposal.archived or proposal.status == CRMProposalStatus.ARCHIVED:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Archived proposals cannot be modified")
         now = datetime.utcnow()
         if "title" in payload:
             proposal.title = str(payload.get("title") or proposal.title).strip()
         if "summary" in payload:
             proposal.summary = str(payload.get("summary") or "").strip() or None
         if "status" in payload:
-            proposal.status = _normalize_status(payload.get("status"))
+            _apply_proposal_status_transition(proposal, _normalize_status(payload.get("status")), now)
         if "deal_value" in payload:
             proposal.deal_value = float(payload.get("deal_value") or 0)
         if "expected_close_date" in payload:
@@ -321,6 +367,7 @@ class CRMDealService:
         if not proposal or proposal.lead_id != str(prospect.id) or proposal.company_id != company_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
         now = datetime.utcnow()
+        proposal.status = CRMProposalStatus.ARCHIVED
         proposal.archived = True
         proposal.archived_at = now
         proposal.archived_by = str(current_user.id)

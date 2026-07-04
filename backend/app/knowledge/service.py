@@ -378,3 +378,47 @@ class KnowledgeIngestionService:
             causation_id=causation_id,
         )
         return await self.ingest_event(event)
+
+    async def ingest_content_item(
+        self,
+        *,
+        item,
+        actor_id: str | None,
+        event_name: str,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
+    ) -> KnowledgeRecord:
+        event = self._event(
+            event_name=event_name,
+            aggregate_type="content_item",
+            aggregate_id=str(item.id),
+            company_id=str(item.company_id),
+            actor_id=actor_id,
+            project_id=str(item.project_id) if item.project_id else None,
+            payload={
+                "title": item.title,
+                "summary": item.notes or item.title,
+                "description": item.notes or item.title,
+                "status": getattr(item.status, "value", item.status),
+                "priority": getattr(item.priority, "value", item.priority),
+                "content_type": getattr(item.content_type, "value", item.content_type),
+                "due_date": item.due_date.isoformat() if getattr(item, "due_date", None) else None,
+                "publish_date": item.publish_date.isoformat() if getattr(item, "publish_date", None) else None,
+                "shoot_date": item.shoot_date.isoformat() if getattr(item, "shoot_date", None) else None,
+                "tags": list(item.tags or []),
+                "relationships": [
+                    {"relationship_type": "project", "entity_type": "project", "entity_id": str(item.project_id)},
+                ],
+                "confidence": 0.9,
+                "importance": 4 if getattr(item.priority, "value", item.priority) in {"high", "urgent"} else 3,
+                "content": item.notes or item.title,
+                "version_marker": str(item.updated_at or item.created_at or datetime.utcnow()),
+            },
+            metadata={"module": "content_calendar"},
+            correlation_id=correlation_id,
+            causation_id=causation_id,
+        )
+        return await self.ingest_event(event)
+
+
+knowledge_service = KnowledgeIngestionService()

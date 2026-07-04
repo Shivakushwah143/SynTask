@@ -40,6 +40,15 @@ class KnowledgeNormalizer:
         "ClientFeedbackAdded": KnowledgeType.FEEDBACK,
         "DecisionRecorded": KnowledgeType.DECISION,
         "DocumentUploaded": KnowledgeType.CREATIVE,
+        "ContentPlanned": KnowledgeType.CAMPAIGN,
+        "ShootScheduled": KnowledgeType.CAMPAIGN,
+        "ShootCompleted": KnowledgeType.CAMPAIGN,
+        "EditingStarted": KnowledgeType.CAMPAIGN,
+        "ReadyForReview": KnowledgeType.REVIEW,
+        "Approved": KnowledgeType.REVIEW,
+        "Scheduled": KnowledgeType.CAMPAIGN,
+        "Published": KnowledgeType.CAMPAIGN,
+        "DeadlineMissed": KnowledgeType.DECISION,
     }
 
     @classmethod
