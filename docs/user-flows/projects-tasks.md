@@ -1,0 +1,43 @@
+# Projects and Tasks User Flows
+
+## Main Flow
+
+```mermaid
+flowchart TD
+  A[Authenticated user] --> B[/projects]
+  A --> C[/tasks]
+  B --> D[/projects/:projectId/board]
+  D --> E[/projects/:projectId/tasks/:taskId]
+  C --> E
+  C --> F[/tasks/:taskId]
+  E --> G[Comments / Attachments / Time / Watchers]
+```
+
+## Projects List and Board
+- How the user reaches it: main navigation or workspace links.
+- What they can do: browse projects, open a board, inspect board summaries.
+- What happens after every action: selecting a project opens board/detail routes and refetches project data.
+- Backend APIs called: project list/detail/board APIs.
+- Timeline events created: project changes should appear in timeline/activity where the backend emits events.
+- Notifications sent: none explicitly in the frontend.
+- Related modules updated: Tasks, Time Tracking, CRM handoff in future flows.
+
+## Task Detail
+- How the user reaches it: from project board, task list, or direct task route.
+- What they can do: edit the task, comment, attach files, assign watchers, log time.
+- What happens after every action:
+  - Mutation updates task state and refetches the detail.
+  - Comments/attachments/time logs refresh their corresponding sections.
+- Backend APIs called: task detail, comments, subtasks, attachments, watchers, changelog, time log APIs.
+- Timeline events created: task activity should be captured in the activity/timeline systems where wired.
+- Notifications sent: watchers/assignees may receive existing task notifications where configured.
+- Related modules updated: Timesheet, Time Tracking, CRM Activities if task is linked.
+
+## Time Tracking / Timesheet
+- How the user reaches it: task pages or main navigation.
+- What they can do: log time, inspect time entries, review summaries.
+- What happens after every action: time entry creation updates live timers and summary lists.
+- Backend APIs called: time tracking and timesheet APIs.
+- Timeline events created: time logs may be surfaced as activity events if the backend emits them.
+- Notifications sent: none explicitly in the frontend.
+- Related modules updated: Task Detail, Reports.

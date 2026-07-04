@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Clock, CheckSquare, Ticket, MessageSquare, User } from 'lucide-react'
 import { activityAPI } from '../api/activity'
 import { format } from 'date-fns'
@@ -7,7 +7,7 @@ const ActivityLog = () => {
   const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({
-    entity_type: 'all',
+    entity_type: '',
     days: 30,
   })
 
@@ -17,10 +17,10 @@ const ActivityLog = () => {
   
   useEffect(() => {
     fetchActivities()
-  }, [filters])
+  }, [fetchActivities])
   
 
-  const fetchActivities = async () => {
+  const fetchActivities = useCallback(async () => {
     try {
       setLoading(true)
       const data = await activityAPI.getTimeline(filters)
@@ -31,7 +31,7 @@ const ActivityLog = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filters])
 
   const getActivityIcon = (type) => {
     if (type.includes('task')) {
@@ -145,4 +145,3 @@ const ActivityLog = () => {
 }
 
 export default ActivityLog
-

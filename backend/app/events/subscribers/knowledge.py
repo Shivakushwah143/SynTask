@@ -83,6 +83,18 @@ async def _handle_event(event: DomainEvent) -> None:
                 correlation_id=event.correlation_id,
                 causation_id=event.causation_id,
             )
+    elif event.event_name.startswith("Content"):
+        from app.models.content_calendar import ContentCalendarItem
+
+        item = await ContentCalendarItem.get(event.aggregate_id)
+        if item:
+            await knowledge_service.ingest_content_item(
+                item=item,
+                actor_id=event.actor_id,
+                event_name=event.event_name,
+                correlation_id=event.correlation_id,
+                causation_id=event.causation_id,
+            )
 
 
 def register_knowledge_subscribers() -> None:
@@ -105,5 +117,14 @@ def register_knowledge_subscribers() -> None:
         "CreativeReviewFeedbackAdded",
         "DocumentUploaded",
         "ClientFeedbackAdded",
+        "ContentPlanned",
+        "ShootScheduled",
+        "ShootCompleted",
+        "EditingStarted",
+        "ReadyForReview",
+        "Approved",
+        "Scheduled",
+        "Published",
+        "DeadlineMissed",
     ]:
         event_registry.register(event_name, _handle_event)

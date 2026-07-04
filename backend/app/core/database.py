@@ -52,6 +52,7 @@ from app.models.creative_review import (
 from app.models.invoice import Invoice
 from app.models.msa import MSA
 from app.models.meeting import Meeting
+from app.models.content_calendar import ContentCalendarItem
 from app.models.timesheet import TimesheetEntry, TimesheetSummary
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct
@@ -181,6 +182,7 @@ async def init_db():
                 Invoice,
                 MSA,
                 Meeting,
+                ContentCalendarItem,
                 TimesheetEntry,
                 TimesheetSummary,
                 SalesCategory,

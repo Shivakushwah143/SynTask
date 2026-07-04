@@ -16,6 +16,7 @@ class CRMProposalStatus(str, Enum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
     EXPIRED = "expired"
+    ARCHIVED = "archived"
 
 
 class CRMProposal(Document):
@@ -27,6 +28,13 @@ class CRMProposal(Document):
     title: str
     summary: Optional[str] = None
     status: CRMProposalStatus = CRMProposalStatus.DRAFT
+
+    draft_at: datetime = Field(default_factory=datetime.utcnow)
+    sent_at: Optional[datetime] = None
+    viewed_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
+    rejected_at: Optional[datetime] = None
+    expired_at: Optional[datetime] = None
 
     deal_value: float = 0.0
     expected_close_date: Optional[datetime] = None

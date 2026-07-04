@@ -82,6 +82,8 @@ _PROJECT_TEMPLATE_DEFS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+_AUTOMATION_WORKFLOW = "deal_closure"
+
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
     if not user:
@@ -93,6 +95,49 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 def _safe_text(value: Optional[str], fallback: str) -> str:
     text = (value or "").strip()
     return text or fallback
+
+
+def _project_folders(template: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        {"name": f"{template['name']} {phase}", "order": index}
+        for index, phase in enumerate(template["phases"])
+    ]
+
+
+def _project_milestones(template: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        {"name": milestone, "order": index}
+        for index, milestone in enumerate(template["milestones"])
+    ]
+
+
+def _project_template_signature(template: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "name": template["name"],
+        "phases": template["phases"],
+        "tasks": template["tasks"],
+        "milestones": template["milestones"],
+    }
+
+
+async def _publish_step_event(
+    *,
+    event_name: str,
+    lead: SalesProspect,
+    current_user: User,
+    payload: Dict[str, Any],
+    project: Optional[Project] = None,
+) -> None:
+    await publish_crm_timeline_event(
+        event_name=event_name,
+        aggregate_type="sales_prospect",
+        aggregate_id=str(lead.id),
+        company_id=str(lead.company_id),
+        actor_id=str(getattr(current_user, "id", "")),
+        payload=payload,
+        project_id=project.project_id if project else None,
+        metadata={"surface": "crm", "workflow": _AUTOMATION_WORKFLOW},
+    )
 
 
 def _template_for_lead(lead: SalesProspect) -> Dict[str, Any]:
@@ -118,10 +163,19 @@ async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optiona
             "$or": [
                 {"company_name": company_name},
                 {"name": company_name},
+                {"name": getattr(lead, "prospect_name", None)},
             ],
         }
     )
     if existing_client:
+        if getattr(lead, "contact_id", None) and not getattr(existing_client, "contact", None):
+            existing_client.contact = getattr(lead, "phone", None) or existing_client.contact
+        if getattr(existing_client, "company_name", None) != company_name:
+            existing_client.company_name = company_name
+        if getattr(lead, "assigned_to", None) and not existing_client.assigned_to:
+            existing_client.assigned_to = str(getattr(lead, "assigned_to", ""))
+        existing_client.updated_at = datetime.utcnow()
+        await existing_client.save()
         return existing_client
 
     now = datetime.utcnow()
@@ -160,6 +214,23 @@ async def _resolve_project(current_user: User, lead: SalesProspect, client: Clie
         }
     )
     if existing:
+        if not getattr(existing, "folders", None):
+            existing.folders = _project_folders(template)
+        if not getattr(existing, "milestones", None):
+            existing.milestones = _project_milestones(template)
+        if not getattr(existing, "board_columns", None):
+            existing.board_columns = [
+                {"id": f"phase-{index + 1}", "label": phase.upper(), "color": "bg-slate-100", "order": index}
+                for index, phase in enumerate(template["phases"])
+            ]
+        if owner_id and owner_id not in [str(item) for item in (existing.team_member_ids or [])]:
+            existing.team_member_ids = list(existing.team_member_ids or []) + [owner_id]
+        if owner_id and not existing.assigned_to:
+            existing.assigned_to = owner_id
+        if owner_id and not existing.lead_id:
+            existing.lead_id = owner_id
+        existing.updated_at = datetime.utcnow()
+        await existing.save()
         return existing
 
     template = _template_for_lead(lead)
@@ -188,10 +259,13 @@ async def _resolve_project(current_user: User, lead: SalesProspect, client: Clie
         created_at=now,
         updated_at=now,
     )
+    project.team_member_ids = [item for item in [owner_id] if item]
     project.board_columns = [
         {"id": f"phase-{index + 1}", "label": phase.upper(), "color": "bg-slate-100", "order": index}
         for index, phase in enumerate(template["phases"])
     ]
+    project.folders = _project_folders(template)
+    project.milestones = _project_milestones(template)
     await project.insert()
     return project
 
@@ -202,6 +276,18 @@ async def _generate_project_structure(current_user: User, project: Project, clie
 
     created_tasks: List[str] = []
     for index, task_title in enumerate(template["tasks"]):
+        existing_task = await Task.find_one(
+            {
+                "company_id": str(project.company_id),
+                "project_object_id": str(project.id),
+                "title": task_title,
+                "created_by": str(getattr(current_user, "id", "")),
+            }
+        )
+        if existing_task:
+            created_tasks.append(str(existing_task.id))
+            continue
+
         task = Task(
             title=task_title,
             description=f"{template['name']} onboarding task for {client.name}.",
@@ -222,11 +308,6 @@ async def _generate_project_structure(current_user: User, project: Project, clie
         created_tasks.append(str(task.id))
 
     milestone_names = template["milestones"]
-    project.board_columns = [
-        {"id": f"phase-{index + 1}", "label": phase.upper(), "color": "bg-slate-100", "order": index}
-        for index, phase in enumerate(template["phases"])
-    ]
-    project.files = list(project.files or [])
     project.updated_at = now
     await project.save()
 
@@ -240,6 +321,16 @@ async def _generate_project_structure(current_user: User, project: Project, clie
 
 async def _create_kickoff_meeting(current_user: User, lead: SalesProspect, client: Client, project: Project) -> Meeting:
     now = datetime.utcnow()
+    existing_meeting = await Meeting.find_one(
+        {
+            "company_id": str(lead.company_id),
+            "title": f"Kickoff - {client.name}",
+            "deleted": {"$ne": True},
+        }
+    )
+    if existing_meeting:
+        return existing_meeting
+
     meeting = Meeting(
         title=f"Kickoff - {client.name}",
         description=f"Kickoff meeting for {project.name}",
@@ -259,12 +350,52 @@ async def _create_kickoff_meeting(current_user: User, lead: SalesProspect, clien
 
 
 async def handle_won_deal_automation(current_user: User, lead: SalesProspect, deal: Optional[CRMDeal]) -> Dict[str, Any]:
+    now = datetime.utcnow()
     client = await _resolve_client(current_user, lead, deal)
     project = await _resolve_project(current_user, lead, client, deal)
-    structure = await _generate_project_structure(current_user, project, client, lead, deal)
-    meeting = await _create_kickoff_meeting(current_user, lead, client, project)
 
-    now = datetime.utcnow()
+    existing_activity = await CRMActivity.find_one(
+        {
+            "company_id": str(lead.company_id),
+            "entity_type": "lead",
+            "entity_id": str(lead.id),
+            "activity_type": CRMActivityType.PIPELINE_CHANGE.value,
+            "deleted": False,
+            "metadata.client_id": str(client.id),
+            "metadata.project_id": str(project.id),
+        }
+    )
+    if existing_activity:
+        structure = _project_template_signature(_template_for_lead(lead))
+        meeting = await _create_kickoff_meeting(current_user, lead, client, project)
+        return {
+            "client": client,
+            "project": project,
+            "meeting": meeting,
+            "activity": existing_activity,
+            "template": structure["name"],
+            "status": "reused",
+        }
+
+    steps: List[Dict[str, Any]] = []
+
+    def _step(name: str, status: str = "completed", **details: Any) -> None:
+        steps.append({"step": name, "status": status, **details})
+
+    _step("client_lookup", "completed", client_id=str(client.id))
+    if str(project.id) not in [str(item) for item in (client.project_ids or [])]:
+        client.project_ids = list(client.project_ids or []) + [str(project.id)]
+        client.updated_at = now
+        await client.save()
+    _step("client_link", "completed", project_id=str(project.id), client_id=str(client.id))
+    structure = _template_for_lead(lead)
+    project = await _resolve_project(current_user, lead, client, deal)
+    _step("project_lookup", "completed", project_id=str(project.id))
+    structure_result = await _generate_project_structure(current_user, project, client, lead, deal)
+    _step("project_structure", "completed", **structure_result)
+    meeting = await _create_kickoff_meeting(current_user, lead, client, project)
+    _step("kickoff_meeting", "completed", meeting_id=str(meeting.id))
+
     activity = CRMActivity(
         company_id=str(lead.company_id),
         entity_type="lead",
@@ -283,7 +414,9 @@ async def handle_won_deal_automation(current_user: User, lead: SalesProspect, de
             "client_id": str(client.id),
             "project_id": str(project.id),
             "meeting_id": str(meeting.id),
-            "template_name": structure["template_name"],
+            "template_name": structure_result["template_name"],
+            "automation_status": "completed",
+            "automation_steps": steps,
         },
         created_by=str(getattr(current_user, "id", "")),
         created_by_name=_display_name(current_user, str(getattr(current_user, "id", "system"))),
@@ -294,109 +427,96 @@ async def handle_won_deal_automation(current_user: User, lead: SalesProspect, de
     )
     await activity.insert()
 
-    await publish_crm_timeline_event(
+    await _publish_step_event(
         event_name="DealWon",
-        aggregate_type="sales_prospect",
-        aggregate_id=str(lead.id),
-        company_id=str(lead.company_id),
-        actor_id=str(getattr(current_user, "id", "")),
+        lead=lead,
+        current_user=current_user,
         payload={
             "lead_id": str(lead.id),
             "deal_id": str(deal.id) if deal else None,
             "client_id": str(client.id),
             "project_id": str(project.id),
             "meeting_id": str(meeting.id),
-            "template_name": structure["template_name"],
+            "template_name": structure_result["template_name"],
+            "status": "completed",
             "timestamp": now.isoformat(),
         },
-        metadata={"surface": "crm", "workflow": "deal_closure"},
+        project=project,
     )
-    await publish_crm_timeline_event(
+    await _publish_step_event(
         event_name="ClientCreated",
-        aggregate_type="crm_company",
-        aggregate_id=str(client.id),
-        company_id=str(lead.company_id),
-        actor_id=str(getattr(current_user, "id", "")),
+        lead=lead,
+        current_user=current_user,
         payload={
             "client_id": str(client.id),
             "company_name": client.company_name,
             "lead_id": str(lead.id),
+            "status": "completed",
             "timestamp": now.isoformat(),
         },
-        metadata={"surface": "crm", "workflow": "deal_closure"},
     )
-    await publish_crm_timeline_event(
+    await _publish_step_event(
         event_name="ProjectCreated",
-        aggregate_type="project",
-        aggregate_id=str(project.id),
-        company_id=str(lead.company_id),
-        actor_id=str(getattr(current_user, "id", "")),
+        lead=lead,
+        current_user=current_user,
         payload={
             "project_id": project.project_id or str(project.id),
             "project_name": project.name,
             "client_id": str(client.id),
             "lead_id": str(lead.id),
+            "status": "completed",
             "timestamp": now.isoformat(),
         },
-        project_id=project.project_id or str(project.id),
-        metadata={"surface": "crm", "workflow": "deal_closure"},
+        project=project,
     )
-    await publish_crm_timeline_event(
+    await _publish_step_event(
         event_name="TemplateApplied",
-        aggregate_type="project",
-        aggregate_id=str(project.id),
-        company_id=str(lead.company_id),
-        actor_id=str(getattr(current_user, "id", "")),
+        lead=lead,
+        current_user=current_user,
         payload={
             "project_id": project.project_id or str(project.id),
-            "template_name": structure["template_name"],
-            "phases": structure["phases"],
+            "template_name": structure_result["template_name"],
+            "phases": structure_result["phases"],
+            "status": "completed",
             "timestamp": now.isoformat(),
         },
-        project_id=project.project_id or str(project.id),
-        metadata={"surface": "crm", "workflow": "deal_closure"},
+        project=project,
     )
-    await publish_crm_timeline_event(
+    await _publish_step_event(
         event_name="TasksGenerated",
-        aggregate_type="project",
-        aggregate_id=str(project.id),
-        company_id=str(lead.company_id),
-        actor_id=str(getattr(current_user, "id", "")),
+        lead=lead,
+        current_user=current_user,
         payload={
             "project_id": project.project_id or str(project.id),
-            "task_ids": structure["task_ids"],
+            "task_ids": structure_result["task_ids"],
+            "status": "completed",
             "timestamp": now.isoformat(),
         },
-        project_id=project.project_id or str(project.id),
-        metadata={"surface": "crm", "workflow": "deal_closure"},
+        project=project,
     )
-    await publish_crm_timeline_event(
+    await _publish_step_event(
         event_name="TeamAssigned",
-        aggregate_type="project",
-        aggregate_id=str(project.id),
-        company_id=str(lead.company_id),
-        actor_id=str(getattr(current_user, "id", "")),
+        lead=lead,
+        current_user=current_user,
         payload={
             "project_id": project.project_id or str(project.id),
             "assigned_to": project.assigned_to,
+            "status": "completed",
             "timestamp": now.isoformat(),
         },
-        project_id=project.project_id or str(project.id),
-        metadata={"surface": "crm", "workflow": "deal_closure"},
+        project=project,
     )
-    await publish_crm_timeline_event(
+    await _publish_step_event(
         event_name="KickoffScheduled",
-        aggregate_type="meeting",
-        aggregate_id=str(meeting.id),
-        company_id=str(lead.company_id),
-        actor_id=str(getattr(current_user, "id", "")),
+        lead=lead,
+        current_user=current_user,
         payload={
             "meeting_id": str(meeting.id),
             "project_id": project.project_id or str(project.id),
             "client_id": str(client.id),
+            "status": "completed",
             "timestamp": now.isoformat(),
         },
-        metadata={"surface": "crm", "workflow": "deal_closure"},
     )
 
     return {
@@ -404,5 +524,7 @@ async def handle_won_deal_automation(current_user: User, lead: SalesProspect, de
         "project": project,
         "meeting": meeting,
         "activity": activity,
-        "template": structure["template_name"],
+        "template": structure_result["template_name"],
+        "status": "completed",
+        "steps": steps,
     }

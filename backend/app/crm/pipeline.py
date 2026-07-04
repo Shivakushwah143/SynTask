@@ -429,6 +429,7 @@ class CRMPipelineService:
                     "lead_id": str(prospect.id),
                 }
             )
+            automation_result: Dict[str, Any] = {"status": "skipped"}
             try:
                 if deal:
                     now = datetime.utcnow()
@@ -437,10 +438,12 @@ class CRMPipelineService:
                     deal.updated_by_name = _user_display_name(current_user)
                     deal.updated_at = now
                     await deal.save()
-                await handle_won_deal_automation(current_user, prospect, deal)
-            except Exception:
-                # Preserve the deal win transition even if handoff automation fails.
-                pass
+                automation_result = await handle_won_deal_automation(current_user, prospect, deal)
+            except Exception as exc:
+                automation_result = {
+                    "status": "failed",
+                    "error": str(exc),
+                }
 
         return {
             "lead": _serialize_lead(prospect, resolved_stage),
@@ -455,6 +458,7 @@ class CRMPipelineService:
                 "reason": reason.strip() if reason else None,
                 "days_in_previous_stage": days_in_previous_stage,
             },
+            "automation": automation_result if normalized_stage == "won" else None,
             "message": "Lead stage updated successfully",
         }
 

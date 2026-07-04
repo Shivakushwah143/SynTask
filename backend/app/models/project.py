@@ -62,6 +62,8 @@ class Project(Document):
     avatar: Optional[str] = None
     category: Optional[str] = None
     files: List[Dict[str, Any]] = Field(default_factory=list)
+    folders: List[Dict[str, Any]] = Field(default_factory=list)
+    milestones: List[Dict[str, Any]] = Field(default_factory=list)
     
     # Custom Board Columns (Kanban)
     board_columns: List[Dict[str, Any]] = Field(default_factory=lambda: [
@@ -169,4 +171,3 @@ class Sprint(Document):
             "start_date",
             "end_date",
         ]
-
