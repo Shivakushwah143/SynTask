@@ -64,6 +64,11 @@ from app.models.sales_masters import (
     SalesStage, ReasonForLost, SalesChannel, SalesTag,
     Nationality, BusinessCategory, GreetingTemplate
 )
+from app.models.attendance import (
+    Attendance, AttendanceStatus, AttendanceSession, BreakLog,
+    MonitoringSession, CameraSession, ScreenShareSession
+)
+
 
 __all__ = [
     # User models
@@ -146,4 +151,8 @@ __all__ = [
     "SalesProspect", "SalesLeadNote", "SalesPipelineHistory",
     "SalesStage", "ReasonForLost", "SalesChannel", "SalesTag",
     "Nationality", "BusinessCategory", "GreetingTemplate",
+    # Attendance & Monitoring models
+    "Attendance", "AttendanceStatus", "AttendanceSession", "BreakLog",
+    "MonitoringSession", "CameraSession", "ScreenShareSession",
 ]
+

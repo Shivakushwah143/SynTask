@@ -103,6 +103,25 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
+      name: "Attendance",
+      href: "/attendance",
+      icon: Clock,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
+      name: "Live Monitor",
+      href: "/live-monitor",
+      icon: Video,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
+    },
+    {
+      name: "Attendance Reports",
+      href: "/attendance-reports",
+      icon: BarChart3,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
+    },
+
+    {
       name: "Reports",
       href: "/reports",
       icon: BarChart3,

@@ -64,8 +64,13 @@ from app.models.sales_masters import (
     SalesStage, ReasonForLost, SalesChannel, SalesTag,
     Nationality, BusinessCategory, GreetingTemplate
 )
+from app.models.attendance import (
+    Attendance, AttendanceSession, BreakLog,
+    MonitoringSession, CameraSession, ScreenShareSession
+)
 
 logger = logging.getLogger(__name__)
+
 
 # Global MongoDB client
 client: AsyncIOMotorClient = None
@@ -193,6 +198,12 @@ async def init_db():
                 Nationality,
                 BusinessCategory,
                 GreetingTemplate,
+                Attendance,
+                AttendanceSession,
+                BreakLog,
+                MonitoringSession,
+                CameraSession,
+                ScreenShareSession,
             ]
         )
         

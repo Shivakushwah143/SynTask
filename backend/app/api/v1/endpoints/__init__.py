@@ -6,7 +6,7 @@ from . import (
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
     superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing, departments, ai, creative, crm_activities
-    , crm_deals
+    , crm_deals, attendance
 )
 
 __all__ = [
@@ -51,4 +51,5 @@ __all__ = [
     "creative",
     "crm_activities",
     "crm_deals",
+    "attendance",
 ]
