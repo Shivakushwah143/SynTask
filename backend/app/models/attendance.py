@@ -26,11 +26,14 @@ class Attendance(Document):
     # Timing details
     login_time: Optional[datetime] = None
     logout_time: Optional[datetime] = None
-    total_working_hours: float = 0.0  # Stored as cumulative float hours (e.g. 8.5)
-    break_duration: float = 0.0       # Stored as cumulative float hours (e.g. 0.75)
+    total_working_hours: float = 0.0  # Stored as cumulative seconds
+    break_duration: float = 0.0       # Stored as cumulative seconds
+    overtime_seconds: float = 0.0     # Seconds worked beyond 8 hours
+    work_type: Optional[str] = None   # "Under Time", "Full Time", "Overtime"
     
     # Status
     status: AttendanceStatus = AttendanceStatus.OFFLINE
+    is_late: bool = False             # True if clock-in was after 9:00 AM UTC
     
     # Monitoring info
     monitoring_start_time: Optional[datetime] = None
