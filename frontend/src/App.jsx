@@ -7,7 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import ConfirmDialog from './components/ConfirmDialog'
 import UndoBar from './components/UndoBar'
 import { Agentation } from "agentation";
-import { isSuperAdminRole } from './utils/roles'
+import { hasCompanyAdminAccess, isSuperAdminRole } from './utils/roles'
 import { applySeoMeta, getSeoMeta } from './utils/seo'
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
@@ -51,6 +51,7 @@ const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
 const AIHub = lazy(() => import('./pages/AIHub'))
 const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
+const MarketingChat = lazy(() => import('./pages/MarketingChat'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
@@ -60,6 +61,7 @@ const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
 const SalesContacts = lazy(() => import('./pages/sales/SalesContacts'))
 const ContactDetail = lazy(() => import('./pages/sales/ContactDetail'))
 const SalesProspects = lazy(() => import('./pages/sales/SalesProspects'))
+const BulkLeads = lazy(() => import('./pages/BulkLeads'))
 const ProspectDetail = lazy(() => import('./pages/sales/ProspectDetail'))
 const SalesPipeline = lazy(() => import('./pages/sales/SalesPipeline'))
 const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
@@ -113,6 +115,12 @@ const SuperAdminGuard = ({ children }) => {
   return children
 }
 
+const CompanyAdminGuard = ({ children }) => {
+  const { user } = useAuthStore()
+  if (!hasCompanyAdminAccess(user?.role)) return <Navigate to="/dashboard" replace />
+  return children
+}
+
 const ModuleGuard = ({ module, children }) => {
   const { user } = useAuthStore()
   if (isSuperAdminRole(user?.role)) return children
@@ -120,11 +128,10 @@ const ModuleGuard = ({ module, children }) => {
   return <Navigate to="/dashboard" replace />
 }
 
-const withBoundary = (element) => <ErrorBoundary>{element}</ErrorBoundary>
-
 function App() {
   useTheme()
   const location = useLocation()
+  const withBoundary = (element) => <ErrorBoundary key={location.pathname}>{element}</ErrorBoundary>
 
   useEffect(() => {
     applySeoMeta(getSeoMeta(location.pathname))
@@ -151,6 +158,7 @@ function App() {
           <Route path="invoices" element={withBoundary(<Invoices />)} />
           <Route path="msa" element={withBoundary(<MSA />)} />
           <Route path="ledger" element={withBoundary(<Ledger />)} />
+          <Route path="bulk-leads" element={<CompanyAdminGuard>{withBoundary(<BulkLeads />)}</CompanyAdminGuard>} />
           <Route path="projects" element={withBoundary(<Projects />)} />
           <Route path="projects/:projectId/board" element={withBoundary(<ProjectBoard />)} />
           <Route path="projects/:projectId/tasks/:taskId" element={withBoundary(<TaskDetail />)} />
@@ -167,6 +175,7 @@ function App() {
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
         <Route path="ai-hub" element={withBoundary(<AIHub />)} />
         <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />
+        <Route path="marketing-support" element={withBoundary(<MarketingChat />)} />
         <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="departments" element={withBoundary(<Departments />)} />

@@ -1288,6 +1288,222 @@ class AIService:
                 pass
             return fallback
 
+    async def generate_marketing_chat_response(
+        self,
+        current_user: User,
+        request: AIChatRequest,
+    ) -> AIChatResponse:
+        """
+        Generate a marketing-focused chat response for digital marketing client support.
+        This uses a specialized prompt and context for marketing-related queries.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        from app.ai.context_builder import ContextBuilder
+        from app.ai.prompts.chat.digital_marketing_support import render_digital_marketing_prompt
+        from app.ai.tools.marketing_tools import register_marketing_tools
+        
+        # Build marketing context
+        context = await ContextBuilder.build_marketing_context(
+            current_user=current_user,
+            message=request.message,
+            limit=10,
+        )
+        
+        # Get role resolution
+        resolution = self.role_engine.resolve(current_user)
+        
+        # Render marketing-specific prompt
+        prompt_package = render_digital_marketing_prompt(
+            resolution=resolution,
+            context=context,
+            message=request.message,
+        )
+        
+        provider_name = settings.AI_PROVIDER.lower().strip()
+        model_name = settings.AI_MODEL_OPENAI if provider_name == "openai" else settings.AI_MODEL_GROQ
+        started_at = time.perf_counter()
+        
+        try:
+            # Register marketing tools for this request
+            from app.api.dependencies import get_current_user
+            register_marketing_tools(self.tool_executor, get_current_user)
+            
+            # Build options - Groq doesn't support response_format, only OpenAI does
+            generate_options = {
+                "system_prompt": prompt_package.system_prompt,
+                "max_tokens": settings.AI_MAX_TOKENS,
+                "temperature": settings.AI_TEMPERATURE,
+            }
+            # Only add response_format for OpenAI, not Groq
+            if provider_name != "groq":
+                generate_options["response_format"] = {"type": "json_object"}
+            
+            result = await self.provider.generate(
+                prompt=prompt_package.user_prompt,
+                context=context,
+                options=generate_options,
+            )
+            model_name = result.model
+            
+            # Parse response
+            from app.schemas.ai import AIChatLLMResponse
+            parsed = self.response_parser.parse_json_model(result.content, AIChatLLMResponse)
+            
+            # Execute any tools requested by the AI
+            action_results = await self.tool_executor.execute_many(parsed.actions)
+            executed_actions = [
+                {
+                    "tool": item.tool_name,
+                    "success": item.success,
+                    "result": item.result,
+                }
+                for item in action_results
+            ]
+            
+            response = AIChatResponse(
+                conversation_id=None,  # Marketing chat doesn't persist conversations
+                message=parsed.message,
+                suggested_actions=parsed.suggested_actions,
+                actions=parsed.actions,
+                source="llm",
+                provider=provider_name,
+                model=result.model,
+                role=resolution.role_key,
+                prompt_version=prompt_package.prompt_version,
+                prompt_role_key=prompt_package.prompt_role_key,
+                fallback_chain=list(prompt_package.fallback_chain),
+                fallback_used=prompt_package.fallback_used,
+                generated_at=datetime.utcnow(),
+                context={
+                    **context,
+                    "prompt_file": prompt_package.prompt_file,
+                    "prompt_role_key": prompt_package.prompt_role_key,
+                    "prompt_version": prompt_package.prompt_version,
+                    "role_resolution": {
+                        "role_key": prompt_package.role_key,
+                        "prompt_role_key": prompt_package.prompt_role_key,
+                        "fallback_chain": prompt_package.fallback_chain,
+                        "fallback_used": prompt_package.fallback_used,
+                        "fallback_reason": prompt_package.fallback_reason,
+                    },
+                    "executed_actions": executed_actions,
+                },
+            )
+            
+            # Log interaction
+            await AILogger.log_interaction(
+                feature="marketing_chat",
+                role=resolution.role_key,
+                provider=provider_name,
+                status="success",
+                company_id=current_user.company_id,
+                user_id=str(current_user.id),
+                target_user_id=None,
+                model=result.model,
+                prompt_version=prompt_package.prompt_version,
+                prompt_role_key=prompt_package.prompt_role_key,
+                prompt=prompt_package.user_prompt,
+                context=context,
+                raw_response=result.content,
+                parsed_response=response.model_dump(),
+                latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                total_tokens=result.total_tokens,
+                response_size_bytes=len(result.content.encode("utf-8")),
+                fallback_used=prompt_package.fallback_used,
+                fallback_chain=list(prompt_package.fallback_chain),
+                executed_actions=executed_actions,
+            )
+            
+            return response
+            
+        except Exception as error:
+            # Log the actual error
+            logger.error(f"Marketing chat error: {str(error)}", exc_info=True)
+            
+            # Provide more helpful error message based on error type
+            error_str = str(error).lower()
+            if "400" in error_str or "bad request" in error_str:
+                fallback_message = (
+                    f"Hello {current_user.first_name}, I'm your Digital Marketing Support Assistant. "
+                    "I'm currently experiencing technical difficulties with the AI service. "
+                    "This may be due to an invalid API key or configuration issue. "
+                    "Please contact your administrator to verify the Groq API key in the backend .env file."
+                )
+            elif "401" in error_str or "unauthorized" in error_str or "api key" in error_str:
+                fallback_message = (
+                    f"Hello {current_user.first_name}, I'm your Digital Marketing Support Assistant. "
+                    "The AI service authentication failed. Please contact your administrator to verify the API configuration."
+                )
+            elif "429" in error_str or "rate limit" in error_str:
+                fallback_message = (
+                    f"Hello {current_user.first_name}, I'm your Digital Marketing Support Assistant. "
+                    "I'm currently experiencing high traffic. Please wait a moment and try again."
+                )
+            elif "timeout" in error_str or "timed out" in error_str:
+                fallback_message = (
+                    f"Hello {current_user.first_name}, I'm your Digital Marketing Support Assistant. "
+                    "The request timed out. Please try again with a shorter question."
+                )
+            else:
+                fallback_message = (
+                    f"Hello {current_user.first_name}, I'm your Digital Marketing Support Assistant. "
+                    "I can help you with campaign status, invoices, subscriptions, support tickets, and marketing services. "
+                    f"However, I encountered an issue: {str(error)[:100]}. Please try again or contact support if the issue persists."
+                )
+            
+            fallback = AIChatResponse(
+                conversation_id=None,
+                message=fallback_message,
+                suggested_actions=[
+                    {"label": "View Campaigns", "type": "navigate", "payload": {"path": "/projects"}},
+                    {"label": "Create Support Ticket", "type": "navigate", "payload": {"path": "/tickets"}},
+                    {"label": "View Invoices", "type": "navigate", "payload": {"path": "/invoices"}},
+                ],
+                actions=[],
+                source="fallback",
+                provider=provider_name,
+                model=model_name,
+                role=resolution.role_key,
+                prompt_version=prompt_package.prompt_version if 'prompt_package' in dir() else "1.0",
+                prompt_role_key="marketing_chat-fallback",
+                fallback_chain=[],
+                fallback_used=True,
+                generated_at=datetime.utcnow(),
+                context={},
+            )
+            
+            await AILogger.log_interaction(
+                feature="marketing_chat",
+                role=resolution.role_key,
+                provider=provider_name,
+                status="fallback",
+                company_id=current_user.company_id,
+                user_id=str(current_user.id),
+                target_user_id=None,
+                model=model_name,
+                prompt_version=prompt_package.prompt_version if 'prompt_package' in dir() else "1.0",
+                prompt_role_key="marketing_chat-fallback",
+                prompt=prompt_package.user_prompt if 'prompt_package' in dir() else "",
+                context=context if 'context' in dir() else {},
+                raw_response=None,
+                parsed_response=fallback.model_dump(),
+                latency_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                prompt_tokens=None,
+                completion_tokens=None,
+                total_tokens=None,
+                response_size_bytes=len(fallback.model_dump_json().encode("utf-8")),
+                fallback_used=True,
+                fallback_chain=[],
+                executed_actions=[],
+                error_message=str(error),
+            )
+            
+            return fallback
+
     async def list_logs(
         self,
         current_user: User,

@@ -35,6 +35,16 @@ const Departments = () => {
     () => users.filter((item) => item.status === 'active'),
     [users],
   )
+  const departmentMembers = useMemo(() => {
+    const membersByDepartment = new Map()
+    users.forEach((item) => {
+      const key = item.department_id || item.department
+      if (!key) return
+      if (!membersByDepartment.has(key)) membersByDepartment.set(key, [])
+      membersByDepartment.get(key).push(item)
+    })
+    return membersByDepartment
+  }, [users])
   const noActiveUsersAvailable = !loadingUsers && managerOptions.length === 0
 
   const loadDepartments = async () => {
@@ -171,6 +181,14 @@ const Departments = () => {
       render: (row) => row.manager_name || <span className="text-gray-400">Not assigned</span>,
     },
     {
+      key: 'members',
+      header: 'Members',
+      render: (row) => {
+        const members = departmentMembers.get(row.id) || []
+        return members.length ? `${members.length} user${members.length === 1 ? '' : 's'}` : <span className="text-gray-400">No members</span>
+      },
+    },
+    {
       key: 'created_at',
       header: 'Created Date',
       render: (row) => format(new Date(row.created_at), 'MMM d, yyyy'),
@@ -299,6 +317,19 @@ const Departments = () => {
               >
                 Go to Users
               </Button>
+            </div>
+          ) : null}
+
+          {editingDepartment ? (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-900/40 dark:text-gray-300">
+              <p className="font-medium">Members</p>
+              <p className="mt-1">
+                {(() => {
+                  const members = departmentMembers.get(editingDepartment.id) || []
+                  if (!members.length) return 'No users are assigned to this department yet.'
+                  return members.map((item) => `${item.first_name} ${item.last_name}`).join(', ')
+                })()}
+              </p>
             </div>
           ) : null}
 

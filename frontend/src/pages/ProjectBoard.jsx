@@ -43,17 +43,6 @@ export default function ProjectBoard() {
   const [submitting, setSubmitting] = useState(false)
   const [updatingTaskId, setUpdatingTaskId] = useState(null)
 
-  useEffect(() => {
-    loadProjectInfo()
-    loadAssignableUsers()
-  }, [loadAssignableUsers, loadProjectInfo])
-
-  useEffect(() => {
-    if (activeTab === 'board') loadBoardData()
-    if (activeTab === 'summary') loadSummaryData()
-    if (activeTab === 'pages') loadPages()
-  }, [activeTab, loadBoardData, loadPages, loadSummaryData])
-
   const loadProjectInfo = useCallback(async () => {
     try {
       const response = await projectsApi.getProject(projectId)
@@ -110,6 +99,17 @@ export default function ProjectBoard() {
       setLoadingPages(false)
     }
   }, [projectId])
+
+  useEffect(() => {
+    loadProjectInfo()
+    loadAssignableUsers()
+  }, [loadAssignableUsers, loadProjectInfo])
+
+  useEffect(() => {
+    if (activeTab === 'board') loadBoardData()
+    if (activeTab === 'summary') loadSummaryData()
+    if (activeTab === 'pages') loadPages()
+  }, [activeTab, loadBoardData, loadPages, loadSummaryData])
 
   const filteredBoard = useMemo(() => {
     if (!boardData?.tasks_by_status) return {}

@@ -42,14 +42,26 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS Middleware
-cors_origins = settings.ALLOWED_ORIGINS 
+# CORS Middleware - Allow frontend origins
+cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+# Merge with settings.ALLOWED_ORIGINS if it exists
+if hasattr(settings, 'ALLOWED_ORIGINS') and settings.ALLOWED_ORIGINS:
+    for origin in settings.ALLOWED_ORIGINS:
+        if origin not in cors_origins:
+            cors_origins.append(origin)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_headers=["*"],  # Allow all headers for development
+    expose_headers=["*"],  # Expose all headers
 )
 
 
@@ -60,7 +72,7 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(), geolocation=(), payment=(), usb=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
     return response
 
 # Trusted Host Middleware (Security)
@@ -117,6 +129,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"success": False, "message": "Internal server error"}
     )
+
 
 # Startup event
 @app.on_event("startup")
@@ -177,10 +190,26 @@ async def debug_backend():
 app.include_router(api_router, prefix="/api/v1")
 
 # Serve static files (uploads)
-# Serve static files (uploads)
 uploads_dir = Path("uploads")
 uploads_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# CORS-enabled avatar endpoint
+from fastapi import APIRouter, HTTPException
+from pathlib import Path
+from fastapi.responses import FileResponse
+
+avatar_router = APIRouter()
+
+@avatar_router.get("/uploads/avatars/{filename}")
+async def serve_avatar(filename: str):
+    """Serve avatar files with CORS headers"""
+    avatar_path = Path("uploads") / "avatars" / filename
+    if not avatar_path.exists():
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    return FileResponse(avatar_path, headers={"Access-Control-Allow-Origin": "*"})
+
+app.include_router(avatar_router, prefix="/api/v1", include_in_schema=False)
 
 # Root endpoint
 @app.get("/", tags=["Root"])

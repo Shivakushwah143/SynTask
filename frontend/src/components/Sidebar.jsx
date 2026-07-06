@@ -143,11 +143,25 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
+      name: "Marketing Support",
+      href: "/marketing-support",
+      icon: BarChart3,
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
+      module: "task",
+    },
+    {
       name: "CRM",
       href: "/crm/pipeline",
       match: "/crm",
       icon: TrendingUp,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "sales",
+    },
+    {
+      name: "Bulk Leads",
+      href: "/bulk-leads",
+      icon: TrendingUp,
+      roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
       module: "sales",
     },
     {
@@ -480,6 +494,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                     src={
                       user.avatar.startsWith("http")
                         ? user.avatar
+                        : user.avatar.startsWith("/uploads/avatars/")
+                        ? `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}/api/v1${user.avatar}`
                         : `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${user.avatar}`
                     }
                     alt={user?.first_name}
@@ -487,7 +503,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                     onError={(e) => {
                       // Fallback to initials if image fails to load
                       e.target.style.display = "none";
-                      e.target.nextSibling.style.display = "flex";
+                      const fallback = e.target.nextSibling;
+                      if (fallback) fallback.style.display = "flex";
                     }}
                   />
                 ) : null}

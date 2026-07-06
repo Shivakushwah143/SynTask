@@ -40,6 +40,37 @@ async def _resolve_department(company_id: Optional[str], department_id: Optional
         )
     return department
 
+
+async def _build_department_name_map(company_id: Optional[str], users: list[User]) -> dict[str, str]:
+    department_ids = {
+        getattr(user, "department_id", None)
+        for user in users
+        if getattr(user, "department_id", None)
+    }
+    if not department_ids or not company_id:
+        return {}
+
+    from bson import ObjectId
+
+    department_object_ids = []
+    for department_id in department_ids:
+        try:
+            department_object_ids.append(ObjectId(department_id))
+        except Exception:
+            continue
+
+    if not department_object_ids:
+        return {}
+
+    departments = await Department.find(
+        {
+            "company_id": company_id,
+            "deleted_at": None,
+            "_id": {"$in": department_object_ids},
+        }
+    ).to_list()
+    return {str(department.id): department.name for department in departments}
+
 # ==================== NEW HIERARCHICAL RBAC ENDPOINTS ====================
 # CRITICAL: These MUST be defined FIRST in the router before any /{param} routes
 
@@ -199,6 +230,8 @@ async def list_users(
                 detail="Access denied"
             )
     
+    department_name_map = await _build_department_name_map(current_user.company_id if current_user.role != UserRole.SUPER_ADMIN else (company_id or current_user.company_id), users)
+
     return {
         "users": [
             {
@@ -211,7 +244,7 @@ async def list_users(
                 "company_id": user.company_id,
                 "reports_to": user.reports_to,
                 "department_id": getattr(user, "department_id", None),
-                "department": getattr(user, "department", None),
+                "department_name": department_name_map.get(getattr(user, "department_id", None), None),
                 "modules": getattr(user, "modules", []),
                 "active_module": getattr(user, "active_module", None),
                 "created_at": user.created_at,
@@ -454,7 +487,6 @@ async def get_my_team(
             "last_name": employee.last_name,
             "role": employee.role.value,
             "status": employee.status.value,
-            "department": employee.department,
             "department_id": getattr(employee, "department_id", None),
             "designation": employee.designation,
             "phone": employee.phone,
@@ -471,7 +503,6 @@ async def get_my_team(
             "first_name": lead.first_name,
             "last_name": lead.last_name,
             "team_name": lead.team_name,
-            "department": lead.department,
         }
     }
 
@@ -521,6 +552,12 @@ async def get_user(
                 detail="Access denied"
             )
     
+    department_name = None
+    department_id = getattr(user, "department_id", None)
+    if department_id and user.company_id:
+        department_map = await _build_department_name_map(user.company_id, [user])
+        department_name = department_map.get(department_id)
+
     return {
         "id": str(user.id),
         "email": user.email,
@@ -531,8 +568,8 @@ async def get_user(
         "company_id": user.company_id,
         "phone": user.phone,
         "avatar": user.avatar,
-        "department": getattr(user, "department", None),
-        "department_id": getattr(user, "department_id", None),
+        "department_id": department_id,
+        "department_name": department_name,
         "created_at": user.created_at,
         "last_login": user.last_login,
     }
@@ -545,7 +582,6 @@ async def create_lead(
     first_name: str = Form(...),
     last_name: str = Form(...),
     team_name: Optional[str] = Form(None),
-    department: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin)
@@ -569,7 +605,6 @@ async def create_lead(
         last_name=last_name,
         company_id=current_user.company_id,
         team_name=team_name,
-        department=department_doc.name if department_doc else department,
         department_id=department_id if department_doc else None,
         phone=phone,
         status=UserStatus.ACTIVE
@@ -607,9 +642,7 @@ async def create_employee(
     first_name: str = Form(...),
     last_name: str = Form(...),
     lead_id: Optional[str] = Form(None),
-    department: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
-    designation: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
@@ -647,7 +680,6 @@ async def create_employee(
         last_name=last_name,
         company_id=current_user.company_id,
         lead_id=final_lead_id,
-        department=department_doc.name if department_doc else department,
         department_id=department_id if department_doc else None,
         designation=designation,
         phone=phone,
@@ -816,7 +848,6 @@ async def update_user(
     last_name: Optional[str] = Form(None),
     email: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
-    department: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
@@ -858,15 +889,9 @@ async def update_user(
         user.email = normalized_email
     if phone is not None:
         user.phone = phone
-    if department is not None:
-        user.department = department
     if department_id is not None:
         department_doc = await _resolve_department(current_user.company_id, department_id)
         user.department_id = department_id if department_doc else None
-        user.department = department_doc.name if department_doc else None
-    if designation is not None:
-        user.designation = designation
-
     user.updated_at = datetime.utcnow()
     await user.save()
 
@@ -958,7 +983,6 @@ async def create_user_hierarchical(
         "reports_to": reports_to,
         "created_by": str(current_user.id),
         "phone": phone,
-        "department": department_doc.name if department_doc else department,
         "department_id": department_id if department_doc else None,
         "modules": parsed_modules,
         "active_module": active_module,

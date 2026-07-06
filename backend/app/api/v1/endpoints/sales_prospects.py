@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_module
 from app.models.user import User, UserRole, UserStatus
+from app.models.department import Department
 from app.models.crm_company import CRMCompany
 from app.models.sales_prospect import SalesProspect, InterestLevel, ProspectStatus
 from app.models.sales_contact import SalesContact
@@ -453,6 +454,7 @@ async def bulk_upload_prospects(
     strategy: str = Form(...),
     file: UploadFile = File(...),
     target_user_id: Optional[str] = Form(None),
+    target_department_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
     """Bulk upload prospects from CSV with assignment strategies."""
@@ -476,13 +478,25 @@ async def bulk_upload_prospects(
     if not any(h in normalized_headers for h in ['name', 'first_name']):
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="CSV must include either 'name' or 'first_name' column")
 
-    assignable_users = await User.find(
-        {
-            "company_id": current_user.company_id,
-            "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
-            "status": UserStatus.ACTIVE,
-        }
-    ).to_list()
+    assignable_query = {
+        "company_id": current_user.company_id,
+        "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+        "status": UserStatus.ACTIVE,
+    }
+    if target_department_id:
+        department = await Department.get(target_department_id)
+        if (
+            not department
+            or department.deleted_at is not None
+            or department.company_id != current_user.company_id
+        ):
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Department not found",
+            )
+        assignable_query["department_id"] = target_department_id
+
+    assignable_users = await User.find(assignable_query).to_list()
 
     if not assignable_users:
         raise HTTPException(
