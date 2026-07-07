@@ -74,7 +74,8 @@ api_router.include_router(tickets.router, prefix="/tickets", tags=["Tickets"], d
 api_router.include_router(chat.router, prefix="/chat", tags=["Chat"], dependencies=[Depends(require_module("task"))])
 # Subscriptions: no module gate so company admins can always see plans and upgrade
 api_router.include_router(subscriptions.router, prefix="/subscriptions", tags=["Subscriptions"])
-api_router.include_router(clients.router, prefix="/clients", tags=["Clients"], dependencies=[Depends(require_module("task"))])
+# Clients: no module gate so super admins can access without module restrictions
+api_router.include_router(clients.router, prefix="/clients", tags=["Clients"])
 api_router.include_router(invoices.router, prefix="/invoices", tags=["Invoices"], dependencies=[Depends(require_module("task"))])
 # MSA router: no module gate so public signing links (/msa/sign/{token}) work without authentication.
 # Individual endpoints inside msa.py already use dependencies for authenticated actions.

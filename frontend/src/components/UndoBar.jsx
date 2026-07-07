@@ -13,6 +13,23 @@ export const UndoBar = () => {
     return null
   }
 
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
   return (
     <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 duration-300">
       <div className="bg-gray-900 dark:bg-gray-800 text-white rounded-lg shadow-lg px-4 py-3 flex items-center gap-4 max-w-sm">

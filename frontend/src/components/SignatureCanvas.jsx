@@ -19,31 +19,41 @@ const SignatureCanvas = ({ onSave, onClose, title = 'Sign Here' }) => {
 
   const startDrawing = (e) => {
     const canvas = canvasRef.current
+    if (!canvas) return
+    
     const ctx = canvas.getContext('2d')
-    const rect = canvas.getBoundingClientRect()
     
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    
-    ctx.beginPath()
-    ctx.moveTo(x, y)
-    canvas.setPointerCapture?.(e.pointerId)
-    isDrawingRef.current = true
+    // Use requestAnimationFrame to ensure DOM is ready before measuring
+    requestAnimationFrame(() => {
+      const rect = canvas.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      canvas.setPointerCapture?.(e.pointerId)
+      isDrawingRef.current = true
+    })
   }
 
   const draw = (e) => {
     if (!isDrawingRef.current) return
     
     const canvas = canvasRef.current
+    if (!canvas) return
+    
     const ctx = canvas.getContext('2d')
-    const rect = canvas.getBoundingClientRect()
     
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    
-    ctx.lineTo(x, y)
-    ctx.stroke()
-    setHasSignature(true)
+    // Use requestAnimationFrame to ensure DOM is ready before measuring
+    requestAnimationFrame(() => {
+      const rect = canvas.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      
+      ctx.lineTo(x, y)
+      ctx.stroke()
+      setHasSignature(true)
+    })
   }
 
   const stopDrawing = () => {

@@ -15,12 +15,19 @@ from app.core.database import init_db, close_db
 from app.core.redis_client import close_redis, get_redis
 from app.api.v1.router import api_router
 from app.events.subscribers.knowledge import register_knowledge_subscribers
-from app.semantic.worker import register_semantic_subscribers
 from app.middleware.rate_limiter import (
     RateLimitExceeded,
     _rate_limit_exceeded_handler,
     limiter,
 )
+
+# Optional semantic imports - gracefully handle missing dependencies
+try:
+    from app.semantic.worker import register_semantic_subscribers
+    SEMANTIC_AVAILABLE = True
+except (ImportError, ModuleNotFoundError) as e:
+    logger.warning(f"Semantic module not available: {e}")
+    SEMANTIC_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(
@@ -60,8 +67,14 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+<<<<<<< HEAD
     allow_headers=["*"],  # Allow all headers for development
     expose_headers=["*"],  # Expose all headers
+=======
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+    expose_headers=["Content-Type", "Authorization"],
+    max_age=600,
+>>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
 )
 
 
@@ -72,7 +85,15 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(), geolocation=(), payment=(), usb=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+<<<<<<< HEAD
     response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
+=======
+    # Allow cross-origin access to uploaded files (images, documents)
+    if request.url.path.startswith("/uploads/") or request.url.path.startswith("/api/v1/files/"):
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
+    else:
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+>>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
     return response
 
 # Trusted Host Middleware (Security)
@@ -156,8 +177,11 @@ async def startup_event():
     logger.info("Database initialized successfully")
     register_knowledge_subscribers()
     logger.info("Knowledge subscribers registered")
-    register_semantic_subscribers()
-    logger.info("Semantic subscribers registered")
+    if SEMANTIC_AVAILABLE:
+        register_semantic_subscribers()
+        logger.info("Semantic subscribers registered")
+    else:
+        logger.info("Semantic subscribers skipped (dependencies not available)")
     await get_redis()
     
     # Start background task for deadline checking

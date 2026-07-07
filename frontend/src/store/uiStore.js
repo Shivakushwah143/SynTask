@@ -124,4 +124,8 @@ export const useUIStore = create((set, get) => ({
     }
     hideUndo()
   },
+
+  // Global Loading State
+  isLoading: false,
+  setLoading: (loading) => set({ isLoading: loading }),
 }))
