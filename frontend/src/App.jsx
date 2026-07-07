@@ -1,5 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import Loader from './components/Loader'
+import { useUIStore } from './store/uiStore'
 import { useAuthStore } from './store/authStore'
 import { useTheme } from './hooks/useTheme'
 import { PageLoader } from './components/ui'
@@ -134,14 +136,26 @@ const ModuleGuard = ({ module, children }) => {
 function App() {
   useTheme()
   const location = useLocation()
+<<<<<<< HEAD
   const withBoundary = (element) => <ErrorBoundary key={location.pathname}>{element}</ErrorBoundary>
+=======
+  const setLoading = useUIStore?.getState?.().setLoading
+>>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
 
   useEffect(() => {
     applySeoMeta(getSeoMeta(location.pathname))
   }, [location.pathname])
 
+  // Show global loader briefly on route change to indicate navigation
+  useEffect(() => {
+    if (!setLoading) return
+    setLoading(true)
+    const t = setTimeout(() => setLoading(false), 500)
+    return () => clearTimeout(t)
+  }, [location.pathname, setLoading])
+
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<Loader force={true} />}>
       <Routes>
         <Route path="/" element={<NewLandingRoute />} />
         <Route path="/old-landing" element={<LandingRoute />} />
@@ -230,7 +244,7 @@ function App() {
           <Route path="settings" element={withBoundary(<Settings />)} />
         </Route>
 
-        <Route path="*" element={<NotFound />} />
+        <Route path="/*" element={<NotFound />} />
       </Routes>
       <ConfirmDialog />
       <UndoBar />

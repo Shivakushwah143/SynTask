@@ -49,18 +49,27 @@ async def create_client(
     assigned_to: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """Create a new client"""
+    # Check if user has permission (Admin, Manager, Lead, or Super Admin)
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin, Manager, or Lead access required"
+        )
+    
     # Validate assigned user if provided
     assigned_user = None
     if assigned_to:
         assigned_user = await User.get(assigned_to)
-        if not assigned_user or assigned_user.company_id != current_user.company_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid assigned user"
-            )
+        # For super admin, skip company check
+        if current_user.role != UserRole.SUPER_ADMIN:
+            if not assigned_user or assigned_user.company_id != current_user.company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid assigned user"
+                )
         if assigned_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -75,10 +84,13 @@ async def create_client(
         except:
             pass
     
+    # Determine company_id
+    company_id = current_user.company_id if current_user.role != UserRole.SUPER_ADMIN else None
+    
     # Create client
     client = Client(
         name=name,
-        company_id=current_user.company_id,
+        company_id=company_id,
         email=email,
         contact=contact,
         alternate_contact=alternate_contact,
@@ -118,7 +130,13 @@ async def list_clients(
     current_user: User = Depends(get_current_user),
 ):
     """List all clients for the current user's company"""
-    query = {"company_id": current_user.company_id}
+    # Super admins and admins with no company can see all clients
+    if current_user.role == UserRole.SUPER_ADMIN:
+        query = {}
+    elif current_user.role == UserRole.ADMIN and not current_user.company_id:
+        query = {}
+    else:
+        query = {"company_id": current_user.company_id}
     
     if status_filter:
         try:
@@ -127,6 +145,10 @@ async def list_clients(
             pass
     
     if assigned_to:
+        query["assigned_to"] = assigned_to
+    
+    # For super admin, also filter by assigned_to if provided
+    if current_user.role == UserRole.SUPER_ADMIN and assigned_to:
         query["assigned_to"] = assigned_to
     
     clients = await Client.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
