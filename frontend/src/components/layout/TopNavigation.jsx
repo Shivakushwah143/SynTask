@@ -3,7 +3,7 @@ import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
 import { Button } from '../ui'
 
-export function TopNavigation({ title, subtitle, onMenuClick, onSearchOpen, onCommandOpen, onLogout, logoutLoading = false }) {
+export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onLogout, logoutLoading = false }) {
   return (
     <header className="sticky top-0 z-30 border-b border-surface-border/80 bg-white/85 backdrop-blur-xl dark:border-gray-800/80 dark:bg-gray-950/85">
       <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
@@ -20,6 +20,7 @@ export function TopNavigation({ title, subtitle, onMenuClick, onSearchOpen, onCo
             <p className="truncate text-xs font-medium uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">SynTask</p>
             <h1 className="truncate text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h1>
             {subtitle ? <p className="truncate text-sm text-gray-500 dark:text-gray-400">{subtitle}</p> : null}
+            {breadcrumb ? <p className="truncate text-xs text-gray-400 dark:text-gray-500">{breadcrumb}</p> : null}
           </div>
         </div>
 

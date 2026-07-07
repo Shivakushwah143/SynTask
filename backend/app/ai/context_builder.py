@@ -10,6 +10,7 @@ from beanie.odm.operators.find.logical import Or
 from app.ai.memory import AIMemoryService
 from app.models.company import Company
 from app.models.department import Department
+from app.models.project import Project, ProjectStatus
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.ticket import Ticket, TicketPriority, TicketStatus
 from app.models.user import User, UserRole, UserStatus
@@ -714,6 +715,199 @@ class ContextBuilder:
                 "ticket_blockers": len(overdue_tickets),
                 "project_count": len(project_counts),
             },
+        }
+
+    @staticmethod
+    async def build_marketing_context(
+        current_user: User,
+        message: str,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """
+        Build marketing-specific context for digital marketing support agent.
+        Includes campaigns, invoices, subscriptions, clients, and content calendar.
+        """
+        company_id = current_user.company_id
+        if not company_id:
+            return {}
+        
+        # Fetch campaigns
+        from app.models.project import Project, ProjectType
+        from app.models.content_calendar import ContentCalendarItem
+        from app.models.client import Client
+        from app.models.invoice import Invoice
+        from app.models.subscription_plan import SubscriptionPlan
+        from app.models.company_subscription import CompanySubscription
+        from app.models.task import Task
+        from app.models.ticket import Ticket
+        
+        # Get marketing projects
+        marketing_projects = await Project.find(
+            Project.company_id == company_id,
+            Project.type == ProjectType.MARKETING,
+            Project.status != ProjectStatus.ARCHIVED,
+        ).limit(limit).to_list()
+        
+        # Get content calendar items
+        content_items = await ContentCalendarItem.find(
+            ContentCalendarItem.company_id == company_id,
+        ).sort("-publish_date").limit(limit).to_list()
+        
+        # Get clients
+        clients = await Client.find(
+            Client.company_id == company_id,
+            Client.status != "archived",
+        ).limit(limit).to_list()
+        
+        # Get recent invoices
+        invoices = await Invoice.find(
+            Invoice.company_id == company_id,
+        ).sort("-invoice_date").limit(limit).to_list()
+        
+        # Get subscription
+        subscription = await CompanySubscription.find_one(
+            CompanySubscription.company_id == company_id
+        )
+        plan = None
+        if subscription and subscription.plan_id:
+            plan = await SubscriptionPlan.get(subscription.plan_id)
+        
+        # Get recent tasks
+        tasks = await Task.find(
+            Task.company_id == company_id,
+            Task.assigned_to == str(current_user.id),
+        ).sort("-created_at").limit(limit).to_list()
+        
+        # Get open tickets
+        from beanie.odm.operators.find.comparison import In
+        tickets = await Ticket.find(
+            Ticket.company_id == company_id,
+            In(Ticket.status, [TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.WAITING_FOR_CUSTOMER]),
+        ).limit(limit).to_list()
+        
+        # Serialize data
+        campaigns = []
+        for project in marketing_projects:
+            campaigns.append({
+                "project_id": project.project_id,
+                "name": project.name,
+                "status": project.status.value,
+                "type": project.type.value,
+                "lead_id": project.lead_id,
+                "start_date": project.start_date.isoformat() if project.start_date else None,
+                "delivery_date": project.delivery_date.isoformat() if project.delivery_date else None,
+                "team_members": project.team_member_ids,
+                "description": project.description,
+            })
+        
+        content_calendar = []
+        for item in content_items:
+            content_calendar.append({
+                "content_id": str(item.id),
+                "project_id": item.project_id,
+                "campaign": item.campaign,
+                "platform": item.platform,
+                "title": item.title,
+                "content_type": item.content_type.value,
+                "status": item.status.value,
+                "priority": item.priority.value,
+                "publish_date": item.publish_date.isoformat() if item.publish_date else None,
+                "due_date": item.due_date.isoformat() if item.due_date else None,
+                "assignee": item.assignee_name,
+                "completed": item.completed,
+            })
+        
+        client_list = []
+        for client in clients:
+            client_list.append({
+                "client_id": str(client.id),
+                "name": client.name,
+                "company_name": client.company_name,
+                "email": client.email,
+                "status": client.status.value,
+                "industry": client.industry,
+                "assigned_to": client.assigned_to,
+            })
+        
+        invoice_list = []
+        for invoice in invoices:
+            invoice_list.append({
+                "invoice_id": str(invoice.id),
+                "invoice_number": invoice.invoice_number,
+                "client_name": invoice.client_name,
+                "invoice_date": invoice.invoice_date.isoformat(),
+                "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+                "total_amount": invoice.total_amount,
+                "outstanding_amount": invoice.outstanding_amount,
+                "status": invoice.status.value,
+                "currency": invoice.currency,
+            })
+        
+        subscription_data = None
+        if subscription:
+            subscription_data = {
+                "plan_id": subscription.plan_id,
+                "plan_name": plan.name if plan else "Unknown",
+                "status": subscription.status.value if hasattr(subscription, 'status') else "active",
+                "start_date": subscription.start_date.isoformat() if subscription.start_date else None,
+                "end_date": subscription.end_date.isoformat() if subscription.end_date else None,
+                "current_users": subscription.current_users if hasattr(subscription, 'current_users') else 0,
+                "max_users": plan.max_users if plan else None,
+                "price_monthly": plan.price_monthly if plan else 0,
+                "price_yearly": plan.price_yearly if plan else 0,
+                "currency": plan.currency if plan else "INR",
+                "enabled_modules": plan.enabled_modules if plan else [],
+                "features": plan.features if plan else [],
+            }
+        
+        task_list = []
+        for task in tasks:
+            task_list.append({
+                "task_id": str(task.id),
+                "title": task.title,
+                "status": task.status.value,
+                "priority": task.priority.value,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "estimated_hours": task.estimated_hours,
+            })
+        
+        ticket_list = []
+        for ticket in tickets:
+            ticket_list.append({
+                "ticket_id": str(ticket.id),
+                "ticket_number": ticket.ticket_number,
+                "title": ticket.title,
+                "status": ticket.status.value,
+                "priority": ticket.priority.value,
+                "type": ticket.type.value,
+                "created_at": ticket.created_at.isoformat(),
+            })
+        
+        return {
+            "company": {
+                "id": company_id,
+                "name": (await Company.get(company_id)).name if company_id else None,
+            },
+            "generated_for": {
+                "user_id": str(current_user.id),
+                "full_name": current_user.full_name(),
+                "first_name": current_user.first_name,
+                "role": current_user.role.value,
+                "email": current_user.email,
+            },
+            "campaigns": campaigns,
+            "campaign_count": len(campaigns),
+            "content_calendar": content_calendar,
+            "content_calendar_count": len(content_calendar),
+            "clients": client_list,
+            "client_count": len(client_list),
+            "invoices": invoice_list,
+            "invoice_count": len(invoice_list),
+            "subscription": subscription_data,
+            "recent_tasks": task_list,
+            "task_count": len(task_list),
+            "open_tickets": ticket_list,
+            "ticket_count": len(ticket_list),
         }
 
     @staticmethod

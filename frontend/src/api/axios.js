@@ -51,6 +51,21 @@ const withDataCompatibility = (payload) => {
   return payload
 }
 
+const extractErrorMessage = (value) => {
+  if (!value) return 'An error occurred'
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => extractErrorMessage(item?.msg || item?.message || item?.detail || item))
+      .filter(Boolean)
+      .join(', ')
+  }
+  if (typeof value === 'object') {
+    return extractErrorMessage(value.detail || value.message || value.msg || value.errors || value.input)
+  }
+  return String(value)
+}
+
 // Response interceptor
 axiosInstance.interceptors.response.use(
   (response) => {
@@ -133,10 +148,11 @@ axiosInstance.interceptors.response.use(
     }
 
     // Handle other errors
-    const errorMessage =
+    const errorMessage = extractErrorMessage(
       error.response?.data?.detail ||
       error.response?.data?.message ||
-      'An error occurred'
+      error.response?.data
+    )
 
     if (error.response?.status !== 401) {
       toast.error(errorMessage)

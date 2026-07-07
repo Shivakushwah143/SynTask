@@ -33,6 +33,11 @@ class FakeQuery:
         return len(self._items)
 
 
+class FakeBeanieQuery(FakeQuery):
+    def sort(self, *args, **kwargs):
+        return self
+
+
 @pytest.mark.asyncio
 async def test_load_pipeline_groups_leads_and_uses_existing_stage_catalog(monkeypatch):
     stages = [
@@ -95,6 +100,14 @@ async def test_load_pipeline_groups_leads_and_uses_existing_stage_catalog(monkey
 
     monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
     monkeypatch.setattr("app.crm.pipeline.SalesProspect.find", fake_find)
+    monkeypatch.setattr(
+        "app.crm.pipeline.User.find",
+        lambda query: FakeBeanieQuery([SimpleNamespace(id="user-1", first_name="Ada", last_name="Admin")]),
+    )
+    monkeypatch.setattr(
+        "app.crm.pipeline.CRMCompany.find",
+        lambda query: FakeBeanieQuery([SimpleNamespace(id="company-1", name="Alpha")]),
+    )
 
     user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.ADMIN)
     pipeline = await CRMPipelineService.load_pipeline(user)

@@ -1,6 +1,7 @@
 """
 AI Endpoints
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.ai.service import AIService
@@ -134,3 +135,32 @@ async def list_ai_logs(
     """List recent AI interactions for the current company."""
     current_user = await _require_company_context(current_user)
     return await ai_service.list_logs(current_user, limit=limit)
+
+
+@router.post("/marketing-chat", response_model=AIChatResponse)
+async def generate_marketing_chat_response(
+    payload: AIChatRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate a marketing-focused chat response for digital marketing client support.
+    This endpoint provides specialized assistance for campaign status, invoices,
+    subscriptions, support tickets, and marketing services.
+    """
+    try:
+        current_user = await _require_company_context(current_user)
+        return await ai_service.generate_marketing_chat_response(current_user, payload)
+    except ValueError as error:
+        message = str(error)
+        if "not found" in message.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from error
+        if "not allowed" in message.lower() or "belongs to the same company" in message.lower():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message) from error
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from error
+    except Exception as error:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Marketing chat error: {str(error)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate marketing chat response. Please try again."
+        ) from error

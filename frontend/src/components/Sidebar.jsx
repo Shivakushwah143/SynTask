@@ -18,10 +18,13 @@ import {
   Wand2,
   Briefcase,
   FileText,
+  Bell,
   X,
   DollarSign,
   ChevronLeft,
   ChevronRight,
+  Star,
+  ChevronDown,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
@@ -34,6 +37,14 @@ const Sidebar = ({ isOpen, onClose }) => {
   const userRole = normalizeRole(user?.role);
   const hasModule = (module) =>
     !module || user?.modules?.includes(module) || isSuperAdminRole(userRole);
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('syntask-sidebar-favorites') || '[]')
+    } catch {
+      return []
+    }
+  });
+  const [crmOpen, setCrmOpen] = useState(true);
 
   // Desktop-only "rail" mode: shrinks to icons, expands on toggle.
   // Mobile drawer (isOpen/onClose) is unaffected by this and always shows the full sidebar.
@@ -52,6 +63,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       // ignore (e.g. storage disabled)
     }
   }, [collapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('syntask-sidebar-favorites', JSON.stringify(favorites))
+    } catch {}
+  }, [favorites]);
 
   const navigation = [
     {
@@ -122,11 +139,23 @@ const Sidebar = ({ isOpen, onClose }) => {
     },
 
     {
+      name: "Notifications",
+      href: "/notifications",
+      icon: Bell,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
       name: "Reports",
       href: "/reports",
       icon: BarChart3,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
+    },
+    {
+      name: "Leads",
+      href: "/leads",
+      icon: Users,
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
       name: "AI Hub",
@@ -143,11 +172,31 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
+      name: "Marketing Support",
+      href: "/marketing-support",
+      icon: BarChart3,
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
+      module: "task",
+    },
+    {
+      name: "Marketing Calendar",
+      href: "/marketing/calendar",
+      icon: CalendarIcon,
+      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
+      module: "task",
+    },
+    {
       name: "CRM",
       href: "/crm/pipeline",
       match: "/crm",
       icon: TrendingUp,
-      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
+      name: "Bulk Leads",
+      href: "/bulk-leads",
+      icon: TrendingUp,
+      roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
       module: "sales",
     },
     {
@@ -226,6 +275,12 @@ const Sidebar = ({ isOpen, onClose }) => {
   const filteredNavigation = navigation.filter(
     (item) => item.roles.includes(userRole) && hasModule(item.module),
   );
+  const toggleFavorite = (href) => {
+    setFavorites((current) => (
+      current.includes(href) ? current.filter((item) => item !== href) : [...current, href]
+    ))
+  };
+  const favoriteItems = filteredNavigation.filter((item) => favorites.includes(item.href));
 
   const crmNavigation = [
     {
@@ -275,7 +330,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     },
   ];
 
-  const filteredCrmNavigation = crmNavigation.filter(() => hasModule("sales") || isSuperAdminRole(userRole));
+  const filteredCrmNavigation = crmNavigation
+    .filter((item) => item && (item.roles ? item.roles.includes(userRole) : true))
+    .filter((item) => ['Pipeline', 'Dashboard', 'Leads', 'Activities', 'Calendar'].includes(item.name));
 
   return (
     <>
@@ -352,8 +409,11 @@ const Sidebar = ({ isOpen, onClose }) => {
                 location.pathname === item.href ||
                 (item.match && location.pathname.startsWith(item.match));
               return (
-                <Link
+                <div
                   key={item.name}
+                  className="group flex items-center gap-1"
+                >
+                <Link
                   to={item.href}
                   aria-current={isActive ? "page" : undefined}
                   aria-label={item.name}
@@ -417,15 +477,50 @@ const Sidebar = ({ isOpen, onClose }) => {
   </div>
 )}
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite(item.href)}
+                  className={`hidden lg:inline-flex rounded-lg p-1 text-gray-400 hover:text-amber-500 ${collapsed ? 'lg:hidden' : ''}`}
+                  aria-label={favorites.includes(item.href) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
+                >
+                  <Star className={`h-4 w-4 ${favorites.includes(item.href) ? 'fill-amber-400 text-amber-400' : ''}`} />
+                </button>
+                </div>
               );
             })}
 
-            {filteredCrmNavigation.length ? (
+            {favoriteItems.length ? (
               <div className="mt-4 space-y-2">
                 <div className={`px-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 ${collapsed ? "lg:hidden" : ""}`}>
-                  CRM
+                  Favorites
                 </div>
                 <div className="space-y-1">
+                  {favoriteItems.map((item) => (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      onClick={onClose}
+                      className="flex items-center rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
+                    >
+                      <Star className="mr-2 h-4 w-4 text-amber-400" />
+                      <span className={collapsed ? "lg:hidden" : ""}>{item.name}</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {filteredCrmNavigation.length ? (
+              <div className="mt-4 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setCrmOpen((open) => !open)}
+                  className={`flex w-full items-center justify-between px-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 ${collapsed ? "lg:hidden" : ""}`}
+                >
+                  <span>CRM</span>
+                  <ChevronDown className={`h-3 w-3 transition-transform ${crmOpen ? '' : '-rotate-90'}`} />
+                </button>
+                <div className={`space-y-1 ${crmOpen ? '' : 'hidden'}`}>
                   {filteredCrmNavigation.map((item) => {
                     const isActive =
                       location.pathname === item.href ||
@@ -480,6 +575,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                     src={
                       user.avatar.startsWith("http")
                         ? user.avatar
+                        : user.avatar.startsWith("/uploads/avatars/")
+                        ? `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}/api/v1${user.avatar}`
                         : `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${user.avatar}`
                     }
                     alt={user?.first_name}
@@ -487,7 +584,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                     onError={(e) => {
                       // Fallback to initials if image fails to load
                       e.target.style.display = "none";
-                      e.target.nextSibling.style.display = "flex";
+                      const fallback = e.target.nextSibling;
+                      if (fallback) fallback.style.display = "flex";
                     }}
                   />
                 ) : null}

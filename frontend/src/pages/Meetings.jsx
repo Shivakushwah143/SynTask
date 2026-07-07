@@ -9,7 +9,7 @@ import { asArray, formatDateTime, toFormData } from './phase4Utils'
 export default function Meetings() {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-  const { data, isLoading, isError } = useQuery('meetings', () => meetingsApi.list({ limit: 50 }))
+  const { data, isLoading, isError } = useQuery('meetings', () => meetingsApi.list({ limit: 100 }))
   const meetings = asArray(data, ['meetings'])
   const selected = meetings[0] || null
 

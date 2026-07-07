@@ -8,11 +8,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import get_current_user, require_module
+from app.api.dependencies import get_current_user
 from app.crm.pipeline import CRMPipelineService
 from app.models.user import User
 
-router = APIRouter(dependencies=[Depends(require_module("sales"))])
+router = APIRouter()
 
 
 class PipelineStageUpdateRequest(BaseModel):
