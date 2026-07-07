@@ -2,7 +2,7 @@
 Sales Prospect Model - Manages sales prospects/pipeline
 """
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from beanie import Document, Indexed
 from pydantic import EmailStr, Field
 from enum import Enum
@@ -61,6 +61,7 @@ class SalesProspect(Document):
     owner_contact_no: Optional[str] = None
     tag: Optional[List[str]] = Field(default_factory=list)
     greeting_preference: Optional[str] = None
+    custom_fields: Dict[str, Any] = Field(default_factory=dict)
 
     # Status & Closure
     status: ProspectStatus = ProspectStatus.ACTIVE

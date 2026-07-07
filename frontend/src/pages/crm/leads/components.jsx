@@ -1,7 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
-import { memo } from 'react'
+import { memo, useEffect, useState } from 'react'
+import { useMutation, useQuery } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, BadgeInfo, CalendarClock, Clock3, FileText, History, Lock, Mail, MessageSquare, Sparkles, StickyNote, Video, Wand2 } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { salesApi } from '../../../api/sales'
+import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, EmptyState, inputClassName } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
@@ -11,11 +15,7 @@ export const LEAD_TABS = [
   { key: 'timeline', label: 'Timeline' },
   { key: 'notes', label: 'Notes' },
   { key: 'files', label: 'Files' },
-  { key: 'meetings', label: 'Meetings' },
-  { key: 'emails', label: 'Emails' },
   { key: 'proposal', label: 'Proposal' },
-  { key: 'history', label: 'History' },
-  { key: 'ai', label: 'AI', disabled: true },
 ]
 
 export const LeadWorkspace = memo(function LeadWorkspace({
@@ -40,7 +40,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={onBack}>
               <ArrowLeft className="h-4 w-4" />
-              Back to pipeline
+              Back
             </Button>
             <Button type="button" variant="secondary" size="sm" onClick={onRefresh}>
               Refresh
@@ -85,9 +85,9 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [] }) {
           <Badge label={lead?.priority || lead?.interest_level || 'medium'} colorKey={lead?.priority || 'medium'} />
         </div>
       )}
-      >
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_repeat(5,minmax(0,1fr))]">
-          <article className="rounded-2xl border border-surface-border/80 bg-gradient-to-br from-slate-50 to-white p-5 dark:border-gray-800 dark:from-gray-900 dark:to-gray-950">
+    >
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
+        <article className="rounded-2xl border border-surface-border/80 bg-gradient-to-br from-slate-50 to-white p-5 dark:border-gray-800 dark:from-gray-900 dark:to-gray-950">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500 dark:text-gray-400">Company</p>
           <h2 className="mt-3 text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
             {companyName}
@@ -96,22 +96,17 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [] }) {
             {contactName || 'Primary contact not available'}
           </p>
         </article>
-        <SummaryChip label="Contact" value={contactName} />
-        <SummaryChip label="Stage" value={stage} />
         <SummaryChip label="Owner" value={ownerName} />
         <SummaryChip label="Deal value" value={formatCurrency(dealValue)} />
         <SummaryChip label="Created" value={createdDate} />
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Tags</span>
-        {leadTags.length ? leadTags.map((tag) => (
+        <span className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Quick tags</span>
+        {leadTags.length ? leadTags.slice(0, 5).map((tag) => (
           <Badge key={tag} label={tag} colorKey="draft" />
         )) : (
           <span className="text-sm text-gray-500 dark:text-gray-400">No tags</span>
         )}
-      </div>
-      <div className="mt-4">
-        <LeadActions lead={lead} />
       </div>
       {breadcrumbs?.length ? (
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -174,31 +169,50 @@ export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
 })
 
 export const LeadOverview = memo(function LeadOverview({ lead }) {
+  const customFields = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
   const items = [
     { label: 'Company', value: lead?.crm_company_name || lead?.company_name || '-' },
     { label: 'Primary Contact', value: lead?.crm_contact_name || lead?.primary_contact || lead?.contact_name || lead?.prospect_name || '-' },
     { label: 'Owner', value: lead?.owner_name || lead?.assigned_to_name || lead?.assigned_to || '-' },
     { label: 'Stage', value: lead?.current_stage || '-' },
-    { label: 'Priority', value: lead?.priority || lead?.interest_level || '-' },
     { label: 'Deal Value', value: formatCurrency(lead?.won_amount ?? lead?.deal_value ?? 0) },
     { label: 'Created Date', value: formatShortDate(lead?.created_at || lead?.createdAt || lead?.created_date) },
-    { label: 'Last Activity', value: formatShortDate(lead?.updated_at || lead?.updatedAt || lead?.stage_last_changed_at) },
-    { label: 'Tags', value: Array.isArray(lead?.tag) ? lead.tag.join(', ') : lead?.tag || '-' },
     { label: 'Source', value: lead?.channel || '-' },
     { label: 'Status', value: lead?.status || '-' },
   ]
 
   return (
-    <CRMSection title="Overview" description="Core lead data sourced from the Sales domain.">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((item) => (
-          <article key={item.label} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{item.label}</p>
-            <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{item.value}</p>
-          </article>
-        ))}
-      </div>
-    </CRMSection>
+    <div className="space-y-6">
+      <CRMSection title="Overview" description="Core lead data sourced from the Sales domain.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {items.map((item) => (
+            <article key={item.label} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{item.label}</p>
+              <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{item.value}</p>
+            </article>
+          ))}
+        </div>
+      </CRMSection>
+      <details className="rounded-3xl border border-surface-border/80 bg-white/90 p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
+        <summary className="cursor-pointer list-none text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+          Custom fields
+        </summary>
+        <div className="mt-4">
+          {Object.keys(customFields).length ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {Object.entries(customFields).map(([key, value]) => (
+                <article key={key} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{key}</p>
+                  <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{String(value)}</p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <CRMEmptyState icon={BadgeInfo} title="No custom fields" description="Custom values will appear here when added to the lead." />
+          )}
+        </div>
+      </details>
+    </div>
   )
 })
 
@@ -216,42 +230,118 @@ export const LeadSummaryCards = memo(function LeadSummaryCards({ lead }) {
 export const LeadSidebar = memo(function LeadSidebar({ lead }) {
   const navigate = useNavigate()
   const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
+  const { data: stagesData } = useQuery('crm-lead-edit-stages', salesApi.getStages)
+  const { data: usersData } = useQuery('crm-lead-edit-users', () => usersAPI.getAssignableUsers())
+  const stages = Array.isArray(stagesData?.stages) ? stagesData.stages : []
+  const users = Array.isArray(usersData?.users) ? usersData.users : []
+  const [form, setForm] = useState({ current_stage: '', status: '', assigned_to: '', interest_level: '', channel: '', tag: '' })
+  const [customFields, setCustomFields] = useState('{}')
+
+  useEffect(() => {
+    const custom = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
+    setForm({
+      current_stage: lead?.current_stage || '',
+      status: lead?.status || '',
+      assigned_to: lead?.assigned_to || '',
+      interest_level: lead?.interest_level || '',
+      channel: lead?.channel || '',
+      tag: Array.isArray(lead?.tag) ? lead.tag.join('|') : (lead?.tag || ''),
+    })
+    setCustomFields(JSON.stringify(custom, null, 2))
+  }, [lead])
+
+  const saveMutation = useMutation((payload) => salesApi.updateProspectForm(lead?.id, payload), {
+    onSuccess: () => toast.success('Lead updated'),
+    onError: (error) => toast.error(error?.response?.data?.detail || 'Update failed'),
+  })
+
+  const saveLead = () => {
+    const payload = new FormData()
+    Object.entries(form).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') payload.append(key, value)
+    })
+    try {
+      const parsed = customFields.trim() ? JSON.parse(customFields) : {}
+      payload.append('custom_fields', JSON.stringify(parsed))
+    } catch {
+      toast.error('Custom fields must be valid JSON')
+      return
+    }
+    saveMutation.mutate(payload)
+  }
   return (
     <div className="space-y-6">
-      <CRMSection title="Quick Actions" description="Shortcuts for lead workflows that already exist.">
-        <div className="grid gap-2">
+      <CRMSection title="Lead controls" description="Quick edit for ownership and pipeline fields.">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <select className={inputClassName} value={form.current_stage} onChange={(e) => setForm((s) => ({ ...s, current_stage: e.target.value }))}>
+            <option value="">Stage</option>
+            {stages.map((stage) => <option key={stage.id || stage.name} value={stage.id || stage.name}>{stage.name}</option>)}
+          </select>
+          <select className={inputClassName} value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
+            <option value="">Status</option>
+            <option value="active">Active</option>
+            <option value="won">Won</option>
+            <option value="lost">Lost</option>
+            <option value="closed">Closed</option>
+          </select>
+          <select className={inputClassName} value={form.assigned_to} onChange={(e) => setForm((s) => ({ ...s, assigned_to: e.target.value }))}>
+            <option value="">Owner</option>
+            {users.map((user) => <option key={user.id} value={user.id}>{user.first_name} {user.last_name}</option>)}
+          </select>
+          <select className={inputClassName} value={form.interest_level} onChange={(e) => setForm((s) => ({ ...s, interest_level: e.target.value }))}>
+            <option value="">Priority</option>
+            <option value="cold">Cold</option>
+            <option value="warm">Warm</option>
+            <option value="hot">Hot</option>
+          </select>
+          <input className={inputClassName} value={form.channel} onChange={(e) => setForm((s) => ({ ...s, channel: e.target.value }))} placeholder="Source" />
+          <input className={inputClassName} value={form.tag} onChange={(e) => setForm((s) => ({ ...s, tag: e.target.value }))} placeholder="Tags, pipe-separated" />
+        </div>
+        <details className="mt-4 rounded-2xl border border-surface-border/80 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
+          <summary className="cursor-pointer list-none text-sm font-medium text-gray-700 dark:text-gray-200">
+            Advanced fields
+          </summary>
+          <div className="mt-4 space-y-3">
+            <textarea className={`${inputClassName} min-h-28`} value={customFields} onChange={(e) => setCustomFields(e.target.value)} placeholder='{"budget":"10000"}' />
+            <Button type="button" variant="primary" className="w-full" onClick={saveLead} loading={saveMutation.isLoading}>
+              Save lead
+            </Button>
+          </div>
+        </details>
+      </CRMSection>
+      <CRMSection title="Shortcuts" description="Fast links to the related CRM areas.">
+        <div className="grid gap-2 sm:grid-cols-3">
           <Link className="btn btn-secondary justify-between" to={activityPath}>
-            <span>Lead activities</span>
+            <span>Activities</span>
             <ArrowRight className="h-4 w-4" />
           </Link>
-          <Button type="button" variant="primary" className="justify-between" onClick={() => navigate('/crm/pipeline')}>
-            <span>Back to pipeline</span>
+          <Button type="button" variant="secondary" className="justify-between" onClick={() => navigate('/crm/pipeline')}>
+            <span>Pipeline</span>
             <ArrowRight className="h-4 w-4" />
           </Button>
           <Button type="button" variant="secondary" className="justify-between" onClick={() => navigate('/crm/dashboard')}>
-            <span>CRM dashboard</span>
+            <span>Dashboard</span>
             <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </CRMSection>
 
-      <CRMSection title="Upcoming Meeting" description="Meeting integration is not implemented yet.">
-        <EmptyState
-          icon={Video}
-          title="No meeting linked"
-          description="The workspace is reserved for future meeting data without introducing a separate data flow."
-        />
+      <CRMSection title="Activity" description="Timeline and meetings stay here as separate read-only panels.">
+        <div className="grid gap-4 xl:grid-cols-2">
+          <EmptyState
+            icon={History}
+            title="No timeline data"
+            description="This panel will show the lead activity stream once timeline features are enabled."
+          />
+          <EmptyState
+            icon={Video}
+            title="No meeting linked"
+            description="The workspace is reserved for future meeting data without introducing a separate data flow."
+          />
+        </div>
       </CRMSection>
 
-      <CRMSection title="Recent Activity" description="Timeline is not implemented in this sprint.">
-        <EmptyState
-          icon={History}
-          title="No timeline data"
-          description="This panel will show the lead activity stream once timeline features are enabled."
-        />
-      </CRMSection>
-
-      <CRMSection title="Reserved AI Panel" description="Disabled until AI support is introduced.">
+      <CRMSection title="AI panel" description="Reserved for future AI assistance.">
         <div className="rounded-2xl border border-dashed border-surface-border bg-white/70 p-5 dark:border-gray-800 dark:bg-gray-900/70">
           <div className="flex items-start gap-3">
             <div className="rounded-2xl bg-gray-100 p-3 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
@@ -355,6 +445,34 @@ export const LeadMeetingsTab = memo(function LeadMeetingsTab() {
         icon={Video}
         title="Meetings coming soon"
         description="This section will host future meeting scheduling data."
+      />
+    </CRMSection>
+  )
+})
+
+export const LeadTasksTab = memo(function LeadTasksTab() {
+  return (
+    <CRMSection title="Tasks" description="Lead-scoped task links will appear here.">
+      <CRMEmptyState
+        icon={Sparkles}
+        title="Tasks ready"
+        description="This tab is reserved for lead tasks without duplicating task records."
+      />
+    </CRMSection>
+  )
+})
+
+export const LeadAttachmentsTab = memo(function LeadAttachmentsTab({ leadId, lead }) {
+  return <LeadFilesTab leadId={leadId} lead={lead} />
+})
+
+export const LeadCallLogsTab = memo(function LeadCallLogsTab() {
+  return (
+    <CRMSection title="Call Logs" description="Call history will be surfaced here when telephony events are connected.">
+      <CRMEmptyState
+        icon={Video}
+        title="No call logs yet"
+        description="Incoming and outgoing call events will appear here."
       />
     </CRMSection>
   )

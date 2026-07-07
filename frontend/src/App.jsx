@@ -52,6 +52,8 @@ const AIChat = lazy(() => import('./pages/AIChat'))
 const AIHub = lazy(() => import('./pages/AIHub'))
 const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 const MarketingChat = lazy(() => import('./pages/MarketingChat'))
+const MarketingCalendar = lazy(() => import('./pages/marketing/calendar/page'))
+const Notifications = lazy(() => import('./pages/Notifications'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
@@ -75,6 +77,7 @@ const CRMActivitiesPage = lazy(() => import('./pages/crm/activities/page'))
 const CRMCalendarPage = lazy(() => import('./pages/crm/calendar/page'))
 const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
+const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
 
 const AdminDashboard = lazy(() => import('./pages/superadmin/AdminDashboard'))
 const TenantManagement = lazy(() => import('./pages/superadmin/TenantManagement'))
@@ -172,10 +175,12 @@ function App() {
           <Route path="attendance-reports" element={withBoundary(<AttendanceReports />)} />
 
         <Route path="reports" element={withBoundary(<Reports />)} />
+        <Route path="notifications" element={withBoundary(<Notifications />)} />
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
         <Route path="ai-hub" element={withBoundary(<AIHub />)} />
         <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />
         <Route path="marketing-support" element={withBoundary(<MarketingChat />)} />
+        <Route path="marketing/calendar" element={withBoundary(<MarketingCalendar />)} />
         <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="departments" element={withBoundary(<Departments />)} />
@@ -184,13 +189,12 @@ function App() {
         <Route path="activity" element={withBoundary(<ActivityLog />)} />
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
-
-          <Route path="crm" element={<ProtectedRoute><ModuleGuard module="sales"><CRMLayout /></ModuleGuard></ProtectedRoute>}>
+          <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
             <Route index element={<Navigate to="pipeline" replace />} />
             <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
             <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
+            <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
             <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />
-            <Route path="leads" element={withBoundary(<CRMLeadWorkspacePage />)} />
             <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
             <Route path="companies/:companyId" element={withBoundary(<CRMCompanyWorkspacePage />)} />
             <Route path="contacts" element={withBoundary(<CRMContactsPage />)} />

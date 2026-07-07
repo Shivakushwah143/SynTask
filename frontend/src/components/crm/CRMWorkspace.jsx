@@ -227,39 +227,39 @@ export function CRMWorkspace({
   return (
     <div className="space-y-6">
       <CRMHeader breadcrumbs={breadcrumbs} title={title} description={description} actions={actions} />
-      {toolbar ? <CRMToolbar {...toolbar} filters={filters} /> : null}
-      {!toolbar && filters ? (
-        <div className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
-          {filters}
-        </div>
-      ) : null}
-      {navigation?.length ? (
-        <nav aria-label="CRM sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
-          <div className="flex min-w-max items-center gap-2">
-            {navigation.map((item) => {
-              const isActive = activePath === item.path || activePath?.startsWith(`${item.path}/`)
-              return (
-                <Link
-                  key={item.key}
-                  to={item.path}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
-                  }`}
-                >
-                  <span>{item.label}</span>
-                  {item.status === 'planned' ? (
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                      Soon
-                    </span>
-                  ) : null}
-                </Link>
-              )
-            })}
-          </div>
-        </nav>
+      {(toolbar || filters || navigation?.length) ? (
+        <section className="space-y-4 rounded-3xl border border-surface-border/80 bg-white/90 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
+          {navigation?.length ? (
+            <nav aria-label="CRM sections" className="overflow-x-auto">
+              <div className="flex min-w-max items-center gap-1 rounded-full bg-gray-50 p-1 dark:bg-gray-950">
+                {navigation.map((item) => {
+                  const isActive = activePath === item.path || activePath?.startsWith(`${item.path}/`)
+                  return (
+                    <Link
+                      key={item.key}
+                      to={item.path}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                        isActive
+                          ? 'bg-white text-primary-700 shadow-sm dark:bg-gray-800 dark:text-primary-200'
+                          : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      {item.status === 'planned' ? (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                          Soon
+                        </span>
+                      ) : null}
+                    </Link>
+                  )
+                })}
+              </div>
+            </nav>
+          ) : null}
+          {toolbar ? <CRMToolbar {...toolbar} filters={filters} /> : null}
+          {!toolbar && filters ? <div>{filters}</div> : null}
+        </section>
       ) : null}
       <CRMContent>{children}</CRMContent>
     </div>

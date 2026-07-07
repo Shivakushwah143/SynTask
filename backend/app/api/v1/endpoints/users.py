@@ -9,6 +9,7 @@ from datetime import datetime
 from app.models.user import User, UserRole, UserStatus, Admin, Manager, Lead, Employee, CompanyAdmin
 from app.models.project import Project
 from app.models.department import Department
+from app.models.notification import Notification, NotificationType
 from app.core.security import get_password_hash
 from app.core.hierarchy import (
     validate_hierarchy_creation,
@@ -70,6 +71,41 @@ async def _build_department_name_map(company_id: Optional[str], users: list[User
         }
     ).to_list()
     return {str(department.id): department.name for department in departments}
+
+
+async def _notify_department_assignment(
+    employee: User,
+    department_name: str,
+    assigned_by: User,
+    previous_department_name: Optional[str] = None,
+) -> None:
+    action = "assigned to" if not previous_department_name else "moved to"
+    message = (
+        f"You were {action} the {department_name} department"
+        if not previous_department_name
+        else f"Your department was changed from {previous_department_name} to {department_name}"
+    )
+    title = "Department assigned" if not previous_department_name else "Department updated"
+
+    notification = Notification(
+        user_id=str(employee.id),
+        company_id=employee.company_id,
+        type=NotificationType.SYSTEM,
+        title=title,
+        message=message,
+        related_id=str(employee.id),
+        related_type="user",
+        action_url="/settings",
+        metadata={
+            "event": "department_assignment",
+            "department_id": getattr(employee, "department_id", None),
+            "department_name": department_name,
+            "previous_department_name": previous_department_name,
+            "assigned_by_id": str(assigned_by.id),
+            "assigned_by_name": assigned_by.full_name(),
+        },
+    )
+    await notification.insert()
 
 # ==================== NEW HIERARCHICAL RBAC ENDPOINTS ====================
 # CRITICAL: These MUST be defined FIRST in the router before any /{param} routes
@@ -643,6 +679,7 @@ async def create_employee(
     last_name: str = Form(...),
     lead_id: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
+    designation: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
@@ -701,6 +738,13 @@ async def create_employee(
                 managed_ids.append(employee_id_str)
                 lead.managed_employee_ids = managed_ids
                 await lead.save()
+
+    if department_doc:
+        await _notify_department_assignment(
+            employee=employee,
+            department_name=department_doc.name,
+            assigned_by=current_user,
+        )
     
     # Queue welcome email to the new Employee
     try:
@@ -890,8 +934,20 @@ async def update_user(
     if phone is not None:
         user.phone = phone
     if department_id is not None:
+        previous_department_name = None
+        current_department_id = getattr(user, "department_id", None)
+        if current_department_id and current_department_id != department_id:
+            current_department_map = await _build_department_name_map(current_user.company_id, [user])
+            previous_department_name = current_department_map.get(current_department_id)
         department_doc = await _resolve_department(current_user.company_id, department_id)
         user.department_id = department_id if department_doc else None
+        if department_doc and department_id != current_department_id:
+            await _notify_department_assignment(
+                employee=user,
+                department_name=department_doc.name,
+                assigned_by=current_user,
+                previous_department_name=previous_department_name,
+            )
     user.updated_at = datetime.utcnow()
     await user.save()
 

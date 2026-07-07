@@ -32,11 +32,14 @@ export const salesApi = {
     return api.post('/sales/prospects/bulk-upload', formData)
   },
   updateProspect: (id, data) => api.put(`/sales/prospects/${id}`, data),
+  updateProspectForm: (id, data) => api.put(`/sales/prospects/${id}`, toFormData(data)),
   updateStage: (id, stageId) => {
     const formData = new FormData()
     formData.append('current_stage', stageId)
     return api.put(`/sales/prospects/${id}`, formData)
   },
+  getDuplicateProspects: (params) => api.get('/sales/prospects/duplicates', { params }),
+  mergeProspects: (payload) => api.post('/sales/prospects/merge', payload),
   getProspectReport: (params) => api.get('/sales/reports/prospect', { params }),
   getSalesReport: (params) => api.get('/sales/reports/sales', { params }),
   getActivityReport: (params) => api.get('/sales/reports/team-activity', { params }),

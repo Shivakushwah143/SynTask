@@ -2,17 +2,22 @@ import { useState } from 'react'
 import { Upload, AlertCircle, CheckCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { salesApi } from '../api/sales'
+import { useQueryClient } from 'react-query'
 import { Button, Modal } from './ui'
 
 const getId = (item) => item?.id || item?._id
 
 export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, categories, stages, users, products }) {
+  const queryClient = useQueryClient()
   const [file, setFile] = useState(null)
   const [data, setData] = useState([])
   const [errors, setErrors] = useState([])
   const [loading, setLoading] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [strategy, setStrategy] = useState('round-robin')
+  const [targetUserId, setTargetUserId] = useState('')
   const [step, setStep] = useState('upload') // 'upload' | 'preview' | 'importing'
+  const employeeOptions = Array.isArray(users) ? users : []
 
   const parseCSVRows = (text) => {
     const rows = []
@@ -233,14 +238,26 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
     setStep('importing')
 
     try {
-      const result = await salesApi.bulkUploadProspects(file)
-      const successCount = result.success_count || 0
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('strategy', strategy)
+      if (strategy === 'manual' && targetUserId) {
+        formData.append('target_user_id', targetUserId)
+      }
+      const result = await salesApi.bulkUploadProspects(formData)
+      const successCount = result.total_uploaded || result.success_count || 0
       const importErrors = (result.failed_rows || []).map(
         (failure) => `Row ${failure.row}: ${failure.error}`
       )
 
       if (successCount > 0) {
         toast.success(`${successCount} prospect${successCount !== 1 ? 's' : ''} created`)
+        queryClient.invalidateQueries('crm-pipeline-board')
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('crm-lead-duplicates')
+        queryClient.invalidateQueries('crm-assigned-leads')
+        queryClient.invalidateQueries('crm-lead-workspace')
+        queryClient.invalidateQueries('sales-prospects')
         onSuccess?.()
       }
 
@@ -269,6 +286,8 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
     setErrors([])
     setProcessing(false)
     setLoading(false)
+    setStrategy('round-robin')
+    setTargetUserId('')
     setStep('upload')
     onClose()
   }
@@ -311,6 +330,30 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
               <br />
               John,Doe,+91,9999999999,john@example.com,ABC Corp,Residential,Lead,Alice Admin,High,2026-12-31,Good prospect,2BHK Apartment|Office Space
             </code>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">Assignment strategy</span>
+              <select className="input w-full" value={strategy} onChange={(event) => setStrategy(event.target.value)}>
+                <option value="round-robin">Round robin</option>
+                <option value="evenly">Evenly</option>
+                <option value="manual">Manual</option>
+              </select>
+            </label>
+            {strategy === 'manual' ? (
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-gray-700">Assign to employee</span>
+                <select className="input w-full" value={targetUserId} onChange={(event) => setTargetUserId(event.target.value)}>
+                  <option value="">Select employee</option>
+                  {employeeOptions.map((user) => (
+                    <option key={getId(user)} value={getId(user)}>
+                      {user.first_name} {user.last_name} {user.role ? `(${user.role})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
 
           <div className="flex justify-end gap-2">

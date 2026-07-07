@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from 'react-query'
 import Papa from 'papaparse'
 import toast from 'react-hot-toast'
-import { Upload, Download, Shuffle, Users, FileText, Sparkles } from 'lucide-react'
+import { Upload, Download, Shuffle, Users, FileText, Sparkles, CheckCircle2, ListChecks, Users2 } from 'lucide-react'
 import { salesApi } from '../api/sales'
 import { departmentsAPI } from '../api/departments'
 import { usersAPI } from '../api/users'
-import { Button, EmptyState, FormField, Modal, PageHeader, inputClassName } from '../components/ui'
+import { Button, EmptyState, FormField, Modal, inputClassName } from '../components/ui'
+import { CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../components/crm'
 import { asArray, getId } from './phase4Utils'
 
 const SAMPLE_ROWS = [
@@ -49,9 +50,13 @@ export default function BulkLeads() {
   const { data: departmentsData } = useQuery('bulk-leads-departments', departmentsAPI.listDepartments)
   const users = asArray(usersData, ['users'])
   const departments = asArray(departmentsData, ['departments'])
-  const assignableUsers = useMemo(() => users.filter((user) => ['lead', 'employee'].includes(String(user.role || '').toLowerCase())), [users])
+  const assignableUsers = useMemo(
+    () => users.filter((user) => String(user.role || '').toLowerCase() === 'employee'),
+    [users]
+  )
 
   const hasPreview = previewRows.length > 0
+  const previewCount = previewRows.length
 
   const handleFile = async (selected) => {
     setFileError('')
@@ -131,7 +136,12 @@ export default function BulkLeads() {
       setPreviewRows([])
       setDepartmentId('')
       setTargetUserId('')
-      queryClient.invalidateQueries()
+      queryClient.invalidateQueries('crm-pipeline-board')
+      queryClient.invalidateQueries('crm-leads-entry')
+      queryClient.invalidateQueries('crm-lead-duplicates')
+      queryClient.invalidateQueries('crm-assigned-leads')
+      queryClient.invalidateQueries('crm-lead-workspace')
+      queryClient.invalidateQueries('sales-prospects')
     } catch (error) {
       const message = error?.response?.data?.detail || error?.message || 'Failed to upload leads'
       toast.error(message)
@@ -141,11 +151,12 @@ export default function BulkLeads() {
   }
 
   return (
-    <div className="p-6">
-      <PageHeader
+    <CRMPage className="p-6">
+      <CRMPageTitle
+        eyebrow="CRM Import"
         title="Bulk Leads"
-        description="Upload leads in CSV format and auto-assign them to a department or employee team."
-        actions={
+        description="Upload leads once, preview them before import, then assign them into the same CRM pipeline used everywhere else."
+        actions={(
           <>
             <Button variant="secondary" onClick={downloadSample}>
               <Download className="h-4 w-4" />
@@ -156,158 +167,182 @@ export default function BulkLeads() {
               Load test data
             </Button>
           </>
-        }
+        )}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr]">
-        <div className="space-y-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/40 p-6 text-center">
-            <Upload className="mx-auto h-10 w-10 text-primary-600" />
-            <p className="mt-3 text-sm font-semibold text-gray-900">Upload a leads CSV</p>
-            <p className="mt-1 text-sm text-gray-600">
-              Required: `email`. Suggested: `name`, `phone`, `company`, `source`, `status`, `remark`.
-            </p>
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-              <input
-                type="file"
-                accept=".csv"
-                onChange={(event) => handleFile(event.target.files?.[0])}
-                className="block text-sm text-gray-700 file:mr-4 file:rounded-full file:border-0 file:bg-primary-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary-700 hover:file:bg-primary-100"
-              />
-            </div>
-          </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <CRMStatCard icon={Upload} label="Upload status" value={file ? 'Ready' : 'Waiting'} helper={file ? file.name : 'Choose a CSV file'} tone="blue" />
+        <CRMStatCard icon={ListChecks} label="Preview rows" value={String(previewCount)} helper="First 20 parsed rows shown below" tone="amber" />
+        <CRMStatCard icon={Users2} label="Assignable team" value={String(assignableUsers.length)} helper="Employees available for routing" tone="emerald" />
+      </div>
 
-          {fileError ? (
-            <div className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{fileError}</div>
-          ) : null}
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField label="Assignment strategy">
-              <select
-                className={inputClassName}
-                value={strategy}
-                onChange={(event) => setStrategy(event.target.value)}
-                disabled={Boolean(departmentId)}
-              >
-                <option value="round-robin">Round robin</option>
-                <option value="evenly">Evenly</option>
-                <option value="manual">Manual</option>
-              </select>
-            </FormField>
-
-            <FormField label="Department">
-              <select
-                className={inputClassName}
-                value={departmentId}
-                onChange={(event) => setDepartmentId(event.target.value)}
-              >
-                <option value="">All departments</option>
-                {departments.map((department) => (
-                  <option key={getId(department)} value={getId(department)}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-
-            <FormField label="Assign to">
-              <select
-                className={inputClassName}
-                value={targetUserId}
-                onChange={(event) => setTargetUserId(event.target.value)}
-                disabled={strategy !== 'manual' || !!departmentId}
-              >
-                <option value="">Select employee</option>
-                {assignableUsers.map((user) => (
-                  <option key={getId(user)} value={getId(user)}>
-                    {user.first_name} {user.last_name} - {user.role}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
+      <CRMSection
+        title="Import flow"
+        description="Step 1: upload a CSV. Step 2: confirm the preview. Step 3: choose how leads should be assigned."
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={() => handleFile(null)}>
+              Clear file
+            </Button>
             <Button onClick={() => setConfirmOpen(true)} disabled={!file || !!fileError}>
               <Upload className="h-4 w-4" />
               Upload leads
             </Button>
-            <Button variant="secondary" onClick={() => handleFile(null)}>
-              Clear file
-            </Button>
           </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2">
-              <Shuffle className="h-4 w-4 text-primary-600" />
-              <h3 className="text-sm font-semibold text-gray-900">How assignment works</h3>
+        )}
+      >
+        <div className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr]">
+          <div className="space-y-6">
+            <div className="rounded-3xl border border-dashed border-primary-200 bg-primary-50/40 p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">1. Upload CSV</p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Required: `email`. Suggested: `name`, `phone`, `company`, `source`, `status`, `remark`.
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-3 rounded-full bg-white px-4 py-2 text-sm font-medium text-primary-700 shadow-sm ring-1 ring-primary-100 hover:bg-primary-50">
+                  <Upload className="h-4 w-4" />
+                  Choose file
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={(event) => handleFile(event.target.files?.[0])}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
-            <ul className="mt-3 space-y-2 text-sm text-gray-600">
-              <li>Round robin assigns one lead at a time to each selected employee.</li>
-              <li>Evenly balances the import across the selected team.</li>
-              <li>Select a department to assign the uploaded leads only within that department.</li>
-              <li>Manual sends all uploaded leads to one employee.</li>
-            </ul>
-          </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary-600" />
-              <h3 className="text-sm font-semibold text-gray-900">Selected team</h3>
-            </div>
-            <p className="mt-2 text-sm text-gray-600">
-              {assignableUsers.length
-                ? `${assignableUsers.length} employees and leads are available for assignment.`
-                : 'No assignable employees found yet.'}
-            </p>
-            {departmentId ? (
-              <p className="mt-3 text-sm text-gray-600">
-                Department selected. Leads will be split across users in{' '}
-                <span className="font-semibold">
-                  {departments.find((department) => getId(department) === departmentId)?.name || 'this department'}
-                </span>
-                {' '}using even distribution.
-              </p>
+            {fileError ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                {fileError}
+              </div>
             ) : null}
-          </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary-600" />
-              <h3 className="text-sm font-semibold text-gray-900">Test data included</h3>
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField label="Assignment strategy">
+                <select
+                  className={inputClassName}
+                  value={strategy}
+                  onChange={(event) => setStrategy(event.target.value)}
+                  disabled={Boolean(departmentId)}
+                >
+                  <option value="round-robin">Round robin</option>
+                  <option value="evenly">Evenly</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </FormField>
+
+              <FormField label="Department">
+                <select
+                  className={inputClassName}
+                  value={departmentId}
+                  onChange={(event) => setDepartmentId(event.target.value)}
+                >
+                  <option value="">All departments</option>
+                  {departments.map((department) => (
+                    <option key={getId(department)} value={getId(department)}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+
+              <FormField label="Assign to">
+                <select
+                  className={inputClassName}
+                  value={targetUserId}
+                  onChange={(event) => setTargetUserId(event.target.value)}
+                  disabled={strategy !== 'manual' || !!departmentId}
+                >
+                  <option value="">Select employee</option>
+                  {assignableUsers.map((user) => (
+                    <option key={getId(user)} value={getId(user)}>
+                      {user.first_name} {user.last_name} - {user.role}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
             </div>
-            <p className="mt-2 text-sm text-gray-600">
-              Use the built-in sample CSV first to verify upload, preview, and auto-assignment.
-            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-surface-border/80 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Shuffle className="h-4 w-4 text-primary-600" />
+                <h3 className="text-sm font-semibold text-gray-900">2. Assignment rules</h3>
+              </div>
+              <ul className="mt-3 space-y-2 text-sm text-gray-600">
+                <li>Round robin assigns one lead at a time to each selected employee.</li>
+                <li>Evenly balances the import across the selected team.</li>
+                <li>Select a department to restrict assignment to that department's users.</li>
+                <li>Manual sends all uploaded leads to one employee.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-3xl border border-surface-border/80 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary-600" />
+                <h3 className="text-sm font-semibold text-gray-900">3. Team visibility</h3>
+              </div>
+              <p className="mt-2 text-sm text-gray-600">
+                {assignableUsers.length
+                  ? `${assignableUsers.length} employees are available for assignment.`
+                  : 'No assignable employees found yet.'}
+              </p>
+              {departmentId ? (
+                <p className="mt-3 text-sm text-gray-600">
+                  Department selected. Leads will be split across{' '}
+                  <span className="font-semibold">
+                    {departments.find((department) => getId(department) === departmentId)?.name || 'this department'}
+                  </span>
+                  .
+                </p>
+              ) : null}
+              {targetUserId ? (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Manual assignee selected
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-3xl border border-surface-border/80 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary-600" />
+                <h3 className="text-sm font-semibold text-gray-900">Built-in test data</h3>
+              </div>
+              <p className="mt-2 text-sm text-gray-600">
+                Use the sample CSV first to verify upload, preview, and auto-assignment.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      </CRMSection>
 
-      <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">Preview</h3>
-          <span className="text-xs text-gray-500">{hasPreview ? `${previewRows.length} rows loaded` : 'No file loaded'}</span>
-        </div>
-
+      <CRMSection
+        title="Preview"
+        description="Review parsed rows before confirming import. This uses the same CSV state that will be uploaded."
+        actions={<span className="text-xs text-gray-500">{hasPreview ? `${previewCount} rows loaded` : 'No file loaded'}</span>}
+      >
         {hasPreview ? (
-          <div className="overflow-x-auto rounded-xl border border-gray-200">
+          <div className="overflow-x-auto rounded-2xl border border-surface-border/80">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-gray-950">
                 <tr>
                   {SAMPLE_HEADERS.map((header) => (
-                    <th key={header} className="px-4 py-3 text-left font-medium text-gray-600">
+                    <th key={header} className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">
                       {header}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-800 dark:bg-gray-900">
                 {previewRows.map((row, index) => (
-                  <tr key={index}>
+                  <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-950">
                     {SAMPLE_HEADERS.map((header) => (
-                      <td key={header} className="px-4 py-3 text-gray-700">
+                      <td key={header} className="px-4 py-3 text-gray-700 dark:text-gray-200">
                         {row?.[header] || '-'}
                       </td>
                     ))}
@@ -323,7 +358,7 @@ export default function BulkLeads() {
             description="Upload a CSV file or load the sample data to preview the leads here."
           />
         )}
-      </div>
+      </CRMSection>
 
       <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} title="Confirm bulk upload">
         <div className="space-y-4">
@@ -342,6 +377,6 @@ export default function BulkLeads() {
           </div>
         </div>
       </Modal>
-    </div>
+    </CRMPage>
   )
 }

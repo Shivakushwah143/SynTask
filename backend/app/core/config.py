@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20
-    MAX_PAGE_SIZE: int = 100
+    MAX_PAGE_SIZE: int = 500
     
     # Rate Limiting
     RATE_LIMIT_REQUESTS: int = 100

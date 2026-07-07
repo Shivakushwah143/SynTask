@@ -441,7 +441,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
     <article
       ref={setNodeRef}
       style={leadStyle}
-      className="group rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-900"
+      className="group rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm transition-all duration-150 hover:shadow-md focus-within:ring-2 focus-within:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-900"
       aria-label={`${lead.company_name || contactLabel} lead card`}
     >
       <div className="flex items-start gap-3">
@@ -459,28 +459,21 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           onClick={() => onLeadSelect?.(lead)}
           className="min-w-0 flex-1 text-left focus-visible:outline-none"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h4 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {lead.company_name || contactLabel}
-              </h4>
-              <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
-                {contactLabel}
-              </p>
-            </div>
-            <div className="inline-flex h-6 min-w-14 items-center justify-center rounded-full border border-dashed border-surface-border/80 px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400 dark:border-gray-800 dark:text-gray-500">
-              AI
-            </div>
+          <div className="min-w-0">
+            <h4 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {lead.company_name || contactLabel}
+            </h4>
+            <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+              {contactLabel}
+            </p>
           </div>
         </button>
       </div>
 
       <div className="mt-4 grid gap-2 text-xs text-gray-500 dark:text-gray-400">
-        <LeadMetaRow label="Deal value" value={formatCurrency(dealValue, currency)} strong />
         <LeadMetaRow label="Owner" value={ownerLabel} />
-        <LeadMetaRow label="Priority" value={<Badge label={priority} colorKey={priority} />} />
-        <LeadMetaRow label="Days in stage" value={String(Math.max(Number(lead.days_in_stage || 0), 0))} />
-        <LeadMetaRow label="Created" value={formatShortDate(lead.created_at || lead.createdAt || lead.created_date)} />
+        <LeadMetaRow label="Value" value={formatCurrency(dealValue, currency)} strong />
+        <LeadMetaRow label="Stage" value={stage.name} />
       </div>
 
       {tags.length ? (
@@ -496,36 +489,28 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
         </div>
       ) : null}
 
-      <div className="mt-4 flex items-center justify-between gap-2">
-        <details className="relative">
-          <summary className="list-none">
-            <Button type="button" variant="ghost" size="sm" className="px-2">
-              <MoreHorizontal className="h-4 w-4" />
-              Actions
-              <ChevronDown className="h-3.5 w-3.5" />
-            </Button>
-          </summary>
-          <div className="absolute left-0 z-30 mt-2 w-56 overflow-hidden rounded-2xl border border-surface-border/80 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900">
-            <ActionItem
-              label="Copy lead ID"
-              onClick={() => onCopyLeadId?.(lead)}
-            />
-            <ActionItem
-              label="Move to previous stage"
-              disabled={!stage.previousStageKey}
-              onClick={() => stage.previousStageKey && onMoveLeadToStage?.(lead, stage.previousStageKey)}
-            />
-            <ActionItem
-              label="Move to next stage"
-              disabled={!stage.nextStageKey}
-              onClick={() => stage.nextStageKey && onMoveLeadToStage?.(lead, stage.nextStageKey)}
-            />
-          </div>
-        </details>
-        <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-          {stage.name}
-        </span>
-      </div>
+      <details className="mt-4 relative">
+        <summary className="list-none">
+          <Button type="button" variant="ghost" size="sm" className="px-2">
+            <MoreHorizontal className="h-4 w-4" />
+            Actions
+            <ChevronDown className="h-3.5 w-3.5" />
+          </Button>
+        </summary>
+        <div className="absolute left-0 z-30 mt-2 w-56 overflow-hidden rounded-2xl border border-surface-border/80 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900">
+          <ActionItem label="Copy lead ID" onClick={() => onCopyLeadId?.(lead)} />
+          <ActionItem
+            label="Move to previous stage"
+            disabled={!stage.previousStageKey}
+            onClick={() => stage.previousStageKey && onMoveLeadToStage?.(lead, stage.previousStageKey)}
+          />
+          <ActionItem
+            label="Move to next stage"
+            disabled={!stage.nextStageKey}
+            onClick={() => stage.nextStageKey && onMoveLeadToStage?.(lead, stage.nextStageKey)}
+          />
+        </div>
+      </details>
     </article>
   )
 })

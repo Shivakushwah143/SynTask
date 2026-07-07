@@ -5,12 +5,36 @@ import Header from '../components/Header'
 import { GlobalSearch } from '../components/GlobalSearch'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
 
+const BREADCRUMB_LABELS = {
+  dashboard: 'Dashboard',
+  tasks: 'Tasks',
+  tickets: 'Requests',
+  chat: 'Chat',
+  projects: 'Projects',
+  calendar: 'Calendar',
+  meetings: 'Meetings',
+  notifications: 'Notifications',
+  'crm': 'CRM',
+  pipeline: 'Pipeline',
+  leads: 'Leads',
+  companies: 'Companies',
+  contacts: 'Contacts',
+  activities: 'Activities',
+  reports: 'Reports',
+  settings: 'Settings',
+}
+
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
   const openSearch = () => setSearchOpen(true)
+  const breadcrumb = location.pathname
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => BREADCRUMB_LABELS[segment] || segment)
+    .join(' / ')
 
   useKeyboardShortcut('k', openSearch, { ctrlKey: true })
   useKeyboardShortcut('k', openSearch, { metaKey: true })
@@ -23,7 +47,7 @@ const MainLayout = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col ml-2 overflow-hidden min-w-0 w-full">
         {/* Header */}
-        <Header onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
+        <Header title="Dashboard" subtitle="Workspace overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
 
         {/* Page Content */}
         <main className={`min-w-0 flex-1 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
