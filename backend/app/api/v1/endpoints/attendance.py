@@ -4,6 +4,7 @@ Attendance & Employee Monitoring Endpoints (Phase 1) — Fixed
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi import status as http_status
 from datetime import datetime, timedelta
+import asyncio
 import csv
 import io
 import json
@@ -169,6 +170,61 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+async def delayed_logout_check(user_id: str, user: User, company_id: str):
+    """Wait for a 10s grace period and mark employee Offline if they have not reconnected"""
+    await asyncio.sleep(10)
+    # Check if there are active connections now
+    if user_id in manager.active_connections:
+        logger.info(f"User {user.email} reconnected within grace period. Disconnect ignored.")
+        return
+
+    logger.info(f"User {user.email} did not reconnect within grace period. Finalizing shift.")
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    attendance = await Attendance.find_one(
+        Attendance.employee_id == user_id,
+        Attendance.date == today_str
+    )
+    if attendance and attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
+        now_utc = datetime.utcnow()
+
+        if attendance.status == AttendanceStatus.WORKING:
+            elapsed = await finalize_active_session(attendance, now_utc)
+            attendance.total_working_hours += elapsed
+        elif attendance.status == AttendanceStatus.ON_BREAK:
+            elapsed_break = await finalize_active_break(attendance, now_utc)
+            attendance.break_duration += elapsed_break
+
+        # Close MonitoringSession
+        monitoring_session = await MonitoringSession.find_one(
+            MonitoringSession.attendance_id == str(attendance.id),
+            MonitoringSession.end_time == None
+        )
+        if monitoring_session:
+            monitoring_session.end_time = now_utc
+            monitoring_session.status = "Stopped"
+            await monitoring_session.save()
+
+        wt = compute_work_type(attendance.total_working_hours)
+        attendance.work_type = wt["work_type"]
+        attendance.overtime_seconds = wt["overtime_seconds"]
+        attendance.status = AttendanceStatus.OFFLINE
+        attendance.logout_time = now_utc
+        attendance.monitoring_end_time = now_utc
+        attendance.camera_permission_status = "Denied"
+        attendance.screen_sharing_status = "Denied"
+        attendance.updated_at = now_utc
+        await attendance.save()
+
+        broadcast_msg = {
+            "type": "status_changed",
+            "employee_id": user_id,
+            "employee_name": user.full_name(),
+            "status": AttendanceStatus.OFFLINE.value,
+            "timestamp": now_utc.isoformat()
+        }
+        await manager.broadcast_to_company_managers(company_id, broadcast_msg)
 
 
 # -----------------------------------------------------------------------------
@@ -492,51 +548,8 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
         manager.disconnect(websocket, user_id_str)
 
         # Automatic logout on websocket disconnect (tab close/navigation)
-        if user and user.role == UserRole.EMPLOYEE:
-            today_str = datetime.utcnow().strftime("%Y-%m-%d")
-            attendance = await Attendance.find_one(
-                Attendance.employee_id == user_id_str,
-                Attendance.date == today_str
-            )
-            if attendance and attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
-                now_utc = datetime.utcnow()
-
-                if attendance.status == AttendanceStatus.WORKING:
-                    elapsed = await finalize_active_session(attendance, now_utc)
-                    attendance.total_working_hours += elapsed
-                elif attendance.status == AttendanceStatus.ON_BREAK:
-                    elapsed_break = await finalize_active_break(attendance, now_utc)
-                    attendance.break_duration += elapsed_break
-
-                # Close MonitoringSession
-                monitoring_session = await MonitoringSession.find_one(
-                    MonitoringSession.attendance_id == str(attendance.id),
-                    MonitoringSession.end_time == None
-                )
-                if monitoring_session:
-                    monitoring_session.end_time = now_utc
-                    monitoring_session.status = "Stopped"
-                    await monitoring_session.save()
-
-                wt = compute_work_type(attendance.total_working_hours)
-                attendance.work_type = wt["work_type"]
-                attendance.overtime_seconds = wt["overtime_seconds"]
-                attendance.status = AttendanceStatus.OFFLINE
-                attendance.logout_time = now_utc
-                attendance.monitoring_end_time = now_utc
-                attendance.camera_permission_status = "Denied"
-                attendance.screen_sharing_status = "Denied"
-                attendance.updated_at = now_utc
-                await attendance.save()
-
-                broadcast_msg = {
-                    "type": "status_changed",
-                    "employee_id": user_id_str,
-                    "employee_name": user.full_name(),
-                    "status": AttendanceStatus.OFFLINE.value,
-                    "timestamp": now_utc.isoformat()
-                }
-                await manager.broadcast_to_company_managers(user.company_id, broadcast_msg)
+        if user and user.role in [UserRole.EMPLOYEE, UserRole.MANAGER]:
+            asyncio.create_task(delayed_logout_check(user_id_str, user, user.company_id))
 
 
 # -----------------------------------------------------------------------------
