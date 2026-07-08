@@ -21,6 +21,7 @@ from app.api.dependencies import (
     get_current_company_admin, get_current_company_admin_or_lead,
     check_company_access
 )
+from app.services.user_service import UserService
 
 router = APIRouter()
 
@@ -640,6 +641,8 @@ async def create_lead(
         first_name=first_name,
         last_name=last_name,
         company_id=current_user.company_id,
+        reports_to=None,
+        ancestors=[],
         team_name=team_name,
         department_id=department_id if department_doc else None,
         phone=phone,
@@ -716,12 +719,14 @@ async def create_employee(
         first_name=first_name,
         last_name=last_name,
         company_id=current_user.company_id,
+        reports_to=final_lead_id,
         lead_id=final_lead_id,
         department_id=department_id if department_doc else None,
         designation=designation,
         phone=phone,
         status=UserStatus.ACTIVE
     )
+    await UserService.update_hierarchy_ancestors(employee)
     
     await employee.insert()
     
@@ -1103,6 +1108,7 @@ async def create_user_hierarchical(
                 detail=f"Plan limit exceeded for {resource_type}. Current: {current_usage}, Limit: {limit}. Please upgrade your plan or contact support."
             )
     
+    await UserService.update_hierarchy_ancestors(user)
     await user.insert()
     
     # Update Lead's managed_employee_ids if Employee reports to Lead

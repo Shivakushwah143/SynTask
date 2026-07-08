@@ -40,6 +40,7 @@ export const useMonitoringSocket = () => {
   const socketRef = useRef(null)
   const timerRef = useRef(null)
   const heartbeatIntervalRef = useRef(null)
+  const actionPendingRef = useRef(false)
   // Keep stable refs for status to avoid stale closure issues in callbacks
   const statusRef = useRef('Offline')
   const workingSecondsRef = useRef(0)
@@ -156,9 +157,20 @@ export const useMonitoringSocket = () => {
             onStop: (reason) => {
               const label = reason === 'screen_sharing_ended' ? 'Screen sharing stopped' : 'Camera stopped'
               toast.error(`${label}. Session will continue without this feed.`)
-              // Update statuses without stopping the whole session
-              if (reason === 'screen_sharing_ended') setScreenStatus('Stopped')
-              if (reason === 'camera_ended') setCameraStatus('Disabled')
+              const mediaStatusPayload = { type: 'media_status' }
+              if (reason === 'screen_sharing_ended') {
+                setScreenStatus('Stopped')
+                setScreenStream(null)
+                mediaStatusPayload.screen_share_status = 'Stopped'
+              }
+              if (reason === 'camera_ended') {
+                setCameraStatus('Disabled')
+                setCameraStream(null)
+                mediaStatusPayload.camera_status = 'Disabled'
+              }
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(mediaStatusPayload))
+              }
             }
           })
           // Expose live streams to the UI
@@ -168,10 +180,13 @@ export const useMonitoringSocket = () => {
           setScreenStatus(monitoringManager.getScreenStatus())
         } catch (err) {
           console.error('startCapture failed:', err)
+        } finally {
+          actionPendingRef.current = false
         }
       }
 
       else if (msg.type === 'pause_work_ack') {
+        actionPendingRef.current = false
         const totalSec = Math.floor(msg.total_working_seconds ?? workingSecondsRef.current)
         setWorkingSeconds(totalSec)
         setStatus('On Break')
@@ -184,7 +199,8 @@ export const useMonitoringSocket = () => {
       }
 
       else if (msg.type === 'resume_work_ack') {
-        setBreakSeconds(prev => prev + Math.floor(msg.break_seconds ?? 0))
+        actionPendingRef.current = false
+        setBreakSeconds(Math.floor(msg.break_seconds ?? 0))
         setStatus('Working')
         statusRef.current = 'Working'
         monitoringManager.resumeCapture()
@@ -192,6 +208,7 @@ export const useMonitoringSocket = () => {
       }
 
       else if (msg.type === 'stop_work_ack') {
+        actionPendingRef.current = false
         const totalSec = Math.floor(msg.total_working_seconds ?? workingSecondsRef.current)
         const wt = computeWorkType(totalSec)
         setWorkingSeconds(totalSec)
@@ -215,6 +232,7 @@ export const useMonitoringSocket = () => {
     ws.onclose = () => {
       setIsConnected(false)
       socketRef.current = null
+      actionPendingRef.current = false
       if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current)
     }
 
@@ -238,13 +256,37 @@ export const useMonitoringSocket = () => {
         socketRef.current.close()
         socketRef.current = null
       }
+      monitoringManager.stopCapture()
+      setCameraStream(null)
+      setScreenStream(null)
     }
   }, [token]) // intentionally minimal deps — handlers access fresh values via refs
 
   // ─── Workflow Triggers ────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (statusRef.current === 'Working' || statusRef.current === 'On Break') {
+        try {
+          if (socketRef.current?.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({ type: 'stop_work' }))
+          }
+        } catch {
+          // Browser unload is best effort only.
+        }
+        monitoringManager.stopCapture()
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
   const startWork = async () => {
+    if (actionPendingRef.current || statusRef.current !== 'Offline') return
+    actionPendingRef.current = true
     const granted = await monitoringManager.requestPermissions()
     if (!granted) {
+      actionPendingRef.current = false
       toast.error('Camera and Screen Share permissions are required to start work.')
       return
     }
@@ -253,8 +295,8 @@ export const useMonitoringSocket = () => {
       if (socketRef.current?.readyState === WebSocket.OPEN) {
         socketRef.current.send(JSON.stringify({
           type: 'start_work',
-          camera_permission: monitoringManager.getCameraStatus() === 'Connected' ? 'Granted' : 'Denied',
-          screen_share_permission: monitoringManager.getScreenStatus() === 'Sharing' ? 'Granted' : 'Denied',
+          camera_permission: monitoringManager.getCameraStatus(),
+          screen_share_permission: monitoringManager.getScreenStatus(),
         }))
         return true
       }
@@ -265,6 +307,7 @@ export const useMonitoringSocket = () => {
       connectSocket()
       setTimeout(() => {
         if (!sendStart()) {
+          actionPendingRef.current = false
           toast.error('Failed to connect to the tracking server. Please try again.')
         }
       }, 600)
@@ -272,18 +315,32 @@ export const useMonitoringSocket = () => {
   }
 
   const pauseWork = () => {
+    if (actionPendingRef.current || statusRef.current !== 'Working') return
     if (socketRef.current?.readyState === WebSocket.OPEN) {
+      actionPendingRef.current = true
       socketRef.current.send(JSON.stringify({ type: 'pause_work' }))
     }
   }
 
   const resumeWork = () => {
+    if (actionPendingRef.current || statusRef.current !== 'On Break') return
     if (socketRef.current?.readyState === WebSocket.OPEN) {
+      actionPendingRef.current = true
       socketRef.current.send(JSON.stringify({ type: 'resume_work' }))
     }
   }
 
   const stopWork = () => {
+    if (actionPendingRef.current || !['Working', 'On Break'].includes(statusRef.current)) return
+    actionPendingRef.current = true
+    setStatus('Offline')
+    statusRef.current = 'Offline'
+    monitoringManager.stopCapture()
+    setCameraStream(null)
+    setScreenStream(null)
+    setCameraStatus('Denied')
+    setScreenStatus('Denied')
+
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'stop_work' }))
     } else {
