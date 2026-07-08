@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { FileText, Plus, Trash2, X, Search, Eye, Send } from 'lucide-react'
+import { FileText, Plus, Trash2, X, Search, Eye, Send, Mail } from 'lucide-react'
 import { invoicesAPI } from '../api/invoices'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
+import { EmailComposer } from '../components/EmailComposer'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -20,6 +21,7 @@ const Invoices = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [composerOpen, setComposerOpen] = useState(false)
   
   const [formData, setFormData] = useState({
     invoice_type: 'proforma',
@@ -292,16 +294,25 @@ const Invoices = () => {
           <p className="text-gray-600 text-xs mt-0.5">Generate and manage invoices for your clients</p>
         </div>
         {(isCompanyAdmin || isLead) && (
-          <button
-            onClick={() => {
-              resetForm()
-              setShowCreateModal(true)
-            }}
-            className="btn btn-primary flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Create Invoice</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setComposerOpen(true)}
+              className="btn btn-primary flex items-center space-x-2"
+            >
+              <Mail className="h-4 w-4" />
+              <span>Send Email</span>
+            </button>
+            <button
+              onClick={() => {
+                resetForm()
+                setShowCreateModal(true)
+              }}
+              className="btn btn-primary flex items-center space-x-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Create Invoice</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -842,6 +853,20 @@ const Invoices = () => {
           </div>
         </div>
       )}
+
+      <EmailComposer
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        initialData={{
+          to: selectedInvoice?.client_email ? [{ email: selectedInvoice.client_email, name: selectedInvoice.client_name || '' }] : [],
+          subject: selectedInvoice ? `Invoice ${selectedInvoice.invoice_number}` : 'Invoice follow-up',
+          html: '<p>Hello,</p><p></p>',
+          text: 'Hello,',
+          related_entity_type: 'invoice',
+          related_entity_id: selectedInvoice?.id || '',
+          related_module: 'billing',
+        }}
+      />
     </div>
   )
 }

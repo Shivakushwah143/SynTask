@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
-  ArrowLeft, Trash2, Paperclip, Eye, History,
+  ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
   Zap, Sparkles
 } from 'lucide-react'
@@ -14,6 +14,7 @@ import { watchersApi } from '../api/watchers'
 import { changelogApi } from '../api/changelog'
 import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
+import { EmailComposer } from '../components/EmailComposer'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -48,6 +49,7 @@ const TaskDetail = () => {
   const [deleting, setDeleting] = useState(false)
   const [updatingWatch, setUpdatingWatch] = useState(false)
   const [updatingField, setUpdatingField] = useState(null)
+  const [composerOpen, setComposerOpen] = useState(false)
 
   useEffect(() => {
     if (taskId) {
@@ -372,6 +374,7 @@ const TaskDetail = () => {
   }
 
   return (
+    <>
     <div className="h-full flex flex-col bg-white -m-6" style={{ minHeight: 'calc(100vh - 96px)' }}>
       {/* Top Header */}
       <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between bg-white">
@@ -398,6 +401,13 @@ const TaskDetail = () => {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setComposerOpen(true)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <Mail className="inline-block h-4 w-4 mr-1" />
+            Send Email
+          </button>
           <button className="p-2 hover:bg-gray-100 rounded">
             <Lock className="h-5 w-5 text-gray-600" />
           </button>
@@ -977,6 +987,20 @@ const TaskDetail = () => {
         </div>
       </div>
     </div>
+      <EmailComposer
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        initialData={{
+          to: task?.assigned_to ? [{ email: users.find((item) => String(item.id) === String(task.assigned_to))?.email || '', name: users.find((item) => String(item.id) === String(task.assigned_to))?.first_name || '' }] : [],
+          subject: task?.title ? `Task update: ${task.title}` : 'Task update',
+          html: '<p>Hello,</p><p></p>',
+          text: 'Hello,',
+          related_entity_type: 'task',
+          related_entity_id: task?.id || '',
+          related_module: 'tasks',
+        }}
+      />
+    </>
   )
 }
 

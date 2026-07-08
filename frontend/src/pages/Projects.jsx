@@ -192,8 +192,8 @@ export default function Projects() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Projects"
-        description="Premium workspace for project health, team ownership, and AI insights."
+      title="Projects"
+      description="Project health, ownership, and progress."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <Button variant={view === 'grid' ? 'primary' : 'secondary'} size="sm" onClick={() => setView('grid')}>
@@ -211,7 +211,7 @@ export default function Projects() {
             {canCreateProjects ? (
               <Button size="sm" onClick={() => setShowCreateModal(true)}>
                 <Plus className="h-4 w-4" />
-                New Project
+                New project
               </Button>
             ) : null}
           </div>
@@ -265,8 +265,8 @@ export default function Projects() {
             <EmptyState
               icon={FolderKanban}
               title="No projects found"
-              description="Use search or filters to refine the workspace."
-              action={canCreateProjects ? <Button onClick={() => setShowCreateModal(true)}><Plus className="h-4 w-4" /> Create Project</Button> : null}
+              description="Use search or filters to refine the list."
+              action={canCreateProjects ? <Button onClick={() => setShowCreateModal(true)}><Plus className="h-4 w-4" /> Create</Button> : null}
             />
           </div>
         ) : view === 'list' ? (
@@ -315,7 +315,7 @@ export default function Projects() {
         )}
       </section>
 
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create project" size="xl">
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New project" size="xl">
         <form onSubmit={handleCreate} className="space-y-5">
           <FormField label="Project name" error={formErrors.name} required>
             <input
@@ -339,7 +339,7 @@ export default function Projects() {
           </FormField>
           <FormField label="Project ID" error={formErrors.project_id} required>
             <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-              Optional. If left empty, the project key will be used.
+              Optional. If empty, the project key is used.
             </span>
             <input
               name="project_id"
@@ -350,10 +350,10 @@ export default function Projects() {
               placeholder="AK-001"
             />
             <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-              If you leave this empty, it will use the project key.
+              Leaves the key as the ID.
             </span>
           </FormField>
-          <FormField label="Description">
+          <FormField label="Details">
             <textarea className={inputClassName} rows={4} value={formData.description} onChange={(event) => setFormData((state) => ({ ...state, description: event.target.value }))} />
           </FormField>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -380,7 +380,7 @@ export default function Projects() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button type="submit" loading={submitting} loadingText="Creating">Create project</Button>
+            <Button type="submit" loading={submitting} loadingText="Creating">Create</Button>
           </div>
         </form>
       </Modal>

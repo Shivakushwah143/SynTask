@@ -155,26 +155,29 @@ export default function CRMLeadsPage() {
       <CRMPageTitle
         eyebrow="CRM"
         title="Leads"
-        description={isEmployee ? 'Review your assigned leads and update meeting status.' : 'Open a lead from the pipeline to view its workspace.'}
+        description={isEmployee ? 'Review assigned leads and update status.' : 'Open a lead from the pipeline.'}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             {!isEmployee && (
               <>
+                <Button variant="primary" onClick={() => navigate('/sales/prospects?createProspect=true')}>
+                  New lead
+                </Button>
                 <Button variant="secondary" onClick={() => setImportOpen(true)}>
                   <Import className="h-4 w-4" />
-                  Import CSV
+                  Import
                 </Button>
                 <Button variant="secondary" onClick={exportLeads}>
                   <Download className="h-4 w-4" />
-                  Export CSV
+                  Export
                 </Button>
                 <Button variant="secondary" onClick={() => setBulkOpen(true)} disabled={!selectedIds.length}>
-                  Bulk update
+                  Bulk edit
                 </Button>
               </>
             )}
             <Button variant="primary" onClick={() => navigate('/crm/pipeline')}>
-              Open Pipeline
+              Open pipeline
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
@@ -189,18 +192,18 @@ export default function CRMLeadsPage() {
 
       <CRMSection
         title="Lead entry points"
-        description="The CRM lead workspace lives at /crm/leads/:leadId. Start from the pipeline or related activity screens."
-        actions={<Badge label="Sales module" colorKey="draft" />}
+        description="Open the lead workspace from pipeline or activity screens."
+        actions={<Badge label="CRM" colorKey="draft" />}
       >
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>
-            Go to Pipeline
+            Pipeline
           </Button>
           <Button variant="secondary" onClick={() => navigate('/crm/activities')}>
-            View Activities
+            Activities
           </Button>
           <Button variant="secondary" onClick={() => navigate('/crm/companies')}>
-            Open Companies
+            Companies
           </Button>
         </div>
       </CRMSection>
@@ -208,7 +211,7 @@ export default function CRMLeadsPage() {
       {isEmployee && (
         <CRMSection
           title="My assigned leads"
-          description="Read-only except for the meeting scheduled and dead-end markers."
+          description="Read-only except for meeting and dead-end markers."
           actions={<Badge label={`${employeeLeads.length} assigned`} colorKey="draft" />}
         >
           {assignedLeadsQuery.isLoading ? (
@@ -300,8 +303,8 @@ export default function CRMLeadsPage() {
       )}
 
       <CRMSection
-        title="Duplicate leads"
-        description="Review likely duplicate records before they create noise in the pipeline."
+            title="Duplicates"
+        description="Review likely duplicate records."
         actions={<Badge label={`${duplicateGroups.length} groups`} colorKey="draft" />}
       >
         {duplicatesQuery.isLoading ? (
@@ -325,7 +328,7 @@ export default function CRMLeadsPage() {
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{group.leads.length} matching leads</p>
                   </div>
                   <Button type="button" variant="primary" size="sm" onClick={() => setMergeGroup(group)}>
-                    Merge leads
+                    Merge
                   </Button>
                 </div>
                 <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -346,11 +349,11 @@ export default function CRMLeadsPage() {
             ))}
           </div>
         ) : (
-          <CRMEmptyState icon={Merge} title="No duplicate groups found" description="The current lead set does not have obvious duplicates." />
+          <CRMEmptyState icon={Merge} title="No duplicates" description="The current lead set looks clean." />
         )}
       </CRMSection>
 
-      <CRMSection title="Recent leads" description="Recently visible leads from the live pipeline board.">
+      <CRMSection title="Recent leads" description="Recently visible leads from the pipeline board.">
         {pipelineQuery.isLoading ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-3xl" />)}
@@ -389,15 +392,15 @@ export default function CRMLeadsPage() {
             icon={Users}
             title="No leads yet"
             description="Leads will appear here once the pipeline has records."
-            action={<Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Open Pipeline</Button>}
+            action={<Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Pipeline</Button>}
           />
         )}
       </CRMSection>
 
       {!isEmployee && (
         <CRMSection
-          title="Employee lead status"
-          description="Quickly mark whether a meeting is scheduled or the lead is a dead end."
+          title="Lead status"
+          description="Mark meeting or dead-end status."
         >
           {recentLeads.length ? (
             <div className="overflow-hidden rounded-3xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
