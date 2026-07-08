@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - dev
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval \"db.runCommand({ ping: 1 }).ok\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ENVIRONMENT: development
+      SECRET_KEY: ci-secret-key-ci-secret-key-ci-secret-key
+      ENCRYPTION_KEY: dFe0TDtLs-iAjB9erp7nV3FoPVqM8vsIzaJ8N4_1MrE=
+      MONGODB_URL: mongodb://127.0.0.1:27017/test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      SUPER_ADMIN_EMAIL: admin@example.com
+      SUPER_ADMIN_PASSWORD: DevTestPassword123!
+      VITE_API_URL: http://localhost:8000/api/v1
+      VITE_LOGIN_URL: http://localhost:3000/login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint backend
+        working-directory: backend
+        run: python -m compileall app scripts
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Run backend tests
+        working-directory: backend
+        run: pytest -q tests test_*.py
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Validate backend
+        working-directory: backend
+        run: python -m compileall app scripts
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build Docker images
+        run: |
+          docker build -t syntask-backend:ci ./backend
+          docker build -t syntask-frontend:ci ./frontend

@@ -1,0 +1,123 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      MONGODB_URL: mongodb://mongo:27017/alphanexis_task_management
+      REDIS_URL: redis://redis:6379/0
+    command: sh -c "python scripts/wait_for_dependencies.py && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - ./backend:/app
+      - backend_uploads:/app/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - syntask
+
+  worker:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      MONGODB_URL: mongodb://mongo:27017/alphanexis_task_management
+      REDIS_URL: redis://redis:6379/0
+      BACKEND_HEALTH_URL: http://backend:8000/health
+    command: sh -c "python scripts/wait_for_dependencies.py && celery -A app.worker.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}"
+    volumes:
+      - ./backend:/app
+      - backend_uploads:/app/uploads
+    depends_on:
+      backend:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/check_celery_health.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - syntask
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+      VITE_LOGIN_URL: http://localhost:3000/login
+    command: npm run dev -- --host 0.0.0.0 --port 3000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(() => process.exit(0)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - syntask
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - syntask
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - syntask
+
+volumes:
+  backend_uploads:
+  frontend_node_modules:
+  mongo_data:
+  redis_data:
+
+networks:
+  syntask:
