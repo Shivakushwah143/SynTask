@@ -1,0 +1,47 @@
+# Environment files
+.env
+.env.*
+!backend/.env.example
+!frontend/.env.example
+!backend/env.production.template
+!frontend/env.production.template
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+.vite/
+frontend/dist/
+frontend/node_modules/
+
+# Build and runtime artifacts
+logs/
+*.log
+uploads/
+backend/uploads/
+frontend/.vite/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Generated local state
+.agent/
+.codex/
+

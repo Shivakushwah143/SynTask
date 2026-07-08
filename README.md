@@ -5,9 +5,6 @@ SynTask is a multi-tenant B2B SaaS platform for task management, project boards,
 
 The application has a FastAPI backend, MongoDB/Beanie document models, Redis-backed token revocation, and a React 18 frontend. It supports a five-level role hierarchy, company-scoped data access, task/project workflows, support tickets, invoice and ledger flows, sales contacts/prospects/products, and super-admin tenant management.
 
-
-.\venv\Scripts\Activate   
-
 ## Tech Stack
 | Layer | Technology |
 |---|---|
@@ -15,8 +12,8 @@ The application has a FastAPI backend, MongoDB/Beanie document models, Redis-bac
 | Frontend | React 18, Vite, Zustand, React Query, Tailwind CSS, Axios |
 | Database | MongoDB Atlas or MongoDB 6+ |
 | Cache/Security | Redis 7+ for JWT blacklist and future caching |
-| Background Work | asyncio deadline checker; Celery dependencies are present for future workers |
-| Deployment | Docker, Docker Compose, PM2, Nginx |
+| Background Work | asyncio deadline checker; Celery worker service |
+| Deployment | Docker, Docker Compose, Nginx reverse proxy |
 
 ## Prerequisites
 - Python 3.11
@@ -26,62 +23,21 @@ The application has a FastAPI backend, MongoDB/Beanie document models, Redis-bac
 - Docker Desktop if using Redis or Docker Compose locally
 
 ## Quick Start
-### 1. Clone the Repository
-```powershell
-git clone <repo-url>
-cd taskmanagent-
-```
 
-### 2. Backend Setup
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
-```
+Use the dedicated startup guide for the canonical local workflow:
 
-Fill in required values in `backend/.env`:
-- `SECRET_KEY`: generate with `python -c "import secrets; print(secrets.token_hex(32))"`
-- `ENCRYPTION_KEY`: generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
-- `MONGODB_URL`
-- `SUPER_ADMIN_EMAIL`
-- `SUPER_ADMIN_PASSWORD`
-- `REDIS_URL`
+- [Startup Guide](docs/infrastructure/STARTUP_GUIDE.md)
 
-Run Redis:
-```powershell
-docker run -d --name syntask-redis -p 6379:6379 redis:7-alpine
-```
+### Minimal local setup
 
-Run the backend:
-```powershell
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+1. Copy `backend/.env.example` to `backend/.env`.
+2. Copy `frontend/.env.example` to `frontend/.env` if you want local frontend overrides.
+3. Start the development stack with `.\bootstrap.ps1` on Windows or `./bootstrap.sh` on Linux/macOS.
 
-### 3. Initialize Super Admin
-```powershell
-cd backend
-.\.venv\Scripts\activate
-python scripts\init_super_admin.py
-```
-
-### 4. Frontend Setup
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-The frontend defaults to Vite port `3000`. Set `VITE_API_URL=http://localhost:8000/api/v1` in a frontend env file if you need to override API location.
-
-### 5. Verify
-- Backend health: http://localhost:8000/health
-- Frontend: http://localhost:3000
-- Swagger docs in development: http://localhost:8000/api/docs
+The frontend defaults to Vite port `3000`. The backend API defaults to port `8000`. See the startup guide for the complete port map and commands.
 
 ## Environment Variables
-See [backend/.env.example](backend/.env.example). Required backend variables are `SECRET_KEY`, `ENCRYPTION_KEY`, `MONGODB_URL`, `DATABASE_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `REDIS_URL`. Optional integrations include SMTP, Stripe, Razorpay, Zoom, and AWS S3.
+See [backend/.env.example](backend/.env.example) and [frontend/.env.example](frontend/.env.example). Required backend variables are `SECRET_KEY`, `ENCRYPTION_KEY`, `MONGODB_URL`, `DATABASE_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `REDIS_URL`. Optional integrations include SMTP, Brevo, Stripe, Razorpay, Zoom, AWS S3, Celery overrides, and AI provider keys. The startup guide and infrastructure audit document the full environment strategy.
 
 ## Project Structure
 ```text
@@ -122,10 +78,12 @@ docs/                    Testing guide and diagrams
 SynTask uses a single database with tenant isolation through `company_id` fields. Most tenant-owned models store `company_id`, and API queries use the authenticated user from `get_current_user()` plus dependency helpers to restrict access. Super admins can cross tenant boundaries; company users are scoped to their company.
 
 ## Documentation
-- [Architecture](ARCHITECTURE.md)
-- [Security](SECURITY.md)
-- [Deployment](DEPLOYMENT.md)
-- [Contributing](CONTRIBUTING.md)
+- [Architecture](docs/architecture/ARCHITECTURE.md)
+- [Security](docs/infrastructure/SECURITY.md)
+- [Deployment](docs/infrastructure/DEPLOYMENT.md)
+- [CI/CD](docs/infrastructure/CI_CD.md)
+- [Contributing](docs/CONTRIBUTING.md)
+- [Startup Guide](docs/infrastructure/STARTUP_GUIDE.md)
 - [API Documentation](backend/API_DOCUMENTATION.md)
 - [Database Schema](backend/DATABASE_SCHEMA.md)
 - [Testing Guide](docs/TESTING_GUIDE.md)

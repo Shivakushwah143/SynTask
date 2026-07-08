@@ -133,6 +133,12 @@ const ModuleGuard = ({ module, children }) => {
   return <Navigate to="/dashboard" replace />
 }
 
+const withBoundary = (component) => (
+  <ErrorBoundary>
+    {component}
+  </ErrorBoundary>
+);
+
 function App() {
   useTheme()
   const location = useLocation()

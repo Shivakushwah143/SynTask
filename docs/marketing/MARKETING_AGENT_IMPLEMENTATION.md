@@ -276,7 +276,7 @@ MarketingChat.jsx (displays response)
 1. `SynTask/backend/app/ai/tools/marketing_tools.py` - Marketing tools
 2. `SynTask/backend/app/ai/prompts/chat/digital_marketing_support.py` - Marketing prompt
 3. `SynTask/frontend/src/pages/MarketingChat.jsx` - Marketing chat UI
-4. `SynTask/MARKETING_AGENT_IMPLEMENTATION.md` - This file
+4. `SynTask/docs/marketing/MARKETING_AGENT_IMPLEMENTATION.md` - This file
 
 ### Modified Files (5)
 1. `SynTask/backend/app/ai/context_builder.py` - Added `build_marketing_context()`
