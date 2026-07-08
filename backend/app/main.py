@@ -10,6 +10,13 @@ import logging
 import time
 from pathlib import Path
 
+# Configure logging early so optional imports can report failures safely.
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.core.redis_client import close_redis, get_redis
@@ -28,13 +35,6 @@ try:
 except (ImportError, ModuleNotFoundError) as e:
     logger.warning(f"Semantic module not available: {e}")
     SEMANTIC_AVAILABLE = False
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -67,14 +67,9 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-<<<<<<< HEAD
-    allow_headers=["*"],  # Allow all headers for development
-    expose_headers=["*"],  # Expose all headers
-=======
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
-    expose_headers=["Content-Type", "Authorization"],
+    allow_headers=["*"],  # Keep development and API client compatibility broad
+    expose_headers=["*"],  # Surface response metadata to browser clients
     max_age=600,
->>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
 )
 
 
@@ -85,15 +80,11 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(), geolocation=(), payment=(), usb=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-<<<<<<< HEAD
-    response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
-=======
     # Allow cross-origin access to uploaded files (images, documents)
     if request.url.path.startswith("/uploads/") or request.url.path.startswith("/api/v1/files/"):
         response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
     else:
         response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
->>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
     return response
 
 # Trusted Host Middleware (Security)
