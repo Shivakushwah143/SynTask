@@ -133,14 +133,16 @@ const ModuleGuard = ({ module, children }) => {
   return <Navigate to="/dashboard" replace />
 }
 
+const withBoundary = (component) => (
+  <ErrorBoundary>
+    {component}
+  </ErrorBoundary>
+);
+
 function App() {
   useTheme()
   const location = useLocation()
-<<<<<<< HEAD
-  const withBoundary = (element) => <ErrorBoundary key={location.pathname}>{element}</ErrorBoundary>
-=======
   const setLoading = useUIStore?.getState?.().setLoading
->>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
 
   useEffect(() => {
     applySeoMeta(getSeoMeta(location.pathname))
