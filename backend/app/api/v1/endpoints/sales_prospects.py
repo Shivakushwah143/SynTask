@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_module
 from app.models.user import User, UserRole, UserStatus
+from app.models.department import Department
 from app.models.crm_company import CRMCompany
 from app.models.sales_prospect import SalesProspect, InterestLevel, ProspectStatus
 from app.models.sales_contact import SalesContact
@@ -20,7 +21,18 @@ from app.models.sales_masters import SalesStage
 from app.crm.lead_engine import LeadEngine
 
 
-router = APIRouter(dependencies=[Depends(require_module("sales"))])
+router = APIRouter()
+
+
+class LeadMergeRequest(BaseModel):
+    source_lead_id: str
+    target_lead_id: str
+
+
+class BulkLeadMergeRequest(BaseModel):
+    target_lead_id: str
+    source_lead_ids: List[str]
+
 
 def _normalize_lead_csv_header(header: str) -> str:
     normalized = (
@@ -53,10 +65,42 @@ def _parse_multi_value(value: str) -> List[str]:
         return []
     return [v.strip() for v in value.split("|") if v.strip()]
 
+
+def _parse_custom_fields(value: Optional[str]) -> dict:
+    if not value or not str(value).strip():
+        return {}
+    try:
+        import json
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
 def _parse_interest_level(value: str) -> InterestLevel:
     normalized = (value or "").strip().lower()
     legacy_values = {"high": "hot", "medium": "warm", "low": "cold"}
     return InterestLevel(legacy_values.get(normalized, normalized))
+
+
+def _parse_import_status(value: Optional[str]) -> str:
+    normalized = (value or "").strip().lower().replace("_", " ")
+    status_map = {
+        "new": ProspectStatus.ACTIVE.value,
+        "open": ProspectStatus.ACTIVE.value,
+        "active": ProspectStatus.ACTIVE.value,
+        "contacted": ProspectStatus.ACTIVE.value,
+        "qualified": ProspectStatus.ACTIVE.value,
+        "proposal sent": ProspectStatus.ACTIVE.value,
+        "proposal": ProspectStatus.ACTIVE.value,
+        "negotiation": ProspectStatus.ACTIVE.value,
+        "won": ProspectStatus.WON.value,
+        "closed won": ProspectStatus.WON.value,
+        "lost": ProspectStatus.LOST.value,
+        "closed lost": ProspectStatus.LOST.value,
+        "closed": ProspectStatus.CLOSED.value,
+        "dead": ProspectStatus.CLOSED.value,
+    }
+    return status_map.get(normalized, ProspectStatus.ACTIVE.value)
 
 
 def _parse_datetime(date_str: str, time_str: Optional[str] = None) -> Optional[datetime]:
@@ -98,6 +142,40 @@ def _parse_datetime(date_str: str, time_str: Optional[str] = None) -> Optional[d
     return None
 
 
+def _lead_identity_score(prospect: SalesProspect) -> tuple[str, str, str]:
+    email = (prospect.email or "").strip().lower() if prospect.email else ""
+    phone = (prospect.phone or "").strip()
+    name = (prospect.prospect_name or f"{prospect.first_name} {prospect.last_name}").strip().lower()
+    return email, phone, name
+
+
+def _serialize_prospect_identity(prospect: SalesProspect):
+    email, phone, name = _lead_identity_score(prospect)
+    return {
+        "id": str(prospect.id),
+        "prospect_name": prospect.prospect_name,
+        "email": email or None,
+        "phone": phone or None,
+        "country_code": prospect.country_code,
+        "current_stage": prospect.current_stage,
+        "status": prospect.status.value,
+        "assigned_to": prospect.assigned_to,
+        "company_name": prospect.company_name,
+        "tag": prospect.tag or [],
+        "updated_at": prospect.updated_at.isoformat() if prospect.updated_at else None,
+    }
+
+
+async def _get_company_prospects(current_user: User, include_deleted: bool = False) -> List[SalesProspect]:
+    query = {"company_id": current_user.company_id}
+    if not include_deleted:
+        query["deleted"] = False
+    if current_user.role == UserRole.EMPLOYEE:
+        current_user_id = str(current_user.id)
+        query["$or"] = [{"assigned_to": current_user_id}, {"assigned_by": current_user_id}]
+    return await SalesProspect.find(query).sort(-SalesProspect.updated_at).to_list()
+
+
 @router.get("/")
 async def list_prospects(
     search: Optional[str] = None,
@@ -111,51 +189,33 @@ async def list_prospects(
     assigned_by: Optional[str] = None,
     channel: Optional[str] = None,
     interest_level: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1),
     current_user: User = Depends(get_current_user)
 ):
     """List prospects with role-based filtering"""
-    query = {"deleted": False}
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"list_prospects START: user={current_user.id}, role={current_user.role}, limit={limit}, skip={skip}")
     
-    # Role-based access
-    employee_or_condition = None
-    if current_user.role == UserRole.SUPER_ADMIN:
-        pass
-    elif current_user.role == UserRole.ADMIN:
+    query = {"deleted": False}
+    if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id
-    elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
-        # See own + team prospects
-        query["company_id"] = current_user.company_id
-        # TODO: Add team filter
-    else:  # Employee - can see prospects assigned to them OR assigned by them
-        query["company_id"] = current_user.company_id
-        employee_or_condition = [
+    if current_user.role == UserRole.EMPLOYEE:
+        query["$or"] = [
             {"assigned_to": str(current_user.id)},
             {"assigned_by": str(current_user.id)}
         ]
-    
-    # Filters
-    search_or_condition = None
     if search:
         search_or_condition = [
             {"prospect_name": {"$regex": search, "$options": "i"}},
             {"phone": {"$regex": search, "$options": "i"}},
             {"email": {"$regex": search, "$options": "i"}},
         ]
-    
-    # Combine $or conditions if both exist (for employees with search)
-    if employee_or_condition and search_or_condition:
-        # Need to combine: (assigned_to OR assigned_by) AND (name OR phone OR email matches)
-        # Use $and with nested $or
-        query["$and"] = [
-            {"$or": employee_or_condition},
-            {"$or": search_or_condition}
-        ]
-    elif employee_or_condition:
-        query["$or"] = employee_or_condition
-    elif search_or_condition:
-        query["$or"] = search_or_condition
+        if "$or" in query:
+            query["$and"] = [{"$or": query.pop("$or")}, {"$or": search_or_condition}]
+        else:
+            query["$or"] = search_or_condition
     
     # Handle assigned_to filter for employees
     if assigned_to:
@@ -196,7 +256,7 @@ async def list_prospects(
     
     return {
         "total": total,
-        "items": [
+        "prospects": [
             {
                 "id": str(p.id),
                 "prospect_name": p.prospect_name,
@@ -272,6 +332,7 @@ async def get_prospect(
         "owner_contact_no": prospect.owner_contact_no,
         "tag": prospect.tag,
         "greeting_preference": prospect.greeting_preference,
+        "custom_fields": getattr(prospect, "custom_fields", {}) or {},
         "status": prospect.status.value,
         "closed_date": prospect.closed_date.isoformat() if prospect.closed_date else None,
         "closed_by": prospect.closed_by,
@@ -309,40 +370,73 @@ async def create_prospect(
     owner_contact_no: Optional[str] = Form(None),
     tag: Optional[str] = Form(None),  # Pipe-separated
     greeting_preference: Optional[str] = Form(None),
+    custom_fields: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
     """Create a new prospect"""
     _ensure_create_permission(current_user)
-    payload = {
-        "first_name": first_name,
-        "last_name": last_name,
-        "country_code": country_code,
-        "phone": phone,
-        "category_id": category_id,
-        "product_ids": [p.strip() for p in product_ids.replace(",", "|").split("|") if p.strip()],
-        "interest_level": interest_level,
-        "estimated_close_date": estimated_close_date,
-        "assigned_to": assigned_to,
-        "current_stage": current_stage,
-        "email": email,
-        "contact_id": contact_id,
-        "due_date": due_date,
-        "due_time": due_time,
-        "remark": remark,
-        "company_name": company_name,
-        "crm_company_id": crm_company_id,
-        "relationship_type": relationship_type,
-        "channel": channel,
-        "designation": designation,
-        "nationality": nationality,
-        "language": language,
-        "owner_name": owner_name,
-        "owner_contact_no": owner_contact_no,
-        "tag": tag,
-        "greeting_preference": greeting_preference,
-    }
-    result = await LeadEngine.create_lead(current_user, payload, source="manual")
-    return {"id": result["id"], "message": result["message"]}
+    
+    # Check duplicate: country_code + phone
+    existing = await SalesProspect.find_one(
+        {
+            "company_id": current_user.company_id,
+            "country_code": country_code,
+            "phone": phone,
+            "deleted": False
+        }
+    )
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Prospect with this phone number already exists"
+        )
+    
+    # Parse product_ids
+    product_list = [p.strip() for p in product_ids.replace(",", "|").split("|") if p.strip()]
+    resolved_company_name = company_name.strip() if company_name else None
+    if crm_company_id:
+        company = await CRMCompany.get(crm_company_id)
+        if not company or company.deleted:
+            raise HTTPException(status_code=400, detail="Company not found")
+        if current_user.role != UserRole.SUPER_ADMIN and company.company_id != current_user.company_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        resolved_company_name = company.name
+    
+    prospect = SalesProspect(
+        first_name=first_name.strip(),
+        last_name=last_name.strip(),
+        prospect_name=f"{first_name.strip()} {last_name.strip()}",
+        country_code=country_code,
+        phone=phone.strip(),
+        email=email.strip().lower() if email else None,
+        contact_id=contact_id,
+        category_id=category_id,
+        product_ids=product_list,
+        interest_level=_parse_interest_level(interest_level),
+        estimated_close_date=_parse_datetime(estimated_close_date),
+        assigned_to=assigned_to,
+        assigned_by=str(current_user.id),
+        current_stage=current_stage,
+        due_date=_parse_datetime(due_date, due_time) if due_date else None,
+        due_time=due_time,
+        remark=remark.strip() if remark else None,
+        company_name=resolved_company_name,
+        crm_company_id=crm_company_id,
+        relationship_type=relationship_type,
+        channel=channel,
+        designation=designation.strip() if designation else None,
+        nationality=_parse_multi_value(nationality) if nationality else [],
+        language=_parse_multi_value(language) if language else [],
+        owner_name=owner_name.strip() if owner_name else None,
+        owner_contact_no=owner_contact_no.strip() if owner_contact_no else None,
+        tag=_parse_multi_value(tag) if tag else [],
+        greeting_preference=greeting_preference,
+        company_id=current_user.company_id,
+        created_by=str(current_user.id),
+    )
+    
+    await prospect.insert()
+    return {"id": str(prospect.id), "message": "Prospect created successfully"}
 
 
 @router.put("/{prospect_id}")
@@ -361,43 +455,300 @@ async def update_prospect(
     reason_for_lost: Optional[str] = Form(None),
     won_amount: Optional[float] = Form(None),
     crm_company_id: Optional[str] = Form(None),
+    custom_fields: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
     """Update prospect (stage, status, etc.)"""
-    payload = {
-        "current_stage": current_stage,
-        "status": status,
-        "remark": remark,
-        "due_date": due_date,
-        "due_time": due_time,
-        "assigned_to": assigned_to,
-        "category_id": category_id,
-        "product_ids": [p.strip() for p in product_ids.replace(",", "|").split("|") if p.strip()] if product_ids else None,
-        "interest_level": interest_level,
-        "estimated_close_date": estimated_close_date,
-        "reason_for_lost": reason_for_lost,
-        "won_amount": won_amount,
-        "crm_company_id": crm_company_id,
-    }
-    result = await LeadEngine.update_lead(current_user, prospect_id, payload)
-    return {"message": result["message"]}
+    prospect = await SalesProspect.get(prospect_id)
+    if not prospect or prospect.deleted:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+    
+    # Check access
+    if current_user.role == UserRole.EMPLOYEE:
+        # Employee can update if assigned to them OR assigned by them
+        if prospect.assigned_to != str(current_user.id) and prospect.assigned_by != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Access denied")
+    
+    if current_stage:
+        prospect.current_stage = current_stage
+    if status:
+        prospect.status = ProspectStatus(status.lower())
+        # Set closed_date and closed_by when status changes to won/lost
+        if prospect.status in [ProspectStatus.WON, ProspectStatus.LOST]:
+            prospect.closed_date = datetime.utcnow()
+            prospect.closed_by = str(current_user.id)
+    if remark is not None:
+        prospect.remark = remark.strip()
+    if due_date:
+        prospect.due_date = _parse_datetime(due_date, due_time)
+        prospect.due_time = due_time
+    if assigned_to:
+        prospect.assigned_to = assigned_to
+    if category_id:
+        prospect.category_id = category_id
+    if product_ids:
+        # Parse product_ids (can be comma or pipe separated)
+        product_list = [p.strip() for p in product_ids.replace(",", "|").split("|") if p.strip()]
+        prospect.product_ids = product_list
+    if interest_level:
+        prospect.interest_level = _parse_interest_level(interest_level)
+    if estimated_close_date:
+        prospect.estimated_close_date = _parse_datetime(estimated_close_date)
+    if crm_company_id is not None:
+        company = await CRMCompany.get(crm_company_id) if crm_company_id else None
+        if crm_company_id and (not company or company.deleted):
+            raise HTTPException(status_code=400, detail="Company not found")
+        if company and current_user.role != UserRole.SUPER_ADMIN and company.company_id != current_user.company_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        prospect.crm_company_id = crm_company_id
+        prospect.company_name = company.name if company else prospect.company_name
+    if reason_for_lost is not None:
+        prospect.reason_for_lost = reason_for_lost.strip() if reason_for_lost else None
+    if won_amount is not None:
+        prospect.won_amount = float(won_amount) if won_amount else None
+    
+    prospect.updated_at = datetime.utcnow()
+    await prospect.save()
+    return {"message": "Prospect updated successfully"}
 
 
-@router.post("/bulk-upload")
+@router.post("/bulk-upload", dependencies=[Depends(require_module("sales"))])
 async def bulk_upload_prospects(
     strategy: str = Form(...),
     file: UploadFile = File(...),
     target_user_id: Optional[str] = Form(None),
+    target_department_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
-    """Bulk upload prospects from CSV or XLSX with assignment strategies."""
-    result = await LeadEngine.import_leads(
-        current_user,
-        file,
-        strategy=strategy,
-        target_user_id=target_user_id,
-    )
-    return result
+    """Bulk upload prospects from CSV with assignment strategies."""
+    if not file.filename.lower().endswith('.csv') and file.content_type != 'text/csv':
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Only CSV files are supported")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded")
+
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="File too large. Max size is 10 MB")
+
+    text = content.decode('utf-8-sig', errors='replace')
+    reader = csv.DictReader(io.StringIO(text))
+    headers = reader.fieldnames or []
+    normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
+
+    if 'email' not in normalized_headers:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="CSV must include an 'email' column")
+    if not any(h in normalized_headers for h in ['name', 'first_name']):
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="CSV must include either 'name' or 'first_name' column")
+
+    assignable_users = await User.find(
+        {
+            "company_id": current_user.company_id,
+            "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+            "status": UserStatus.ACTIVE,
+        }
+    ).to_list()
+
+    if not assignable_users:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="No employees or leads found in your company. Add employees before uploading leads."
+        )
+
+    employee_ids = [str(user.id) for user in assignable_users]
+    assigned_counts = {user_id: 0 for user_id in employee_ids}
+
+    if strategy not in ['round-robin', 'evenly', 'manual']:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid strategy")
+
+    if strategy == 'manual':
+        if not target_user_id:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")
+        if target_user_id not in employee_ids:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Target user must be an active Lead or Employee in your company")
+
+    rows = []
+    skipped_rows = []
+    warnings = []
+    seen_emails = set()
+    all_emails = set()
+    total_input_rows = 0
+    for idx, row in enumerate(reader, start=2):
+        total_input_rows += 1
+        row_norm = {
+            _normalize_lead_csv_header(key): (value or '').strip()
+            for key, value in row.items()
+            if key is not None
+        }
+        email = (row_norm.get('email') or '').lower()
+        if not email:
+            skipped_rows.append({"row": idx, "reason": "Missing email"})
+            continue
+        if email in seen_emails:
+            skipped_rows.append({"row": idx, "reason": "Duplicate email in CSV"})
+            continue
+        seen_emails.add(email)
+        all_emails.add(email)
+        rows.append((idx, row_norm))
+
+    existing_leads = []
+    if all_emails:
+        existing_leads = await SalesProspect.find(
+            {
+                "company_id": current_user.company_id,
+                "email": {"$in": list(all_emails)},
+                "deleted": False,
+            }
+        ).to_list()
+    existing_emails = {lead.email.lower() for lead in existing_leads if lead.email}
+
+    parsed_rows = []
+    for idx, row_norm in rows:
+        email = row_norm.get('email', '').lower()
+        if email in existing_emails:
+            skipped_rows.append({"row": idx, "reason": "Duplicate email already exists"})
+            continue
+
+        name = row_norm.get('name', '')
+        first_name = row_norm.get('first_name', '')
+        last_name = row_norm.get('last_name', '')
+        if not first_name and name:
+            parts = name.split()
+            first_name = parts[0]
+            last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
+        if not first_name:
+            skipped_rows.append({"row": idx, "reason": "Missing name"})
+            continue
+
+        status_value = (row_norm.get('status') or ProspectStatus.ACTIVE.value).lower()
+        if status_value not in {status.value for status in ProspectStatus}:
+            skipped_rows.append({
+                "row": idx,
+                "reason": f"Invalid status '{status_value}'. Use active, won, lost, or closed",
+            })
+            continue
+
+        interest_value = row_norm.get('interest_level') or InterestLevel.WARM.value
+        try:
+            parsed_interest_level = _parse_interest_level(interest_value)
+        except ValueError:
+            skipped_rows.append({
+                "row": idx,
+                "reason": (
+                    f"Invalid interest_level '{interest_value}'. "
+                    "Use hot, warm, cold, high, medium, or low"
+                ),
+            })
+            continue
+
+        estimated_close_date_value = row_norm.get('estimated_close_date')
+        estimated_close_date = (
+            _parse_datetime(estimated_close_date_value)
+            if estimated_close_date_value
+            else None
+        )
+        if estimated_close_date_value and estimated_close_date is None:
+            skipped_rows.append({
+                "row": idx,
+                "reason": "Invalid estimated_close_date. Use YYYY-MM-DD or DD-MM-YYYY",
+            })
+            continue
+
+        product_ids_value = row_norm.get('product_ids') or ''
+        parsed_rows.append(
+            {
+                "row": idx,
+                "first_name": first_name,
+                "last_name": last_name,
+                "prospect_name": f"{first_name} {last_name}".strip(),
+                "country_code": row_norm.get('country_code') or '+91',
+                "email": email,
+                "company_name": row_norm.get('company') or row_norm.get('company_name') or None,
+                "phone": row_norm.get('phone') or '',
+                "category_id": row_norm.get('category_id') or None,
+                "product_ids": _parse_multi_value(product_ids_value),
+                "interest_level": parsed_interest_level,
+                "estimated_close_date": estimated_close_date,
+                "status": status_value,
+                "source": row_norm.get('source') or 'bulk_upload',
+                "assigned_to": None,
+                "assigned_by": str(current_user.id),
+                "current_stage": row_norm.get('stage') or row_norm.get('current_stage') or 'new',
+                "remark": row_norm.get('remark') or None,
+                "company_id": current_user.company_id,
+                "created_by": str(current_user.id),
+            }
+        )
+
+    if not parsed_rows:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="No valid leads found in the uploaded CSV"
+        )
+
+    if strategy == 'manual':
+        assigned_user_id = target_user_id
+        for row in parsed_rows:
+            row['assigned_to'] = assigned_user_id
+            assigned_counts[assigned_user_id] += 1
+    else:
+        total = len(parsed_rows)
+        assign_count = len(employee_ids)
+        if assign_count == 0:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="No assignable employees or leads available"
+            )
+
+        if strategy == 'round-robin':
+            for idx, row in enumerate(parsed_rows):
+                assignee = employee_ids[idx % assign_count]
+                row['assigned_to'] = assignee
+                assigned_counts[assignee] += 1
+        elif strategy == 'evenly':
+            base = total // assign_count
+            remainder = total % assign_count
+            assignment_list = []
+            for idx_user, user_id in enumerate(employee_ids):
+                count = base + (1 if idx_user < remainder else 0)
+                assignment_list.extend([user_id] * count)
+            for row, assignee in zip(parsed_rows, assignment_list):
+                row['assigned_to'] = assignee
+                assigned_counts[assignee] += 1
+
+    # Build model instances before writing so bulk-created records receive the
+    # same validation and default fields as prospects created by POST /.
+    valid_prospects = []
+    for row in parsed_rows:
+        row_number = row.pop("row")
+        try:
+            valid_prospects.append(SalesProspect(**row))
+        except Exception as exc:
+            skipped_rows.append({
+                "row": row_number,
+                "reason": f"Invalid prospect data: {str(exc)[:300]}",
+            })
+
+    if not valid_prospects:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="No valid leads found after database-model validation",
+        )
+
+    await SalesProspect.insert_many(valid_prospects)
+
+    assigned_breakdown = {}
+    for prospect in valid_prospects:
+        assigned_breakdown[prospect.assigned_to] = (
+            assigned_breakdown.get(prospect.assigned_to, 0) + 1
+        )
+    return {
+        "total_rows": total_input_rows,
+        "total_uploaded": len(valid_prospects),
+        "skipped_rows": len(skipped_rows),
+        "assigned_breakdown": assigned_breakdown,
+        "warnings": skipped_rows[:50],
+    }
 
 
 @router.get("/search/contact")

@@ -1,6 +1,7 @@
 """
 AI Endpoints
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.ai.agents.lead_intelligence import LeadIntelligenceAgent
@@ -142,39 +143,3 @@ async def list_ai_logs(
     """List recent AI interactions for the current company."""
     current_user = await _require_company_context(current_user)
     return await ai_service.list_logs(current_user, limit=limit)
-
-
-@router.post("/lead-intelligence", response_model=AILeadIntelligenceResponse)
-async def generate_lead_intelligence(
-    payload: AILeadIntelligenceRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Analyze a lead using only the CRM tool layer and return structured JSON."""
-    current_user = await _require_company_context(current_user)
-    try:
-        return await lead_intelligence_agent.analyze(current_user, payload)
-    except ValueError as error:
-        message = str(error)
-        if "not found" in message.lower():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from error
-        if "not allowed" in message.lower() or "access denied" in message.lower():
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message) from error
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from error
-
-
-@router.post("/sales-agent", response_model=AISalesAgentResponse)
-async def generate_sales_agent(
-    payload: AISalesAgentRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Generate deterministic sales recommendations using CRM context and lead intelligence."""
-    current_user = await _require_company_context(current_user)
-    try:
-        return await sales_agent.analyze(current_user, payload)
-    except ValueError as error:
-        message = str(error)
-        if "not found" in message.lower():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from error
-        if "not allowed" in message.lower() or "access denied" in message.lower():
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message) from error
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from error

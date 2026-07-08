@@ -41,24 +41,6 @@ const CRMLayout = () => {
       description={description}
       navigation={CRM_NAV_ITEMS}
       activePath={routePath}
-      filters={
-        <div className="flex flex-wrap items-center gap-2">
-          {['All records', 'Assigned to me', 'Needs review'].map((label, index) => (
-            <button
-              key={label}
-              type="button"
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                index === 0
-                  ? 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-900 dark:bg-primary-950/60 dark:text-primary-200'
-                  : 'border-surface-border bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
-              }`}
-              aria-pressed={index === 0}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      }
       toolbar={{
         searchValue,
         onSearchChange: setSearchValue,

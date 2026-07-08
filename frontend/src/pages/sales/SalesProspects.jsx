@@ -27,7 +27,7 @@ export default function SalesProspects() {
   const [open, setOpen] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
   const { data, isLoading, isError } = useQuery(['sales-prospects', search], () => salesApi.getProspects({ search, limit: 50 }))
-  const prospects = asArray(data, ['prospects'])
+  const prospects = asArray(data, ['prospects', 'items'])
 
   const { data: categoriesData } = useQuery('sales-categories-for-page', salesApi.getCategories)
   const { data: stagesData } = useQuery('sales-stages-for-page', salesApi.getStages)

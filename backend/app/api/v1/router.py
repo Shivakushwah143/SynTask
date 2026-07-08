@@ -74,7 +74,8 @@ api_router.include_router(tickets.router, prefix="/tickets", tags=["Tickets"], d
 api_router.include_router(chat.router, prefix="/chat", tags=["Chat"], dependencies=[Depends(require_module("task"))])
 # Subscriptions: no module gate so company admins can always see plans and upgrade
 api_router.include_router(subscriptions.router, prefix="/subscriptions", tags=["Subscriptions"])
-api_router.include_router(clients.router, prefix="/clients", tags=["Clients"], dependencies=[Depends(require_module("task"))])
+# Clients: no module gate so super admins can access without module restrictions
+api_router.include_router(clients.router, prefix="/clients", tags=["Clients"])
 api_router.include_router(invoices.router, prefix="/invoices", tags=["Invoices"], dependencies=[Depends(require_module("task"))])
 # MSA router: no module gate so public signing links (/msa/sign/{token}) work without authentication.
 # Individual endpoints inside msa.py already use dependencies for authenticated actions.
@@ -93,14 +94,15 @@ api_router.include_router(search.router, tags=["Search"], dependencies=[Depends(
 # Sales Tracker module (new)
 sales_module_dependency = [Depends(require_module("sales"))]
 api_router.include_router(sales.router, prefix="/sales", tags=["Sales"], dependencies=sales_module_dependency)
-api_router.include_router(crm.router, prefix="/crm", tags=["CRM"], dependencies=sales_module_dependency)
-api_router.include_router(crm_files.router, prefix="/crm", tags=["CRM Files"], dependencies=sales_module_dependency)
-api_router.include_router(crm_companies.router, prefix="/crm/companies", tags=["CRM Companies"], dependencies=sales_module_dependency)
-api_router.include_router(crm_contacts.router, prefix="/crm/contacts", tags=["CRM Contacts"], dependencies=sales_module_dependency)
-api_router.include_router(crm_activities.router, prefix="/crm/activities", tags=["CRM Activities"], dependencies=sales_module_dependency)
-api_router.include_router(crm_deals.router, prefix="/crm", tags=["CRM Deals"], dependencies=sales_module_dependency)
-api_router.include_router(crm_notes.router, prefix="/crm", tags=["CRM Notes"], dependencies=sales_module_dependency)
-api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CRM Pipeline"], dependencies=sales_module_dependency)
+# CRM endpoints are visible to every authenticated company user.
+api_router.include_router(crm.router, prefix="/crm", tags=["CRM"])
+api_router.include_router(crm_files.router, prefix="/crm", tags=["CRM Files"])
+api_router.include_router(crm_companies.router, prefix="/crm/companies", tags=["CRM Companies"])
+api_router.include_router(crm_contacts.router, prefix="/crm/contacts", tags=["CRM Contacts"])
+api_router.include_router(crm_activities.router, prefix="/crm/activities", tags=["CRM Activities"])
+api_router.include_router(crm_deals.router, prefix="/crm", tags=["CRM Deals"])
+api_router.include_router(crm_notes.router, prefix="/crm", tags=["CRM Notes"])
+api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CRM Pipeline"])
 api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)
 api_router.include_router(sales_products.router, prefix="/sales/products", tags=["Sales Products"], dependencies=sales_module_dependency)
 api_router.include_router(sales_contacts.router, prefix="/sales/contacts", tags=["Sales Contacts"], dependencies=sales_module_dependency)

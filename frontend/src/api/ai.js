@@ -31,6 +31,11 @@ export const aiAPI = {
     return response.data
   },
 
+  marketingChat: async (payload = {}) => {
+    const response = await api.post('/ai/marketing-chat', payload)
+    return response.data
+  },
+
   listLogs: async (limit = 20) => {
     const response = await api.get(`/ai/logs?limit=${limit}`)
     return response.data

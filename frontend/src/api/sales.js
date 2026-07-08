@@ -20,18 +20,26 @@ export const salesApi = {
   getProspects: (params) => api.get('/sales/prospects/', { params }),
   getProspect: (id) => api.get(`/sales/prospects/${id}`),
   createProspect: (data) => api.post('/sales/prospects/', data instanceof FormData ? data : toFormData(data)),
-  bulkUploadProspects: (file) => {
+  bulkUploadProspects: (payload) => {
+    if (payload instanceof FormData) {
+      return api.post('/sales/prospects/bulk-upload', payload)
+    }
+
     const formData = new FormData()
-    formData.append('file', file)
+    if (payload?.file) formData.append('file', payload.file)
+    if (payload?.strategy) formData.append('strategy', payload.strategy)
+    if (payload?.target_user_id) formData.append('target_user_id', payload.target_user_id)
     return api.post('/sales/prospects/bulk-upload', formData)
   },
   updateProspect: (id, data) => api.put(`/sales/prospects/${id}`, data),
+  updateProspectForm: (id, data) => api.put(`/sales/prospects/${id}`, toFormData(data)),
   updateStage: (id, stageId) => {
     const formData = new FormData()
     formData.append('current_stage', stageId)
     return api.put(`/sales/prospects/${id}`, formData)
   },
-  bulkUploadProspects: (data) => api.post('/sales/prospects/bulk-upload', data),
+  getDuplicateProspects: (params) => api.get('/sales/prospects/duplicates', { params }),
+  mergeProspects: (payload) => api.post('/sales/prospects/merge', payload),
   getProspectReport: (params) => api.get('/sales/reports/prospect', { params }),
   getSalesReport: (params) => api.get('/sales/reports/sales', { params }),
   getActivityReport: (params) => api.get('/sales/reports/team-activity', { params }),

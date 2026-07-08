@@ -428,7 +428,7 @@ const Users = () => {
                     {getRoleLabel(user.role) || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {user.department || 'N/A'}
+                      {user.department_name || user.department || user.department_id || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span

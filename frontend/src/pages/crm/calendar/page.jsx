@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { useNavigate } from 'react-router-dom'
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Filter, Repeat, Search } from 'lucide-react'
-import { format, isSameDay, isSameMonth, isSameWeek, parseISO, startOfDay } from 'date-fns'
+import { format, isSameDay, isSameMonth, isSameWeek, parseISO, startOfDay, isValid } from 'date-fns'
 import { activityAPI } from '../../../api/activity'
 import { meetingsApi } from '../../../api/meetings'
 import { tasksAPI } from '../../../api/tasks'
@@ -37,6 +37,37 @@ const ACTIVITY_LABELS = {
   pipeline_change: 'Pipeline change',
 }
 
+const parseCalendarTimestamp = (value) => {
+  if (!value) return null
+  const date = value instanceof Date ? value : parseISO(String(value))
+  return isValid(date) ? date : null
+}
+
+const normalizeErrorMessage = (value) => {
+  if (!value) return 'An error occurred'
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeErrorMessage(item?.msg || item?.message || item?.detail || item))
+      .filter(Boolean)
+      .join(', ')
+  }
+  if (typeof value === 'object') {
+    return normalizeErrorMessage(value.detail || value.msg || value.message || value.errors || value.input)
+  }
+  return String(value)
+}
+
+const readCollection = (data, keys) => {
+  if (Array.isArray(data)) return data
+  if (!data || typeof data !== 'object') return []
+  for (const key of keys) {
+    const value = data[key]
+    if (Array.isArray(value)) return value
+  }
+  return []
+}
+
 export default function CRMCalendarPage() {
   const navigate = useNavigate()
   const [view, setView] = useState('month')
@@ -51,9 +82,9 @@ export default function CRMCalendarPage() {
 
   const events = useMemo(() => {
     const merged = []
-    const meetings = meetingsQuery.data?.data?.meetings || []
-    const tasks = tasksQuery.data?.tasks || []
-    const activities = activitiesQuery.data?.activities || []
+    const meetings = readCollection(meetingsQuery.data?.data || meetingsQuery.data, ['meetings', 'items', 'data'])
+    const tasks = readCollection(tasksQuery.data, ['tasks', 'items', 'data'])
+    const activities = readCollection(activitiesQuery.data, ['activities', 'items', 'data'])
 
     meetings.forEach((meeting) => {
       const timestamp = meeting.meeting_date || meeting.created_at
@@ -102,7 +133,7 @@ export default function CRMCalendarPage() {
     })
 
     return merged
-      .filter((item) => item.timestamp)
+      .filter((item) => parseCalendarTimestamp(item.timestamp))
       .filter((item) => !activityType || item.type === activityType)
       .filter((item) => !owner || String(item.owner || '').includes(owner))
       .filter((item) => {
@@ -116,13 +147,30 @@ export default function CRMCalendarPage() {
   const today = startOfDay(new Date())
   const visibleEvents = useMemo(() => {
     if (view === 'agenda') return events
-    if (view === 'day') return events.filter((event) => isSameDay(parseISO(String(event.timestamp)), cursorDate))
-    if (view === 'week') return events.filter((event) => isSameWeek(parseISO(String(event.timestamp)), cursorDate, { weekStartsOn: 1 }))
-    return events.filter((event) => isSameMonth(parseISO(String(event.timestamp)), cursorDate))
+    if (view === 'day') return events.filter((event) => {
+      const date = parseCalendarTimestamp(event.timestamp)
+      return date ? isSameDay(date, cursorDate) : false
+    })
+    if (view === 'week') return events.filter((event) => {
+      const date = parseCalendarTimestamp(event.timestamp)
+      return date ? isSameWeek(date, cursorDate, { weekStartsOn: 1 }) : false
+    })
+    return events.filter((event) => {
+      const date = parseCalendarTimestamp(event.timestamp)
+      return date ? isSameMonth(date, cursorDate) : false
+    })
   }, [cursorDate, events, view])
 
-  const todayEvents = events.filter((event) => isSameDay(parseISO(String(event.timestamp)), today))
-  const upcomingEvents = events.filter((event) => new Date(event.timestamp) > new Date()).slice(0, 8)
+  const todayEvents = events.filter((event) => {
+    const date = parseCalendarTimestamp(event.timestamp)
+    return date ? isSameDay(date, today) : false
+  })
+  const upcomingEvents = events
+    .filter((event) => {
+      const date = parseCalendarTimestamp(event.timestamp)
+      return date ? date > new Date() : false
+    })
+    .slice(0, 8)
 
   const ownerOptions = useMemo(() => {
     const ids = new Set()
@@ -135,7 +183,9 @@ export default function CRMCalendarPage() {
   const groupedByDay = useMemo(() => {
     const map = new Map()
     visibleEvents.forEach((event) => {
-      const key = format(parseISO(String(event.timestamp)), 'yyyy-MM-dd')
+      const date = parseCalendarTimestamp(event.timestamp)
+      if (!date) return
+      const key = format(date, 'yyyy-MM-dd')
       if (!map.has(key)) map.set(key, [])
       map.get(key).push(event)
     })
@@ -287,10 +337,14 @@ function Metric({ title, value }) {
 }
 
 function CalendarEventCard({ event, navigate, compact = false }) {
-  const eventDate = parseISO(String(event.timestamp))
+  const eventDate = parseCalendarTimestamp(event.timestamp)
   const color = ACTIVITY_COLORS[event.type] || ACTIVITY_COLORS.default
   const label = ACTIVITY_LABELS[event.type] || event.type || 'Activity'
   const target = event.leadId ? `/crm/leads/${event.leadId}` : event.companyId ? `/crm/companies/${event.companyId}` : event.contactId ? `/crm/contacts/${event.contactId}` : null
+
+  if (!eventDate) {
+    return null
+  }
 
   return (
     <article className={`rounded-3xl border border-surface-border/80 bg-white ${compact ? 'p-3' : 'p-4'} shadow-sm dark:border-gray-800 dark:bg-gray-900`}>

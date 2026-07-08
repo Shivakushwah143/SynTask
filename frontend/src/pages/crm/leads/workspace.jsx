@@ -6,8 +6,10 @@ import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
 import { Button } from '../../../components/ui'
 import { LeadAccessDeniedState, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadWorkspace } from './components'
+import { Badge, Button, Modal } from '../../../components/ui'
+import { LeadAITab, LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadTasksTab, LeadWorkspace } from './components'
 import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
-import { LEAD_NOTES_QUERY_KEY, LeadNotesTab } from './notes'
+import { LEAD_NOTES_QUERY_KEY } from './notes'
 import { LeadTimelineTab } from './timeline'
 import { LeadAISalesTab } from './ai'
 
@@ -88,8 +90,11 @@ export default function CRMLeadWorkspacePage() {
   let body
   if (activeTab === 'notes') body = <LeadNotesTab leadId={leadId} lead={lead} />
   else if (activeTab === 'files') body = <LeadFilesTab leadId={leadId} lead={lead} />
+  else if (activeTab === 'attachments') body = <LeadAttachmentsTab leadId={leadId} lead={lead} />
+  else if (activeTab === 'tasks') body = <LeadTasksTab />
   else if (activeTab === 'meetings') body = <LeadMeetingsTab />
   else if (activeTab === 'emails') body = <LeadEmailsTab />
+  else if (activeTab === 'call_logs') body = <LeadCallLogsTab />
   else if (activeTab === 'proposal') {
     body = (
       <LeadProposalTab

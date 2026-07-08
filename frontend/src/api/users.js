@@ -16,7 +16,7 @@ export const usersAPI = {
 
   // Get user by ID
   getUser: async (userId) => {
-    const response = await api.get(`/users/${userId}`)
+    const response = await api.get(`/users/detail/${userId}`)
     return response.data
   },
 
@@ -73,7 +73,7 @@ export const usersAPI = {
 
   // Update user status
   updateUserStatus: async (userId, newStatus) => {
-    const response = await api.patch(`/users/${userId}/status`, {
+    const response = await api.patch(`/users/detail/${userId}/status`, {
       new_status: newStatus
     })
     return response.data
@@ -81,7 +81,7 @@ export const usersAPI = {
 
   // Delete user (soft delete)
   deleteUser: async (userId) => {
-    const response = await api.delete(`/users/${userId}`)
+    const response = await api.delete(`/users/detail/${userId}`)
     return response.data
   },
 
@@ -94,7 +94,7 @@ export const usersAPI = {
       }
     })
     
-    const response = await api.put(`/users/${userId}`, formData, {
+    const response = await api.put(`/users/detail/${userId}`, formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       }
@@ -109,9 +109,10 @@ export const usersAPI = {
   },
 
   // Get assignable users (for task/ticket assignment)
-  getAssignableUsers: async (forTickets = false) => {
+  getAssignableUsers: async (forTickets = false, projectId = null) => {
     const params = new URLSearchParams()
     if (forTickets) params.append('for_tickets', 'true')
+    if (projectId) params.append('project_id', projectId)
     const response = await api.get(`/users/assignable?${params.toString()}`)
     return response.data
   },

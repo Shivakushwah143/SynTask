@@ -15,12 +15,19 @@ from app.core.database import init_db, close_db
 from app.core.redis_client import close_redis, get_redis
 from app.api.v1.router import api_router
 from app.events.subscribers.knowledge import register_knowledge_subscribers
-from app.semantic.worker import register_semantic_subscribers
 from app.middleware.rate_limiter import (
     RateLimitExceeded,
     _rate_limit_exceeded_handler,
     limiter,
 )
+
+# Optional semantic imports - gracefully handle missing dependencies
+try:
+    from app.semantic.worker import register_semantic_subscribers
+    SEMANTIC_AVAILABLE = True
+except (ImportError, ModuleNotFoundError) as e:
+    logger.warning(f"Semantic module not available: {e}")
+    SEMANTIC_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(
@@ -42,14 +49,32 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS Middleware
-cors_origins = settings.ALLOWED_ORIGINS 
+# CORS Middleware - Allow frontend origins
+cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+# Merge with settings.ALLOWED_ORIGINS if it exists
+if hasattr(settings, 'ALLOWED_ORIGINS') and settings.ALLOWED_ORIGINS:
+    for origin in settings.ALLOWED_ORIGINS:
+        if origin not in cors_origins:
+            cors_origins.append(origin)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+<<<<<<< HEAD
+    allow_headers=["*"],  # Allow all headers for development
+    expose_headers=["*"],  # Expose all headers
+=======
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+    expose_headers=["Content-Type", "Authorization"],
+    max_age=600,
+>>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
 )
 
 
@@ -60,7 +85,15 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(), geolocation=(), payment=(), usb=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+<<<<<<< HEAD
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
+=======
+    # Allow cross-origin access to uploaded files (images, documents)
+    if request.url.path.startswith("/uploads/") or request.url.path.startswith("/api/v1/files/"):
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
+    else:
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+>>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
     return response
 
 # Trusted Host Middleware (Security)
@@ -73,40 +106,51 @@ if settings.ENVIRONMENT == "production":
 # Request timing middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
-    limit = request.query_params.get("limit")
-    if limit is not None:
-        try:
-            if int(limit) > settings.MAX_PAGE_SIZE:
+    # Skip limit validation for OPTIONS requests (CORS preflight)
+    if request.method != "OPTIONS":
+        limit = request.query_params.get("limit")
+        if limit is not None:
+            try:
+                limit_int = int(limit)
+                logger.info(f"Validating limit={limit_int}, MAX_PAGE_SIZE={settings.MAX_PAGE_SIZE}")
+                if limit_int > settings.MAX_PAGE_SIZE:
+                    logger.warning(f"Limit {limit_int} exceeds MAX_PAGE_SIZE {settings.MAX_PAGE_SIZE}")
+                    return JSONResponse(
+                        status_code=422,
+                        content={
+                            "detail": [
+                                {
+                                    "loc": ["query", "limit"],
+                                    "msg": f"Input should be less than or equal to {settings.MAX_PAGE_SIZE}",
+                                    "type": "less_than_equal",
+                                }
+                            ]
+                        },
+                    )
+            except ValueError:
+                logger.warning(f"Invalid limit value: {limit}")
                 return JSONResponse(
                     status_code=422,
                     content={
                         "detail": [
                             {
                                 "loc": ["query", "limit"],
-                                "msg": f"Input should be less than or equal to {settings.MAX_PAGE_SIZE}",
-                                "type": "less_than_equal",
+                                "msg": "Input should be a valid integer",
+                                "type": "int_parsing",
                             }
                         ]
                     },
                 )
-        except ValueError:
-            return JSONResponse(
-                status_code=422,
-                content={
-                    "detail": [
-                        {
-                            "loc": ["query", "limit"],
-                            "msg": "Input should be a valid integer",
-                            "type": "int_parsing",
-                        }
-                    ]
-                },
-            )
 
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
+    
+    # Log failed requests
+    if response.status_code >= 400:
+        logger.warning(f"{request.method} {request.url.path} - {response.status_code}")
+    
     return response
 
 # Exception handlers
@@ -117,6 +161,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"success": False, "message": "Internal server error"}
     )
+
 
 # Startup event
 @app.on_event("startup")
@@ -132,8 +177,11 @@ async def startup_event():
     logger.info("Database initialized successfully")
     register_knowledge_subscribers()
     logger.info("Knowledge subscribers registered")
-    register_semantic_subscribers()
-    logger.info("Semantic subscribers registered")
+    if SEMANTIC_AVAILABLE:
+        register_semantic_subscribers()
+        logger.info("Semantic subscribers registered")
+    else:
+        logger.info("Semantic subscribers skipped (dependencies not available)")
     await get_redis()
     
     # Start background task for deadline checking
@@ -177,10 +225,26 @@ async def debug_backend():
 app.include_router(api_router, prefix="/api/v1")
 
 # Serve static files (uploads)
-# Serve static files (uploads)
 uploads_dir = Path("uploads")
 uploads_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# CORS-enabled avatar endpoint
+from fastapi import APIRouter, HTTPException
+from pathlib import Path
+from fastapi.responses import FileResponse
+
+avatar_router = APIRouter()
+
+@avatar_router.get("/uploads/avatars/{filename}")
+async def serve_avatar(filename: str):
+    """Serve avatar files with CORS headers"""
+    avatar_path = Path("uploads") / "avatars" / filename
+    if not avatar_path.exists():
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    return FileResponse(avatar_path, headers={"Access-Control-Allow-Origin": "*"})
+
+app.include_router(avatar_router, prefix="/api/v1", include_in_schema=False)
 
 # Root endpoint
 @app.get("/", tags=["Root"])

@@ -5,24 +5,33 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }) {
   const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl', full: 'max-w-6xl' }
   const modalRef = useRef(null)
   const previouslyFocusedRef = useRef(null)
+  const onCloseRef = useRef(onClose)
   const titleId = useId()
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   useEffect(() => {
     if (!isOpen) return undefined
     const previous = document.body.style.overflow
     previouslyFocusedRef.current = document.activeElement
     document.body.style.overflow = 'hidden'
-    const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    const focusableSelector = 'input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])'
     const focusFirst = () => modalRef.current?.querySelector(focusableSelector)?.focus()
     const timer = setTimeout(focusFirst, 0)
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        onClose()
+        onCloseRef.current?.()
         return
       }
       if (event.key !== 'Tab') return
-      const focusable = Array.from(modalRef.current?.querySelectorAll(focusableSelector) || [])
+      const focusable = Array.from(
+        modalRef.current?.querySelectorAll(
+          'button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])',
+        ) || [],
+      )
       if (!focusable.length) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
@@ -42,13 +51,13 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }) {
       document.body.style.overflow = previous
       previouslyFocusedRef.current?.focus?.()
     }
-  }, [isOpen, onClose])
+  }, [isOpen])
 
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex max-w-[100vw] items-center justify-center overflow-x-hidden overflow-y-auto p-3 sm:p-4" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/50" onClick={() => onCloseRef.current?.()} aria-hidden="true" />
       <div ref={modalRef} className={`relative flex max-h-[calc(100dvh-1.5rem)] min-w-0 w-full flex-col overflow-hidden rounded-2xl bg-white shadow-modal dark:bg-gray-900 dark:shadow-none sm:max-h-[90vh] ${sizes[size]}`}>
         <div className="flex min-w-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-4 dark:border-gray-800 sm:px-6">
           <h2 id={titleId} className="min-w-0 break-words text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>

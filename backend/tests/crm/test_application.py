@@ -21,9 +21,13 @@ async def test_build_crm_dashboard_composes_sales_summary(monkeypatch):
     async def fake_sales_summary(current_user):
         return {"summary": {"prospect_count": 3}, "pipeline": {"stage_breakdown": []}, "meta": {}}
 
-    monkeypatch.setattr(application, "build_sales_dashboard_summary", fake_sales_summary)
+    async def fake_sales_analytics(current_user):
+        return {"revenue": {}, "kpis": {}, "leaderboards": [], "analytics": {}, "pipeline": {}}
 
-    user = SimpleNamespace(role=application.UserRole.ADMIN)
+    monkeypatch.setattr(application, "build_sales_dashboard_summary", fake_sales_summary)
+    monkeypatch.setattr(application, "build_sales_analytics_summary", fake_sales_analytics)
+
+    user = SimpleNamespace(role=application.UserRole.ADMIN, company_id="company-1")
     dashboard = await application.build_crm_dashboard(user)
 
     assert dashboard["workspace"]["key"] == "crm"

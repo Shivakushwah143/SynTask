@@ -34,7 +34,7 @@ export default function Projects() {
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
-  const [formData, setFormData] = useState({ name: '', key: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+  const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
   const [formErrors, setFormErrors] = useState({})
 
   const loadProjects = useCallback(async () => {
@@ -110,15 +110,14 @@ export default function Projects() {
     setShowDetails(true)
     setLoadingDetails(true)
     try {
-      const [detailsResponse, tasksResponse, componentsResponse, versionsResponse] = await Promise.all([
-        projectsApi.getProject(project.id, { include_tasks: true }),
+      const [detailsResponse, componentsResponse, versionsResponse] = await Promise.all([
         projectsApi.getProject(project.id, { include_tasks: true }),
         componentsApi.getComponents(project.id),
         versionsApi.getVersions(project.id),
       ])
       const details = detailsResponse.data
       setProjectDetails(details)
-      setProjectTasks(tasksResponse.data.tasks || [])
+      setProjectTasks(details.tasks || [])
       setComponents(componentsResponse.data.components || [])
       setVersions(versionsResponse.data.versions || [])
     } catch (error) {
@@ -145,12 +144,13 @@ export default function Projects() {
     try {
       setSubmitting(true)
       const payload = { ...formData }
+      payload.project_id = payload.project_id.trim() || payload.key.trim()
       if (payload.start_date) payload.start_date = new Date(payload.start_date).toISOString()
       if (payload.delivery_date) payload.delivery_date = new Date(payload.delivery_date).toISOString()
       await projectsApi.createProject(payload)
       toast.success('Project created successfully')
       setShowCreateModal(false)
-      setFormData({ name: '', key: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+      setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
       await loadProjects()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create project')
@@ -315,18 +315,48 @@ export default function Projects() {
         )}
       </section>
 
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create project">
-        <form onSubmit={handleCreate} className="space-y-4">
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create project" size="xl">
+        <form onSubmit={handleCreate} className="space-y-5">
           <FormField label="Project name" error={formErrors.name} required>
-            <input className={inputClassName} value={formData.name} onChange={(event) => setFormData((state) => ({ ...state, name: event.target.value }))} />
+            <input
+              name="name"
+              autoComplete="off"
+              className={inputClassName}
+              value={formData.name}
+              onChange={(event) => setFormData((state) => ({ ...state, name: event.target.value }))}
+              placeholder="Enter project name"
+            />
           </FormField>
           <FormField label="Project key" error={formErrors.key} required>
-            <input className={`${inputClassName} font-mono`} value={formData.key} onChange={(event) => setFormData((state) => ({ ...state, key: event.target.value.toUpperCase() }))} />
+            <input
+              name="key"
+              autoComplete="off"
+              className={`${inputClassName} font-mono`}
+              value={formData.key}
+              onChange={(event) => setFormData((state) => ({ ...state, key: event.target.value.toUpperCase() }))}
+              placeholder="PROJ-001"
+            />
+          </FormField>
+          <FormField label="Project ID" error={formErrors.project_id} required>
+            <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+              Optional. If left empty, the project key will be used.
+            </span>
+            <input
+              name="project_id"
+              autoComplete="off"
+              className={`${inputClassName} font-mono`}
+              value={formData.project_id}
+              onChange={(event) => setFormData((state) => ({ ...state, project_id: event.target.value }))}
+              placeholder="AK-001"
+            />
+            <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+              If you leave this empty, it will use the project key.
+            </span>
           </FormField>
           <FormField label="Description">
             <textarea className={inputClassName} rows={4} value={formData.description} onChange={(event) => setFormData((state) => ({ ...state, description: event.target.value }))} />
           </FormField>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             <FormField label="Type">
               <select className={inputClassName} value={formData.type} onChange={(event) => setFormData((state) => ({ ...state, type: event.target.value }))}>
                 <option value="software">Software</option>
