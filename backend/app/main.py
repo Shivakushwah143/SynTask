@@ -79,8 +79,8 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],  # Keep development and API client compatibility broad
-    expose_headers=["*"],  # Surface response metadata to browser clients
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+    expose_headers=["Content-Type", "Authorization"],
     max_age=600,
 )
 

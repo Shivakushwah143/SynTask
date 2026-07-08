@@ -21,6 +21,7 @@ from app.api.dependencies import (
     get_current_company_admin, get_current_company_admin_or_lead,
     check_company_access
 )
+from app.services.user_service import UserService
 
 router = APIRouter()
 
@@ -640,6 +641,8 @@ async def create_lead(
         first_name=first_name,
         last_name=last_name,
         company_id=current_user.company_id,
+        reports_to=None,
+        ancestors=[],
         team_name=team_name,
         department_id=department_id if department_doc else None,
         phone=phone,
@@ -725,6 +728,7 @@ async def create_employee(
         phone=phone,
         status=UserStatus.ACTIVE
     )
+    await UserService.update_hierarchy_ancestors(employee)
     
     from app.services.user_service import UserService
     await UserService.update_hierarchy_ancestors(employee)
