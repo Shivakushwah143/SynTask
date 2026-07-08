@@ -189,7 +189,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       name: "Leads",
       href: "/crm/leads",
-      icon: Users,
+      icon: Contact,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
