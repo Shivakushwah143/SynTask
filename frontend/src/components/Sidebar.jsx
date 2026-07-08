@@ -1,35 +1,53 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  Settings,
-  CreditCard,
-  Clock,
-  Calendar as CalendarIcon,
-  BarChart3,
-  TrendingUp,
-  Video,
-  FolderKanban,
-  Ticket,
-  MessageCircle,
-  Sparkles,
-  Wand2,
+  AlarmClockCheck,
+  BellRing,
+  Bot,
   Briefcase,
-  FileText,
-  Bell,
-  X,
-  DollarSign,
+  CalendarCheck2,
+  CalendarClock,
+  CalendarDays,
+  CalendarRange,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
+  Contact,
+  CreditCard,
+  DollarSign,
+  Factory,
+  FileBarChart2,
+  FileCheck2,
+  FolderKanban,
+  Gauge,
+  GitBranch,
+  Headphones,
+  HeartHandshake,
+  Landmark,
+  LayoutDashboard,
+  LineChart,
+  Megaphone,
+  MessageCircle,
+  MonitorCheck,
+  Network,
+  Palette,
+  Receipt,
+  Settings,
   Star,
-  ChevronDown,
+  TimerReset,
+  TrendingUp,
+  UserCheck,
+  UserCog,
+  UserRoundSearch,
+  Video,
+  X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
 
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
+const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
@@ -45,6 +63,13 @@ const Sidebar = ({ isOpen, onClose }) => {
     }
   });
   const [crmOpen, setCrmOpen] = useState(true);
+  const [favoritesOpen, setFavoritesOpen] = useState(() => {
+    try {
+      return localStorage.getItem(FAVORITES_OPEN_KEY) !== "false";
+    } catch {
+      return true;
+    }
+  });
 
   // Desktop-only "rail" mode: shrinks to icons, expands on toggle.
   // Mobile drawer (isOpen/onClose) is unaffected by this and always shows the full sidebar.
@@ -67,8 +92,18 @@ const Sidebar = ({ isOpen, onClose }) => {
   useEffect(() => {
     try {
       localStorage.setItem('syntask-sidebar-favorites', JSON.stringify(favorites))
-    } catch {}
+    } catch {
+      // ignore storage write failures
+    }
   }, [favorites]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FAVORITES_OPEN_KEY, String(favoritesOpen));
+    } catch {
+      // ignore storage write failures
+    }
+  }, [favoritesOpen]);
 
   const navigation = [
     {
@@ -87,7 +122,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       name: "Requests",
       href: "/tickets",
-      icon: Ticket,
+      icon: ClipboardList,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
@@ -108,80 +143,80 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       name: "Calendar",
       href: "/calendar",
-      icon: CalendarIcon,
+      icon: CalendarDays,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Timesheet",
       href: "/timesheet",
-      icon: Clock,
+      icon: TimerReset,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Attendance",
       href: "/attendance",
-      icon: Clock,
+      icon: UserCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
       name: "Live Monitor",
       href: "/live-monitor",
-      icon: Video,
+      icon: MonitorCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
     },
     {
       name: "Attendance Reports",
       href: "/attendance-reports",
-      icon: BarChart3,
+      icon: FileBarChart2,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
     },
 
     {
       name: "Notifications",
       href: "/notifications",
-      icon: Bell,
+      icon: BellRing,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
       name: "Reports",
       href: "/reports",
-      icon: BarChart3,
+      icon: LineChart,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Leads",
       href: "/leads",
-      icon: Users,
+      icon: Contact,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
       name: "AI Hub",
       href: "/ai-hub",
-      icon: Sparkles,
+      icon: Bot,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Creative AI",
       href: "/creative-director",
-      icon: Wand2,
+      icon: Palette,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
       name: "Marketing Support",
       href: "/marketing-support",
-      icon: BarChart3,
+      icon: Headphones,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
       module: "task",
     },
     {
       name: "Marketing Calendar",
       href: "/marketing/calendar",
-      icon: CalendarIcon,
+      icon: CalendarCheck2,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
       module: "task",
     },
@@ -195,7 +230,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       name: "Bulk Leads",
       href: "/bulk-leads",
-      icon: TrendingUp,
+      icon: Megaphone,
       roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
       module: "sales",
     },
@@ -209,14 +244,14 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       name: "Invoices",
       href: "/invoices",
-      icon: FileText,
+      icon: Receipt,
       roles: [ROLE.ADMIN],
       module: "task",
     },
     {
       name: "MSA",
       href: "/msa",
-      icon: FileText,
+      icon: FileCheck2,
       roles: [ROLE.ADMIN, ROLE.LEAD],
       module: "task",
     },
@@ -230,26 +265,26 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       name: "Users",
       href: "/users",
-      icon: Users,
+      icon: UserCog,
       roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
     },
     {
       name: "Departments",
       href: "/departments",
-      icon: Building2,
+      icon: Network,
       roles: [ROLE.ADMIN],
     },
     {
       name: "My Team",
       href: "/my-team",
-      icon: Users,
+      icon: HeartHandshake,
       roles: [ROLE.LEAD],
       module: "task",
     },
     {
       name: "Companies",
       href: "/companies",
-      icon: Building2,
+      icon: Landmark,
       roles: [ROLE.SUPER_ADMIN],
     },
     {
@@ -261,7 +296,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       name: "Activity Log",
       href: "/activity",
-      icon: Clock,
+      icon: AlarmClockCheck,
       roles: [ROLE.ADMIN, ROLE.LEAD],
     },
     {
@@ -286,42 +321,42 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       name: "Pipeline",
       href: "/crm/pipeline",
-      icon: TrendingUp,
+      icon: GitBranch,
     },
     {
       name: "Dashboard",
       href: "/crm/dashboard",
-      icon: LayoutDashboard,
+      icon: Gauge,
     },
     {
       name: "Leads",
       href: "/crm/leads",
-      icon: Users,
+      icon: UserRoundSearch,
     },
     {
       name: "Companies",
       href: "/crm/companies",
-      icon: Building2,
+      icon: Factory,
     },
     {
       name: "Contacts",
       href: "/crm/contacts",
-      icon: Users,
+      icon: UserCheck,
     },
     {
       name: "Activities",
       href: "/crm/activities",
-      icon: Clock,
+      icon: CalendarClock,
     },
     {
       name: "Calendar",
       href: "/crm/calendar",
-      icon: CalendarIcon,
+      icon: CalendarRange,
     },
     {
       name: "Reports",
       href: "/crm/reports",
-      icon: BarChart3,
+      icon: LineChart,
     },
     {
       name: "Settings",
@@ -404,6 +439,37 @@ const Sidebar = ({ isOpen, onClose }) => {
               collapsed ? "overflow-visible" : "overflow-y-auto"
             }`}
           >
+            {favoriteItems.length ? (
+              <div className="mb-4 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setFavoritesOpen((open) => !open)}
+                  aria-expanded={favoritesOpen}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 transition-colors hover:bg-primary-50 hover:text-primary-700 dark:hover:bg-primary-950/60 dark:hover:text-primary-200 ${collapsed ? "lg:hidden" : ""}`}
+                >
+                  <span>Favorites</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="rounded-full bg-primary-50 px-1.5 py-0.5 text-[10px] text-primary-600 dark:bg-primary-950/60 dark:text-primary-200">
+                      {favoriteItems.length}
+                    </span>
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${favoritesOpen ? '' : '-rotate-90'}`} />
+                  </span>
+                </button>
+                <div className={`space-y-1 ${favoritesOpen ? '' : 'hidden'}`}>
+                  {favoriteItems.map((item) => (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      onClick={onClose}
+                      className="flex items-center rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
+                    >
+                      <Star className="mr-2 h-4 w-4 text-amber-400" />
+                      <span className={collapsed ? "lg:hidden" : ""}>{item.name}</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {filteredNavigation.map((item) => {
               const isActive =
                 location.pathname === item.href ||
@@ -488,28 +554,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </div>
               );
             })}
-
-            {favoriteItems.length ? (
-              <div className="mt-4 space-y-2">
-                <div className={`px-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 ${collapsed ? "lg:hidden" : ""}`}>
-                  Favorites
-                </div>
-                <div className="space-y-1">
-                  {favoriteItems.map((item) => (
-                    <Link
-                      key={item.name}
-                      to={item.href}
-                      onClick={onClose}
-                      className="flex items-center rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
-                    >
-                      <Star className="mr-2 h-4 w-4 text-amber-400" />
-                      <span className={collapsed ? "lg:hidden" : ""}>{item.name}</span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
             {filteredCrmNavigation.length ? (
               <div className="mt-4 space-y-2">
                 <button
