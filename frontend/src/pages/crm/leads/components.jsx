@@ -28,6 +28,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   onTabChange,
   onBack,
   onRefresh,
+  onSendEmail,
   body,
   sidebar,
 }) {
@@ -39,6 +40,10 @@ export const LeadWorkspace = memo(function LeadWorkspace({
         description={description}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="primary" size="sm" onClick={onSendEmail}>
+              <Mail className="h-4 w-4" />
+              Send Email
+            </Button>
             <Button type="button" variant="secondary" size="sm" onClick={onBack}>
               <ArrowLeft className="h-4 w-4" />
               Back
@@ -228,7 +233,7 @@ export const LeadSummaryCards = memo(function LeadSummaryCards({ lead }) {
   )
 })
 
-export const LeadSidebar = memo(function LeadSidebar({ lead }) {
+export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const navigate = useNavigate()
   const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
   const { data: stagesData } = useQuery('crm-lead-edit-stages', salesApi.getStages)
@@ -312,6 +317,10 @@ export const LeadSidebar = memo(function LeadSidebar({ lead }) {
       </CRMSection>
       <CRMSection title="Shortcuts" description="Fast links to the related CRM areas.">
         <div className="grid gap-2 sm:grid-cols-3">
+          <Button type="button" variant="primary" className="justify-between" onClick={onSendEmail}>
+            <span>Send Email</span>
+            <Mail className="h-4 w-4" />
+          </Button>
           <Link className="btn btn-secondary justify-between" to={activityPath}>
             <span>Activities</span>
             <ArrowRight className="h-4 w-4" />

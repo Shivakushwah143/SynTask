@@ -6,6 +6,7 @@ import { aiAPI } from '../../../api/ai'
 import { crmApi } from '../../../api/crm'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Modal, inputClassName } from '../../../components/ui'
+import { EmailComposer } from '../../../components/EmailComposer'
 import { formatShortDate } from '../pipeline/utils'
 
 const WORKSPACE_QUERY_KEY = 'crm-lead-workspace'
@@ -35,6 +36,7 @@ export function LeadAISalesTab({ leadId, lead, onRefresh }) {
   const [editorValue, setEditorValue] = useState('')
   const [mode, setMode] = useState('manual')
   const [pendingApproval, setPendingApproval] = useState(false)
+  const [composerOpen, setComposerOpen] = useState(false)
 
   useEffect(() => {
     setDraft((current) => ({
@@ -102,8 +104,6 @@ export function LeadAISalesTab({ leadId, lead, onRefresh }) {
   const summary = draft.ai || {}
   const delivery = draft.delivery || {}
   const hasGenerated = Boolean(draft.lastGeneratedAt)
-  const canApprove = hasGenerated && draft.executionStatus !== 'sent'
-
   const timelineItems = useMemo(() => timelineQuery.data?.items || [], [timelineQuery.data])
   const activityItems = useMemo(() => activitiesQuery.data?.items || activitiesQuery.data?.activities || [], [activitiesQuery.data])
 
@@ -118,19 +118,12 @@ export function LeadAISalesTab({ leadId, lead, onRefresh }) {
     })
   }
 
-  const approveAndSend = () => {
+  const openComposerFromDraft = () => {
     if (!hasGenerated) {
-      runAgent('auto')
+      runAgent('manual')
       return
     }
-    setMode('auto')
-    setPendingApproval(false)
-    salesAgentMutation.mutate({
-      lead_id: leadId,
-      depth: 'standard',
-      persist: false,
-      execution_mode: 'auto',
-    })
+    setComposerOpen(true)
   }
 
   const openEditor = (field) => {
@@ -193,15 +186,15 @@ export function LeadAISalesTab({ leadId, lead, onRefresh }) {
               <MessageSquare className="h-4 w-4" />
               Edit WhatsApp
             </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={approveAndSend} disabled={!canApprove && !hasGenerated}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setPendingApproval(false)} disabled={!hasGenerated}>
               <CheckCircle2 className="h-4 w-4" />
               Approve
             </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setPendingApproval(false)}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setPendingApproval(false)} disabled={!hasGenerated}>
               <X className="h-4 w-4" />
               Reject
             </Button>
-            <Button type="button" variant="primary" size="sm" onClick={approveAndSend} disabled={!hasGenerated && !leadId}>
+            <Button type="button" variant="primary" size="sm" onClick={openComposerFromDraft} disabled={!leadId}>
               <Send className="h-4 w-4" />
               Send
             </Button>
@@ -389,6 +382,34 @@ export function LeadAISalesTab({ leadId, lead, onRefresh }) {
           </div>
         </div>
       </Modal>
+
+      <EmailComposer
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        initialData={{
+          to: lead?.email ? [{ email: lead.email, name: lead.prospect_name || lead.company_name || '' }] : [],
+          subject: draft.subject,
+          html: draft.html,
+          text: draft.text,
+          related_entity_type: 'lead',
+          related_entity_id: leadId,
+          related_module: 'crm',
+        }}
+        onSend={async (response) => {
+          setPendingApproval(false)
+          setDraft((current) => ({
+            ...current,
+            executionStatus: response?.status || 'sent',
+            delivery: response?.delivery || current.delivery,
+          }))
+          toast.success('Email sent through Notification API')
+          queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId], { exact: false })
+          queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'timeline'], { exact: false })
+          queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'history'], { exact: false })
+          queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'ai-activities'], { exact: false })
+          onRefresh?.()
+        }}
+      />
     </div>
   )
 }
