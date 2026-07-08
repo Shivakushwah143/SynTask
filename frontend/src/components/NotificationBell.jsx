@@ -21,6 +21,23 @@ const NotificationBell = () => {
   const lastNotificationIdsRef = useRef(new Set()) // Track notification IDs we've already shown popups for
   const isMountedRef = useRef(false) // Track if component is mounted
 
+  const emitTaskRefresh = useCallback((notification) => {
+    const relatedType = String(notification?.related_type || '').toLowerCase()
+    const notifType = String(notification?.type || '').toLowerCase()
+    if (relatedType === 'task' || notifType.includes('task')) {
+      window.dispatchEvent(
+        new CustomEvent('syntask:tasks-updated', {
+          detail: {
+            source: 'notification',
+            notificationId: notification?.id || null,
+            relatedId: notification?.related_id || null,
+            relatedType: notification?.related_type || null,
+          },
+        })
+      )
+    }
+  }, [])
+
   // Determine navigation route based on notification
   const getNotificationRoute = useCallback((notification) => {
     // If action_url exists, use it (remove leading slash if present for React Router)
@@ -205,6 +222,7 @@ const NotificationBell = () => {
       setUnreadCount(newUnreadCount)
       previousNotificationsRef.current = newNotifications
       lastFetchTimeRef.current = now
+      newNotifications.forEach((notification) => emitTaskRefresh(notification))
       
       // Clean up old notification IDs from the tracking set (keep only current ones)
       // This prevents memory leak and ensures we don't track too many IDs
@@ -219,7 +237,7 @@ const NotificationBell = () => {
       }
       // Silently fail if server is not running - don't spam console
     }
-  }, [handleNotificationClick])
+  }, [emitTaskRefresh, handleNotificationClick])
 
   useEffect(() => {
     // Only reset and show initial popups when user actually changes (login)

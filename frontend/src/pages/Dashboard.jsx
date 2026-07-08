@@ -150,7 +150,7 @@ const Dashboard = () => {
 
   const role = normalizeRole(stats?.role || user?.role)
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
-  const taskSource = role === ROLE.EMPLOYEE ? recentTickets : recentTasks
+  const taskSource = recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
   const dashboardCards = canSeeSalesWidgets
     ? [

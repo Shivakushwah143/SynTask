@@ -97,10 +97,13 @@ const Clients = () => {
     }
   }, [])
 
+  const { isAuthenticated } = useAuthStore()
+
   useEffect(() => {
+    if (!isAuthenticated) return
     loadClients()
     loadLeads()
-  }, [loadClients, loadLeads])
+  }, [isAuthenticated, loadClients, loadLeads])
 
   const handleCreateClient = async (e) => {
     e.preventDefault()

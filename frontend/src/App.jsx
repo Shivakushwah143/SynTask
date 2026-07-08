@@ -136,11 +136,12 @@ const ModuleGuard = ({ module, children }) => {
 function App() {
   useTheme()
   const location = useLocation()
-<<<<<<< HEAD
   const withBoundary = (element) => <ErrorBoundary key={location.pathname}>{element}</ErrorBoundary>
-=======
   const setLoading = useUIStore?.getState?.().setLoading
->>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
+
+  useEffect(() => {
+    useAuthStore.getState().initializeAuth()
+  }, [])
 
   useEffect(() => {
     applySeoMeta(getSeoMeta(location.pathname))

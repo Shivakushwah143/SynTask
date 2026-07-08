@@ -67,14 +67,9 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-<<<<<<< HEAD
-    allow_headers=["*"],  # Allow all headers for development
-    expose_headers=["*"],  # Expose all headers
-=======
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
     expose_headers=["Content-Type", "Authorization"],
     max_age=600,
->>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
 )
 
 
@@ -85,15 +80,11 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(), geolocation=(), payment=(), usb=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-<<<<<<< HEAD
-    response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
-=======
     # Allow cross-origin access to uploaded files (images, documents)
     if request.url.path.startswith("/uploads/") or request.url.path.startswith("/api/v1/files/"):
         response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
     else:
         response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
->>>>>>> 367fab296f942fe0d2c8c155f27e057a443d32c0
     return response
 
 # Trusted Host Middleware (Security)

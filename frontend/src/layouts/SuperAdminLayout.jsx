@@ -24,23 +24,10 @@ const SuperAdminLayout = () => {
   const { user, logout, isLoggingOut } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-<<<<<<< HEAD
-  const handleLogout = () => {
-    ;(async () => {
-      useUIStore.getState().setLoading(true)
-      try {
-        await logout()
-      } finally {
-        useUIStore.getState().setLoading(false)
-        navigate('/login')
-      }
-    })()
-=======
   const handleLogout = async () => {
     if (isLoggingOut) return
     await logout()
     navigate('/login', { replace: true })
->>>>>>> 99943a0444c5216e640779533caf906547cb2156
   }
 
   const navigation = [

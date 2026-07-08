@@ -143,6 +143,18 @@ const Tasks = () => {
     return () => clearTimeout(timer)
   }, [fetchTasks])
 
+  useEffect(() => {
+    const handleTasksUpdated = () => {
+      fetchTasks()
+    }
+    window.addEventListener('syntask:tasks-updated', handleTasksUpdated)
+    const interval = setInterval(handleTasksUpdated, 30000)
+    return () => {
+      window.removeEventListener('syntask:tasks-updated', handleTasksUpdated)
+      clearInterval(interval)
+    }
+  }, [fetchTasks])
+
   // Get tasks by status
   const getTasksByStatus = (status) => {
     return tasks.filter(task => task.status === status)

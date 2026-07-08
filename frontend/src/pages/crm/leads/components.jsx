@@ -15,7 +15,12 @@ export const LEAD_TABS = [
   { key: 'timeline', label: 'Timeline' },
   { key: 'notes', label: 'Notes' },
   { key: 'files', label: 'Files' },
+  { key: 'tasks', label: 'Tasks' },
+  { key: 'meetings', label: 'Meetings' },
+  { key: 'emails', label: 'Emails' },
+  { key: 'call_logs', label: 'Calls' },
   { key: 'proposal', label: 'Proposal' },
+  { key: 'ai', label: 'AI' },
 ]
 
 export const LeadWorkspace = memo(function LeadWorkspace({
@@ -326,34 +331,19 @@ export const LeadSidebar = memo(function LeadSidebar({ lead }) {
         </div>
       </CRMSection>
 
-      <CRMSection title="Activity" description="Timeline and meetings stay here as separate read-only panels.">
+      <CRMSection title="Activity" description="Lead activity and meetings stay visible without duplicating records.">
         <div className="grid gap-4 xl:grid-cols-2">
-          <EmptyState
-            icon={History}
-            title="No timeline data"
-            description="This panel will show the lead activity stream once timeline features are enabled."
-          />
-          <EmptyState
-            icon={Video}
-            title="No meeting linked"
-            description="The workspace is reserved for future meeting data without introducing a separate data flow."
-          />
+          <LeadTimelineTab />
+          <LeadMeetingsTab />
         </div>
       </CRMSection>
 
-      <CRMSection title="AI panel" description="Reserved for future AI assistance.">
-        <div className="rounded-2xl border border-dashed border-surface-border bg-white/70 p-5 dark:border-gray-800 dark:bg-gray-900/70">
-          <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-gray-100 p-3 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">AI workspace reserved</p>
-              <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                This section is intentionally disabled and ready for future AI workflows.
-              </p>
-            </div>
-          </div>
+      <CRMSection title="Quick panels" description="Notes, emails, calls and tasks remain available in the workspace.">
+        <div className="grid gap-4 xl:grid-cols-2">
+          <LeadTasksTab />
+          <LeadEmailsTab />
+          <LeadCallLogsTab />
+          <LeadAITab />
         </div>
       </CRMSection>
     </div>

@@ -150,12 +150,8 @@ export default function CRMPipelinePage() {
       onSuccess: (response) => {
         const updatedLead = response?.lead || response?.data?.lead || response?.updatedLead || response
         const updatedLeadId = updatedLead?.id || updatedLead?._id
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
         if (updatedLeadId) {
-          queryClient.setQueryData(PIPELINE_QUERY_KEY, (currentBoard) => {
-            const boardState = buildPipelineBoard(currentBoard || {})
-            const nextStageKey = getStageKey(updatedLead)
-            return moveLeadInBoard(boardState, updatedLeadId, nextStageKey, updatedLead)
-          })
           queryClient.invalidateQueries(['crm-pipeline-history', updatedLeadId], { exact: true })
         }
         toast.success('Lead stage updated')

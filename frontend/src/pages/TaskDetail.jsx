@@ -57,6 +57,18 @@ const TaskDetail = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId])
 
+  useEffect(() => {
+    const refreshCurrentTask = (event) => {
+      const relatedId = event?.detail?.relatedId
+      if (relatedId && String(relatedId) !== String(taskId)) return
+      if (taskId) {
+        loadTask()
+      }
+    }
+    window.addEventListener('syntask:tasks-updated', refreshCurrentTask)
+    return () => window.removeEventListener('syntask:tasks-updated', refreshCurrentTask)
+  }, [taskId])
+
   const loadTask = async () => {
     try {
       setLoading(true)
