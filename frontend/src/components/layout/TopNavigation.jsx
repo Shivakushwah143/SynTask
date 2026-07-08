@@ -5,9 +5,9 @@ import { Button } from '../ui'
 
 export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onLogout, logoutLoading = false }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-surface-border/80 bg-white/85 backdrop-blur-xl dark:border-gray-800/80 dark:bg-gray-950/85">
-      <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-        <div className="flex min-w-0 items-center gap-3">
+    <header className="sticky top-0 z-30 min-w-0 border-b border-surface-border/80 bg-white/90 backdrop-blur-xl dark:border-gray-800/80 dark:bg-gray-950/85">
+      <div className="flex h-16 min-w-0 items-center justify-between gap-3 px-3 sm:px-5 lg:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
           <button
             type="button"
             onClick={onMenuClick}
@@ -16,15 +16,15 @@ export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSear
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="min-w-0">
+          <div className="min-w-0 max-w-full flex-1 overflow-hidden">
             <p className="truncate text-xs font-medium uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">SynTask</p>
             <h1 className="truncate text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h1>
-            {subtitle ? <p className="truncate text-sm text-gray-500 dark:text-gray-400">{subtitle}</p> : null}
-            {breadcrumb ? <p className="truncate text-xs text-gray-400 dark:text-gray-500">{breadcrumb}</p> : null}
+            {subtitle ? <p className="hidden truncate text-sm text-gray-500 sm:block dark:text-gray-400">{subtitle}</p> : null}
+            {breadcrumb ? <p className="hidden truncate text-xs text-gray-400 md:block dark:text-gray-500">{breadcrumb}</p> : null}
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
           <Button variant="ghost" size="sm" onClick={onCommandOpen} className="hidden md:inline-flex">
             <span className="inline-flex items-center gap-2">
               <Search className="h-4 w-4" />

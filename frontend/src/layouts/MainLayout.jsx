@@ -45,7 +45,7 @@ const MainLayout = () => {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col ml-2 overflow-hidden min-w-0 w-full">
+      <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden">
         {/* Header */}
         <Header title="Dashboard" subtitle="Workspace overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
 
