@@ -262,3 +262,86 @@ class AILogListItem(BaseModel):
     fallback_chain: List[str] = Field(default_factory=list)
     error_message: Optional[str] = None
     created_at: datetime
+
+
+class AILeadIntelligenceRequest(BaseModel):
+    lead_id: str = Field(min_length=1)
+    depth: str = Field(default="standard", pattern="^(minimal|standard|full)$")
+    persist: bool = False
+
+
+class AILeadIntelligenceMatch(BaseModel):
+    lead_id: str
+    prospect_name: str
+    company_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    match_score: int = Field(ge=0, le=100)
+
+
+class AILeadIntelligenceResponse(BaseModel):
+    lead_id: str
+    lead_name: str
+    company_name: Optional[str] = None
+    lead_score: int = Field(ge=0, le=100)
+    priority: str
+    urgency: str
+    buying_intent: str
+    duplicate_risk: bool = False
+    duplicate_matches: List[AILeadIntelligenceMatch] = Field(default_factory=list)
+    recommended_salesperson: dict[str, Any] = Field(default_factory=dict)
+    recommended_pipeline_stage: str
+    recommended_next_action: str
+    reasoning_summary: str
+    source: str
+    provider: str
+    model: str
+    generated_at: datetime
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class AISalesAgentRequest(BaseModel):
+    lead_id: str = Field(min_length=1)
+    depth: str = Field(default="standard", pattern="^(minimal|standard|full)$")
+    persist: bool = False
+    execution_mode: str = Field(default="manual", pattern="^(manual|auto)$")
+
+
+class AISalesAgentCommunication(BaseModel):
+    subject: Optional[str] = None
+    html: Optional[str] = None
+    text: Optional[str] = None
+
+
+class AISalesAgentMeeting(BaseModel):
+    recommended: bool = False
+    duration_minutes: int = Field(default=30, ge=15, le=120)
+    reason: str
+
+
+class AISalesAgentFollowUp(BaseModel):
+    recommended_date: Optional[str] = None
+    summary: str
+
+
+class AISalesAgentCRM(BaseModel):
+    next_stage: str
+    activity_summary: str
+
+
+class AISalesAgentResponse(BaseModel):
+    communication_strategy: dict[str, Any]
+    email: AISalesAgentCommunication
+    whatsapp: dict[str, Any] = Field(default_factory=dict)
+    meeting: AISalesAgentMeeting
+    follow_up: AISalesAgentFollowUp
+    crm: AISalesAgentCRM
+    lead_intelligence: AILeadIntelligenceResponse
+    source: str
+    provider: str
+    model: str
+    execution_mode: str = "manual"
+    execution_status: str = "generated"
+    delivery: dict[str, Any] = Field(default_factory=dict)
+    generated_at: datetime
+    context: dict[str, Any] = Field(default_factory=dict)

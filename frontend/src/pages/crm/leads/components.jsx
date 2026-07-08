@@ -9,6 +9,7 @@ import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, EmptyState, inputClassName } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
+import { LeadFilesTab } from './files'
 
 export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -720,11 +721,11 @@ export const LeadHistoryTab = memo(function LeadHistoryTab({
 
 export const LeadAITab = memo(function LeadAITab() {
   return (
-    <CRMSection title="AI" description="AI tools are intentionally disabled for this workspace.">
+    <CRMSection title="AI" description="AI Sales is available from the lead workspace.">
       <CRMEmptyState
         icon={Sparkles}
-        title="AI disabled"
-        description="This tab is reserved for future AI assistance and is currently read-only."
+        title="Open the AI Sales tab"
+        description="Use the lead workspace AI tab to generate communication, approve drafts, and send through the notification service."
       />
     </CRMSection>
   )

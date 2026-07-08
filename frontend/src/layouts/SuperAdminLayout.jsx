@@ -26,8 +26,13 @@ const SuperAdminLayout = () => {
 
   const handleLogout = async () => {
     if (isLoggingOut) return
-    await logout()
-    navigate('/login', { replace: true })
+    useUIStore.getState().setLoading(true)
+    try {
+      await logout()
+    } finally {
+      useUIStore.getState().setLoading(false)
+      navigate('/login', { replace: true })
+    }
   }
 
   const navigation = [
@@ -193,4 +198,3 @@ const SuperAdminLayout = () => {
 }
 
 export default SuperAdminLayout
-

@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     MAIL_FROM_NAME: str = "SynTask"
     MAIL_TLS: bool = True
     MAIL_SSL: bool = False
+
+    # Brevo outbound email
+    BREVO_API_KEY: Optional[str] = None
+    BREVO_SENDER_EMAIL: Optional[str] = None
+    BREVO_SENDER_NAME: str = "SynTask"
+    BREVO_REPLY_TO: Optional[str] = None
+    BREVO_BASE_URL: str = "https://api.brevo.com/v3"
+    BREVO_TIMEOUT_SECONDS: int = 20
+    BREVO_RETRY_ATTEMPTS: int = 3
     
     # Payment Gateway - Stripe
     STRIPE_SECRET_KEY: Optional[str] = None
