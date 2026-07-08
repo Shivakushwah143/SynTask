@@ -68,6 +68,36 @@ export const useMonitoringSocket = () => {
   }, [])
 
   // ─── Server Sync ──────────────────────────────────────────────────────────
+  const restoreStreams = useCallback(async () => {
+    try {
+      const granted = await monitoringManager.requestPermissions()
+      if (granted) {
+        await monitoringManager.startCapture({
+          onFrame: (framePayload) => {
+            if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+              socketRef.current.send(JSON.stringify(framePayload))
+            }
+          },
+          onStop: (reason) => {
+            const label = reason === 'screen_sharing_ended' ? 'Screen sharing stopped' : 'Camera stopped'
+            toast.error(`${label}. Session will continue without this feed.`)
+            if (reason === 'screen_sharing_ended') setScreenStatus('Stopped')
+            if (reason === 'camera_ended') setCameraStatus('Disabled')
+          }
+        })
+        setCameraStream(monitoringManager.getCameraStream())
+        setScreenStream(monitoringManager.getScreenStream())
+        setCameraStatus(monitoringManager.getCameraStatus())
+        setScreenStatus(monitoringManager.getScreenStatus())
+        toast.success('Monitoring streams restored.')
+      } else {
+        toast.error('Permissions required to restore monitoring streams.')
+      }
+    } catch (err) {
+      console.error('Failed to restore streams:', err)
+    }
+  }, [])
+
   const syncWithServer = useCallback(async () => {
     try {
       const res = await attendanceAPI.getTodayAttendance()
@@ -87,6 +117,11 @@ export const useMonitoringSocket = () => {
         setOvertimeSeconds(wt.overtimeSeconds)
         statusRef.current = data.status
         workingSecondsRef.current = totalSec
+
+        // Attempt to auto-restore streams if status is Working but streams are inactive
+        if (data.status === 'Working' && !monitoringManager.getCameraStream() && !monitoringManager.getScreenStream()) {
+          restoreStreams().catch(() => {})
+        }
       } else {
         setStatus('Offline')
         setWorkingSeconds(0)
@@ -101,7 +136,7 @@ export const useMonitoringSocket = () => {
     } catch (e) {
       console.error('Failed to sync attendance with server:', e)
     }
-  }, [])
+  }, [restoreStreams])
 
   // ─── WebSocket Connection ─────────────────────────────────────────────────
   const connectSocket = useCallback(() => {
@@ -149,8 +184,8 @@ export const useMonitoringSocket = () => {
         try {
           await monitoringManager.startCapture({
             onFrame: (framePayload) => {
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify(framePayload))
+              if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+                socketRef.current.send(JSON.stringify(framePayload))
               }
             },
             onStop: (reason) => {
@@ -272,29 +307,34 @@ export const useMonitoringSocket = () => {
   }
 
   const pauseWork = () => {
+    setStatus('On Break')
+    statusRef.current = 'On Break'
+    monitoringManager.pauseCapture()
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'pause_work' }))
     }
   }
 
   const resumeWork = () => {
+    setStatus('Working')
+    statusRef.current = 'Working'
+    monitoringManager.resumeCapture()
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'resume_work' }))
     }
   }
 
   const stopWork = () => {
+    setStatus('Offline')
+    statusRef.current = 'Offline'
+    monitoringManager.stopCapture()
+    setCameraStream(null)
+    setScreenStream(null)
+    setCameraStatus('Denied')
+    setScreenStatus('Denied')
+
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'stop_work' }))
-    } else {
-      // Offline fallback — clean up locally
-      setStatus('Offline')
-      statusRef.current = 'Offline'
-      monitoringManager.stopCapture()
-      setCameraStream(null)
-      setScreenStream(null)
-      setCameraStatus('Denied')
-      setScreenStatus('Denied')
     }
   }
 
@@ -316,6 +356,7 @@ export const useMonitoringSocket = () => {
     pauseWork,
     resumeWork,
     syncWithServer,
+    restoreStreams,
   }
 }
 
