@@ -9,6 +9,7 @@ import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, EmptyState, inputClassName } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
+import { LeadFilesTab } from './files'
 
 export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
