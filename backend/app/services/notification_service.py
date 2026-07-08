@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 import inspect
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
-from typing import Any, Optional, Protocol
+from typing import Any, Optional
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
@@ -59,31 +59,7 @@ class DeliveryResult:
         }
 
 
-class EmailProvider(Protocol):
-    async def send_email(
-        self,
-        *,
-        to_email: str,
-        subject: str,
-        html: str,
-        text: str,
-        attachments: Optional[list[dict[str, Any]]] = None,
-        template_variables: Optional[dict[str, Any]] = None,
-        idempotency_key: Optional[str] = None,
-    ) -> DeliveryResult: ...
-
-
-class WhatsAppProvider(Protocol):
-    async def send_message(
-        self,
-        *,
-        to_number: str,
-        message: str,
-        idempotency_key: Optional[str] = None,
-    ) -> DeliveryResult: ...
-
-
-class BrevoEmailProvider:
+class EmailService:
     def __init__(self) -> None:
         self.api_key = getattr(settings, "BREVO_API_KEY", None)
         self.base_url = getattr(settings, "BREVO_BASE_URL", "https://api.brevo.com/v3").rstrip("/")
@@ -96,6 +72,13 @@ class BrevoEmailProvider:
     @property
     def configured(self) -> bool:
         return bool(self.api_key and self.sender_email)
+
+    @staticmethod
+    def render_template(template: str, variables: Optional[dict[str, Any]] = None) -> str:
+        rendered = template or ""
+        for key, value in (variables or {}).items():
+            rendered = rendered.replace(f"{{{{{key}}}}}", "" if value is None else str(value))
+        return rendered
 
     async def send_email(
         self,
@@ -203,11 +186,187 @@ class NotificationService:
     def __init__(
         self,
         *,
-        email_provider: Optional[EmailProvider] = None,
-        whatsapp_provider: Optional[WhatsAppProvider] = None,
+        email_service: Optional[EmailService] = None,
     ) -> None:
-        self.email_provider = email_provider or BrevoEmailProvider()
-        self.whatsapp_provider = whatsapp_provider or WhatsAppNoopProvider()
+        self.email_service = email_service or EmailService()
+        self.whatsapp_provider = WhatsAppNoopProvider()
+
+    @staticmethod
+    def normalize_email_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        recipients = payload.get("recipients") or {}
+        return {
+            "to": payload.get("to") or recipients.get("to") or [],
+            "cc": payload.get("cc") or recipients.get("cc") or [],
+            "bcc": payload.get("bcc") or recipients.get("bcc") or [],
+            "subject": _safe_str(payload.get("subject")),
+            "html": _safe_str(payload.get("html") or payload.get("body_html")),
+            "text": _safe_str(payload.get("text") or payload.get("body_text")),
+            "template_id": payload.get("template_id"),
+            "template_name": payload.get("template_name"),
+            "template_variables": payload.get("template_variables") or {},
+            "related_entity_type": payload.get("related_entity_type"),
+            "related_entity_id": payload.get("related_entity_id"),
+            "related_module": payload.get("related_module"),
+            "attachments": payload.get("attachments") or [],
+        }
+
+    async def preview_email(
+        self,
+        *,
+        payload: dict[str, Any],
+        actor_id: str,
+        company_id: str,
+    ) -> dict[str, Any]:
+        normalized = self.normalize_email_payload(payload)
+        html = self.email_service.render_template(normalized["html"], normalized["template_variables"])
+        text = self.email_service.render_template(normalized["text"], normalized["template_variables"])
+        subject = self.email_service.render_template(normalized["subject"], normalized["template_variables"])
+        await self.record_audit_event(
+            company_id=company_id,
+            user_id=actor_id,
+            feature="previewNotificationEmail",
+            status="success",
+            payload=normalized,
+            parsed_response={"preview": True},
+            executed_actions=[{"tool": "previewNotificationEmail", "status": "success"}],
+        )
+        return {
+            "subject": subject,
+            "html": html,
+            "text": text,
+            "template_id": normalized["template_id"],
+            "template_name": normalized["template_name"],
+        }
+
+    async def send_notification_email(
+        self,
+        *,
+        payload: dict[str, Any],
+        actor_id: str,
+        actor_name: str,
+        company_id: str,
+        sender_email: Optional[str] = None,
+        sender_name: Optional[str] = None,
+        related_entity_type: Optional[str] = None,
+        related_entity_id: Optional[str] = None,
+        related_module: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> dict[str, Any]:
+        normalized = self.normalize_email_payload(payload)
+        recipients = [email for email in normalized["to"] if email]
+        if not recipients:
+            raise ValueError("At least one recipient is required")
+
+        primary_recipient = str(recipients[0]).strip()
+        marker = idempotency_key or _hash_payload(
+            {
+                "company_id": company_id,
+                "actor_id": actor_id,
+                "to": normalized["to"],
+                "cc": normalized["cc"],
+                "bcc": normalized["bcc"],
+                "subject": normalized["subject"],
+                "html": normalized["html"],
+                "text": normalized["text"],
+                "template_id": normalized["template_id"],
+                "template_variables": normalized["template_variables"],
+                "related_entity_type": related_entity_type or normalized["related_entity_type"],
+                "related_entity_id": related_entity_id or normalized["related_entity_id"],
+                "related_module": related_module or normalized["related_module"],
+                "attachments": normalized["attachments"],
+            }
+        )
+        html = self.email_service.render_template(normalized["html"], normalized["template_variables"])
+        text = self.email_service.render_template(normalized["text"], normalized["template_variables"])
+        subject = self.email_service.render_template(normalized["subject"], normalized["template_variables"])
+
+        email_result = await self.email_service.send_email(
+            to_email=primary_recipient,
+            subject=subject,
+            html=html,
+            text=text,
+            attachments=normalized["attachments"],
+            template_variables=normalized["template_variables"],
+            idempotency_key=marker,
+        )
+        metadata = {
+            "to": normalized["to"],
+            "cc": normalized["cc"],
+            "bcc": normalized["bcc"],
+            "template_id": normalized["template_id"],
+            "template_name": normalized["template_name"],
+            "template_variables": normalized["template_variables"],
+            "provider": email_result.provider,
+            "delivery": email_result.to_dict(),
+            "sender_email": sender_email,
+            "sender_name": sender_name,
+            "related_entity_type": related_entity_type or normalized["related_entity_type"],
+            "related_entity_id": related_entity_id or normalized["related_entity_id"],
+            "related_module": related_module or normalized["related_module"],
+            "provider_response": email_result.raw_response,
+        }
+        notification = await self.notify_salesperson(
+            company_id=company_id,
+            user_id=actor_id,
+            title=subject or "Email notification",
+            message=text or subject or "Email sent",
+            related_id=related_entity_id or normalized["related_entity_id"],
+            related_type=related_entity_type or normalized["related_entity_type"] or related_module,
+            metadata={**metadata, "status": email_result.status},
+            idempotency_key=marker,
+        )
+        notification.email_sent = email_result.success
+        notification.email_sent_at = _now() if email_result.success else notification.email_sent_at
+        notification.metadata = {**(notification.metadata or {}), **metadata}
+        if hasattr(notification, "save"):
+            save_result = notification.save()
+            if inspect.isawaitable(save_result):
+                await save_result
+        await self.record_audit_event(
+            company_id=company_id,
+            user_id=actor_id,
+            feature="sendNotificationEmail",
+            status="success" if email_result.success else "failed",
+            payload=normalized,
+            parsed_response=email_result.to_dict(),
+            error_message=email_result.error,
+            executed_actions=[{"tool": "sendNotificationEmail", "status": email_result.status, "notification_id": str(notification.id)}],
+            correlation_id=marker,
+            idempotency_key=marker,
+        )
+        if related_entity_id or normalized["related_entity_id"]:
+            await self.record_timeline_event(
+                event_name="NotificationEmailSent" if email_result.success else "NotificationEmailFailed",
+                aggregate_type=related_entity_type or normalized["related_entity_type"] or "crm_entity",
+                aggregate_id=related_entity_id or normalized["related_entity_id"] or str(notification.id),
+                company_id=company_id,
+                actor_id=actor_id,
+                payload={
+                    "notification_id": str(notification.id),
+                    "subject": subject,
+                    "status": email_result.status,
+                    "provider": email_result.provider,
+                    "delivery": email_result.to_dict(),
+                },
+                metadata={"surface": "crm", "workflow": "notification_email"},
+                correlation_id=marker,
+            )
+        return {
+            "notification_id": str(notification.id),
+            "status": "sent" if email_result.success else "failed",
+            "delivery": email_result.to_dict(),
+            "notification": {
+                "id": str(notification.id),
+                "subject": subject,
+                "recipients": normalized["to"],
+                "cc": normalized["cc"],
+                "bcc": normalized["bcc"],
+                "provider": email_result.provider,
+                "related_entity_type": related_entity_type or normalized["related_entity_type"],
+                "related_entity_id": related_entity_id or normalized["related_entity_id"],
+                "related_module": related_module or normalized["related_module"],
+            },
+        }
 
     async def record_audit_event(
         self,
@@ -445,7 +604,7 @@ class NotificationService:
             metadata={"lead_name": lead_name, "channel": "email", "subject": subject},
             idempotency_key=marker,
         )
-        email_result = self.email_provider.send_email(
+        email_result = self.email_service.send_email(
             to_email=recipient_email,
             subject=subject,
             html=html,
