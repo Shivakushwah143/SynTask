@@ -1,7 +1,7 @@
 import { Button } from './Button'
 import { Modal } from './Modal'
 
-export function ConfirmDialog({ isOpen, title = 'Confirm action', message, confirmLabel = 'Confirm', loading, onConfirm, onClose }) {
+export function ConfirmDialog({ isOpen, title = 'Confirm', message, confirmLabel = 'Confirm', loading, onConfirm, onClose }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
       <p className="text-sm text-gray-600">{message}</p>

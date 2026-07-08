@@ -1,14 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
-import { CalendarDays, Video, FileText, CheckSquare, Target, Users } from 'lucide-react'
+import { CalendarDays, Video, FileText, CheckSquare, Target, Users, Mail } from 'lucide-react'
 import { meetingsApi } from '../api/meetings'
 import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonTable, Table, inputClassName } from '../components/ui'
 import { asArray, formatDateTime, toFormData } from './phase4Utils'
+import { EmailComposer } from '../components/EmailComposer'
 
 export default function Meetings() {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [composerOpen, setComposerOpen] = useState(false)
   const { data, isLoading, isError } = useQuery('meetings', () => meetingsApi.list({ limit: 100 }))
   const meetings = asArray(data, ['meetings'])
   const selected = meetings[0] || null
@@ -26,7 +28,15 @@ export default function Meetings() {
       <PageHeader
         title="Meetings"
         description="Agenda, notes, decisions, and action items in one view."
-        actions={<Button onClick={() => setOpen(true)}><Video className="h-4 w-4" /> New Meeting</Button>}
+        actions={(
+          <div className="flex items-center gap-2">
+            <Button variant="primary" onClick={() => setComposerOpen(true)}>
+              <Mail className="h-4 w-4" />
+              Send Email
+            </Button>
+            <Button onClick={() => setOpen(true)}><Video className="h-4 w-4" /> New Meeting</Button>
+          </div>
+        )}
       />
 
       <section className="grid gap-4 md:grid-cols-4">
@@ -69,6 +79,18 @@ export default function Meetings() {
         onDone={() => {
           setOpen(false)
           queryClient.invalidateQueries('meetings')
+        }}
+      />
+      <EmailComposer
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        initialData={{
+          subject: selected?.title ? `Meeting follow-up: ${selected.title}` : 'Meeting follow-up',
+          html: '<p>Hello,</p><p></p>',
+          text: 'Hello,',
+          related_entity_type: 'meeting',
+          related_entity_id: selected?.id || '',
+          related_module: 'meetings',
         }}
       />
     </div>
@@ -116,16 +138,52 @@ function MeetingModal({ isOpen, onClose, onDone }) {
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create meeting">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Title" required error={errors.title}><input className={inputClassName} value={form.title} onChange={(event) => update('title', event.target.value)} aria-invalid={Boolean(errors.title)} /></FormField>
-        <FormField label="Date" required error={errors.meeting_date}><input className={inputClassName} type="date" value={form.meeting_date} onChange={(event) => update('meeting_date', event.target.value)} aria-invalid={Boolean(errors.meeting_date)} /></FormField>
-        <FormField label="Time" required error={errors.meeting_time}><input className={inputClassName} type="time" value={form.meeting_time} onChange={(event) => update('meeting_time', event.target.value)} aria-invalid={Boolean(errors.meeting_time)} /></FormField>
-        <FormField label="Duration minutes" required error={errors.duration}><input className={inputClassName} type="number" min="1" value={form.duration} onChange={(event) => update('duration', event.target.value)} aria-invalid={Boolean(errors.duration)} /></FormField>
-        <FormField label="Participant IDs"><input className={inputClassName} value={form.participant_ids} onChange={(event) => update('participant_ids', event.target.value)} placeholder="Comma-separated user IDs" /></FormField>
-        <FormField label="Description"><textarea className={inputClassName} rows="3" value={form.description} onChange={(event) => update('description', event.target.value)} /></FormField>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Create meeting"
+      description="Capture the core details first, then add participants and notes."
+      size="lg"
+      footer={(
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button loading={mutation.isLoading} onClick={submit}>Save meeting</Button>
+        </div>
+      )}
+    >
+      <div className="space-y-5">
+        <section className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-950/50">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Schedule</h3>
+          <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Set the meeting title, date, time, and duration.</p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <FormField label="Title" required error={errors.title} helperText="Use a short, scannable title.">
+              <input className={inputClassName} value={form.title} onChange={(event) => update('title', event.target.value)} aria-invalid={Boolean(errors.title)} />
+            </FormField>
+            <FormField label="Date" required error={errors.meeting_date}>
+              <input className={inputClassName} type="date" value={form.meeting_date} onChange={(event) => update('meeting_date', event.target.value)} aria-invalid={Boolean(errors.meeting_date)} />
+            </FormField>
+            <FormField label="Time" required error={errors.meeting_time}>
+              <input className={inputClassName} type="time" value={form.meeting_time} onChange={(event) => update('meeting_time', event.target.value)} aria-invalid={Boolean(errors.meeting_time)} />
+            </FormField>
+            <FormField label="Duration minutes" required error={errors.duration} helperText="Minimum 1 minute.">
+              <input className={inputClassName} type="number" min="1" value={form.duration} onChange={(event) => update('duration', event.target.value)} aria-invalid={Boolean(errors.duration)} />
+            </FormField>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Participants and notes</h3>
+          <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Add attendees and capture the discussion summary.</p>
+          <div className="mt-4 grid gap-4">
+            <FormField label="Participant IDs" helperText="Comma-separated user IDs.">
+              <input className={inputClassName} value={form.participant_ids} onChange={(event) => update('participant_ids', event.target.value)} placeholder="Comma-separated user IDs" />
+            </FormField>
+            <FormField label="Description" helperText="Use this for agenda or recap notes.">
+              <textarea className={inputClassName} rows="4" value={form.description} onChange={(event) => update('description', event.target.value)} />
+            </FormField>
+          </div>
+        </section>
       </div>
-      <div className="mt-6 flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={mutation.isLoading} onClick={submit}>Save</Button></div>
     </Modal>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowRight, CalendarDays, CheckSquare, FolderKanban, MessageSquareText, Sparkles, TrendingUp } from 'lucide-react'
+import { ArrowRight, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
 import {
   ResponsiveContainer,
   PieChart,
@@ -271,19 +271,15 @@ const Dashboard = () => {
         </div>
         <div className="card p-5">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Upcoming meetings</p>
-            <MessageSquareText className="h-4 w-4 text-primary-600" />
-          </div>
-          <p className="mt-3 text-3xl font-semibold text-gray-900 dark:text-gray-100">{upcomingMeetings.length}</p>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Meetings scheduled ahead.</p>
-        </div>
-        <div className="card p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Project health</p>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Attendance focus</p>
             <TrendingUp className="h-4 w-4 text-primary-600" />
           </div>
-          <p className="mt-3 text-3xl font-semibold text-gray-900 dark:text-gray-100">{projects.length}</p>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Projects currently in view.</p>
+          <p className="mt-3 text-3xl font-semibold text-gray-900 dark:text-gray-100">
+            {role === ROLE.EMPLOYEE ? (attendanceToday?.status || 'Pending') : (attendanceStats?.present_today ?? 0)}
+          </p>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            {role === ROLE.EMPLOYEE ? 'Your latest attendance status.' : 'People present today.'}
+          </p>
         </div>
       </section>
 

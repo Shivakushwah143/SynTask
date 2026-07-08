@@ -31,7 +31,7 @@ function CompanyModal({ isOpen, onClose, onSave, company = null }) {
   const update = (key, value) => setForm((state) => ({ ...state, [key]: value }))
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={company ? 'Edit company' : 'Create company'} size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} title={company ? 'Edit company' : 'New company'} size="xl">
       <div className="grid gap-4 md:grid-cols-2">
         <FormField label="Company name" required>
           <input className={inputClassName} value={form.name} onChange={(event) => update('name', event.target.value)} />
@@ -48,7 +48,7 @@ function CompanyModal({ isOpen, onClose, onSave, company = null }) {
         <FormField label="Industry">
           <input className={inputClassName} value={form.industry} onChange={(event) => update('industry', event.target.value)} />
         </FormField>
-        <FormField label="Size">
+        <FormField label="Company size">
           <input className={inputClassName} value={form.company_size} onChange={(event) => update('company_size', event.target.value)} />
         </FormField>
         <FormField label="Notes" className="md:col-span-2">
@@ -57,7 +57,7 @@ function CompanyModal({ isOpen, onClose, onSave, company = null }) {
       </div>
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button onClick={() => onSave(form)} disabled={!form.name}>{company ? 'Save changes' : 'Create company'}</Button>
+        <Button onClick={() => onSave(form)} disabled={!form.name}>{company ? 'Save' : 'Create'}</Button>
       </div>
     </Modal>
   )
@@ -156,12 +156,12 @@ export default function CRMCompaniesPage() {
       <CRMPageTitle
         eyebrow="CRM"
         title="Companies"
-        description="CRM source of truth for accounts and the contacts/leads that belong to them."
+        description="Accounts and their related contacts, leads, and activity."
         actions={(
-          <Button onClick={() => { setEditingCompany(null); setCompanyModalOpen(true) }}>
+            <Button onClick={() => { setEditingCompany(null); setCompanyModalOpen(true) }}>
             <Plus className="h-4 w-4" />
-            New company
-          </Button>
+            New
+            </Button>
         )}
       />
 
@@ -172,7 +172,7 @@ export default function CRMCompaniesPage() {
         <CRMStatCard icon={Clock3} label="Primary contacts" value={String(stats.primary)} tone="slate" />
       </div>
 
-      <CRMSection title="Company directory" description="Search, create and maintain CRM accounts.">
+        <CRMSection title="Company directory" description="Search and manage CRM accounts.">
         <div className="relative mb-4">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input className={`${inputClassName} pl-10`} placeholder="Search companies..." value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -184,7 +184,7 @@ export default function CRMCompaniesPage() {
         ) : companies.length ? (
           <Table columns={columns} data={companies} />
         ) : (
-          <EmptyState icon={Building2} title="No companies yet" description="Create the first CRM company to start linking contacts and leads." action={<Button onClick={() => setCompanyModalOpen(true)}>Create company</Button>} />
+          <EmptyState icon={Building2} title="No companies yet" description="Create the first CRM account to connect contacts and leads." action={<Button onClick={() => setCompanyModalOpen(true)}>Create</Button>} />
         )}
       </CRMSection>
 
@@ -201,7 +201,7 @@ export default function CRMCompaniesPage() {
         onConfirm={() => deleteMutation.mutate(deleteId)}
         loading={deleteMutation.isLoading}
         title="Delete company"
-        message="The company will be removed from the CRM workspace."
+        message="This removes the company from CRM."
         confirmLabel="Delete"
       />
     </CRMPage>
