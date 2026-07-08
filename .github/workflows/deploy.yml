@@ -1,0 +1,70 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+
+jobs:
+  deploy-dev:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: true
+    steps:
+      - name: Deploy to development server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEV_BACKEND_ENV: ${{ secrets.DEV_BACKEND_ENV }}
+          DEV_FRONTEND_ENV: ${{ secrets.DEV_FRONTEND_ENV }}
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          port: ${{ secrets.DEV_SSH_PORT }}
+          script_stop: true
+          envs: DEV_BACKEND_ENV,DEV_FRONTEND_ENV
+          script: |
+            set -e
+            cd /opt/syntask
+            git fetch --prune origin dev
+            git checkout -B dev origin/dev
+            git reset --hard origin/dev
+            printf '%s\n' "$DEV_BACKEND_ENV" > backend/.env
+            printf '%s\n' "$DEV_FRONTEND_ENV" > frontend/.env
+            docker compose -f docker-compose.dev.yml down --remove-orphans || true
+            docker compose -f docker-compose.dev.yml up -d --build --remove-orphans --wait --wait-timeout 300
+            docker compose -f docker-compose.dev.yml ps
+
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: true
+    steps:
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          PROD_BACKEND_ENV: ${{ secrets.PROD_BACKEND_ENV }}
+          PROD_FRONTEND_ENV: ${{ secrets.PROD_FRONTEND_ENV }}
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          script_stop: true
+          envs: PROD_BACKEND_ENV,PROD_FRONTEND_ENV
+          script: |
+            set -e
+            cd /opt/syntask
+            git fetch --prune origin main
+            git checkout -B main origin/main
+            git reset --hard origin/main
+            printf '%s\n' "$PROD_BACKEND_ENV" > backend/.env
+            printf '%s\n' "$PROD_FRONTEND_ENV" > frontend/.env
+            docker compose -f docker-compose.prod.yml down --remove-orphans || true
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans --wait --wait-timeout 300
+            docker compose -f docker-compose.prod.yml ps
