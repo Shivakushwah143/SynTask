@@ -18,6 +18,7 @@ from app.models.sales_contact import SalesContact
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct
 from app.models.sales_masters import SalesStage
+from app.crm.lead_engine import LeadEngine
 
 
 router = APIRouter()
@@ -430,7 +431,6 @@ async def create_prospect(
         owner_contact_no=owner_contact_no.strip() if owner_contact_no else None,
         tag=_parse_multi_value(tag) if tag else [],
         greeting_preference=greeting_preference,
-        custom_fields=_parse_custom_fields(custom_fields),
         company_id=current_user.company_id,
         created_by=str(current_user.id),
     )
@@ -506,8 +506,6 @@ async def update_prospect(
         prospect.reason_for_lost = reason_for_lost.strip() if reason_for_lost else None
     if won_amount is not None:
         prospect.won_amount = float(won_amount) if won_amount else None
-    if custom_fields is not None:
-        prospect.custom_fields = _parse_custom_fields(custom_fields)
     
     prospect.updated_at = datetime.utcnow()
     await prospect.save()
@@ -543,449 +541,13 @@ async def bulk_upload_prospects(
     if not any(h in normalized_headers for h in ['name', 'first_name']):
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="CSV must include either 'name' or 'first_name' column")
 
-    assignable_query = {
-        "company_id": current_user.company_id,
-        "role": UserRole.EMPLOYEE.value,
-        "status": UserStatus.ACTIVE,
-    }
-
-    if target_department_id:
-        department = await Department.get(target_department_id)
-        if (
-            not department
-            or department.deleted_at is not None
-            or department.company_id != current_user.company_id
-        ):
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Department not found",
-            )
-        assignable_query["department_id"] = target_department_id
-
-    assignable_users = await User.find(assignable_query).to_list()
-
-    if not assignable_users:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="No employees found in your company. Add employees before uploading leads.",
-        )
-
-    employee_ids = [str(user.id) for user in assignable_users]
-    assigned_counts = {user_id: 0 for user_id in employee_ids}
-
-    if strategy not in ['round-robin', 'evenly', 'manual']:
-        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid strategy")
-
-    if strategy == 'manual':
-        if not target_user_id:
-            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")
-        if target_user_id not in employee_ids:
-            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Target user must be an active Employee in your company")
-
-    rows = []
-    skipped_rows = []
-    warnings = []
-    seen_emails = set()
-    all_emails = set()
-    total_input_rows = 0
-    for idx, row in enumerate(reader, start=2):
-        total_input_rows += 1
-        row_norm = {
-            _normalize_lead_csv_header(key): (value or '').strip()
-            for key, value in row.items()
-            if key is not None
+    assignable_users = await User.find(
+        {
+            "company_id": current_user.company_id,
+            "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+            "status": UserStatus.ACTIVE,
         }
-        email = (row_norm.get('email') or '').lower()
-        if not email:
-            skipped_rows.append({"row": idx, "reason": "Missing email"})
-            continue
-        if email in seen_emails:
-            skipped_rows.append({"row": idx, "reason": "Duplicate email in CSV"})
-            continue
-        seen_emails.add(email)
-        all_emails.add(email)
-        rows.append((idx, row_norm))
-
-    existing_leads = []
-    if all_emails:
-        existing_leads = await SalesProspect.find(
-            {
-                "company_id": current_user.company_id,
-                "email": {"$in": list(all_emails)},
-                "deleted": False,
-            }
-        ).to_list()
-    existing_emails = {lead.email.lower() for lead in existing_leads if lead.email}
-
-    parsed_rows = []
-    for idx, row_norm in rows:
-        email = row_norm.get('email', '').lower()
-        if email in existing_emails:
-            skipped_rows.append({"row": idx, "reason": "Duplicate email already exists"})
-            continue
-
-        name = row_norm.get('name', '')
-        first_name = row_norm.get('first_name', '')
-        last_name = row_norm.get('last_name', '')
-        if not first_name and name:
-            parts = name.split()
-            first_name = parts[0]
-            last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
-        if not first_name:
-            skipped_rows.append({"row": idx, "reason": "Missing name"})
-            continue
-
-        status_value = _parse_import_status(row_norm.get('status'))
-
-        interest_value = row_norm.get('interest_level') or InterestLevel.WARM.value
-        try:
-            parsed_interest_level = _parse_interest_level(interest_value)
-        except ValueError:
-            skipped_rows.append({
-                "row": idx,
-                "reason": (
-                    f"Invalid interest_level '{interest_value}'. "
-                    "Use hot, warm, cold, high, medium, or low"
-                ),
-            })
-            continue
-
-        estimated_close_date_value = row_norm.get('estimated_close_date')
-        estimated_close_date = (
-            _parse_datetime(estimated_close_date_value)
-            if estimated_close_date_value
-            else None
-        )
-        if estimated_close_date_value and estimated_close_date is None:
-            skipped_rows.append({
-                "row": idx,
-                "reason": "Invalid estimated_close_date. Use YYYY-MM-DD or DD-MM-YYYY",
-            })
-            continue
-
-        product_ids_value = row_norm.get('product_ids') or ''
-        parsed_rows.append(
-            {
-                "row": idx,
-                "first_name": first_name,
-                "last_name": last_name,
-                "prospect_name": f"{first_name} {last_name}".strip(),
-                "country_code": row_norm.get('country_code') or '+91',
-                "email": email,
-                "company_name": row_norm.get('company') or row_norm.get('company_name') or None,
-                "phone": row_norm.get('phone') or '',
-                "category_id": row_norm.get('category_id') or None,
-                "product_ids": _parse_multi_value(product_ids_value),
-                "interest_level": parsed_interest_level,
-                "estimated_close_date": estimated_close_date,
-                "status": status_value,
-                "source": row_norm.get('source') or 'bulk_upload',
-                "assigned_to": None,
-                "assigned_by": str(current_user.id),
-                "current_stage": row_norm.get('stage') or row_norm.get('current_stage') or 'new',
-                "remark": row_norm.get('remark') or None,
-                "company_id": current_user.company_id,
-                "created_by": str(current_user.id),
-            }
-        )
-
-    if not parsed_rows:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="No valid leads found in the uploaded CSV"
-        )
-
-    if strategy == 'manual':
-        assigned_user_id = target_user_id
-        for row in parsed_rows:
-            row['assigned_to'] = assigned_user_id
-            assigned_counts[assigned_user_id] += 1
-    else:
-        total = len(parsed_rows)
-        assign_count = len(employee_ids)
-        if assign_count == 0:
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="No assignable employees available"
-            )
-
-        if strategy == 'round-robin':
-            for idx, row in enumerate(parsed_rows):
-                assignee = employee_ids[idx % assign_count]
-                row['assigned_to'] = assignee
-                assigned_counts[assignee] += 1
-        elif strategy == 'evenly':
-            base = total // assign_count
-            remainder = total % assign_count
-            assignment_list = []
-            for idx_user, user_id in enumerate(employee_ids):
-                count = base + (1 if idx_user < remainder else 0)
-                assignment_list.extend([user_id] * count)
-            for row, assignee in zip(parsed_rows, assignment_list):
-                row['assigned_to'] = assignee
-                assigned_counts[assignee] += 1
-
-    valid_prospects = []
-    for row in parsed_rows:
-        row_number = row.pop("row")
-        try:
-            valid_prospects.append(SalesProspect(**row))
-        except Exception as exc:
-            skipped_rows.append({
-                "row": row_number,
-                "reason": f"Invalid prospect data: {str(exc)[:300]}",
-            })
-
-    if not valid_prospects:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="No valid leads found after database-model validation",
-        )
-
-    await SalesProspect.insert_many(valid_prospects)
-
-    assigned_breakdown = {}
-    for prospect in valid_prospects:
-        assigned_breakdown[prospect.assigned_to] = (
-            assigned_breakdown.get(prospect.assigned_to, 0) + 1
-        )
-    return {
-        "total_rows": total_input_rows,
-        "total_uploaded": len(valid_prospects),
-        "skipped_rows": len(skipped_rows),
-        "assigned_breakdown": assigned_breakdown,
-        "warnings": skipped_rows[:50],
-    }
-
-
-@router.get("/duplicates")
-async def detect_duplicates(
-    search: Optional[str] = None,
-    current_user: User = Depends(get_current_user)
-):
-    prospects = await _get_company_prospects(current_user)
-    duplicates = []
-    seen = {}
-    for prospect in prospects:
-        email, phone, name = _lead_identity_score(prospect)
-        keys = [key for key in [f"email:{email}" if email else "", f"phone:{phone}" if phone else "", f"name:{name}" if name else ""] if key]
-        if search:
-            q = search.strip().lower()
-            if q not in email and q not in phone and q not in name:
-                continue
-        for key in keys:
-            seen.setdefault(key, []).append(_serialize_prospect_identity(prospect))
-    for key, items in seen.items():
-        if len(items) > 1:
-            duplicates.append({"match_key": key, "leads": items})
-    return {"total_groups": len(duplicates), "groups": duplicates}
-
-
-@router.post("/merge")
-async def merge_prospects(
-    payload: LeadMergeRequest,
-    current_user: User = Depends(get_current_user)
-):
-    source = await SalesProspect.get(payload.source_lead_id)
-    target = await SalesProspect.get(payload.target_lead_id)
-    if not source or not target or source.deleted or target.deleted:
-        raise HTTPException(status_code=404, detail="Prospect not found")
-    if source.company_id != target.company_id:
-        raise HTTPException(status_code=400, detail="Leads must belong to the same company")
-    if current_user.role != UserRole.SUPER_ADMIN and source.company_id != current_user.company_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    for field in [
-        "first_name", "last_name", "country_code", "phone", "email", "contact_id",
-        "category_id", "interest_level", "estimated_close_date", "assigned_to",
-        "assigned_by", "current_stage", "due_date", "due_time", "remark",
-        "company_name", "crm_company_id", "relationship_type", "channel",
-        "designation", "owner_name", "owner_contact_no", "greeting_preference",
-        "status", "closed_date", "closed_by", "reason_for_lost", "won_amount",
-    ]:
-        value = getattr(source, field, None)
-        if value not in [None, "", []]:
-            setattr(target, field, value)
-
-    for field in ["tag", "nationality", "language", "product_ids"]:
-        source_values = getattr(source, field, None) or []
-        target_values = getattr(target, field, None) or []
-        merged = list(dict.fromkeys([*(target_values if isinstance(target_values, list) else []), *(source_values if isinstance(source_values, list) else [])]))
-        setattr(target, field, merged)
-
-    target.updated_at = datetime.utcnow()
-    await target.save()
-
-    source.deleted = True
-    source.updated_at = datetime.utcnow()
-    await source.save()
-
-    return {
-        "message": "Leads merged successfully",
-        "target_lead": {"id": str(target.id), "prospect_name": target.prospect_name},
-        "source_lead": {"id": str(source.id), "prospect_name": source.prospect_name, "deleted": True},
-    }
-
-
-@router.post("/bulk-merge")
-async def bulk_merge_prospects(
-    payload: BulkLeadMergeRequest,
-    current_user: User = Depends(get_current_user)
-):
-    """Merge multiple source leads into a single target lead using loops"""
-    
-    # Validate target lead exists
-    target = await SalesProspect.get(payload.target_lead_id)
-    if not target or target.deleted:
-        raise HTTPException(status_code=404, detail=f"Target lead {payload.target_lead_id} not found")
-    
-    # Check target lead access
-    if current_user.role != UserRole.SUPER_ADMIN and target.company_id != current_user.company_id:
-        raise HTTPException(status_code=403, detail="Access denied to target lead")
-    
-    # Initialize results tracking
-    merged_successfully = []
-    merge_failed = []
-    skipped_already_deleted = []
-    
-    # Loop through each source lead ID
-    for source_id in payload.source_lead_ids:
-        try:
-            # Fetch source lead
-            source = await SalesProspect.get(source_id)
-            
-            # Validation checks
-            if not source:
-                merge_failed.append({
-                    "source_lead_id": source_id,
-                    "reason": "Lead not found"
-                })
-                continue
-            
-            if source.deleted:
-                skipped_already_deleted.append({
-                    "source_lead_id": source_id,
-                    "reason": "Lead already deleted"
-                })
-                continue
-            
-            # Company validation
-            if source.company_id != target.company_id:
-                merge_failed.append({
-                    "source_lead_id": source_id,
-                    "reason": "Leads must belong to the same company"
-                })
-                continue
-            
-            # Access validation
-            if current_user.role != UserRole.SUPER_ADMIN and source.company_id != current_user.company_id:
-                merge_failed.append({
-                    "source_lead_id": source_id,
-                    "reason": "Access denied"
-                })
-                continue
-            
-            # Prevent merging a lead into itself
-            if str(source.id) == str(target.id):
-                merge_failed.append({
-                    "source_lead_id": source_id,
-                    "reason": "Cannot merge lead into itself"
-                })
-                continue
-            
-            # Merge scalar fields - only if source has value and target doesn't
-            scalar_fields = [
-                "first_name", "last_name", "country_code", "phone", "email", 
-                "contact_id", "category_id", "interest_level", "estimated_close_date",
-                "assigned_to", "assigned_by", "current_stage", "due_date", "due_time",
-                "remark", "company_name", "crm_company_id", "relationship_type",
-                "channel", "designation", "owner_name", "owner_contact_no",
-                "greeting_preference", "status", "closed_date", "closed_by",
-                "reason_for_lost", "won_amount"
-            ]
-            
-            for field in scalar_fields:
-                source_value = getattr(source, field, None)
-                target_value = getattr(target, field, None)
-                
-                # Update target if source has value and target doesn't
-                if source_value not in [None, "", []] and target_value in [None, ""]:
-                    setattr(target, field, source_value)
-            
-            # Merge list fields - combine and deduplicate
-            list_fields = ["tag", "nationality", "language", "product_ids"]
-            for field in list_fields:
-                source_values = getattr(source, field, None) or []
-                target_values = getattr(target, field, None) or []
-                
-                # Ensure both are lists
-                if not isinstance(source_values, list):
-                    source_values = []
-                if not isinstance(target_values, list):
-                    target_values = []
-                
-                # Merge and deduplicate while preserving order
-                merged_list = list(dict.fromkeys([*target_values, *source_values]))
-                setattr(target, field, merged_list)
-            
-            # Update target timestamp
-            target.updated_at = datetime.utcnow()
-            await target.save()
-            
-            # Mark source as deleted
-            source.deleted = True
-            source.updated_at = datetime.utcnow()
-            await source.save()
-            
-            merged_successfully.append({
-                "source_lead_id": source_id,
-                "source_lead_name": source.prospect_name,
-                "status": "merged"
-            })
-            
-        except Exception as e:
-            merge_failed.append({
-                "source_lead_id": source_id,
-                "reason": f"Error: {str(e)}"
-            })
-    
-    # Prepare summary
-    total_requested = len(payload.source_lead_ids)
-    total_merged = len(merged_successfully)
-    total_failed = len(merge_failed)
-    total_skipped = len(skipped_already_deleted)
-    
-    return {
-        "message": f"Bulk merge completed: {total_merged} merged, {total_failed} failed, {total_skipped} skipped",
-        "summary": {
-            "total_requested": total_requested,
-            "total_merged": total_merged,
-            "total_failed": total_failed,
-            "total_skipped": total_skipped
-        },
-        "target_lead": {
-            "id": str(target.id),
-            "prospect_name": target.prospect_name
-        },
-        "merged_successfully": merged_successfully,
-        "merge_failed": merge_failed,
-        "skipped_already_deleted": skipped_already_deleted
-    }
-    
-    if target_department_id:
-        department = await Department.get(target_department_id)
-        if (
-            not department
-            or department.deleted_at is not None
-            or department.company_id != current_user.company_id
-        ):
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Department not found",
-            )
-        assignable_query["department_id"] = target_department_id
-
-    assignable_users = await User.find(assignable_query).to_list()
+    ).to_list()
 
     if not assignable_users:
         raise HTTPException(
@@ -1058,7 +620,13 @@ async def bulk_merge_prospects(
             skipped_rows.append({"row": idx, "reason": "Missing name"})
             continue
 
-        status_value = _parse_import_status(row_norm.get('status'))
+        status_value = (row_norm.get('status') or ProspectStatus.ACTIVE.value).lower()
+        if status_value not in {status.value for status in ProspectStatus}:
+            skipped_rows.append({
+                "row": idx,
+                "reason": f"Invalid status '{status_value}'. Use active, won, lost, or closed",
+            })
+            continue
 
         interest_value = row_norm.get('interest_level') or InterestLevel.WARM.value
         try:

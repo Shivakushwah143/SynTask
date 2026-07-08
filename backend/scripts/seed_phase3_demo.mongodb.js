@@ -28,6 +28,7 @@ function upsertByFilter(collectionName, filter, onInsert, updates) {
     { upsert: true }
   );
   return demoDb[collectionName].findOne(filter);
+  
 }
 
 const company = upsertByFilter(
