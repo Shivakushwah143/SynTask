@@ -142,7 +142,11 @@ const withBoundary = (component) => (
 function App() {
   useTheme()
   const location = useLocation()
+
+  const withBoundary = (element) => <ErrorBoundary key={location.pathname}>{element}</ErrorBoundary>
+
   const setLoading = useUIStore?.getState?.().setLoading
+
 
   useEffect(() => {
     applySeoMeta(getSeoMeta(location.pathname))
