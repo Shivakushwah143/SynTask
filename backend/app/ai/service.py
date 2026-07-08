@@ -19,6 +19,7 @@ from app.ai.providers.openai import OpenAIProvider
 from app.ai.response_parser import ResponseParser
 from app.ai.role_engine import RoleEngine, RoleResolution
 from app.ai.tool_executor import ToolExecutor
+from app.ai.tools import ToolRegistry, build_default_tool_registry
 from app.core.config import settings
 from app.models.task import TaskStatus
 from app.models.user import User, UserRole
@@ -67,6 +68,7 @@ class AIService:
             emotion_detector=self.emotion_detector,
         )
         self.provider = provider or self._build_provider()
+        self.tool_registry: ToolRegistry = build_default_tool_registry()
 
     def _build_provider(self) -> AIProvider:
         provider_name = settings.AI_PROVIDER.lower().strip()

@@ -1,6 +1,11 @@
 import api from './axios'
 
 export const aiAPI = {
+  generateSalesAgent: async (payload = {}) => {
+    const response = await api.post('/ai/sales-agent', payload)
+    return response.data
+  },
+
   generateTaskPrioritization: async (payload = {}) => {
     const response = await api.post('/ai/task-prioritization', payload)
     return response.data
