@@ -4,18 +4,15 @@ import { format } from 'date-fns'
 import { ArrowRight, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
 import {
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
   LineChart,
   Line,
-  AreaChart,
-  Area,
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
+  Legend,
 } from 'recharts'
 import { useAuthStore } from '../store/authStore'
 import { dashboardAPI } from '../api/dashboard'
@@ -30,7 +27,13 @@ import { Badge, Button, EmptyState, PageHeader, SkeletonCard, SkeletonTable, Tab
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { attendanceAPI } from '../api/attendance'
 import { ChartTooltip } from '../components/charts/ChartTooltip'
+import { ChartCard } from '../components/charts/ChartCard'
+import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
+import DonutLegendChart from '../components/charts/DonutLegendChart'
+import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthData, buildTaskDuePriorityData } from './dashboardData'
 
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const PROJECT_STATUS_COLORS = { active: '#4285F4', planning: '#7C6FE0', completed: '#2FB47C', on_hold: '#FFB020' }
 
 const Dashboard = () => {
   const { user } = useAuthStore()
@@ -47,7 +50,7 @@ const Dashboard = () => {
   const [metrics, setMetrics] = useState(null)
   const [recent, setRecent] = useState(null)
   const [activity, setActivity] = useState([])
-
+  const [revenueMode, setRevenueMode] = useState('Accrual')
 
   useEffect(() => {
     let active = true
@@ -82,7 +85,6 @@ const Dashboard = () => {
         setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
         setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
 
-        // Load attendance metrics
         if (dashboardRole === ROLE.EMPLOYEE) {
           try {
             const attTodayRes = await attendanceAPI.getTodayAttendance()
@@ -102,7 +104,6 @@ const Dashboard = () => {
             console.error(e)
           }
         }
-
       } catch (error) {
         console.error('Error loading dashboard:', error)
       } finally {
@@ -115,10 +116,7 @@ const Dashboard = () => {
     }
   }, [])
 
-  const todayLabel = useMemo(
-    () => format(new Date(), 'EEEE, MMM d').toUpperCase(),
-    [],
-  )
+  const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d').toUpperCase(), [])
 
   const handleExport = async () => {
     try {
@@ -152,71 +150,64 @@ const Dashboard = () => {
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
   const taskSource = role === ROLE.EMPLOYEE ? recentTickets : recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
-  const dashboardCards = canSeeSalesWidgets
-    ? [
-        { label: 'Total Leads', value: metrics?.total_leads ?? 0 },
-        { label: 'New Leads', value: metrics?.new_leads ?? 0 },
-        { label: 'Qualified Leads', value: metrics?.qualified_leads ?? 0 },
-        { label: 'Active Deals', value: metrics?.active_deals ?? 0 },
-        { label: 'Revenue', value: metrics?.revenue ?? 0 },
-        { label: 'Won Deals', value: metrics?.won_deals ?? 0 },
-        { label: 'Lost Deals', value: metrics?.lost_deals ?? 0 },
-        { label: 'Projects', value: metrics?.projects ?? projects.length },
-        { label: 'Upcoming Meetings', value: metrics?.upcoming_meetings ?? upcomingMeetings.length },
-        { label: 'Tasks Due Today', value: metrics?.tasks_due_today ?? 0 },
-      ]
-    : [
-        { label: 'Projects', value: projects.length },
-        { label: 'Upcoming Meetings', value: upcomingMeetings.length },
-        { label: 'Tasks Due Today', value: metrics?.tasks_due_today ?? taskSource.length },
-        { label: 'High Priority Tasks', value: priorityTasks.length },
-      ]
+  const dueTodayCount = metrics?.tasks_due_today ?? 0
+
+  // ---- Chart datasets (replace the old static / zero-filled placeholders) ----
+
+  // Pipeline funnel -> donut with legend + percentages, styled like "Top Expenses"
   const funnelData = canSeeSalesWidgets
     ? [
-        { name: 'New Leads', value: metrics?.new_leads ?? 0, color: '#3b82f6' },
-        { name: 'Qualified', value: metrics?.qualified_leads ?? 0, color: '#22c55e' },
-        { name: 'Active Deals', value: metrics?.active_deals ?? 0, color: '#f59e0b' },
-        { name: 'Won', value: metrics?.won_deals ?? 0, color: '#10b981' },
-        { name: 'Lost', value: metrics?.lost_deals ?? 0, color: '#ef4444' },
+        { name: 'New Leads', value: metrics?.new_leads ?? 0 },
+        { name: 'Qualified', value: metrics?.qualified_leads ?? 0 },
+        { name: 'Active Deals', value: metrics?.active_deals ?? 0 },
+        { name: 'Won', value: metrics?.won_deals ?? 0 },
+        { name: 'Lost', value: metrics?.lost_deals ?? 0 },
       ]
     : []
+
+  // Revenue trend -> monthly bars, current month carries the live revenue figure
+  const currentMonthIndex = new Date().getMonth()
   const revenueTrend = canSeeSalesWidgets
-    ? [
-        { month: 'Jan', revenue: 0 },
-        { month: 'Feb', revenue: 0 },
-        { month: 'Mar', revenue: 0 },
-        { month: 'Apr', revenue: 0 },
-        { month: 'May', revenue: 0 },
-        { month: 'Jun', revenue: metrics?.revenue ?? 0 },
-      ]
+    ? MONTH_LABELS.slice(0, currentMonthIndex + 1).map((label, i) => ({
+        label,
+        primary: i === currentMonthIndex ? metrics?.revenue ?? 0 : 0,
+        secondary: i === currentMonthIndex ? metrics?.won_deals ?? 0 : 0,
+      }))
     : []
-  const leadSources = canSeeSalesWidgets
-    ? [
-        { name: 'Organic', value: 0 },
-        { name: 'Referral', value: 0 },
-        { name: 'Outbound', value: 0 },
-        { name: 'Paid', value: 0 },
-      ]
-    : []
+
   const conversionData = canSeeSalesWidgets
     ? [
-        { name: 'Lead', value: metrics?.total_leads ?? 0 },
-        { name: 'Qualified', value: metrics?.qualified_leads ?? 0 },
-        { name: 'Won', value: metrics?.won_deals ?? 0 },
+        { name: 'Lead', value: metrics?.total_leads ?? 0, route: '/crm/leads' },
+        { name: 'Qualified', value: metrics?.qualified_leads ?? 0, route: '/crm/pipeline' },
+        { name: 'Won', value: metrics?.won_deals ?? 0, route: '/crm/pipeline' },
       ]
     : []
-  const taskOverview = [
-    { name: 'Due Today', value: metrics?.tasks_due_today ?? 0 },
-    { name: 'High Priority', value: priorityTasks.length },
-    { name: 'Open', value: taskSource.length },
-  ]
+
   const monthlyPerformance = canSeeSalesWidgets
     ? [
-        { name: 'Leads', value: metrics?.new_leads ?? 0 },
-        { name: 'Deals', value: metrics?.active_deals ?? 0 },
-        { name: 'Projects', value: metrics?.projects ?? projects.length },
+        { name: 'Leads', value: metrics?.new_leads ?? 0, route: '/crm/leads' },
+        { name: 'Deals', value: metrics?.active_deals ?? 0, route: '/crm/pipeline' },
+        { name: 'Projects', value: metrics?.projects ?? projects.length, route: '/projects' },
       ]
     : []
+
+  // Team attendance snapshot -> donut instead of a plain number strip
+  const attendanceBreakdown = attendanceStats
+    ? [
+        { name: 'Working Now', value: attendanceStats.working_now ?? 0, route: '/live-monitor' },
+        { name: 'On Break', value: attendanceStats.on_break ?? 0, route: '/live-monitor' },
+        { name: 'Offline', value: attendanceStats.offline ?? 0, route: '/live-monitor' },
+      ]
+    : []
+
+  const taskDuePriorityData = buildTaskDuePriorityData(recentTasks)
+  const projectHealthChartData = buildProjectHealthData(projects)
+
+  const navigateFromChart = (entry, fallback) => {
+    const route = entry?.payload?.route || entry?.route || fallback
+    if (route) navigate(route)
+  }
+
   const healthColumns = [
     { key: 'name', header: 'Project' },
     { key: 'status', header: 'Status', render: (row) => <Badge label={row.status || 'active'} colorKey={row.status || 'active'} /> },
@@ -234,7 +225,6 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-
         title="Dashboard"
         description="Command center for work, meetings, and AI briefings."
         actions={(
@@ -283,80 +273,33 @@ const Dashboard = () => {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {dashboardCards.map((card) => (
-          <div key={card.label} className="card p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{card.label}</p>
-            <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-gray-100">
-              {typeof card.value === 'number' ? card.value : card.value}
-            </p>
-          </div>
-        ))}
-      </section>
+      {/* {canSeeSalesWidgets ? (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {dashboardCards.map((card) => (
+            <div key={card.label} className="card p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{card.label}</p>
+              <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-gray-100">{card.value}</p>
+            </div>
+          ))}
+        </section>
+      ) : null} */}
 
       {canSeeSalesWidgets ? (
         <section className="grid gap-6 xl:grid-cols-2">
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Pipeline Funnel</h2>
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={funnelData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={95} paddingAngle={3}>
-                    {funnelData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
-                  </Pie>
-                  <ChartTooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Revenue Trend</h2>
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revenueTrend}>
-                  <defs>
-                    <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.03} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <ChartTooltip />
-                  <Area type="monotone" dataKey="revenue" stroke="#2563eb" fill="url(#revenueFill)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Lead Sources</h2>
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={leadSources}>
-                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <ChartTooltip />
-                  <Bar dataKey="value" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Conversion Rate</h2>
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={conversionData}>
-                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <ChartTooltip />
-                  <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={3} dot={{ r: 4 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          <IncomeExpenseBarChart
+            title="Revenue and Deals"
+            data={revenueTrend}
+            primaryLabel="Revenue"
+            secondaryLabel="Won Deals"
+            primaryTotal={`₹${(metrics?.revenue ?? 0).toLocaleString('en-IN')}`}
+            secondaryTotal={metrics?.won_deals ?? 0}
+            toggleOptions={['Accrual', 'Cash']}
+            activeToggle={revenueMode}
+            onToggle={setRevenueMode}
+            footnote="Revenue and deal values shown for the current fiscal year."
+            onBarClick={() => navigate('/crm/pipeline')}
+          />
+          <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline' }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
         </section>
       ) : (
         <section className="card p-5">
@@ -366,40 +309,39 @@ const Dashboard = () => {
       )}
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <div className="card p-5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Tasks Overview</h2>
-          <div className="mt-4 h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={taskOverview}>
-                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                <YAxis tickLine={false} axisLine={false} />
-                <ChartTooltip />
-                <Bar dataKey="value" fill="#14b8a6" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
         {canSeeSalesWidgets ? (
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Monthly Performance</h2>
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={monthlyPerformance}>
-                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <ChartTooltip />
-                  <Line type="monotone" dataKey="value" stroke="#0f766e" strokeWidth={3} dot={{ r: 4 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          <>
+            <ChartCard title="Conversion Rate">
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={conversionData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/crm/pipeline')}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <ChartTooltip />
+                    <Line type="monotone" dataKey="value" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 5, fill: '#FF8A4C', cursor: 'pointer' }} activeDot={{ r: 7, onClick: (_, item) => navigateFromChart(item, '/crm/pipeline') }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+            <ChartCard title="Monthly Performance">
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyPerformance} barCategoryGap="35%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <ChartTooltip />
+                    <Bar dataKey="value" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} className="cursor-pointer" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+          </>
         ) : (
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Monthly Performance</h2>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">This chart is available to sales-oriented roles only.</p>
-          </div>
+          <ChartCard title="Monthly Performance">
+            <p className="text-sm text-gray-500 dark:text-gray-400">This chart is available to sales-oriented roles only.</p>
+          </ChartCard>
         )}
       </section>
 
@@ -442,9 +384,9 @@ const Dashboard = () => {
         </section>
       ) : null}
 
-      {/* Managers Attendance Dashboard Stats */}
+      {/* Managers Attendance Dashboard */}
       {role !== ROLE.EMPLOYEE && attendanceStats ? (
-        <section className="bg-primary-50/20 dark:bg-primary-950/10 p-5 rounded-2xl border border-primary-500/20 space-y-3">
+        <section className="bg-primary-50/20 dark:bg-primary-950/10 p-5 rounded-2xl border border-primary-500/20 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-primary-800 dark:text-primary-300 uppercase tracking-wider flex items-center">
               <span className="relative flex h-2 w-2 mr-2">
@@ -457,36 +399,80 @@ const Dashboard = () => {
               Live Monitor Board <ArrowRight className="h-4 w-4 ml-1 inline" />
             </Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500 uppercase">Total Employees</p>
-              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-150">{attendanceStats.total_employees}</p>
-            </div>
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500">Present Today</p>
-              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-150">{attendanceStats.present_today}</p>
-            </div>
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500">Working Now</p>
-              <p className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">{attendanceStats.working_now}</p>
-            </div>
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500">On Break</p>
-              <p className="mt-2 text-2xl font-bold text-amber-600 dark:text-amber-400">{attendanceStats.on_break}</p>
-            </div>
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500">Offline</p>
-              <p className="mt-2 text-2xl font-bold text-gray-400">{attendanceStats.offline}</p>
-            </div>
+          <div className="grid gap-6 xl:grid-cols-[1fr_1.4fr]">
+            <DonutLegendChart title="Live Status Breakdown" data={attendanceBreakdown} emptyLabel="No activity yet today" onItemClick={(item) => navigateFromChart(item, '/live-monitor')} />
+            <ChartCard title="Attendance Signal" period="Today">
+              <div className="grid h-full min-h-72 content-center gap-3 sm:grid-cols-3">
+                {[
+                  ['Present', attendanceStats.present_today ?? 0],
+                  ['Working', attendanceStats.working_now ?? 0],
+                  ['On break', attendanceStats.on_break ?? 0],
+                ].map(([label, value]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => navigate('/live-monitor')}
+                    title={`${label}: ${value}`}
+                    aria-label={`${label}: ${value}`}
+                    className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-primary-300 hover:bg-primary-50/50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-primary-700 dark:hover:bg-primary-950/30"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</p>
+                    <p className="mt-3 text-3xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+                  </button>
+                ))}
+              </div>
+            </ChartCard>
           </div>
         </section>
       ) : null}
 
       <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
 
-
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-        <div className="card p-5">
+        <div className="space-y-6">
+          <ChartCard title="Task Due Dates by Priority" period="Next 7 Days">
+            {taskDuePriorityData.length ? (
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={taskDuePriorityData} barCategoryGap="24%" margin={{ top: 10, right: 12, left: 0, bottom: 18 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/tasks')}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                    <XAxis
+                      dataKey="shortName"
+                      interval={0}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={6}
+                      tick={{ fontSize: 11, fill: '#9ca3af' }}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11, fill: '#9ca3af' }}
+                      label={{ value: 'Days remaining', angle: -90, position: 'insideLeft', style: { fill: '#9ca3af', fontSize: 11 } }}
+                    />
+                    <ChartTooltip labelFormatter={(_, point) => point.name} valueFormatter={(value, key) => key === 'daysRemaining' ? `${value} day${value === 1 ? '' : 's'}` : value} />
+                    <Bar dataKey="daysRemaining" name="Days Remaining" radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer">
+                      {taskDuePriorityData.map((entry) => (
+                        <Cell key={entry.id || entry.name} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex h-72 items-center justify-center text-sm text-gray-400">No dated tasks in the next week</div>
+            )}
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-gray-100 pt-4 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+              {Object.entries(TASK_PRIORITY_COLORS).map(([priority, color]) => (
+                <span key={priority} className="inline-flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                  {priority.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                </span>
+              ))}
+            </div>
+          </ChartCard>
+          <div className="card p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Today&apos;s work</h2>
@@ -519,6 +505,7 @@ const Dashboard = () => {
             )) : (
               <EmptyState title="No work in view" description="No tasks or requests need your attention right now." />
             )}
+          </div>
           </div>
         </div>
 
@@ -562,6 +549,29 @@ const Dashboard = () => {
           </div>
           {projects.length ? <Table columns={healthColumns} data={projects} /> : <EmptyState title="No projects" description="Projects will appear here once they are created." />}
         </div>
+        <ChartCard title="Project Health Graph" period="Current Projects">
+          {projectHealthChartData.length ? (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={projectHealthChartData} layout="vertical" margin={{ left: 10, right: 20 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
+                  <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                  <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <YAxis type="category" dataKey="name" width={96} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <ChartTooltip />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  {DASHBOARD_PROJECT_STATUSES.map((status) => (
+                    <Bar key={status} dataKey={status} name={status.replace(/_/g, ' ')} stackId="status" fill={PROJECT_STATUS_COLORS[status]} radius={[0, 5, 5, 0]} className="cursor-pointer" />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="flex h-72 items-center justify-center text-sm text-gray-400">No projects to chart yet</div>
+          )}
+        </ChartCard>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="card p-5">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Recent activity</h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Latest changes across your workspace.</p>
@@ -580,14 +590,24 @@ const Dashboard = () => {
 
       <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <div className="card p-5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Recent Leads / Deals / Projects</h2>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Operating Signals Before You Ask</h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Recent project movement and active notifications in one scan.</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/projects')}>
+              Projects
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
           <div className="mt-4 space-y-3">
             {(recent?.projects || []).slice(0, 4).map((item) => (
-              <div key={item.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+              <button key={item.id} type="button" onClick={() => navigate(item.id ? `/projects/${item.id}/board` : '/projects')} className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800">
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.name}</p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}</p>
-              </div>
+              </button>
             ))}
+            {!(recent?.projects || []).length ? <EmptyState title="No operating signals" description="Project movement will appear here as work changes." /> : null}
           </div>
         </div>
         <div className="card p-5">
