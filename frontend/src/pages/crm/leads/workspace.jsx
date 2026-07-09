@@ -23,7 +23,7 @@ export default function CRMLeadWorkspacePage() {
   const [timelineSearch, setTimelineSearch] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
 
-  const activeTab = searchParams.get(ACTIVE_TAB_KEY) || 'ai'
+  const activeTab = searchParams.get(ACTIVE_TAB_KEY) || 'overview'
 
   const leadQuery = useQuery(
     [WORKSPACE_QUERY_KEY, leadId],
@@ -149,8 +149,7 @@ export default function CRMLeadWorkspacePage() {
     )
   } else {
     body = (
-      <div className="space-y-6">
-        <LeadSummaryCards lead={lead} />
+      <div className="space-y-4">
         <LeadOverview lead={lead} />
       </div>
     )
@@ -204,7 +203,7 @@ export default function CRMLeadWorkspacePage() {
     <>
       <LeadWorkspace
         title={lead.company_name || lead.prospect_name || 'Lead workspace'}
-        description="Single source of truth for this CRM lead."
+        description="Important lead details, activity, notes, files, and deal context."
         breadcrumbs={['CRM', 'Pipeline', leadLabel]}
         lead={lead}
         activeTab={activeTab}
