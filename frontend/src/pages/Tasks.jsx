@@ -219,7 +219,7 @@ const Tasks = () => {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
         <div>
           <h1 className="text-lg font-bold text-gray-900">Tasks</h1>
-          <p className="text-gray-600 text-xs mt-0.5">Manage and track your tasks</p>
+          <p className="text-gray-600 text-xs mt-0.5">Track work and priorities.</p>
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle />
@@ -232,7 +232,7 @@ const Tasks = () => {
               className="btn btn-primary flex items-center justify-center w-full sm:w-auto"
             >
               <Plus className="h-4 w-4 mr-1.5" />
-              Create Task
+              New Task
             </button>
           )}
         </div>
@@ -263,7 +263,7 @@ const Tasks = () => {
         {showFilters && (
           <div className="mt-4 grid grid-cols-2 gap-4 pt-4 border-t">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
               <select
                 value={filters.priority}
                 onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
@@ -277,7 +277,7 @@ const Tasks = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assignee</label>
               <select
                 value={filters.assigned_to}
                 onChange={(e) => setFilters({ ...filters, assigned_to: e.target.value })}
@@ -293,7 +293,7 @@ const Tasks = () => {
               </div>
             {isCompanyAdmin && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                 <select
                   value={filters.department_id}
                   onChange={(e) => setFilters({ ...filters, department_id: e.target.value })}
@@ -439,11 +439,11 @@ const Tasks = () => {
       {canManageTasks && showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Create New Task</h2>
+              <h2 className="text-xl font-bold mb-4">New task</h2>
             <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title *
+                  Title
                 </label>
                 <input
                   type="text"
@@ -455,7 +455,7 @@ const Tasks = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
+                  Details
                 </label>
                 <textarea
                   name="description"
@@ -466,7 +466,7 @@ const Tasks = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Assign To
+                  Assignee
                 </label>
                 <select
                   name="assigned_to"
@@ -486,8 +486,8 @@ const Tasks = () => {
                 {!loadingUsers && visibleAssignableUsers.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">
                     {userRole === ROLE.ADMIN 
-                      ? 'No leads or employees available. Create users first.'
-                      : 'No employees available. Create employees first.'}
+                      ? 'No leads or employees available yet.'
+                      : 'No employees available yet.'}
                   </p>
                 )}
               </div>
@@ -528,7 +528,7 @@ const Tasks = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Due Date
+                  Due date
                 </label>
                 <NaturalDateInput
                   value={dueDateValue}
@@ -543,7 +543,7 @@ const Tasks = () => {
                   disabled={submitting}
                   className="btn btn-primary flex-1"
                 >
-                  {submitting ? 'Creating...' : 'Create Task'}
+                  {submitting ? 'Creating...' : 'Create'}
                 </button>
                 <button
                   type="button"

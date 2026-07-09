@@ -1,7 +1,7 @@
 """
 Task Management Endpoints
 """
-from fastapi import APIRouter, HTTPException, status, Depends, Form
+from fastapi import APIRouter, HTTPException, status, Depends, Form, BackgroundTasks
 from typing import Optional
 from datetime import datetime
 from bson import ObjectId
@@ -37,6 +37,91 @@ async def _resolve_department(company_id: str, department_id: Optional[str]):
             detail="Invalid department",
         )
     return department
+
+
+async def _send_task_side_effects(task: Task, current_user: User, assignee, project):
+    """
+    Runs AFTER the HTTP response has already been sent to the client
+    (scheduled via BackgroundTasks). Any failure here (Redis down, email
+    service down, etc.) must never block or fail the original request.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # --- Email notification ---
+    if task.assigned_to and assignee:
+        try:
+            from app.worker.tasks.email_tasks import send_task_assignment_email_task
+            project_name = None
+            if project is not None:
+                project_name = getattr(project, "name", None) or getattr(project, "project_name", None)
+
+            send_task_assignment_email_task.apply_async(
+                args=[{
+                    "assignee_email": assignee.email,
+                    "assignee_name": assignee.full_name(),
+                    "task_title": task.title,
+                    "task_description": task.description or "",
+                    "task_priority": task.priority.value,
+                    "task_due_date": task.due_date.isoformat() if task.due_date else None,
+                    "assigned_by_name": current_user.full_name(),
+                    "task_id": str(task.id),
+                    "project_name": project_name,
+                }],
+                retry=False,   # don't retry publishing to broker if Redis is down
+                expires=30,    # drop the job if it can't be picked up within 30s
+            )
+        except Exception as e:
+            logger.error(f"Failed to queue task assignment email: {str(e)}")
+
+    # --- In-app notification ---
+    if task.assigned_to:
+        try:
+            from app.models.notification import Notification, NotificationType
+            notification = Notification(
+                company_id=current_user.company_id,
+                user_id=task.assigned_to,
+                type=NotificationType.TASK_ASSIGNED,
+                title="New Task Assigned",
+                message=f"You have been assigned a new task: {task.title}",
+                related_id=str(task.id),
+                related_type="task",
+            )
+            await notification.insert()
+        except Exception as e:
+            logger.error(f"Failed to create notification: {str(e)}")
+
+    # --- Cache invalidation ---
+    try:
+        await cache_delete_pattern(f"dashboard:stats:{current_user.company_id}:*")
+    except Exception as e:
+        logger.error(f"Failed to invalidate cache: {str(e)}")
+
+    # --- Domain event publish ---
+    try:
+        await publish_event(
+            build_domain_event(
+                event_name="TaskCreated",
+                aggregate_type="task",
+                aggregate_id=str(task.id),
+                company_id=str(current_user.company_id),
+                actor_id=str(current_user.id),
+                payload={
+                    "title": task.title,
+                    "description": task.description,
+                    "status": task.status.value,
+                    "priority": task.priority.value,
+                    "project_id": task.project_id,
+                    "department_id": task.department_id,
+                    "tags": task.tags,
+                    "updated_at": task.updated_at.isoformat() if getattr(task, "updated_at", None) else None,
+                },
+                project_id=str(task.project_id) if task.project_id else None,
+                metadata={"source": "task_create"},
+            )
+        )
+    except Exception as e:
+        logger.error(f"Failed to publish TaskCreated event: {str(e)}")
 
 
 @router.get("/")
@@ -85,7 +170,7 @@ async def list_tasks(
         # Use MongoDB $in operator
         query["assigned_to"] = {"$in": subordinate_ids}
     # Admin and Super Admin see all tasks (no additional filter)
-    
+
     if status_filter:
         query["status"] = status_filter
     if priority:
@@ -101,10 +186,10 @@ async def list_tasks(
         query["project_id"] = project_id
     if department_id:
         query["department_id"] = department_id
-    
+
     tasks = await Task.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
     total = await Task.find(query).count()
-    
+
     return {
         "tasks": [
             {
@@ -130,6 +215,7 @@ async def list_tasks(
 
 @router.post("/")
 async def create_task(
+    background_tasks: BackgroundTasks,
     title: str = Form(...),
     description: Optional[str] = Form(None),
     assigned_to: Optional[str] = Form(None),
@@ -156,7 +242,7 @@ async def create_task(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User must belong to a company"
         )
-    
+
     # Validate priority
     try:
         task_priority = TaskPriority(priority.lower())
@@ -165,7 +251,7 @@ async def create_task(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid priority. Must be one of: {[p.value for p in TaskPriority]}"
         )
-    
+
     # Parse due date
     parsed_due_date = None
     if due_date:
@@ -176,7 +262,7 @@ async def create_task(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid due date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)"
             )
-    
+
     # Parse tags
     parsed_tags = []
     if tags:
@@ -184,7 +270,7 @@ async def create_task(
             parsed_tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
         except:
             parsed_tags = []
-    
+
     # Convert empty strings to None for optional fields (do this before validation)
     project_id = project_id.strip() if project_id and project_id.strip() else None
     # Keep original value from form so we can use same id in task (fetch by project_id)
@@ -193,7 +279,7 @@ async def create_task(
     sprint_id = sprint_id.strip() if sprint_id and sprint_id.strip() else None
     parent_task_id = parent_task_id.strip() if parent_task_id and parent_task_id.strip() else None
     assigned_to = assigned_to.strip() if assigned_to and assigned_to.strip() else None
-    
+
     # Validate assigned user if provided
     assignee = None
     if assigned_to:
@@ -208,28 +294,29 @@ async def create_task(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Assigned user must be from the same company"
             )
-    
+
     # Validate project if provided - use helper function to find by user-provided project_id or MongoDB _id
+    project = None
     if project_id:
         from app.api.dependencies import get_project_by_id
         import logging
         logger = logging.getLogger(__name__)
-        
+
         project, user_project_id = await get_project_by_id(project_id, current_user.company_id)
-        
+
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Project not found with id: {project_id}"
             )
-        
+
         # Verify company access
         if project.company_id != current_user.company_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this project"
             )
-        
+
         # Task must store same project_id so we can fetch tasks by project. Prefer:
         # 1) request value if it looks like custom id (e.g. ak-001), else
         # 2) project.project_id, else 3) MongoDB _id
@@ -244,7 +331,7 @@ async def create_task(
         else:
             project_id = str(project.id)
             logger.warning(f"Task creation: Using MongoDB _id={project_id} as fallback")
-    
+
     # Validate epic if provided
     if epic_id:
         from app.models.project import Epic
@@ -254,7 +341,7 @@ async def create_task(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Epic not found"
             )
-    
+
     # Validate sprint if provided
     if sprint_id:
         from app.models.project import Sprint
@@ -286,75 +373,14 @@ async def create_task(
         story_points=story_points,
         estimated_hours=estimated_hours,
     )
-    
+
+    # --- Save the task. This is the only DB write that MUST succeed before
+    # we respond. Everything else (email, notification, cache, event) is
+    # non-critical and happens in the background AFTER the response is sent. ---
     await task.insert()
-    await cache_delete_pattern(f"dashboard:stats:{current_user.company_id}:*")
 
-    # Send email notification if task is assigned
-    if assigned_to and assignee:
-        try:
-            from app.worker.tasks.email_tasks import send_task_assignment_email_task
-            # Safely determine project name if a valid project was loaded above
-            project_name = None
-            if "project" in locals() and project is not None:
-                project_name = getattr(project, "name", None) or getattr(project, "project_name", None)
-
-            send_task_assignment_email_task.delay({
-                "assignee_email": assignee.email,
-                "assignee_name": assignee.full_name(),
-                "task_title": title,
-                "task_description": description or "",
-                "task_priority": task_priority.value,
-                "task_due_date": parsed_due_date.isoformat() if parsed_due_date else None,
-                "assigned_by_name": current_user.full_name(),
-                "task_id": str(task.id),
-                "project_name": project_name,
-            })
-        except Exception as e:
-            # Log error but don't fail the request
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to send task assignment email: {str(e)}")
-    
-    # Create notification for assigned user
-    if assigned_to:
-        try:
-            from app.models.notification import Notification, NotificationType
-            notification = Notification(
-                company_id=current_user.company_id,
-                user_id=assigned_to,
-                type=NotificationType.TASK_ASSIGNED,
-                title="New Task Assigned",
-                message=f"You have been assigned a new task: {title}",
-                related_id=str(task.id),
-                related_type="task",
-            )
-            await notification.insert()
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to create notification: {str(e)}")
-
-    await publish_event(
-        build_domain_event(
-            event_name="TaskCreated",
-            aggregate_type="task",
-            aggregate_id=str(task.id),
-            company_id=str(current_user.company_id),
-            actor_id=str(current_user.id),
-            payload={
-                "title": task.title,
-                "description": task.description,
-                "status": task.status.value,
-                "priority": task.priority.value,
-                "project_id": task.project_id,
-                "department_id": task.department_id,
-                "tags": task.tags,
-                "updated_at": task.updated_at.isoformat() if getattr(task, "updated_at", None) else None,
-            },
-            project_id=str(task.project_id) if task.project_id else None,
-            metadata={"source": "task_create"},
-        )
+    background_tasks.add_task(
+        _send_task_side_effects, task, current_user, assignee, project
     )
 
     return {
@@ -381,26 +407,26 @@ async def get_task(
 ):
     """Get a specific task by ID"""
     task = await Task.get(task_id)
-    
+
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
-    
+
     # Check access permissions
     check_company_access(current_user, task.company_id)
-    
+
     # Get assigned user details
     assigned_user = None
     if task.assigned_to:
         assigned_user = await User.get(task.assigned_to)
-    
-    # Get created by user details  
+
+    # Get created by user details
     created_by_user = None
     if task.created_by:
         created_by_user = await User.get(task.created_by)
-    
+
     return {
         "id": str(task.id),
         "title": task.title,
@@ -430,15 +456,15 @@ async def update_task_status(
 ):
     """Update task status"""
     task = await Task.get(task_id)
-    
+
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
-    
+
     check_company_access(current_user, task.company_id)
-    
+
     # Validate new status
     try:
         task_status = TaskStatus(new_status.lower())
@@ -447,7 +473,7 @@ async def update_task_status(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid status. Must be one of: {[s.value for s in TaskStatus]}"
         )
-    
+
     # Update status and trigger automation asynchronously when changed.
     task = await TaskService.update_status(task, task_status, str(current_user.id))
 
@@ -472,7 +498,7 @@ async def update_task_status(
             metadata={"source": "task_status_update"},
         )
     )
-    
+
     return {
         "id": str(task.id),
         "status": task.status.value,
@@ -487,22 +513,22 @@ async def get_task_comments(
 ):
     """Get all comments for a task"""
     from app.models.task import TaskComment
-    
+
     task = await Task.get(task_id)
-    
+
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
-    
+
     check_company_access(current_user, task.company_id)
-    
+
     # Find all comments for this task
     task_comments = await TaskComment.find(
         TaskComment.task_id == task_id
     ).sort("-created_at").to_list()
-    
+
     return {
         "comments": [
             {
@@ -526,17 +552,17 @@ async def add_task_comment(
 ):
     """Add a comment to a task"""
     from app.models.task import TaskComment
-    
+
     task = await Task.get(task_id)
-    
+
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
-    
+
     check_company_access(current_user, task.company_id)
-    
+
     # Create new comment document
     comment = TaskComment(
         task_id=task_id,
@@ -546,9 +572,9 @@ async def add_task_comment(
         content=content,
         created_at=datetime.utcnow()
     )
-    
+
     await comment.insert()
-    
+
     # Update task's updated_at
     task.updated_at = datetime.utcnow()
     await task.save()
@@ -572,7 +598,7 @@ async def add_task_comment(
             metadata={"source": "task_comment_create"},
         )
     )
-    
+
     return {
         "id": str(comment.id),
         "message": "Comment added successfully",
@@ -597,7 +623,7 @@ async def get_task_subtasks(
         Task.parent_task_id == task_id,
         Task.company_id == current_user.company_id
     ).to_list()
-    
+
     return {
         "subtasks": [
             {
@@ -633,15 +659,15 @@ async def update_task(
 ):
     """Update task details"""
     task = await Task.get(task_id)
-    
+
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
-    
+
     check_company_access(current_user, task.company_id)
-    
+
     # Update fields if provided
     if title is not None:
         task.title = title
@@ -729,7 +755,7 @@ async def update_task(
         task.story_points = story_points if story_points != '' else None
     if estimated_hours is not None:
         task.estimated_hours = float(estimated_hours) if estimated_hours != '' else None
-    
+
     task.updated_at = datetime.utcnow()
     await task.save()
 
@@ -754,12 +780,12 @@ async def update_task(
             metadata={"source": "task_update"},
         )
     )
-    
+
     # Get assigned user details for response
     assigned_user = None
     if task.assigned_to:
         assigned_user = await User.get(task.assigned_to)
-    
+
     return {
         "id": str(task.id),
         "title": task.title,
@@ -783,19 +809,19 @@ async def add_task_attachment(
 ):
     """Add an attachment to a task"""
     task = await Task.get(task_id)
-    
+
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
-    
+
     check_company_access(current_user, task.company_id)
-    
+
     # Initialize attachments list if it doesn't exist
     if not hasattr(task, 'attachments') or task.attachments is None:
         task.attachments = []
-    
+
     # Add file URL to attachments (avoid duplicates)
     if file_url not in task.attachments:
         task.attachments.append(file_url)
@@ -819,7 +845,7 @@ async def add_task_attachment(
                 metadata={"source": "task_attachment_add"},
             )
         )
-    
+
     return {
         "id": str(task.id),
         "attachments": task.attachments,

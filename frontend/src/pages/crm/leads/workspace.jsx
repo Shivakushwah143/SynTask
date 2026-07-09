@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
+import { EmailComposer } from '../../../components/EmailComposer'
 import { Button } from '../../../components/ui'
 import { LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadTasksTab, LeadWorkspace } from './components'
 import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
@@ -20,6 +21,7 @@ export default function CRMLeadWorkspacePage() {
   const { leadId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const [timelineSearch, setTimelineSearch] = useState('')
+  const [composerOpen, setComposerOpen] = useState(false)
 
   const activeTab = searchParams.get(ACTIVE_TAB_KEY) || 'ai'
 
@@ -84,6 +86,8 @@ export default function CRMLeadWorkspacePage() {
       return next
     }, { replace: true })
   }, [setSearchParams])
+
+  const openComposer = useCallback(() => setComposerOpen(true), [])
 
   let body
   if (activeTab === 'notes') body = <LeadNotesTab leadId={leadId} lead={lead} />
@@ -197,17 +201,33 @@ export default function CRMLeadWorkspacePage() {
   }
 
   return (
-    <LeadWorkspace
-      title={lead.company_name || lead.prospect_name || 'Lead workspace'}
-      description="Single source of truth for this CRM lead."
-      breadcrumbs={['CRM', 'Pipeline', leadLabel]}
-      lead={lead}
-      activeTab={activeTab}
-      onTabChange={handleTabChange}
-      onBack={() => navigate('/crm/pipeline')}
-      onRefresh={handleRefresh}
-      body={body}
-      sidebar={<LeadSidebar lead={lead} />}
-    />
+    <>
+      <LeadWorkspace
+        title={lead.company_name || lead.prospect_name || 'Lead workspace'}
+        description="Single source of truth for this CRM lead."
+        breadcrumbs={['CRM', 'Pipeline', leadLabel]}
+        lead={lead}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        onBack={() => navigate('/crm/pipeline')}
+        onRefresh={handleRefresh}
+        onSendEmail={openComposer}
+        body={body}
+        sidebar={<LeadSidebar lead={lead} onSendEmail={openComposer} />}
+      />
+      <EmailComposer
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        initialData={{
+          to: lead?.email ? [{ email: lead.email, name: lead.prospect_name || lead.company_name || '' }] : [],
+          subject: lead?.company_name ? `Hello ${lead.company_name}` : `Hello ${lead?.prospect_name || 'there'}`,
+          html: '<p>Hi,</p><p></p>',
+          text: 'Hi,',
+          related_entity_type: 'lead',
+          related_entity_id: leadId,
+          related_module: 'crm',
+        }}
+      />
+    </>
   )
 }

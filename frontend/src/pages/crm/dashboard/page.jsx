@@ -61,8 +61,6 @@ export default function CRMDashboardPage() {
     return !Number.isNaN(timestamp.getTime()) && isSameDay(timestamp, today)
   })
 
-  const recentActivity = activities.slice(0, 5)
-
   const upcomingMeetings = meetings
     .filter((meeting) => {
       if (!meeting?.meeting_date) return false
@@ -286,8 +284,8 @@ export default function CRMDashboardPage() {
         </CRMSection>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <CRMSection title="Today's Activities" description="Current-day activity from the existing activity timeline.">
+      <div className="grid gap-6 xl:grid-cols-2">
+        <CRMSection title="Today's Activities" description="Current-day activity from the shared timeline.">
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((item) => (
@@ -360,41 +358,6 @@ export default function CRMDashboardPage() {
               icon={CalendarDays}
               title="No upcoming meetings"
               description="Use the existing meetings module to schedule the next client touchpoint."
-            />
-          )}
-        </CRMSection>
-
-        <CRMSection title="Recent Activity" description="Latest updates from the shared activity stream.">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((item) => (
-                <div key={item} className="rounded-2xl border border-surface-border/80 p-4">
-                  <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="mt-2 h-4 w-1/3" />
-                </div>
-              ))}
-            </div>
-          ) : recentActivity.length ? (
-            <div className="space-y-3">
-              {recentActivity.map((activity) => (
-                <article
-                  key={`recent-${activity.entity_type}-${activity.id}`}
-                  className="rounded-2xl border border-surface-border/80 p-4 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/60"
-                >
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {activity.title}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {activity.entity_type} | {formatDateTime(activity.timestamp)}
-                  </p>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <CRMEmptyState
-              icon={Clock3}
-              title="No recent activity"
-              description="The activity stream is connected, but there is no new data to show yet."
             />
           )}
         </CRMSection>
