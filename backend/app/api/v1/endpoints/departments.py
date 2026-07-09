@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.dependencies import get_current_user
-from app.models.department import Department
+from app.models.department import Department, DepartmentType
 from app.models.task import Task
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.departments import DepartmentCreateRequest, DepartmentUpdateRequest
@@ -49,6 +49,9 @@ def _serialize_department(department: Department, manager_name: str | None = Non
     return {
         "id": str(department.id),
         "name": department.name,
+        "department_type": getattr(department, "department_type", DepartmentType.OPERATIONS).value
+        if not isinstance(getattr(department, "department_type", DepartmentType.OPERATIONS), str)
+        else getattr(department, "department_type", DepartmentType.OPERATIONS),
         "manager_id": department.manager_id,
         "manager_name": manager_name,
         "created_at": department.created_at,
@@ -96,6 +99,7 @@ async def create_department(
     department = Department(
         name=name,
         company_id=current_user.company_id,
+        department_type=payload.department_type,
         manager_id=str(manager.id) if manager else None,
     )
     await department.insert()
@@ -119,6 +123,7 @@ async def update_department(
     manager = await _resolve_manager(current_user.company_id, payload.manager_id)
 
     department.name = name
+    department.department_type = payload.department_type
     department.manager_id = str(manager.id) if manager else None
     department.updated_at = datetime.utcnow()
     await department.save()

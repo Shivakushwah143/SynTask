@@ -156,6 +156,17 @@ async def create_task(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User must belong to a company"
         )
+
+    if not due_date or not due_date.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="due_date is required"
+        )
+    if estimated_hours is None or estimated_hours == '':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="estimated_hours is required"
+        )
     
     # Validate priority
     try:
@@ -167,15 +178,21 @@ async def create_task(
         )
     
     # Parse due date
-    parsed_due_date = None
-    if due_date:
-        try:
-            parsed_due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
-        except:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid due date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)"
-            )
+    try:
+        parsed_due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+    except:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid due date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)"
+        )
+
+    try:
+        estimated_hours_value = float(estimated_hours)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="estimated_hours must be a number"
+        )
     
     # Parse tags
     parsed_tags = []
@@ -284,7 +301,7 @@ async def create_task(
         epic_id=epic_id,
         sprint_id=sprint_id,
         story_points=story_points,
-        estimated_hours=estimated_hours,
+        estimated_hours=estimated_hours_value,
     )
     
     await task.insert()
@@ -422,6 +439,38 @@ async def get_task(
     }
 
 
+@router.get("/{task_id}/execution")
+async def get_task_execution(
+    task_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get task execution metadata"""
+    task = await Task.get(task_id)
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    check_company_access(current_user, task.company_id)
+
+    return {
+        "id": str(task.id),
+        "title": task.title,
+        "status": task.status.value,
+        "priority": task.priority.value,
+        "progress_percentage": task.progress_percentage,
+        "expected_completion_time": task.expected_completion_time,
+        "estimated_hours": task.estimated_hours,
+        "actual_hours": task.actual_hours,
+        "checklist": task.checklist or [],
+        "dependencies": task.dependencies or [],
+        "time_logs": task.time_logs or [],
+        "workload": TaskService.workload_snapshot([task]),
+    }
+
+
 @router.patch("/{task_id}/status")
 async def update_task_status(
     task_id: str,
@@ -477,6 +526,56 @@ async def update_task_status(
         "id": str(task.id),
         "status": task.status.value,
         "message": "Task status updated successfully"
+    }
+
+
+@router.patch("/{task_id}/execution")
+async def update_task_execution(
+    task_id: str,
+    progress_percentage: Optional[float] = Form(None),
+    expected_completion_time: Optional[str] = Form(None),
+    checklist: Optional[str] = Form(None),
+    dependencies: Optional[str] = Form(None),
+    time_log_hours: Optional[float] = Form(None),
+    time_log_note: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user)
+):
+    """Update task execution metadata"""
+    task = await Task.get(task_id)
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    check_company_access(current_user, task.company_id)
+
+    payload: dict[str, object] = {}
+    if progress_percentage is not None:
+        payload["progress_percentage"] = progress_percentage
+    if expected_completion_time is not None:
+        payload["expected_completion_time"] = datetime.fromisoformat(expected_completion_time.replace("Z", "+00:00"))
+    if checklist is not None:
+        payload["checklist"] = [item.strip() for item in checklist.split("|") if item.strip()]
+    if dependencies is not None:
+        payload["dependencies"] = [item.strip() for item in dependencies.split("|") if item.strip()]
+    if time_log_hours is not None:
+        payload["time_log_hours"] = time_log_hours
+        payload["time_log_note"] = time_log_note
+
+    task = await TaskService.update_execution(task, payload)
+    return {
+        "message": "Task execution updated successfully",
+        "task": {
+            "id": str(task.id),
+            "title": task.title,
+            "progress_percentage": task.progress_percentage,
+            "expected_completion_time": task.expected_completion_time,
+            "checklist": task.checklist or [],
+            "dependencies": task.dependencies or [],
+            "actual_hours": task.actual_hours,
+        },
     }
 
 

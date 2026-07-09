@@ -103,6 +103,7 @@ const TaskDetail = () => {
         priority: data.priority,
         assigned_to: data.assigned_to || '',
         due_date: data.due_date ? format(new Date(data.due_date), "yyyy-MM-dd'T'HH:mm") : '',
+        estimated_hours: data.estimated_hours ?? '',
         tags: data.tags ? data.tags.join(', ') : '',
         issue_type_id: data.issue_type_id || '',
         component_id: data.component_id || '',
@@ -491,6 +492,33 @@ const TaskDetail = () => {
               </div>
             )}
           </div>
+
+          {isEditing && (
+            <div className="mb-6 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Due date</label>
+                <input
+                  type="datetime-local"
+                  value={editData.due_date || ''}
+                  onChange={(e) => setEditData({ ...editData, due_date: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  onBlur={handleSaveEdit}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Estimated hours</label>
+                <input
+                  type="number"
+                  min="0.25"
+                  step="0.25"
+                  value={editData.estimated_hours}
+                  onChange={(e) => setEditData({ ...editData, estimated_hours: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  onBlur={handleSaveEdit}
+                />
+              </div>
+            </div>
+          )}
 
           {/* AI Task Breakdown */}
           <div className="mb-6 rounded-2xl border border-primary-200 bg-primary-50/60 p-4 dark:border-primary-900/40 dark:bg-primary-950/20">

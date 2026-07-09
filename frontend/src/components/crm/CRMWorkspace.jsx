@@ -1,6 +1,7 @@
 import { ChevronRight, Search, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '../ui'
+import { WorkflowGuide } from '../workflow/WorkflowGuide'
 
 export function CRMPage({ className = '', children }) {
   return <div className={`space-y-6 ${className} bg-transparent`}>{children}</div>
@@ -274,6 +275,19 @@ export function CRMRoutePlaceholder({
 }) {
   return (
     <CRMSection title={title} description={description}>
+      <WorkflowGuide
+        className="mb-5"
+        title={`Open the next ${routeLabel.toLowerCase()} action`}
+        description="This placeholder exists to preserve the workspace contract while guiding users to the active CRM surface."
+        nextStep="Use the pipeline to continue the workflow."
+        primaryAction={{ label: 'Go to CRM Pipeline', href: '/crm/pipeline' }}
+        secondaryAction={{ label: 'Open Dashboard', href: '/crm/dashboard' }}
+        bullets={[
+          { label: 'Where am I?', value: routeLabel },
+          { label: 'What next?', value: 'Use the live CRM route that already has business data.' },
+          { label: 'After this?', value: 'Return here when the route is implemented.' },
+        ]}
+      />
       <CRMEmptyState
         icon={Icon}
         title={`${routeLabel} is coming next`}

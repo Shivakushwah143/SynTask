@@ -59,6 +59,51 @@ async def create_workflow_status(
     }
 
 
+@router.patch("/statuses/{status_id}")
+async def update_workflow_status(
+    status_id: str,
+    name: Optional[str] = Form(None),
+    key: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    color: Optional[str] = Form(None),
+    category: Optional[str] = Form(None),
+    order: Optional[int] = Form(None),
+    current_user: User = Depends(get_current_company_admin),
+):
+    status_obj = await WorkflowStatus.get(status_id)
+    if not status_obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Status not found")
+    check_company_access(current_user, status_obj.company_id)
+    if name is not None:
+        status_obj.name = name
+    if key is not None:
+        status_obj.key = key.lower()
+    if description is not None:
+        status_obj.description = description
+    if color is not None:
+        status_obj.color = color
+    if category is not None:
+        status_obj.category = category
+    if order is not None:
+        status_obj.order = order
+    status_obj.updated_at = datetime.utcnow()
+    await status_obj.save()
+    return {"message": "Workflow status updated successfully"}
+
+
+@router.delete("/statuses/{status_id}")
+async def delete_workflow_status(
+    status_id: str,
+    current_user: User = Depends(get_current_company_admin),
+):
+    status_obj = await WorkflowStatus.get(status_id)
+    if not status_obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Status not found")
+    check_company_access(current_user, status_obj.company_id)
+    await status_obj.delete()
+    return {"message": "Workflow status deleted successfully"}
+
+
 @router.get("/statuses")
 async def list_workflow_statuses(
     project_id: Optional[str] = None,
@@ -125,6 +170,42 @@ async def create_workflow_transition(
     }
 
 
+@router.patch("/transitions/{transition_id}")
+async def update_workflow_transition(
+    transition_id: str,
+    name: Optional[str] = Form(None),
+    from_status: Optional[str] = Form(None),
+    to_status: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_company_admin),
+):
+    transition = await WorkflowTransition.get(transition_id)
+    if not transition:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transition not found")
+    check_company_access(current_user, transition.company_id)
+    if name is not None:
+        transition.name = name
+    if from_status is not None:
+        transition.from_status = from_status.lower()
+    if to_status is not None:
+        transition.to_status = to_status.lower()
+    transition.updated_at = datetime.utcnow()
+    await transition.save()
+    return {"message": "Workflow transition updated successfully"}
+
+
+@router.delete("/transitions/{transition_id}")
+async def delete_workflow_transition(
+    transition_id: str,
+    current_user: User = Depends(get_current_company_admin),
+):
+    transition = await WorkflowTransition.get(transition_id)
+    if not transition:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transition not found")
+    check_company_access(current_user, transition.company_id)
+    await transition.delete()
+    return {"message": "Workflow transition deleted successfully"}
+
+
 @router.get("/transitions")
 async def list_workflow_transitions(
     project_id: Optional[str] = None,
@@ -187,6 +268,48 @@ async def create_workflow(
         "message": "Workflow created successfully",
         "workflow_id": str(workflow.id)
     }
+
+
+@router.patch("/{workflow_id}")
+async def update_workflow(
+    workflow_id: str,
+    name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    project_id: Optional[str] = Form(None),
+    initial_status: Optional[str] = Form(None),
+    is_default: Optional[bool] = Form(None),
+    current_user: User = Depends(get_current_company_admin),
+):
+    workflow = await Workflow.get(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
+    check_company_access(current_user, workflow.company_id)
+    if name is not None:
+        workflow.name = name
+    if description is not None:
+        workflow.description = description
+    if project_id is not None:
+        workflow.project_id = project_id
+    if initial_status is not None:
+        workflow.initial_status = initial_status.lower()
+    if is_default is not None:
+        workflow.is_default = is_default
+    workflow.updated_at = datetime.utcnow()
+    await workflow.save()
+    return {"message": "Workflow updated successfully"}
+
+
+@router.delete("/{workflow_id}")
+async def delete_workflow(
+    workflow_id: str,
+    current_user: User = Depends(get_current_company_admin),
+):
+    workflow = await Workflow.get(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
+    check_company_access(current_user, workflow.company_id)
+    await workflow.delete()
+    return {"message": "Workflow deleted successfully"}
 
 
 @router.get("/")
@@ -307,5 +430,4 @@ async def activate_workflow(
         "message": f"Workflow {'activated' if workflow.is_active else 'deactivated'} successfully",
         "is_active": workflow.is_active
     }
-
 

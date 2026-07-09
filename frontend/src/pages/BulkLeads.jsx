@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from 'react-query'
+import { useNavigate } from 'react-router-dom'
 import Papa from 'papaparse'
 import toast from 'react-hot-toast'
-import { ArrowRight, CheckCircle2, Download, FileSpreadsheet, FileUp, Filter, ListChecks, Sparkles, Upload, Users } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Download, FileSpreadsheet, FileUp, Filter, ListChecks, Sparkles, Upload, Users, AlertTriangle } from 'lucide-react'
 import { salesApi } from '../api/sales'
 import { departmentsAPI } from '../api/departments'
 import { usersAPI } from '../api/users'
@@ -20,11 +21,14 @@ const SAMPLE_CSV = Papa.unparse(SAMPLE_ROWS)
 
 export default function BulkLeads() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [file, setFile] = useState(null)
   const [strategy, setStrategy] = useState('round-robin')
   const [departmentId, setDepartmentId] = useState('')
   const [targetUserId, setTargetUserId] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [resultOpen, setResultOpen] = useState(false)
+  const [importResult, setImportResult] = useState(null)
   const [previewRows, setPreviewRows] = useState([])
   const [uploading, setUploading] = useState(false)
   const [fileError, setFileError] = useState('')
@@ -37,6 +41,12 @@ export default function BulkLeads() {
 
   const hasPreview = previewRows.length > 0
   const previewCount = previewRows.length
+  const importedCount = importResult?.total_uploaded ?? 0
+  const assignedCount = Object.values(importResult?.assigned_breakdown || {}).reduce((sum, count) => sum + Number(count || 0), 0)
+  const failedCount = importResult?.skipped_rows ?? 0
+  const nextAction = assignedCount > 0
+    ? { label: 'View Assigned Leads', href: '/crm/leads' }
+    : { label: 'Open Sales Pipeline', href: '/sales/pipeline' }
 
   const handleFile = (selected) => {
     setFileError('')
@@ -114,6 +124,7 @@ export default function BulkLeads() {
       const result = await salesApi.bulkUploadProspects(formData)
       const uploaded = result?.total_uploaded ?? result?.data?.total_uploaded ?? 0
       const skipped = result?.skipped_rows ?? result?.data?.skipped_rows ?? 0
+      const payload = result?.data || result || {}
 
       toast.success(`Uploaded ${uploaded} lead${uploaded === 1 ? '' : 's'}${skipped ? `, ${skipped} skipped` : ''}`)
       setConfirmOpen(false)
@@ -121,6 +132,15 @@ export default function BulkLeads() {
       setPreviewRows([])
       setDepartmentId('')
       setTargetUserId('')
+      setImportResult({
+        total_rows: payload.total_rows ?? 0,
+        total_uploaded: payload.total_uploaded ?? 0,
+        skipped_rows: payload.skipped_rows ?? 0,
+        assigned_breakdown: payload.assigned_breakdown || {},
+        warnings: payload.warnings || [],
+        strategy: departmentId ? 'department routing' : strategy,
+      })
+      setResultOpen(true)
       queryClient.invalidateQueries('crm-pipeline-board')
       queryClient.invalidateQueries('crm-leads-entry')
       queryClient.invalidateQueries('crm-lead-duplicates')
@@ -383,6 +403,58 @@ export default function BulkLeads() {
           <div className="flex justify-end gap-3">
             <Button variant="secondary" onClick={() => setConfirmOpen(false)}>Cancel</Button>
             <Button onClick={submit} loading={uploading}>Confirm upload</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={resultOpen}
+        onClose={() => setResultOpen(false)}
+        title="Import complete"
+        size="lg"
+      >
+        <div className="space-y-5">
+          <div className="grid gap-3 md:grid-cols-4">
+            <CRMStatCard icon={Upload} label="Imported" value={String(importedCount)} helper="Successful rows created" tone="blue" />
+            <CRMStatCard icon={Users} label="Assigned" value={String(assignedCount)} helper={`Strategy: ${importResult?.strategy || strategy}`} tone="emerald" />
+            <CRMStatCard icon={AlertTriangle} label="Failed" value={String(failedCount)} helper="Skipped or invalid rows" tone="amber" />
+            <CRMStatCard icon={ListChecks} label="Warnings" value={String(importResult?.warnings?.length || 0)} helper="Rows needing review" tone="slate" />
+          </div>
+
+          <div className="rounded-2xl border border-surface-border/80 bg-gray-50 p-4">
+            <p className="text-sm font-semibold text-gray-900">Assignment strategy</p>
+            <p className="mt-1 text-sm text-gray-600">
+              {importResult?.strategy === 'manual'
+                ? 'Manual assignment was used for the imported leads.'
+                : importResult?.strategy === 'department routing'
+                  ? 'Department-based routing was used to distribute the imported leads.'
+                  : `Automatic ${importResult?.strategy || strategy} assignment was used.`}
+            </p>
+          </div>
+
+          {importResult?.warnings?.length ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">Failed rows</p>
+              <div className="mt-2 max-h-40 space-y-1 overflow-auto text-sm text-amber-800">
+                {importResult.warnings.slice(0, 8).map((item) => (
+                  <div key={`${item.row}-${item.reason}`}>Row {item.row}: {item.reason}</div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-3">
+            <Button variant="secondary" onClick={() => setResultOpen(false)}>
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setResultOpen(false)
+                navigate(nextAction.href)
+              }}
+            >
+              {nextAction.label}
+            </Button>
           </div>
         </div>
       </Modal>
