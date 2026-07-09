@@ -40,6 +40,7 @@ import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import * as d3 from 'd3'
+import { buildBriefingChartData } from './aiBriefingData'
 
 // ===== CONSTANTS & CONFIGURATIONS =====
 const STATUS_TONE = {
@@ -575,22 +576,6 @@ const DataVisualization = ({ data, type = 'bar' }) => {
       .domain([0, d3.max(data, d => d.value) * 1.1])
       .range([height - margin.top - margin.bottom, 0])
 
-    const gradient = svg.append('defs')
-      .append('linearGradient')
-      .attr('id', 'chart-gradient')
-      .attr('x1', '0%')
-      .attr('y1', '0%')
-      .attr('x2', '0%')
-      .attr('y2', '100%')
-    
-    gradient.append('stop')
-      .attr('offset', '0%')
-      .attr('style', 'stop-color: #3b82f6; stop-opacity: 0.8')
-    
-    gradient.append('stop')
-      .attr('offset', '100%')
-      .attr('style', 'stop-color: #8b5cf6; stop-opacity: 0.3')
-
     const bars = svg.selectAll('.bar')
       .data(data)
       .enter()
@@ -601,11 +586,11 @@ const DataVisualization = ({ data, type = 'bar' }) => {
       .attr('height', 0)
       .attr('width', x.bandwidth())
       .attr('rx', 4)
-      .attr('fill', 'url(#chart-gradient)')
+      .attr('fill', d => d.color || '#4285F4')
 
     bars
       .attr('tabindex', 0)
-      .attr('aria-label', d => `${d.label}: ${d.value}`)
+      .attr('aria-label', d => `${d.label}: ${d.value}${d.priority ? `, ${d.priority} priority` : ''}`)
       .on('pointerenter pointermove pointerdown', function (event, point) {
         d3.select(this).attr('stroke', '#fff').attr('stroke-width', 2).style('filter', 'brightness(1.12)')
         showTooltip(event, point)
@@ -681,12 +666,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
   )
   
   const chartData = useMemo(() => {
-    const statusCounts = {}
-    recentTasks.forEach(task => {
-      const status = task.status || 'unknown'
-      statusCounts[status] = (statusCounts[status] || 0) + 1
-    })
-    return Object.entries(statusCounts).map(([label, value]) => ({ label, value }))
+    return buildBriefingChartData(recentTasks)
   }, [recentTasks])
 
   const hasCriticalEvent = useMemo(
