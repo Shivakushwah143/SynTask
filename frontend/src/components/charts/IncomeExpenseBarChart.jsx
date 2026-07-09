@@ -28,6 +28,7 @@ const IncomeExpenseBarChart = ({
   activeToggle,
   onToggle,
   footnote,
+  onBarClick,
 }) => {
   return (
     <ChartCard
@@ -60,8 +61,8 @@ const IncomeExpenseBarChart = ({
             <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
             <YAxis tickLine={false} axisLine={false} tickFormatter={formatCompact} tick={{ fontSize: 11, fill: '#9ca3af' }} />
             <ChartTooltip />
-            <Bar dataKey="primary" name={primaryLabel} fill={primaryColor} radius={[3, 3, 0, 0]} maxBarSize={20} />
-            <Bar dataKey="secondary" name={secondaryLabel} fill={secondaryColor} radius={[3, 3, 0, 0]} maxBarSize={20} />
+            <Bar dataKey="primary" name={primaryLabel} fill={primaryColor} radius={[3, 3, 0, 0]} maxBarSize={20} className={onBarClick ? 'cursor-pointer' : ''} onClick={(entry) => onBarClick?.(entry, 'primary')} />
+            <Bar dataKey="secondary" name={secondaryLabel} fill={secondaryColor} radius={[3, 3, 0, 0]} maxBarSize={20} className={onBarClick ? 'cursor-pointer' : ''} onClick={(entry) => onBarClick?.(entry, 'secondary')} />
           </BarChart>
         </ResponsiveContainer>
       </div>

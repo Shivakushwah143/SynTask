@@ -6,13 +6,12 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
-  AreaChart,
-  Area,
   BarChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
+  Legend,
 } from 'recharts'
 import { useAuthStore } from '../store/authStore'
 import { dashboardAPI } from '../api/dashboard'
@@ -30,8 +29,11 @@ import { ChartTooltip } from '../components/charts/ChartTooltip'
 import { ChartCard } from '../components/charts/ChartCard'
 import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
 import DonutLegendChart from '../components/charts/DonutLegendChart'
+import { DASHBOARD_PROJECT_STATUSES, buildProjectHealthData, buildTaskDuePriorityData } from './dashboardData'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const PRIORITY_COLORS = { high: '#EF4444', medium: '#F59E0B', low: '#2FB47C' }
+const PROJECT_STATUS_COLORS = { active: '#4285F4', planning: '#7C6FE0', completed: '#2FB47C', on_hold: '#FFB020' }
 
 const Dashboard = () => {
   const { user } = useAuthStore()
@@ -151,21 +153,6 @@ const Dashboard = () => {
   const openTasksCount = Math.max(taskSource.length - priorityTasks.length, 0)
   const dueTodayCount = metrics?.tasks_due_today ?? 0
 
-  const dashboardCards = canSeeSalesWidgets
-    ? [
-        { label: 'Total Leads', value: metrics?.total_leads ?? 0 },
-        { label: 'New Leads', value: metrics?.new_leads ?? 0 },
-        { label: 'Qualified Leads', value: metrics?.qualified_leads ?? 0 },
-        { label: 'Active Deals', value: metrics?.active_deals ?? 0 },
-        { label: 'Revenue', value: metrics?.revenue ?? 0 },
-        { label: 'Won Deals', value: metrics?.won_deals ?? 0 },
-        { label: 'Lost Deals', value: metrics?.lost_deals ?? 0 },
-        { label: 'Projects', value: metrics?.projects ?? projects.length },
-        { label: 'Upcoming Meetings', value: metrics?.upcoming_meetings ?? upcomingMeetings.length },
-        { label: 'Tasks Due Today', value: dueTodayCount },
-      ]
-    : []
-
   // ---- Chart datasets (replace the old static / zero-filled placeholders) ----
 
   // Pipeline funnel -> donut with legend + percentages, styled like "Top Expenses"
@@ -189,47 +176,45 @@ const Dashboard = () => {
       }))
     : []
 
-  // Lead sources -> donut with legend + percentages
-  const leadSources = canSeeSalesWidgets
-    ? [
-        { name: 'Organic', value: metrics?.lead_sources?.organic ?? 0 },
-        { name: 'Referral', value: metrics?.lead_sources?.referral ?? 0 },
-        { name: 'Outbound', value: metrics?.lead_sources?.outbound ?? 0 },
-        { name: 'Paid', value: metrics?.lead_sources?.paid ?? 0 },
-      ]
-    : []
-
   const conversionData = canSeeSalesWidgets
     ? [
-        { name: 'Lead', value: metrics?.total_leads ?? 0 },
-        { name: 'Qualified', value: metrics?.qualified_leads ?? 0 },
-        { name: 'Won', value: metrics?.won_deals ?? 0 },
+        { name: 'Lead', value: metrics?.total_leads ?? 0, route: '/crm/leads' },
+        { name: 'Qualified', value: metrics?.qualified_leads ?? 0, route: '/crm/pipeline' },
+        { name: 'Won', value: metrics?.won_deals ?? 0, route: '/crm/pipeline' },
       ]
     : []
 
   // Task overview -> donut instead of plain numbers
   const taskOverviewData = [
-    { name: 'Due Today', value: dueTodayCount },
-    { name: 'High Priority', value: priorityTasks.length },
-    { name: 'Open', value: openTasksCount },
+    { name: 'Due Today', value: dueTodayCount, route: '/tasks' },
+    { name: 'High Priority', value: priorityTasks.length, route: '/tasks' },
+    { name: 'Open', value: openTasksCount, route: '/tasks' },
   ]
 
   const monthlyPerformance = canSeeSalesWidgets
     ? [
-        { name: 'Leads', value: metrics?.new_leads ?? 0 },
-        { name: 'Deals', value: metrics?.active_deals ?? 0 },
-        { name: 'Projects', value: metrics?.projects ?? projects.length },
+        { name: 'Leads', value: metrics?.new_leads ?? 0, route: '/crm/leads' },
+        { name: 'Deals', value: metrics?.active_deals ?? 0, route: '/crm/pipeline' },
+        { name: 'Projects', value: metrics?.projects ?? projects.length, route: '/projects' },
       ]
     : []
 
   // Team attendance snapshot -> donut instead of a plain number strip
   const attendanceBreakdown = attendanceStats
     ? [
-        { name: 'Working Now', value: attendanceStats.working_now ?? 0 },
-        { name: 'On Break', value: attendanceStats.on_break ?? 0 },
-        { name: 'Offline', value: attendanceStats.offline ?? 0 },
+        { name: 'Working Now', value: attendanceStats.working_now ?? 0, route: '/live-monitor' },
+        { name: 'On Break', value: attendanceStats.on_break ?? 0, route: '/live-monitor' },
+        { name: 'Offline', value: attendanceStats.offline ?? 0, route: '/live-monitor' },
       ]
     : []
+
+  const taskDuePriorityData = buildTaskDuePriorityData(recentTasks)
+  const projectHealthChartData = buildProjectHealthData(projects)
+
+  const navigateFromChart = (entry, fallback) => {
+    const route = entry?.payload?.route || entry?.route || fallback
+    if (route) navigate(route)
+  }
 
   const healthColumns = [
     { key: 'name', header: 'Project' },
@@ -320,18 +305,18 @@ const Dashboard = () => {
             activeToggle={revenueMode}
             onToggle={setRevenueMode}
             footnote="Revenue and deal values shown for the current fiscal year."
+            onBarClick={() => navigate('/crm/pipeline')}
           />
-          <DonutLegendChart title="Pipeline Funnel" data={funnelData} emptyLabel="No pipeline activity yet" />
-          <DonutLegendChart title="Lead Sources" data={leadSources} emptyLabel="No lead source data yet" />
+          <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline' }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
           <ChartCard title="Conversion Rate">
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={conversionData}>
+                <LineChart data={conversionData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/crm/pipeline')}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                   <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                   <ChartTooltip />
-                  <Line type="monotone" dataKey="value" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 4, fill: '#FF8A4C' }} />
+                  <Line type="monotone" dataKey="value" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 5, fill: '#FF8A4C', cursor: 'pointer' }} activeDot={{ r: 7, onClick: (_, item) => navigateFromChart(item, '/crm/pipeline') }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -345,17 +330,40 @@ const Dashboard = () => {
       )}
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <DonutLegendChart title="Tasks Overview" data={taskOverviewData} emptyLabel="Nothing on your plate right now" />
+        <DonutLegendChart title="Tasks Overview" data={taskOverviewData} emptyLabel="Nothing on your plate right now" onItemClick={(item) => navigateFromChart(item, '/tasks')} />
+        <ChartCard title="Task Due Dates by Priority" period="Next 7 Days">
+          {taskDuePriorityData.length ? (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={taskDuePriorityData} barCategoryGap="28%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/tasks')}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <ChartTooltip />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="high" name="High" stackId="priority" fill={PRIORITY_COLORS.high} radius={[4, 4, 0, 0]} className="cursor-pointer" />
+                  <Bar dataKey="medium" name="Medium" stackId="priority" fill={PRIORITY_COLORS.medium} radius={[4, 4, 0, 0]} className="cursor-pointer" />
+                  <Bar dataKey="low" name="Low" stackId="priority" fill={PRIORITY_COLORS.low} radius={[4, 4, 0, 0]} className="cursor-pointer" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="flex h-72 items-center justify-center text-sm text-gray-400">No dated tasks in the next week</div>
+          )}
+        </ChartCard>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
         {canSeeSalesWidgets ? (
           <ChartCard title="Monthly Performance">
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyPerformance} barCategoryGap="35%">
+                <BarChart data={monthlyPerformance} barCategoryGap="35%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                   <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                   <ChartTooltip />
-                  <Bar dataKey="value" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} />
+                  <Bar dataKey="value" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} className="cursor-pointer" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -422,12 +430,21 @@ const Dashboard = () => {
             </Button>
           </div>
           <div className="grid gap-6 xl:grid-cols-[1fr_1.4fr]">
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500 uppercase">Total Employees</p>
-              <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-gray-150">{attendanceStats.total_employees}</p>
-              <p className="mt-1 text-xs text-gray-400">{attendanceStats.present_today} present today</p>
-            </div>
-            <DonutLegendChart title="Live Status Breakdown" data={attendanceBreakdown} emptyLabel="No activity yet today" />
+            <DonutLegendChart title="Live Status Breakdown" data={attendanceBreakdown} emptyLabel="No activity yet today" onItemClick={(item) => navigateFromChart(item, '/live-monitor')} />
+            <ChartCard title="Attendance Signal" period="Today">
+              <div className="grid h-full min-h-72 content-center gap-3 sm:grid-cols-3">
+                {[
+                  ['Present', attendanceStats.present_today ?? 0],
+                  ['Working', attendanceStats.working_now ?? 0],
+                  ['On break', attendanceStats.on_break ?? 0],
+                ].map(([label, value]) => (
+                  <button key={label} type="button" onClick={() => navigate('/live-monitor')} className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-primary-300 hover:bg-primary-50/50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-primary-700 dark:hover:bg-primary-950/30">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</p>
+                    <p className="mt-3 text-3xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+                  </button>
+                ))}
+              </div>
+            </ChartCard>
           </div>
         </section>
       ) : null}
@@ -511,6 +528,29 @@ const Dashboard = () => {
           </div>
           {projects.length ? <Table columns={healthColumns} data={projects} /> : <EmptyState title="No projects" description="Projects will appear here once they are created." />}
         </div>
+        <ChartCard title="Project Health Graph" period="Current Projects">
+          {projectHealthChartData.length ? (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={projectHealthChartData} layout="vertical" margin={{ left: 10, right: 20 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
+                  <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                  <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <YAxis type="category" dataKey="name" width={96} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <ChartTooltip />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  {DASHBOARD_PROJECT_STATUSES.map((status) => (
+                    <Bar key={status} dataKey={status} name={status.replace(/_/g, ' ')} stackId="status" fill={PROJECT_STATUS_COLORS[status]} radius={[0, 5, 5, 0]} className="cursor-pointer" />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="flex h-72 items-center justify-center text-sm text-gray-400">No projects to chart yet</div>
+          )}
+        </ChartCard>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="card p-5">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Recent activity</h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Latest changes across your workspace.</p>
@@ -529,14 +569,24 @@ const Dashboard = () => {
 
       <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <div className="card p-5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Recent Leads / Deals / Projects</h2>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Operating Signals Before You Ask</h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Recent project movement and active notifications in one scan.</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/projects')}>
+              Projects
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
           <div className="mt-4 space-y-3">
             {(recent?.projects || []).slice(0, 4).map((item) => (
-              <div key={item.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+              <button key={item.id} type="button" onClick={() => navigate(item.id ? `/projects/${item.id}/board` : '/projects')} className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800">
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.name}</p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}</p>
-              </div>
+              </button>
             ))}
+            {!(recent?.projects || []).length ? <EmptyState title="No operating signals" description="Project movement will appear here as work changes." /> : null}
           </div>
         </div>
         <div className="card p-5">
