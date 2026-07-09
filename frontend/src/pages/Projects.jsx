@@ -543,7 +543,7 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
   if (!isOpen || !project) return null
   return (
     <div className="fixed inset-0 z-50 bg-black/50">
-      <div className="ml-auto flex h-full w-full max-w-6xl flex-col bg-white shadow-2xl dark:bg-gray-950 lg:w-[88vw]">
+      <div className="ml-auto flex h-full w-full flex-col bg-white shadow-2xl dark:bg-gray-950 ">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Project details</p>
