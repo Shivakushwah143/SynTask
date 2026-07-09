@@ -4,9 +4,6 @@ import { format } from 'date-fns'
 import { ArrowRight, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
 import {
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
   LineChart,
   Line,
   AreaChart,
@@ -30,7 +27,11 @@ import { Badge, Button, EmptyState, PageHeader, SkeletonCard, SkeletonTable, Tab
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { attendanceAPI } from '../api/attendance'
 import { ChartTooltip } from '../components/charts/ChartTooltip'
+import { ChartCard } from '../components/charts/ChartCard'
+import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
+import DonutLegendChart from '../components/charts/DonutLegendChart'
 
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const Dashboard = () => {
   const { user } = useAuthStore()
@@ -47,7 +48,7 @@ const Dashboard = () => {
   const [metrics, setMetrics] = useState(null)
   const [recent, setRecent] = useState(null)
   const [activity, setActivity] = useState([])
-
+  const [revenueMode, setRevenueMode] = useState('Accrual')
 
   useEffect(() => {
     let active = true
@@ -82,7 +83,6 @@ const Dashboard = () => {
         setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
         setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
 
-        // Load attendance metrics
         if (dashboardRole === ROLE.EMPLOYEE) {
           try {
             const attTodayRes = await attendanceAPI.getTodayAttendance()
@@ -102,7 +102,6 @@ const Dashboard = () => {
             console.error(e)
           }
         }
-
       } catch (error) {
         console.error('Error loading dashboard:', error)
       } finally {
@@ -115,10 +114,7 @@ const Dashboard = () => {
     }
   }, [])
 
-  const todayLabel = useMemo(
-    () => format(new Date(), 'EEEE, MMM d').toUpperCase(),
-    [],
-  )
+  const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d').toUpperCase(), [])
 
   const handleExport = async () => {
     try {
@@ -152,6 +148,9 @@ const Dashboard = () => {
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
   const taskSource = role === ROLE.EMPLOYEE ? recentTickets : recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
+  const openTasksCount = Math.max(taskSource.length - priorityTasks.length, 0)
+  const dueTodayCount = metrics?.tasks_due_today ?? 0
+
   const dashboardCards = canSeeSalesWidgets
     ? [
         { label: 'Total Leads', value: metrics?.total_leads ?? 0 },
@@ -163,41 +162,43 @@ const Dashboard = () => {
         { label: 'Lost Deals', value: metrics?.lost_deals ?? 0 },
         { label: 'Projects', value: metrics?.projects ?? projects.length },
         { label: 'Upcoming Meetings', value: metrics?.upcoming_meetings ?? upcomingMeetings.length },
-        { label: 'Tasks Due Today', value: metrics?.tasks_due_today ?? 0 },
+        { label: 'Tasks Due Today', value: dueTodayCount },
       ]
-    : [
-        { label: 'Projects', value: projects.length },
-        { label: 'Upcoming Meetings', value: upcomingMeetings.length },
-        { label: 'Tasks Due Today', value: metrics?.tasks_due_today ?? taskSource.length },
-        { label: 'High Priority Tasks', value: priorityTasks.length },
-      ]
+    : []
+
+  // ---- Chart datasets (replace the old static / zero-filled placeholders) ----
+
+  // Pipeline funnel -> donut with legend + percentages, styled like "Top Expenses"
   const funnelData = canSeeSalesWidgets
     ? [
-        { name: 'New Leads', value: metrics?.new_leads ?? 0, color: '#3b82f6' },
-        { name: 'Qualified', value: metrics?.qualified_leads ?? 0, color: '#22c55e' },
-        { name: 'Active Deals', value: metrics?.active_deals ?? 0, color: '#f59e0b' },
-        { name: 'Won', value: metrics?.won_deals ?? 0, color: '#10b981' },
-        { name: 'Lost', value: metrics?.lost_deals ?? 0, color: '#ef4444' },
+        { name: 'New Leads', value: metrics?.new_leads ?? 0 },
+        { name: 'Qualified', value: metrics?.qualified_leads ?? 0 },
+        { name: 'Active Deals', value: metrics?.active_deals ?? 0 },
+        { name: 'Won', value: metrics?.won_deals ?? 0 },
+        { name: 'Lost', value: metrics?.lost_deals ?? 0 },
       ]
     : []
+
+  // Revenue trend -> monthly bars, current month carries the live revenue figure
+  const currentMonthIndex = new Date().getMonth()
   const revenueTrend = canSeeSalesWidgets
-    ? [
-        { month: 'Jan', revenue: 0 },
-        { month: 'Feb', revenue: 0 },
-        { month: 'Mar', revenue: 0 },
-        { month: 'Apr', revenue: 0 },
-        { month: 'May', revenue: 0 },
-        { month: 'Jun', revenue: metrics?.revenue ?? 0 },
-      ]
+    ? MONTH_LABELS.slice(0, currentMonthIndex + 1).map((label, i) => ({
+        label,
+        primary: i === currentMonthIndex ? metrics?.revenue ?? 0 : 0,
+        secondary: i === currentMonthIndex ? metrics?.won_deals ?? 0 : 0,
+      }))
     : []
+
+  // Lead sources -> donut with legend + percentages
   const leadSources = canSeeSalesWidgets
     ? [
-        { name: 'Organic', value: 0 },
-        { name: 'Referral', value: 0 },
-        { name: 'Outbound', value: 0 },
-        { name: 'Paid', value: 0 },
+        { name: 'Organic', value: metrics?.lead_sources?.organic ?? 0 },
+        { name: 'Referral', value: metrics?.lead_sources?.referral ?? 0 },
+        { name: 'Outbound', value: metrics?.lead_sources?.outbound ?? 0 },
+        { name: 'Paid', value: metrics?.lead_sources?.paid ?? 0 },
       ]
     : []
+
   const conversionData = canSeeSalesWidgets
     ? [
         { name: 'Lead', value: metrics?.total_leads ?? 0 },
@@ -205,11 +206,14 @@ const Dashboard = () => {
         { name: 'Won', value: metrics?.won_deals ?? 0 },
       ]
     : []
-  const taskOverview = [
-    { name: 'Due Today', value: metrics?.tasks_due_today ?? 0 },
+
+  // Task overview -> donut instead of plain numbers
+  const taskOverviewData = [
+    { name: 'Due Today', value: dueTodayCount },
     { name: 'High Priority', value: priorityTasks.length },
-    { name: 'Open', value: taskSource.length },
+    { name: 'Open', value: openTasksCount },
   ]
+
   const monthlyPerformance = canSeeSalesWidgets
     ? [
         { name: 'Leads', value: metrics?.new_leads ?? 0 },
@@ -217,6 +221,16 @@ const Dashboard = () => {
         { name: 'Projects', value: metrics?.projects ?? projects.length },
       ]
     : []
+
+  // Team attendance snapshot -> donut instead of a plain number strip
+  const attendanceBreakdown = attendanceStats
+    ? [
+        { name: 'Working Now', value: attendanceStats.working_now ?? 0 },
+        { name: 'On Break', value: attendanceStats.on_break ?? 0 },
+        { name: 'Offline', value: attendanceStats.offline ?? 0 },
+      ]
+    : []
+
   const healthColumns = [
     { key: 'name', header: 'Project' },
     { key: 'status', header: 'Status', render: (row) => <Badge label={row.status || 'active'} colorKey={row.status || 'active'} /> },
@@ -234,7 +248,6 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-
         title="Dashboard"
         description="Command center for work, meetings, and AI briefings."
         actions={(
@@ -283,80 +296,46 @@ const Dashboard = () => {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {dashboardCards.map((card) => (
-          <div key={card.label} className="card p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{card.label}</p>
-            <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-gray-100">
-              {typeof card.value === 'number' ? card.value : card.value}
-            </p>
-          </div>
-        ))}
-      </section>
+      {/* {canSeeSalesWidgets ? (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {dashboardCards.map((card) => (
+            <div key={card.label} className="card p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{card.label}</p>
+              <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-gray-100">{card.value}</p>
+            </div>
+          ))}
+        </section>
+      ) : null} */}
 
       {canSeeSalesWidgets ? (
         <section className="grid gap-6 xl:grid-cols-2">
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Pipeline Funnel</h2>
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={funnelData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={95} paddingAngle={3}>
-                    {funnelData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
-                  </Pie>
-                  <ChartTooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Revenue Trend</h2>
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revenueTrend}>
-                  <defs>
-                    <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.03} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <ChartTooltip />
-                  <Area type="monotone" dataKey="revenue" stroke="#2563eb" fill="url(#revenueFill)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Lead Sources</h2>
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={leadSources}>
-                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <ChartTooltip />
-                  <Bar dataKey="value" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Conversion Rate</h2>
-            <div className="mt-4 h-72">
+          <IncomeExpenseBarChart
+            title="Revenue and Deals"
+            data={revenueTrend}
+            primaryLabel="Revenue"
+            secondaryLabel="Won Deals"
+            primaryTotal={`₹${(metrics?.revenue ?? 0).toLocaleString('en-IN')}`}
+            secondaryTotal={metrics?.won_deals ?? 0}
+            toggleOptions={['Accrual', 'Cash']}
+            activeToggle={revenueMode}
+            onToggle={setRevenueMode}
+            footnote="Revenue and deal values shown for the current fiscal year."
+          />
+          <DonutLegendChart title="Pipeline Funnel" data={funnelData} emptyLabel="No pipeline activity yet" />
+          <DonutLegendChart title="Lead Sources" data={leadSources} emptyLabel="No lead source data yet" />
+          <ChartCard title="Conversion Rate">
+            <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={conversionData}>
-                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                   <ChartTooltip />
-                  <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={3} dot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="value" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 4, fill: '#FF8A4C' }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </ChartCard>
         </section>
       ) : (
         <section className="card p-5">
@@ -366,40 +345,25 @@ const Dashboard = () => {
       )}
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <div className="card p-5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Tasks Overview</h2>
-          <div className="mt-4 h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={taskOverview}>
-                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                <YAxis tickLine={false} axisLine={false} />
-                <ChartTooltip />
-                <Bar dataKey="value" fill="#14b8a6" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+        <DonutLegendChart title="Tasks Overview" data={taskOverviewData} emptyLabel="Nothing on your plate right now" />
         {canSeeSalesWidgets ? (
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Monthly Performance</h2>
-            <div className="mt-4 h-72">
+          <ChartCard title="Monthly Performance">
+            <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={monthlyPerformance}>
-                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
+                <BarChart data={monthlyPerformance} barCategoryGap="35%">
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                   <ChartTooltip />
-                  <Line type="monotone" dataKey="value" stroke="#0f766e" strokeWidth={3} dot={{ r: 4 }} />
-                </LineChart>
+                  <Bar dataKey="value" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </ChartCard>
         ) : (
-          <div className="card p-5">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Monthly Performance</h2>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">This chart is available to sales-oriented roles only.</p>
-          </div>
+          <ChartCard title="Monthly Performance">
+            <p className="text-sm text-gray-500 dark:text-gray-400">This chart is available to sales-oriented roles only.</p>
+          </ChartCard>
         )}
       </section>
 
@@ -442,9 +406,9 @@ const Dashboard = () => {
         </section>
       ) : null}
 
-      {/* Managers Attendance Dashboard Stats */}
+      {/* Managers Attendance Dashboard */}
       {role !== ROLE.EMPLOYEE && attendanceStats ? (
-        <section className="bg-primary-50/20 dark:bg-primary-950/10 p-5 rounded-2xl border border-primary-500/20 space-y-3">
+        <section className="bg-primary-50/20 dark:bg-primary-950/10 p-5 rounded-2xl border border-primary-500/20 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-primary-800 dark:text-primary-300 uppercase tracking-wider flex items-center">
               <span className="relative flex h-2 w-2 mr-2">
@@ -457,33 +421,18 @@ const Dashboard = () => {
               Live Monitor Board <ArrowRight className="h-4 w-4 ml-1 inline" />
             </Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-6 xl:grid-cols-[1fr_1.4fr]">
             <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
               <p className="text-xs font-semibold text-gray-500 uppercase">Total Employees</p>
-              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-150">{attendanceStats.total_employees}</p>
+              <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-gray-150">{attendanceStats.total_employees}</p>
+              <p className="mt-1 text-xs text-gray-400">{attendanceStats.present_today} present today</p>
             </div>
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500">Present Today</p>
-              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-150">{attendanceStats.present_today}</p>
-            </div>
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500">Working Now</p>
-              <p className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">{attendanceStats.working_now}</p>
-            </div>
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500">On Break</p>
-              <p className="mt-2 text-2xl font-bold text-amber-600 dark:text-amber-400">{attendanceStats.on_break}</p>
-            </div>
-            <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-850 shadow-sm">
-              <p className="text-xs font-semibold text-gray-500">Offline</p>
-              <p className="mt-2 text-2xl font-bold text-gray-400">{attendanceStats.offline}</p>
-            </div>
+            <DonutLegendChart title="Live Status Breakdown" data={attendanceBreakdown} emptyLabel="No activity yet today" />
           </div>
         </section>
       ) : null}
 
       <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
-
 
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
         <div className="card p-5">
