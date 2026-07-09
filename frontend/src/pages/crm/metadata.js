@@ -15,7 +15,7 @@ export const CRM_NAV_ITEMS = [
   { key: 'leads', label: 'Leads', path: '/crm/leads', status: 'active', icon: Users },
   { key: 'companies', label: 'Companies', path: '/crm/companies', status: 'active', icon: Building2 },
   { key: 'contacts', label: 'Contacts', path: '/crm/contacts', status: 'active', icon: Users },
-  { key: 'activities', label: 'Activities', path: '/crm/activities', status: 'active', icon: Activity },
+  // { key: 'activities', label: 'Activities', path: '/crm/activities', status: 'active', icon: Activity },
   { key: 'calendar', label: 'Calendar', path: '/crm/calendar', status: 'planned', icon: CalendarDays },
   { key: 'reports', label: 'Reports', path: '/crm/reports', status: 'planned', icon: FileText },
   { key: 'settings', label: 'Settings', path: '/crm/settings', status: 'planned', icon: Settings },
