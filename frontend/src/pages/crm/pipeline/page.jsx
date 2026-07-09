@@ -4,7 +4,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners,
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { CRMPage, CRMPageTitle, CRMSection } from '../../../components/crm'
+import { CRMPage, CRMPageTitle } from '../../../components/crm'
 import { Button } from '../../../components/ui'
 import { crmApi } from '../../../api/crm'
 import { useDebounce } from '../../../hooks/useDebounce'
@@ -13,12 +13,13 @@ import {
   PipelineBoardShell,
   PipelineErrorState,
   PipelineFiltersBar,
+  PipelineInsightRail,
   PipelineLoadingState,
+  PipelineTopMetrics,
 } from './components'
 import {
   buildPipelineBoard,
   filterPipelineLeads,
-  getLeadDealValue,
   getLeadOwnerLabel,
   getStageKey,
   moveLeadInBoard,
@@ -26,8 +27,7 @@ import {
   parsePipelineFilters,
   stageOptionsFromBoard,
 } from './utils'
-import { CRMContent, CRMStatCard } from '../../../components/crm'
-import { FolderKanban, Layers3, TrendingUp, Users } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 
 const PIPELINE_QUERY_KEY = 'crm-pipeline-board'
 
@@ -216,71 +216,35 @@ export default function CRMPipelinePage() {
   const currency = rawPipeline?.meta?.currency || 'INR'
   const loading = pipelineQuery.isLoading
   const hasError = pipelineQuery.isError
-  const visibleLeadCount = visibleLeads.length
-  const visibleDealValue = visibleLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0)
-  const activeStageCount = visibleBoard.stages.filter((stage) => stage.leads.length > 0).length
 
   return (
     <CRMPage>
       <CRMPageTitle
-        eyebrow="CRM Pipeline"
-        title="Pipeline"
-        description="HubSpot-inspired board powered by live CRM pipeline data from the Sales domain."
+        title="CRM Pipeline"
+        description="Manage your leads and move them through the pipeline."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={clearFilters}>
-              Reset
+            <Button type="button" variant="primary" size="sm" onClick={() => navigate('/crm/leads')}>
+              + New Lead
             </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => pipelineQuery.refetch()}>
-              Refresh
+            <Button type="button" variant="secondary" size="sm" onClick={() => navigate('/crm/leads')}>
+              Import Leads
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => pipelineQuery.refetch()} aria-label="Refresh pipeline">
+              <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
         )}
       />
 
-      <CRMContent
-        aside={(
-          <div className="space-y-4">
-            <CRMStatCard
-              icon={FolderKanban}
-              label="Visible leads"
-              value={visibleLeadCount}
-              helper="Matches the current filters and search."
-              tone="emerald"
-            />
-            <CRMStatCard
-              icon={TrendingUp}
-              label="Visible deal value"
-              value={visibleDealValue.toLocaleString('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 })}
-              helper="Approximate pipeline value from visible leads."
-              tone="amber"
-            />
-            <CRMStatCard
-              icon={Layers3}
-              label="Active stages"
-              value={activeStageCount}
-              helper="Columns with at least one visible lead."
-              tone="slate"
-            />
-            <CRMStatCard
-              icon={Users}
-              label="Board width"
-              value={visibleBoard.stages.length}
-              helper="All configured pipeline stages."
-              tone="blue"
-            />
-          </div>
-        )}
-      >
-        <CRMSection
-          title="Board controls"
-          description="Search and filters shape the visible board without refetching the full dataset."
-          actions={(
-            <Button type="button" variant="secondary" size="sm" onClick={clearFilters}>
-              Reset filters
-            </Button>
-          )}
-        >
+      <div className="space-y-4">
+        <div className="flex justify-end">
+          <Button type="button" variant="secondary" size="sm" onClick={() => toast.success('View saved')}>
+            Save View
+          </Button>
+        </div>
+        <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start xl:gap-4 xl:space-y-0">
+          <main className="min-w-0 space-y-4">
           <PipelineFiltersBar
             filters={filters}
             onChange={updateFilters}
@@ -291,10 +255,11 @@ export default function CRMPipelinePage() {
             onSearchChange={handleSearchChange}
             currency={currency}
           />
-        </CRMSection>
+
+          <PipelineTopMetrics visibleLeads={visibleLeads} stages={visibleBoard.stages} currency={currency} />
 
         <PipelineBoardShell
-          title="CRM board"
+          title="Pipeline board"
           description="Drag leads between stages, or use the quick actions menu to move them with a single click."
         >
           {loading ? (
@@ -336,7 +301,16 @@ export default function CRMPipelinePage() {
             </DndContext>
           )}
         </PipelineBoardShell>
-      </CRMContent>
+          </main>
+
+          <PipelineInsightRail
+            visibleLeads={visibleLeads}
+            stages={visibleBoard.stages}
+            currency={currency}
+            onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
+          />
+        </div>
+      </div>
     </CRMPage>
   )
 }

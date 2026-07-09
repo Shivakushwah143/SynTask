@@ -64,7 +64,7 @@ describe('crm pipeline helpers', () => {
       maxValue: '',
       createdFrom: '',
       createdTo: '',
-      stage: 'lead',
+      stage: 'new',
     })
     expect(filtered).toHaveLength(1)
   })
@@ -97,7 +97,7 @@ describe('crm pipeline ui', () => {
     expect(screen.getByLabelText('Qualified stage')).toBeInTheDocument()
     expect(screen.getByText('Acme Pvt Ltd')).toBeInTheDocument()
     expect(screen.getByText('Priya Shah')).toBeInTheDocument()
-    expect(screen.getByText('AI')).toBeInTheDocument()
+    expect(screen.getByText('high')).toBeInTheDocument()
   })
 
   it('renders the empty board state', () => {

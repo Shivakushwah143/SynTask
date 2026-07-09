@@ -623,7 +623,7 @@ const Dashboard = () => {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+      {/* <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <div className="card p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -656,7 +656,7 @@ const Dashboard = () => {
             ))}
           </div>
         </div>
-      </section>
+      </section> */}
     </div>
   )
 }
