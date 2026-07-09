@@ -17,32 +17,34 @@ from app.models.crm_company import CRMCompany
 from app.models.user import User, UserRole
 
 
-DEFAULT_PIPELINE_STAGES: List[Dict[str, Any]] = [
-    {"name": "Lead", "order": 0, "aliases": ["new"]},
-    {"name": "Contacted", "order": 1, "aliases": ["contacted", "follow up", "follow up call"]},
-    {"name": "Discovery Scheduled", "order": 2, "aliases": ["discovery", "discovery scheduled"]},
-    {"name": "Discovery Completed", "order": 3, "aliases": ["discovery completed", "discovery done", "meeting completed"]},
-    {"name": "Qualified", "order": 4, "aliases": ["qualified"]},
-    {"name": "Proposal Sent", "order": 5, "aliases": ["proposal", "proposal sent"]},
-    {"name": "Negotiation", "order": 6, "aliases": ["negotiation"]},
-    {"name": "Won", "order": 7, "aliases": ["won", "closed won"]},
-    {"name": "Lost", "order": 8, "aliases": ["lost", "closed lost"]},
+APPROVED_PIPELINE_STAGES: List[Dict[str, Any]] = [
+    {"name": "New", "order": 0, "category": "intake", "description": "Fresh lead awaiting outreach.", "aliases": ["lead", "new"]},
+    {"name": "Contacted", "order": 1, "category": "qualification", "description": "Initial contact has been made.", "aliases": ["contacted", "follow up", "follow up call"]},
+    {"name": "Qualified", "order": 2, "category": "qualification", "description": "Lead fits the target criteria.", "aliases": ["qualified"]},
+    {"name": "Discovery", "order": 3, "category": "evaluation", "description": "Needs analysis or discovery is underway.", "aliases": ["discovery", "discovery scheduled", "discovery completed", "discovery done", "meeting completed"]},
+    {"name": "Proposal", "order": 4, "category": "proposal", "description": "Proposal or quote has been delivered.", "aliases": ["proposal", "proposal sent"]},
+    {"name": "Negotiation", "order": 5, "category": "proposal", "description": "Commercial terms are under discussion.", "aliases": ["negotiation"]},
+    {"name": "Won", "order": 6, "category": "closed", "description": "Opportunity closed successfully.", "aliases": ["won", "closed won"], "is_terminal": True},
+    {"name": "Lost", "order": 7, "category": "closed", "description": "Opportunity closed without conversion.", "aliases": ["lost", "closed lost"], "is_terminal": True},
 ]
 
+# Backward-compatible export expected by package imports and older call sites.
+DEFAULT_PIPELINE_STAGES = APPROVED_PIPELINE_STAGES
+
 DEFAULT_STAGE_LOOKUP: Dict[str, str] = {
-    "new": "Lead",
-    "lead": "Lead",
+    "new": "New",
+    "lead": "New",
     "contacted": "Contacted",
     "follow up": "Contacted",
     "follow up call": "Contacted",
-    "discovery": "Discovery Scheduled",
-    "discovery scheduled": "Discovery Scheduled",
-    "discovery completed": "Discovery Completed",
-    "discovery done": "Discovery Completed",
-    "meeting completed": "Discovery Completed",
     "qualified": "Qualified",
-    "proposal": "Proposal Sent",
-    "proposal sent": "Proposal Sent",
+    "discovery": "Discovery",
+    "discovery scheduled": "Discovery",
+    "discovery completed": "Discovery",
+    "discovery done": "Discovery",
+    "meeting completed": "Discovery",
+    "proposal": "Proposal",
+    "proposal sent": "Proposal",
     "negotiation": "Negotiation",
     "won": "Won",
     "closed won": "Won",
@@ -110,13 +112,16 @@ def _build_stage_catalog(stage_documents: List[SalesStage]) -> List[Dict[str, An
                     "key": _slugify_stage_name(canonical_name),
                     "order": stage.order if stage.order is not None else index,
                     "is_default": bool(getattr(stage, "is_default", False)),
+                    "description": getattr(stage, "description", None),
+                    "category": getattr(stage, "category", None),
+                    "is_terminal": bool(getattr(stage, "is_terminal", False)),
                     "source": "sales_stage",
                 }
             )
         return sorted(catalog, key=lambda item: (item["order"], item["name"].lower()))
 
     catalog = []
-    for stage in DEFAULT_PIPELINE_STAGES:
+    for stage in APPROVED_PIPELINE_STAGES:
         catalog.append(
             {
                 "id": None,
@@ -124,6 +129,9 @@ def _build_stage_catalog(stage_documents: List[SalesStage]) -> List[Dict[str, An
                 "key": _slugify_stage_name(stage["name"]),
                 "order": stage["order"],
                 "is_default": stage["order"] == 0,
+                "description": stage.get("description"),
+                "category": stage.get("category"),
+                "is_terminal": bool(stage.get("is_terminal", False)),
                 "source": "default",
             }
         )
@@ -136,6 +144,8 @@ def _build_stage_index(stage_catalog: List[Dict[str, Any]]) -> Dict[str, Dict[st
         normalized_name = _normalize_stage_value(stage["name"])
         stage_index[normalized_name] = stage
         stage_index[_normalize_stage_value(stage["key"])] = stage
+        for alias in stage.get("aliases", []) or []:
+            stage_index[_normalize_stage_value(alias)] = stage
         for alias, canonical in DEFAULT_STAGE_LOOKUP.items():
             if canonical == stage["name"]:
                 stage_index[_normalize_stage_value(alias)] = stage
@@ -304,6 +314,9 @@ class CRMPipelineService:
                     "key": _slugify_stage_name(resolved_stage),
                     "order": len(stage_lookup) + 100,
                     "is_default": False,
+                    "description": None,
+                    "category": None,
+                    "is_terminal": False,
                     "source": "legacy",
                     "lead_count": 0,
                 }
@@ -322,6 +335,7 @@ class CRMPipelineService:
             "meta": {
                 "company_id": company_id,
                 "stage_source": "sales_stages" if stage_documents else "default",
+                "approved_stages": [stage["name"] for stage in APPROVED_PIPELINE_STAGES],
             },
         }
 
@@ -378,6 +392,9 @@ class CRMPipelineService:
 
         await prospect.save()
 
+        stage_catalog_map = {stage["name"]: stage for stage in stage_catalog}
+        resolved_stage_meta = stage_catalog_map.get(resolved_stage, {})
+
         history = SalesPipelineHistory.model_construct(
             lead_id=str(prospect.id),
             company_id=company_id,
@@ -394,6 +411,13 @@ class CRMPipelineService:
                 "reason": reason.strip() if reason else None,
                 "company_id": company_id,
                 "days_in_previous_stage": days_in_previous_stage,
+                "stage_metadata": {
+                    "name": resolved_stage_meta.get("name", resolved_stage),
+                    "key": resolved_stage_meta.get("key"),
+                    "order": resolved_stage_meta.get("order"),
+                    "category": resolved_stage_meta.get("category"),
+                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                },
             },
             transitioned_at=now,
         )
@@ -415,6 +439,13 @@ class CRMPipelineService:
                 "days_in_previous_stage": days_in_previous_stage,
                 "status": prospect.status.value,
                 "updated_at": now.isoformat(),
+                "stage_metadata": {
+                    "name": resolved_stage_meta.get("name", resolved_stage),
+                    "key": resolved_stage_meta.get("key"),
+                    "order": resolved_stage_meta.get("order"),
+                    "category": resolved_stage_meta.get("category"),
+                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                },
             },
             metadata={
                 "surface": "crm",

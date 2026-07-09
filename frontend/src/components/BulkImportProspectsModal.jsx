@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Upload, AlertCircle, CheckCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { salesApi } from '../api/sales'
@@ -16,6 +16,8 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
   const [processing, setProcessing] = useState(false)
   const [strategy, setStrategy] = useState('round-robin')
   const [targetUserId, setTargetUserId] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [importHistory, setImportHistory] = useState([])
   const [step, setStep] = useState('upload') // 'upload' | 'preview' | 'importing'
   const employeeOptions = Array.isArray(users) ? users : []
 
@@ -190,8 +192,8 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
     const selectedFile = event.target.files?.[0]
     if (!selectedFile) return
 
-    if (!/\.csv$/i.test(selectedFile.name)) {
-      toast.error('Please select a CSV file')
+    if (!/\.(csv|xlsx)$/i.test(selectedFile.name)) {
+      toast.error('Please select a CSV or XLSX file')
       event.target.value = ''
       return
     }
@@ -210,21 +212,28 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
       return
     }
 
-    if (/\.csv$/i.test(file.name)) {
+    if (/\.(csv|xlsx)$/i.test(file.name)) {
       setProcessing(true)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const text = e.target?.result
-        parseCSV(text)
-        setProcessing(false)
-      }
-      reader.onerror = () => {
-        setProcessing(false)
-        toast.error('Could not read the selected file')
-      }
-      reader.readAsText(file)
+      salesApi.previewBulkUploadProspects({
+        file,
+        strategy,
+        target_user_id: targetUserId,
+        target_department_id: departmentId,
+      })
+        .then((response) => {
+          const payload = response?.data || response || {}
+          setData(payload.preview_rows || [])
+          setErrors((payload.failed_rows || []).map((item) => `Row ${item.row}: ${item.error}`))
+          setStep('preview')
+        })
+        .catch(() => {
+          toast.error('Could not preview the selected file')
+        })
+        .finally(() => {
+          setProcessing(false)
+        })
     } else {
-      toast.error('Excel file support requires additional library. Please use CSV format.')
+      toast.error('Please select a CSV or XLSX file')
     }
   }
 
@@ -244,6 +253,9 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
       if (strategy === 'manual' && targetUserId) {
         formData.append('target_user_id', targetUserId)
       }
+      if (departmentId) {
+        formData.append('target_department_id', departmentId)
+      }
       const result = await salesApi.bulkUploadProspects(formData)
       const successCount = result.total_uploaded || result.success_count || 0
       const importErrors = (result.failed_rows || []).map(
@@ -258,6 +270,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
         queryClient.invalidateQueries('crm-assigned-leads')
         queryClient.invalidateQueries('crm-lead-workspace')
         queryClient.invalidateQueries('sales-prospects')
+        queryClient.invalidateQueries('crm-import-history')
         onSuccess?.()
       }
 
@@ -288,9 +301,17 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
     setLoading(false)
     setStrategy('round-robin')
     setTargetUserId('')
+    setDepartmentId('')
     setStep('upload')
     onClose()
   }
+
+  useEffect(() => {
+    if (!isOpen) return
+    salesApi.getImportHistory()
+      .then((response) => setImportHistory(response?.data?.items || response?.items || []))
+      .catch(() => setImportHistory([]))
+  }, [isOpen])
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Bulk Import Prospects" size="lg">
@@ -448,6 +469,20 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
           </div>
           <p className="text-sm font-medium text-gray-900">Importing prospects...</p>
           <p className="text-xs text-gray-500">This may take a moment</p>
+        </div>
+      )}
+
+      {importHistory.length > 0 && (
+        <div className="rounded-lg border border-gray-200 p-4">
+          <p className="text-sm font-semibold text-gray-900">Recent imports</p>
+          <div className="mt-2 space-y-2 text-xs text-gray-600">
+            {importHistory.slice(0, 3).map((job) => (
+              <div key={job.id} className="flex items-center justify-between gap-3">
+                <span>{job.filename || 'Import job'}</span>
+                <span>{job.total_uploaded}/{job.total_rows}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </Modal>

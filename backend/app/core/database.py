@@ -61,6 +61,7 @@ from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_prospect import SalesProspect
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_pipeline_history import SalesPipelineHistory
+from app.models.sales_import_job import SalesImportJob
 from app.models.sales_masters import (
     SalesStage, ReasonForLost, SalesChannel, SalesTag,
     Nationality, BusinessCategory, GreetingTemplate
@@ -193,6 +194,7 @@ async def init_db():
                 SalesProspect,
                 SalesLeadNote,
                 SalesPipelineHistory,
+                SalesImportJob,
                 SalesStage,
                 ReasonForLost,
                 SalesChannel,
