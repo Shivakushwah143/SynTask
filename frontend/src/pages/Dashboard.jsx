@@ -27,6 +27,8 @@ import { Badge, Button, EmptyState, PageHeader, SkeletonCard, SkeletonTable, Tab
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { attendanceAPI } from '../api/attendance'
 import { ChartTooltip } from '../components/charts/ChartTooltip'
+import { WorkflowGuide } from '../components/workflow/WorkflowGuide'
+import WorkflowJourney from '../components/workflow/WorkflowJourney'
 import { ChartCard } from '../components/charts/ChartCard'
 import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
 import DonutLegendChart from '../components/charts/DonutLegendChart'
@@ -243,6 +245,39 @@ const Dashboard = () => {
             </Button>
           </div>
         )}
+      />
+
+      <WorkflowGuide
+        title={role === ROLE.MANAGER ? 'Review team load, then assign the next task' : role === ROLE.LEAD ? 'Clear today’s team work, then move the pipeline forward' : 'Focus on the highest-risk work first'}
+        description={role === ROLE.MANAGER
+          ? 'Use this screen to see workload balance, overdue work, and the next lead or task that should be assigned.'
+          : role === ROLE.LEAD
+            ? 'Use this screen to keep execution current so the team stays aligned on the next business action.'
+            : 'Use this screen to keep the workspace moving without hunting through disconnected views.'}
+        nextStep={role === ROLE.MANAGER
+          ? 'Open tasks or CRM pipeline to assign the next owner.'
+          : role === ROLE.LEAD
+            ? 'Review today’s work and clear blockers before they age.'
+            : 'Open the most urgent task, project, or meeting now.'}
+        primaryAction={role === ROLE.MANAGER
+          ? { label: 'Open Tasks', href: '/tasks' }
+          : role === ROLE.LEAD
+            ? { label: 'Open Team', href: '/my-team' }
+            : { label: 'Open Dashboard', href: '/dashboard' }}
+        secondaryAction={role === ROLE.MANAGER
+          ? { label: 'Open CRM Pipeline', href: '/crm/pipeline' }
+          : { label: 'Open Calendar', href: '/calendar' }}
+        bullets={[
+          { label: 'Where am I?', value: 'The main operational workspace.' },
+          { label: 'What next?', value: role === ROLE.MANAGER ? 'Assign or reassign the next item.' : 'Resolve the current blocker.' },
+          { label: 'After this?', value: 'Move into the relevant workspace with one click.' },
+        ]} 
+        className="mb-6"
+      />
+
+      <WorkflowJourney
+        className="mb-6"
+        description="This is the complete operating path in SynTask, from sign-in through revenue, delivery, reporting, and renewal."
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -588,7 +623,7 @@ const Dashboard = () => {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+      {/* <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <div className="card p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -621,7 +656,7 @@ const Dashboard = () => {
             ))}
           </div>
         </div>
-      </section>
+      </section> */}
     </div>
   )
 }

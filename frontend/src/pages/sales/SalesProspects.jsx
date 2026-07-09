@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Briefcase, Search } from 'lucide-react'
 import Papa from 'papaparse'
 import toast from 'react-hot-toast'
@@ -83,12 +83,15 @@ export default function SalesProspects() {
 }
 
 function BulkUploadModal({ isOpen, onClose, onDone }) {
+  const navigate = useNavigate()
   const [file, setFile] = useState(null)
   const [previewRows, setPreviewRows] = useState([])
   const [headers, setHeaders] = useState([])
   const [strategy, setStrategy] = useState('round-robin')
   const [targetUserId, setTargetUserId] = useState('')
   const [fileError, setFileError] = useState('')
+  const [step, setStep] = useState('upload')
+  const [summary, setSummary] = useState(null)
   const { data: usersData } = useQuery('assignable-users-for-bulk-upload', () => usersAPI.getAssignableUsers(), { enabled: isOpen })
   const users = asArray(usersData, ['users'])
 
@@ -100,7 +103,15 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
       console.log('Skipped row details:', result.warnings || [])
       console.groupEnd()
       toast.success(`Uploaded ${result.total_uploaded} leads. ${result.skipped_rows} skipped.`)
-      onDone()
+      const assignedCount = Object.values(result.assigned_breakdown || {}).reduce((sum, count) => sum + Number(count || 0), 0)
+      setSummary({
+        imported: result.total_uploaded || 0,
+        assigned: assignedCount,
+        failed: result.skipped_rows || 0,
+        warnings: result.warnings || [],
+        strategy,
+      })
+      setStep('success')
     },
     onError: (error) => {
       console.group('[Bulk Lead Upload] Error')
@@ -186,6 +197,8 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
     setFileError('')
     setStrategy('round-robin')
     setTargetUserId('')
+    setSummary(null)
+    setStep('upload')
   }
 
   const submit = () => {
@@ -222,7 +235,53 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Bulk Upload Leads" size="xl">
-      <div className="space-y-6">
+      {step === 'success' ? (
+        <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Imported</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">{summary?.imported || 0}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Assigned</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">{summary?.assigned || 0}</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Failed</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">{summary?.failed || 0}</p>
+            </div>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p className="text-sm font-semibold text-gray-900">Assignment strategy</p>
+            <p className="mt-1 text-sm text-gray-600">
+              {summary?.strategy === 'manual'
+                ? 'Manual assignment was used.'
+                : `Automatic ${summary?.strategy || strategy} assignment was used.`}
+            </p>
+          </div>
+          {summary?.warnings?.length ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">Failed rows</p>
+              <div className="mt-2 max-h-36 space-y-1 overflow-auto text-sm text-amber-800">
+                {summary.warnings.slice(0, 8).map((item) => (
+                  <div key={`${item.row}-${item.error}`}>Row {item.row}: {item.error}</div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div className="flex justify-end">
+            <Button
+              onClick={() => {
+                onDone()
+                navigate('/sales/pipeline')
+              }}
+            >
+              Open Sales Pipeline
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">CSV file</label>
@@ -289,7 +348,8 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
           <Button variant="secondary" onClick={handleReset} disabled={mutation.isLoading}>Reset</Button>
           <Button loading={mutation.isLoading} onClick={submit}>Upload Leads</Button>
         </div>
-      </div>
+        </div>
+      )}
     </Modal>
   )
 }

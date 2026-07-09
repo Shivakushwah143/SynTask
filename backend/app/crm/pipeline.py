@@ -3,13 +3,15 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 
 from app.crm.timeline import publish_crm_timeline_event
 from app.crm.deal_automation import handle_won_deal_automation
-from app.models.sales_masters import SalesStage
+from app.crm.lost_workflow import handle_lost_workflow
+from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.crm_deal import CRMDeal
 from app.models.sales_prospect import ProspectStatus, SalesProspect
@@ -53,6 +55,29 @@ DEFAULT_STAGE_LOOKUP: Dict[str, str] = {
 }
 
 
+class PipelineStage(str, Enum):
+    NEW = "New"
+    CONTACTED = "Contacted"
+    QUALIFIED = "Qualified"
+    DISCOVERY = "Discovery"
+    PROPOSAL = "Proposal"
+    NEGOTIATION = "Negotiation"
+    WON = "Won"
+    LOST = "Lost"
+
+
+ALLOWED_TRANSITIONS: Dict[PipelineStage, set[PipelineStage]] = {
+    PipelineStage.NEW: {PipelineStage.CONTACTED, PipelineStage.LOST},
+    PipelineStage.CONTACTED: {PipelineStage.QUALIFIED, PipelineStage.LOST},
+    PipelineStage.QUALIFIED: {PipelineStage.DISCOVERY, PipelineStage.LOST},
+    PipelineStage.DISCOVERY: {PipelineStage.PROPOSAL, PipelineStage.LOST},
+    PipelineStage.PROPOSAL: {PipelineStage.NEGOTIATION, PipelineStage.LOST},
+    PipelineStage.NEGOTIATION: {PipelineStage.WON, PipelineStage.LOST},
+    PipelineStage.WON: set(),
+    PipelineStage.LOST: {PipelineStage.NEW},
+}
+
+
 def _normalize_stage_value(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip()).lower()
 
@@ -93,33 +118,7 @@ def _can_write_pipeline(current_user: User, prospect: SalesProspect) -> bool:
     return False
 
 
-async def _load_stage_documents(current_user: User) -> List[SalesStage]:
-    company_id = _user_company_id(current_user)
-    query: Dict[str, Any] = {"deleted": False, "company_id": company_id}
-    stages = await SalesStage.find(query).sort(SalesStage.order).to_list()
-    return stages
-
-
-def _build_stage_catalog(stage_documents: List[SalesStage]) -> List[Dict[str, Any]]:
-    if stage_documents:
-        catalog = []
-        for index, stage in enumerate(stage_documents):
-            canonical_name = stage.name.strip()
-            catalog.append(
-                {
-                    "id": str(stage.id),
-                    "name": canonical_name,
-                    "key": _slugify_stage_name(canonical_name),
-                    "order": stage.order if stage.order is not None else index,
-                    "is_default": bool(getattr(stage, "is_default", False)),
-                    "description": getattr(stage, "description", None),
-                    "category": getattr(stage, "category", None),
-                    "is_terminal": bool(getattr(stage, "is_terminal", False)),
-                    "source": "sales_stage",
-                }
-            )
-        return sorted(catalog, key=lambda item: (item["order"], item["name"].lower()))
-
+def _build_stage_catalog() -> List[Dict[str, Any]]:
     catalog = []
     for stage in APPROVED_PIPELINE_STAGES:
         catalog.append(
@@ -132,7 +131,7 @@ def _build_stage_catalog(stage_documents: List[SalesStage]) -> List[Dict[str, An
                 "description": stage.get("description"),
                 "category": stage.get("category"),
                 "is_terminal": bool(stage.get("is_terminal", False)),
-                "source": "default",
+                "source": "fixed",
             }
         )
     return catalog
@@ -144,6 +143,9 @@ def _build_stage_index(stage_catalog: List[Dict[str, Any]]) -> Dict[str, Dict[st
         normalized_name = _normalize_stage_value(stage["name"])
         stage_index[normalized_name] = stage
         stage_index[_normalize_stage_value(stage["key"])] = stage
+        if normalized_name in {"lead", "new"}:
+            stage_index["lead"] = stage
+            stage_index["new"] = stage
         for alias in stage.get("aliases", []) or []:
             stage_index[_normalize_stage_value(alias)] = stage
         for alias, canonical in DEFAULT_STAGE_LOOKUP.items():
@@ -163,6 +165,25 @@ def _resolve_stage_name(value: Optional[str], stage_index: Dict[str, Dict[str, A
     if canonical and canonical in {item["name"] for item in stage_index.values()}:
         return canonical
     return None
+
+
+def _resolve_pipeline_stage(value: Optional[str]) -> Optional[PipelineStage]:
+    normalized = _normalize_stage_value(value)
+    for stage in PipelineStage:
+        if normalized in {_normalize_stage_value(stage.value), _slugify_stage_name(stage.value)}:
+            return stage
+    canonical = DEFAULT_STAGE_LOOKUP.get(normalized)
+    if canonical:
+        return PipelineStage(canonical)
+    return None
+
+
+def _is_allowed_transition(current_stage: str, target_stage: str) -> bool:
+    current = _resolve_pipeline_stage(current_stage)
+    target = _resolve_pipeline_stage(target_stage)
+    if not current or not target:
+        return False
+    return target in ALLOWED_TRANSITIONS.get(current, set())
 
 
 def _serialize_lead(
@@ -253,8 +274,7 @@ class CRMPipelineService:
     @staticmethod
     async def load_pipeline(current_user: User) -> Dict[str, Any]:
         company_id = _user_company_id(current_user)
-        stage_documents = await _load_stage_documents(current_user)
-        stage_catalog = _build_stage_catalog(stage_documents)
+        stage_catalog = _build_stage_catalog()
         stage_index = _build_stage_index(stage_catalog)
 
         query: Dict[str, Any] = {
@@ -334,7 +354,7 @@ class CRMPipelineService:
             "summary": _build_pipeline_summary(prospects),
             "meta": {
                 "company_id": company_id,
-                "stage_source": "sales_stages" if stage_documents else "default",
+                "stage_source": "fixed_state_machine",
                 "approved_stages": [stage["name"] for stage in APPROVED_PIPELINE_STAGES],
             },
         }
@@ -352,8 +372,7 @@ class CRMPipelineService:
         if not _can_write_pipeline(current_user, prospect):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to update this lead")
 
-        stage_documents = await _load_stage_documents(current_user)
-        stage_catalog = _build_stage_catalog(stage_documents)
+        stage_catalog = _build_stage_catalog()
         stage_index = _build_stage_index(stage_catalog)
         resolved_stage = _resolve_stage_name(target_stage, stage_index)
         if not resolved_stage:
@@ -362,6 +381,11 @@ class CRMPipelineService:
         current_stage = _resolve_stage_name(prospect.current_stage, stage_index) or prospect.current_stage
         if _normalize_stage_value(current_stage) == _normalize_stage_value(resolved_stage):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid transition")
+        if not _is_allowed_transition(current_stage, resolved_stage):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Illegal transition {current_stage} -> {resolved_stage}",
+            )
 
         now = datetime.utcnow()
         previous_entered_at = prospect.stage_entered_at or prospect.created_at or now
@@ -374,17 +398,15 @@ class CRMPipelineService:
         prospect.updated_at = now
 
         normalized_stage = _normalize_stage_value(resolved_stage)
+        lost_result: Optional[Dict[str, Any]] = None
         if normalized_stage == "won":
             prospect.status = ProspectStatus.WON
             prospect.closed_date = now
             prospect.closed_by = str(getattr(current_user, "id", ""))
             prospect.reason_for_lost = None
         elif normalized_stage == "lost":
-            prospect.status = ProspectStatus.LOST
-            prospect.closed_date = now
-            prospect.closed_by = str(getattr(current_user, "id", ""))
-            if reason is not None:
-                prospect.reason_for_lost = reason.strip() or None
+            lost_result = await handle_lost_workflow(current_user, prospect, reason)
+            prospect = lost_result["lead"]
         elif prospect.status in [ProspectStatus.WON, ProspectStatus.LOST]:
             prospect.status = ProspectStatus.ACTIVE
             prospect.closed_date = None
@@ -489,8 +511,274 @@ class CRMPipelineService:
                 "reason": reason.strip() if reason else None,
                 "days_in_previous_stage": days_in_previous_stage,
             },
-            "automation": automation_result if normalized_stage == "won" else None,
+            "automation": automation_result if normalized_stage == "won" else (lost_result if normalized_stage == "lost" else None),
             "message": "Lead stage updated successfully",
+        }
+
+    @staticmethod
+    async def reopen_lost_lead(current_user: User, lead_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
+        company_id = _user_company_id(current_user)
+        prospect = await SalesProspect.get(lead_id)
+        if not prospect or prospect.deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+        if prospect.company_id != company_id and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this company")
+
+        if not _can_write_pipeline(current_user, prospect):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to update this lead")
+
+        if prospect.status != ProspectStatus.LOST:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lead is not lost")
+
+        stage_catalog = _build_stage_catalog()
+        stage_index = _build_stage_index(stage_catalog)
+        reopened_stage = _resolve_stage_name("New", stage_index) or "New"
+        previous_stage = _resolve_stage_name(prospect.current_stage, stage_index) or prospect.current_stage or "Lost"
+
+        now = datetime.utcnow()
+        days_in_previous_stage = max((now - (prospect.stage_entered_at or prospect.created_at or now)).days, 0)
+
+        prospect.current_stage = reopened_stage
+        prospect.status = ProspectStatus.ACTIVE
+        prospect.closed_date = None
+        prospect.closed_by = None
+        prospect.reason_for_lost = None
+        prospect.stage_last_changed_at = now
+        prospect.stage_entered_at = now
+        prospect.days_in_stage = 0
+        prospect.updated_at = now
+        await prospect.save()
+
+        stage_catalog_map = {stage["name"]: stage for stage in stage_catalog}
+        resolved_stage_meta = stage_catalog_map.get(reopened_stage, {})
+
+        history = SalesPipelineHistory.model_construct(
+            lead_id=str(prospect.id),
+            company_id=company_id,
+            previous_stage=previous_stage,
+            new_stage=reopened_stage,
+            user_id=str(getattr(current_user, "id", "")),
+            user_name=_user_display_name(current_user),
+            reason=reason.strip() if reason else None,
+            days_in_previous_stage=days_in_previous_stage,
+            payload={
+                "lead_id": str(prospect.id),
+                "previous_stage": previous_stage,
+                "new_stage": reopened_stage,
+                "reason": reason.strip() if reason else None,
+                "company_id": company_id,
+                "days_in_previous_stage": days_in_previous_stage,
+                "reopened_from": "lost",
+                "stage_metadata": {
+                    "name": resolved_stage_meta.get("name", reopened_stage),
+                    "key": resolved_stage_meta.get("key"),
+                    "order": resolved_stage_meta.get("order"),
+                    "category": resolved_stage_meta.get("category"),
+                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                },
+            },
+            transitioned_at=now,
+        )
+        await history.insert()
+
+        await publish_crm_timeline_event(
+            event_name="LeadReopened",
+            aggregate_type="sales_prospect",
+            aggregate_id=str(prospect.id),
+            company_id=company_id,
+            actor_id=str(getattr(current_user, "id", "")),
+            payload={
+                "lead_id": str(prospect.id),
+                "lead_name": prospect.prospect_name,
+                "company_id": company_id,
+                "previous_stage": previous_stage,
+                "new_stage": reopened_stage,
+                "reason": reason.strip() if reason else None,
+                "days_in_previous_stage": days_in_previous_stage,
+                "status": prospect.status.value,
+                "updated_at": now.isoformat(),
+                "reopened_from": "lost",
+                "stage_metadata": {
+                    "name": resolved_stage_meta.get("name", reopened_stage),
+                    "key": resolved_stage_meta.get("key"),
+                    "order": resolved_stage_meta.get("order"),
+                    "category": resolved_stage_meta.get("category"),
+                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                },
+            },
+            metadata={
+                "surface": "crm",
+                "workflow": "lost_lifecycle",
+            },
+        )
+
+        return {
+            "lead": _serialize_lead(prospect, reopened_stage),
+            "history": {
+                "lead_id": str(prospect.id),
+                "previous_stage": previous_stage,
+                "new_stage": reopened_stage,
+                "timestamp": now,
+                "user_id": str(getattr(current_user, "id", "")),
+                "user_name": _user_display_name(current_user),
+                "company_id": company_id,
+                "reason": reason.strip() if reason else None,
+                "days_in_previous_stage": days_in_previous_stage,
+                "reopened_from": "lost",
+            },
+            "message": "Lost lead reopened successfully",
+        }
+
+    @staticmethod
+    async def create_lost_reminder(
+        current_user: User,
+        lead_id: str,
+        *,
+        title: str,
+        description: Optional[str] = None,
+        due_date: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        company_id = _user_company_id(current_user)
+        prospect = await SalesProspect.get(lead_id)
+        if not prospect or prospect.deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+        if prospect.company_id != company_id and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this company")
+        if prospect.status != ProspectStatus.LOST:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reminders can only be created for lost leads")
+
+        now = datetime.utcnow()
+        activity = CRMActivity(
+            company_id=company_id,
+            entity_type="lead",
+            entity_id=str(prospect.id),
+            activity_type=CRMActivityType.REMINDER.value,
+            title=title.strip() or "Lost lead reminder",
+            description=description.strip() if description else f"Follow up on lost lead {prospect.prospect_name}.",
+            status=CRMActivityStatus.SCHEDULED,
+            priority=CRMActivityPriority.MEDIUM,
+            owner_id=str(getattr(current_user, "id", "")),
+            owner_name=_user_display_name(current_user),
+            due_date=due_date,
+            metadata={
+                "lead_id": str(prospect.id),
+                "lead_name": prospect.prospect_name,
+                "status": prospect.status.value,
+                "reason_for_lost": prospect.reason_for_lost,
+                "workflow": "lost_lifecycle",
+            },
+            created_by=str(getattr(current_user, "id", "")),
+            created_by_name=_user_display_name(current_user),
+            updated_by=str(getattr(current_user, "id", "")),
+            updated_by_name=_user_display_name(current_user),
+            created_at=now,
+            updated_at=now,
+        )
+        await activity.insert()
+
+        await publish_crm_timeline_event(
+            event_name="LostLeadReminderCreated",
+            aggregate_type="sales_prospect",
+            aggregate_id=str(prospect.id),
+            company_id=company_id,
+            actor_id=str(getattr(current_user, "id", "")),
+            payload={
+                "lead_id": str(prospect.id),
+                "lead_name": prospect.prospect_name,
+                "activity_id": str(activity.id),
+                "title": activity.title,
+                "due_date": due_date.isoformat() if due_date else None,
+                "status": "scheduled",
+                "reason_for_lost": prospect.reason_for_lost,
+                "timestamp": now.isoformat(),
+            },
+            metadata={"surface": "crm", "workflow": "lost_lifecycle"},
+        )
+
+        return {
+            "message": "Lost lead reminder created",
+            "activity": {
+                "id": str(activity.id),
+                "title": activity.title,
+                "description": activity.description,
+                "due_date": activity.due_date,
+                "status": activity.status.value,
+                "priority": activity.priority.value,
+                "owner_id": activity.owner_id,
+                "entity_id": activity.entity_id,
+                "entity_type": activity.entity_type,
+            },
+        }
+
+    @staticmethod
+    async def nurture_lost_lead(
+        current_user: User,
+        lead_id: str,
+        *,
+        note: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        company_id = _user_company_id(current_user)
+        prospect = await SalesProspect.get(lead_id)
+        if not prospect or prospect.deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+        if prospect.company_id != company_id and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this company")
+        if prospect.status != ProspectStatus.LOST:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nurture can only be started for lost leads")
+
+        now = datetime.utcnow()
+        prospect.updated_at = now
+        prospect.remark = prospect.remark if prospect.remark else None
+        await prospect.save()
+
+        await publish_crm_timeline_event(
+            event_name="LostLeadNurtured",
+            aggregate_type="sales_prospect",
+            aggregate_id=str(prospect.id),
+            company_id=company_id,
+            actor_id=str(getattr(current_user, "id", "")),
+            payload={
+                "lead_id": str(prospect.id),
+                "lead_name": prospect.prospect_name,
+                "reason_for_lost": prospect.reason_for_lost,
+                "note": note.strip() if note else None,
+                "status": prospect.status.value,
+                "timestamp": now.isoformat(),
+            },
+            metadata={"surface": "crm", "workflow": "lost_lifecycle"},
+        )
+
+        return {
+            "message": "Lost lead nurture recorded",
+            "lead": _serialize_lead(prospect, prospect.current_stage),
+        }
+
+    @staticmethod
+    async def lost_analytics(current_user: User) -> Dict[str, Any]:
+        company_id = _user_company_id(current_user)
+        lost_leads = await SalesProspect.find(
+            {
+                "company_id": company_id,
+                "deleted": False,
+                "status": ProspectStatus.LOST,
+            }
+        ).to_list()
+        by_reason: Dict[str, int] = defaultdict(int)
+        by_owner: Dict[str, int] = defaultdict(int)
+        for lead in lost_leads:
+            by_reason[(lead.reason_for_lost or "Unspecified").strip() or "Unspecified"] += 1
+            by_owner[str(getattr(lead, "assigned_to", "") or "Unassigned")] += 1
+
+        return {
+            "company_id": company_id,
+            "summary": {
+                "total_lost": len(lost_leads),
+                "with_reason": sum(1 for lead in lost_leads if lead.reason_for_lost),
+                "without_reason": sum(1 for lead in lost_leads if not lead.reason_for_lost),
+            },
+            "by_reason": [{"reason": reason, "count": count} for reason, count in sorted(by_reason.items(), key=lambda item: (-item[1], item[0].lower()))],
+            "by_owner": [{"owner_id": owner_id, "count": count} for owner_id, count in sorted(by_owner.items(), key=lambda item: (-item[1], item[0].lower()))],
         }
 
     @staticmethod

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowRight, Clock3, FolderKanban, Grid2x2, List, Plus, Receipt, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Clock3, Plus, Receipt, Search, SlidersHorizontal } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -10,17 +10,31 @@ import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
 import { hasCompanyAdminAccess } from '../utils/roles'
-import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, Table, inputClassName } from '../components/ui'
+import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
 import { buildProjectGraphRows, buildProjectGraphSummary } from './projectsData'
+
+const PROJECT_BATCH_SIZE = 10
+
+const PROJECT_WORKFLOW = {
+  active: ['created', 'kickoff', 'execution', 'review', 'on_hold'],
+  created: ['kickoff', 'on_hold'],
+  kickoff: ['execution', 'on_hold'],
+  execution: ['review', 'on_hold'],
+  review: ['completed', 'on_hold'],
+  completed: ['reporting'],
+  reporting: ['archived'],
+  on_hold: ['created', 'kickoff', 'execution', 'review'],
+  archived: [],
+}
 
 export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const { confirm } = useConfirmation()
   const canCreateProjects = hasCompanyAdminAccess(user?.role)
-  const [view, setView] = useState('grid')
   const [loading, setLoading] = useState(true)
   const [projects, setProjects] = useState([])
+  const [visibleProjectCount, setVisibleProjectCount] = useState(PROJECT_BATCH_SIZE)
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState({ status: '', type: '', owner: '' })
   const [showFilters, setShowFilters] = useState(false)
@@ -106,8 +120,12 @@ export default function Projects() {
         : 0,
   })), [filteredProjects])
 
-  const projectGraphRows = useMemo(() => buildProjectGraphRows(projectCards), [projectCards])
+  const projectGraphRows = useMemo(() => buildProjectGraphRows(projectCards, visibleProjectCount), [projectCards, visibleProjectCount])
   const projectGraphSummary = useMemo(() => buildProjectGraphSummary(projectCards), [projectCards])
+
+  useEffect(() => {
+    setVisibleProjectCount(PROJECT_BATCH_SIZE)
+  }, [filters.owner, filters.status, filters.type, searchQuery])
 
   const openProject = async (project) => {
     setSelectedProject(project)
@@ -128,6 +146,17 @@ export default function Projects() {
       toast.error('Failed to load project details')
     } finally {
       setLoadingDetails(false)
+    }
+  }
+
+  const handleProjectStatusChange = async (project, nextStatus) => {
+    try {
+      await projectsApi.updateProject(project.id, { status: nextStatus })
+      toast.success(`Project moved to ${nextStatus.replace(/_/g, ' ')}`)
+      await loadProjects()
+      await openProject(project)
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update project status')
     }
   }
 
@@ -200,14 +229,6 @@ export default function Projects() {
       description="Project health, ownership, and progress."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={view === 'grid' ? 'primary' : 'secondary'} size="sm" onClick={() => setView('grid')}>
-              <Grid2x2 className="h-4 w-4" />
-              Grid
-            </Button>
-            <Button variant={view === 'list' ? 'primary' : 'secondary'} size="sm" onClick={() => setView('list')}>
-              <List className="h-4 w-4" />
-              List
-            </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowFilters((value) => !value)}>
               <SlidersHorizontal className="h-4 w-4" />
               Filters
@@ -232,6 +253,9 @@ export default function Projects() {
         rows={projectGraphRows}
         summary={projectGraphSummary}
         loading={loading}
+        totalCount={projectCards.length}
+        visibleCount={visibleProjectCount}
+        onViewMore={() => setVisibleProjectCount((count) => Math.min(count + PROJECT_BATCH_SIZE, projectCards.length))}
         onOpenProject={(project) => {
           const match = projectCards.find((item) => item.id === project.id)
           if (match) openProject(match)
@@ -267,66 +291,6 @@ export default function Projects() {
             </div>
           ) : null}
         </div>
-      </section>
-
-      <section className="card p-0 overflow-hidden">
-        {loading ? (
-          <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map((item) => <SkeletonCard key={item} lines={4} />)}
-          </div>
-        ) : !projectCards.length ? (
-          <div className="p-6">
-            <EmptyState
-              icon={FolderKanban}
-              title="No projects found"
-              description="Use search or filters to refine the list."
-              action={canCreateProjects ? <Button onClick={() => setShowCreateModal(true)}><Plus className="h-4 w-4" /> Create</Button> : null}
-            />
-          </div>
-        ) : view === 'list' ? (
-          <Table columns={projectTableColumns} data={projectCards} />
-        ) : (
-          <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {projectCards.map((project) => (
-              <button key={project.id} type="button" onClick={() => openProject(project)} className="group overflow-hidden rounded-2xl border border-surface-border bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{project.key}</p>
-                    <h3 className="mt-2 truncate text-base font-semibold text-gray-900 dark:text-gray-100">{project.name}</h3>
-                  </div>
-                  <Badge label={project.statusLabel || 'active'} colorKey={project.status || 'active'} />
-                </div>
-                <p className="mt-3 line-clamp-2 text-sm text-gray-500 dark:text-gray-400">{project.description || 'No description available.'}</p>
-                <div className="mt-4 space-y-3">
-                  <ProgressBar value={project.progress || 0} />
-                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                    <span>{project.task_count || 0} tasks</span>
-                    <span>{project.delivery_date ? format(new Date(project.delivery_date), 'MMM d') : 'No delivery date'}</span>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-3 dark:border-gray-800">
-                  <div className="flex -space-x-2">
-                    {(project.team_members || assignableUsers.slice(0, 3)).slice(0, 3).map((member, index) => (
-                      <div key={`${project.id}-${index}`} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-gray-100 text-xs font-semibold text-gray-700 dark:border-gray-900 dark:bg-gray-800 dark:text-gray-200">
-                        {(member.first_name || member.name || '?').slice(0, 1)}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={(event) => { event.stopPropagation(); openProject(project) }} className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" aria-label={`Open ${project.name}`}>
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                    {canCreateProjects ? (
-                      <button type="button" disabled={Boolean(deletingId)} onClick={(event) => { event.stopPropagation(); handleDelete(project.id) }} className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-500/10 dark:hover:text-red-300" aria-label={deletingId === project.id ? `Deleting ${project.name}` : `Delete ${project.name}`} aria-busy={deletingId === project.id || undefined}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
       </section>
 
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New project" size="xl">
@@ -414,7 +378,7 @@ export default function Projects() {
   )
 }
 
-function ProjectGraphPanel({ rows, summary, loading, onOpenProject }) {
+function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, onViewMore, onOpenProject }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
@@ -454,7 +418,7 @@ function ProjectGraphPanel({ rows, summary, loading, onOpenProject }) {
           </div>
         ) : rows.length ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {rows.slice(0, 6).map((project) => (
+          {rows.map((project) => (
           <button
             key={project.id}
             type="button"
@@ -488,6 +452,14 @@ function ProjectGraphPanel({ rows, summary, loading, onOpenProject }) {
             <EmptyState title="No project graph data" description="Projects will appear here when they match your filters." />
           </div>
         )}
+        {!loading && rows.length > 0 && visibleCount < totalCount ? (
+          <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+            <span>Showing {rows.length} of {totalCount} projects</span>
+            <Button variant="secondary" size="sm" onClick={onViewMore}>
+              View more
+            </Button>
+          </div>
+        ) : null}
       </div>
     </section>
   )
@@ -551,7 +523,7 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => onOpenBoard(project)}>Open board</Button>
-            <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">×</button>
+            <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">x</button>
           </div>
         </div>
         <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
@@ -567,6 +539,27 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
                 <section className="card p-4">
                   <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Overview</h3>
                   <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{details?.description || project.description || 'No project description available.'}</p>
+                </section>
+                <section className="card p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Workflow</h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Advance the project through the locked delivery stages.</p>
+                    </div>
+                    <Badge label={(details?.status || project.status || 'active').replace(/_/g, ' ')} colorKey={details?.status || project.status || 'active'} />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {(PROJECT_WORKFLOW[(details?.status || project.status || 'active').toLowerCase()] || []).map((nextStatus) => (
+                      <Button
+                        key={nextStatus}
+                        size="sm"
+                        variant={nextStatus === 'completed' ? 'primary' : 'secondary'}
+                        onClick={() => handleProjectStatusChange(project, nextStatus)}
+                      >
+                        {nextStatus.replace(/_/g, ' ')}
+                      </Button>
+                    ))}
+                  </div>
                 </section>
                 <section className="card p-4">
                   <div className="mb-3 flex items-center justify-between">

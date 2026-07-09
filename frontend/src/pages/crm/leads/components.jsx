@@ -4,6 +4,7 @@ import { useMutation, useQuery } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, BadgeInfo, CalendarClock, Clock3, FileText, History, Lock, Mail, MessageSquare, Sparkles, StickyNote, Video, Wand2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
@@ -256,6 +257,11 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     setCustomFields(JSON.stringify(custom, null, 2))
   }, [lead])
 
+  const stageMutation = useMutation((stage) => crmApi.updatePipelineStage(lead?.id, { stage }), {
+    onSuccess: () => toast.success('Lead stage updated'),
+    onError: (error) => toast.error(error?.response?.data?.detail || 'Stage update failed'),
+  })
+
   const saveMutation = useMutation((payload) => salesApi.updateProspectForm(lead?.id, payload), {
     onSuccess: () => toast.success('Lead updated'),
     onError: (error) => toast.error(error?.response?.data?.detail || 'Update failed'),
@@ -272,6 +278,10 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     } catch {
       toast.error('Custom fields must be valid JSON')
       return
+    }
+    const nextStage = form.current_stage?.trim()
+    if (nextStage && nextStage !== (lead?.current_stage || '')) {
+      stageMutation.mutate(nextStage)
     }
     saveMutation.mutate(payload)
   }

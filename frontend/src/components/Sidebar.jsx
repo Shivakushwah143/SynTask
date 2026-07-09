@@ -270,6 +270,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
     },
     {
+      name: "Workflows",
+      href: "/workflows",
+      icon: GitBranch,
+      roles: [ROLE.ADMIN],
+      module: "task",
+    },
+    {
       name: "Departments",
       href: "/departments",
       icon: Network,

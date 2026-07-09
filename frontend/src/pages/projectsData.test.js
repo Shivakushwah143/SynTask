@@ -22,4 +22,10 @@ describe('projects graph data helpers', () => {
 
     expect(summary).toEqual({ totalTasks: 15, remainingTasks: 5 })
   })
+
+  test('limits project graph rows when a display count is provided', () => {
+    const projects = Array.from({ length: 12 }, (_, index) => ({ id: `p${index}`, name: `Project ${index}` }))
+
+    expect(buildProjectGraphRows(projects, 10)).toHaveLength(10)
+  })
 })

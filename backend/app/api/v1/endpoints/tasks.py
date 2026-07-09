@@ -371,7 +371,7 @@ async def create_task(
         epic_id=epic_id,
         sprint_id=sprint_id,
         story_points=story_points,
-        estimated_hours=estimated_hours,
+        estimated_hours=estimated_hours_value,
     )
 
     # --- Save the task. This is the only DB write that MUST succeed before
@@ -448,6 +448,38 @@ async def get_task(
     }
 
 
+@router.get("/{task_id}/execution")
+async def get_task_execution(
+    task_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get task execution metadata"""
+    task = await Task.get(task_id)
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    check_company_access(current_user, task.company_id)
+
+    return {
+        "id": str(task.id),
+        "title": task.title,
+        "status": task.status.value,
+        "priority": task.priority.value,
+        "progress_percentage": task.progress_percentage,
+        "expected_completion_time": task.expected_completion_time,
+        "estimated_hours": task.estimated_hours,
+        "actual_hours": task.actual_hours,
+        "checklist": task.checklist or [],
+        "dependencies": task.dependencies or [],
+        "time_logs": task.time_logs or [],
+        "workload": TaskService.workload_snapshot([task]),
+    }
+
+
 @router.patch("/{task_id}/status")
 async def update_task_status(
     task_id: str,
@@ -503,6 +535,56 @@ async def update_task_status(
         "id": str(task.id),
         "status": task.status.value,
         "message": "Task status updated successfully"
+    }
+
+
+@router.patch("/{task_id}/execution")
+async def update_task_execution(
+    task_id: str,
+    progress_percentage: Optional[float] = Form(None),
+    expected_completion_time: Optional[str] = Form(None),
+    checklist: Optional[str] = Form(None),
+    dependencies: Optional[str] = Form(None),
+    time_log_hours: Optional[float] = Form(None),
+    time_log_note: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user)
+):
+    """Update task execution metadata"""
+    task = await Task.get(task_id)
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    check_company_access(current_user, task.company_id)
+
+    payload: dict[str, object] = {}
+    if progress_percentage is not None:
+        payload["progress_percentage"] = progress_percentage
+    if expected_completion_time is not None:
+        payload["expected_completion_time"] = datetime.fromisoformat(expected_completion_time.replace("Z", "+00:00"))
+    if checklist is not None:
+        payload["checklist"] = [item.strip() for item in checklist.split("|") if item.strip()]
+    if dependencies is not None:
+        payload["dependencies"] = [item.strip() for item in dependencies.split("|") if item.strip()]
+    if time_log_hours is not None:
+        payload["time_log_hours"] = time_log_hours
+        payload["time_log_note"] = time_log_note
+
+    task = await TaskService.update_execution(task, payload)
+    return {
+        "message": "Task execution updated successfully",
+        "task": {
+            "id": str(task.id),
+            "title": task.title,
+            "progress_percentage": task.progress_percentage,
+            "expected_completion_time": task.expected_completion_time,
+            "checklist": task.checklist or [],
+            "dependencies": task.dependencies or [],
+            "actual_hours": task.actual_hours,
+        },
     }
 
 

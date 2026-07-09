@@ -158,7 +158,8 @@ export default function ProjectBoard() {
         description: formData.get('description') || '',
         priority: formData.get('priority') || 'medium',
         assigned_to: formData.get('assigned_to') || null,
-        due_date: formData.get('due_date') || null,
+        due_date: formData.get('due_date'),
+        estimated_hours: formData.get('estimated_hours'),
         project_id: projectId,
         status: selectedStatus,
       })
@@ -390,8 +391,11 @@ export default function ProjectBoard() {
                 <option value="critical">Critical</option>
               </select>
             </FormField>
-            <FormField label="Due date">
-              <input type="datetime-local" name="due_date" className={inputClassName} />
+            <FormField label="Due date" required>
+              <input type="datetime-local" name="due_date" required className={inputClassName} />
+            </FormField>
+            <FormField label="Estimated hours" required>
+              <input type="number" name="estimated_hours" min="0.25" step="0.25" required className={inputClassName} placeholder="8" />
             </FormField>
           </div>
           <FormField label="Assign to">

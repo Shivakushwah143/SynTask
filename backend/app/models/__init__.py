@@ -29,7 +29,9 @@ from app.models.changelog import ChangeLog
 from app.models.chat import Conversation, ChatMessage, MessageType
 from app.models.page import Page, PageStatus
 from app.models.client import Client, ClientStatus
-from app.models.department import Department
+from app.models.department import Department, DepartmentType
+from app.models.capability import RoleCapability
+from app.models.ownership_transfer import OwnershipTransfer
 from app.models.ai_log import AIInteractionLog
 from app.models.ai_conversation import AIConversation, AIConversationMessage, AIConversationState
 from app.models.ai_user_state import AIUserState, AIEmotionalState, AIWorkloadMetrics
@@ -128,7 +130,7 @@ __all__ = [
     # Client models
     "Client", "ClientStatus",
     # Department models
-    "Department",
+    "Department", "DepartmentType", "RoleCapability", "OwnershipTransfer",
     # AI models
     "AIInteractionLog",
     "AIConversation", "AIConversationMessage", "AIConversationState",
