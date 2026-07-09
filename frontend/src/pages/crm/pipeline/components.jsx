@@ -2,20 +2,33 @@ import { memo, useMemo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, ChevronDown, MoreHorizontal, MoveRight, RefreshCw, Sparkles } from 'lucide-react'
+import { AlertCircle, CalendarDays, ChevronDown, Filter, Mail, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
-import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadTags, getStageDealValue, getStageKey } from './utils'
+import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, getStageDealValue, getStageKey } from './utils'
 
-const leadColumnStyle = 'w-80 flex-none snap-start'
+const leadColumnStyle = 'w-[260px] flex-none snap-start'
+const stageAccents = ['#7c3aed', '#f59e0b', '#22c55e', '#0ea5e9', '#f97316', '#ec4899', '#14b8a6']
+const priorityStyles = {
+  critical: 'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-200 dark:ring-rose-900',
+  high: 'bg-orange-100 text-orange-700 ring-orange-200 dark:bg-orange-950/40 dark:text-orange-200 dark:ring-orange-900',
+  medium: 'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900',
+  low: 'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-900',
+}
+const iconTileStyles = [
+  'bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-200',
+  'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-200',
+  'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200',
+  'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
+]
 
 export const PipelineBoardShell = ({ title, description, actions, children }) => (
-  <div className="space-y-6">
+  <div className="space-y-4">
     <CRMSection
       title={title}
       description={description}
       actions={actions}
-      className="overflow-hidden"
+      className="overflow-hidden rounded-2xl"
     >
       {children}
     </CRMSection>
@@ -27,20 +40,31 @@ export const PipelineTopMetrics = memo(function PipelineTopMetrics({ visibleLead
     const totalLeads = visibleLeads.length
     const totalValue = visibleLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0)
     const activeStages = stages.filter((stage) => stage.leads?.length).length
+    const wonLeads = visibleLeads.filter((lead) => getLeadStageKey(lead).includes('won')).length
+    const hotLeads = visibleLeads.filter((lead) => ['critical', 'high'].includes(getLeadPriority(lead))).length
     return [
-      { label: 'Visible leads', value: totalLeads, helper: 'Filtered by the current search and filters.' },
-      { label: 'Active stages', value: activeStages, helper: 'Columns with at least one lead.' },
-      { label: 'Visible deal value', value: formatCurrency(totalValue, currency), helper: 'Deal value derived from live board data.' },
+      { label: 'Total Leads', value: totalLeads, helper: 'Visible after filters', icon: Users, tone: 'bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-200' },
+      { label: 'Total Value', value: formatCurrency(totalValue, currency), helper: 'Pipeline value', icon: TrendingUp, tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' },
+      { label: 'Hot Leads', value: hotLeads, helper: 'Critical or high priority', icon: Target, tone: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200' },
+      { label: 'Active Stages', value: activeStages, helper: 'With at least one lead', icon: Sparkles, tone: 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-200' },
+      { label: 'Won', value: wonLeads, helper: 'Visible won leads', icon: CalendarDays, tone: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200' },
     ]
   }, [currency, stages, visibleLeads])
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {metrics.map((metric) => (
-        <article key={metric.label} className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{metric.label}</p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">{metric.value}</p>
-          <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{metric.helper}</p>
+        <article key={metric.label} className="rounded-xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center gap-3">
+            <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${metric.tone}`}>
+              <metric.icon className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{metric.label}</p>
+              <p className="mt-1 truncate text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">{metric.value}</p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">{metric.helper}</p>
         </article>
       ))}
     </div>
@@ -58,10 +82,70 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
   currency = 'INR',
 }) {
   return (
-    <CRMSection
-      title="Pipeline Controls"
-      description="Search and filters are persisted in the URL so pipeline views can be shared and restored."
-      actions={
+    <div className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid flex-1 gap-3 md:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(150px,1fr))]">
+          <label className="block">
+            <span className="sr-only">Search</span>
+            <div className="relative">
+              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                value={searchValue}
+                onChange={(event) => onSearchChange?.(event.target.value)}
+                className="input pl-10"
+                placeholder="Search in pipeline..."
+                aria-label="Search pipeline"
+              />
+            </div>
+          </label>
+          <label className="block">
+            <span className="sr-only">Owner</span>
+            <select
+              className="input"
+              value={filters.owner}
+              onChange={(event) => onChange({ owner: event.target.value })}
+              aria-label="Filter by owner"
+            >
+              <option value="">Owner: All</option>
+              {ownerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="sr-only">Priority</span>
+            <select
+              className="input"
+              value={filters.priority}
+              onChange={(event) => onChange({ priority: event.target.value })}
+              aria-label="Filter by priority"
+            >
+              <option value="">Priority: All</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="sr-only">Current Stage</span>
+            <select
+              className="input"
+              value={filters.stage}
+              onChange={(event) => onChange({ stage: event.target.value })}
+              aria-label="Filter by stage"
+            >
+              <option value="">Stage: All</option>
+              {stageOptions.map((stage) => (
+                <option key={stage.value} value={stage.value}>
+                  {stage.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <Button
           type="button"
           variant="secondary"
@@ -84,75 +168,12 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
             })
           }}
         >
+          <Filter className="h-4 w-4" />
           Reset filters
         </Button>
-      }
-    >
+      </div>
       <div className="space-y-4">
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(0,1fr))]">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Search</span>
-            <div className="relative">
-              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                value={searchValue}
-                onChange={(event) => onSearchChange?.(event.target.value)}
-                className="input pl-10"
-                placeholder="Search company, contact, or owner"
-                aria-label="Search pipeline"
-              />
-            </div>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Owner</span>
-            <select
-              className="input"
-              value={filters.owner}
-              onChange={(event) => onChange({ owner: event.target.value })}
-              aria-label="Filter by owner"
-            >
-              <option value="">All owners</option>
-              {ownerOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Priority</span>
-            <select
-              className="input"
-              value={filters.priority}
-              onChange={(event) => onChange({ priority: event.target.value })}
-              aria-label="Filter by priority"
-            >
-              <option value="">All priorities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Current Stage</span>
-            <select
-              className="input"
-              value={filters.stage}
-              onChange={(event) => onChange({ stage: event.target.value })}
-              aria-label="Filter by stage"
-            >
-              <option value="">All stages</option>
-              {stageOptions.map((stage) => (
-                <option key={stage.value} value={stage.value}>
-                  {stage.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,1fr)]">
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Tags</span>
             <input
@@ -213,7 +234,7 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
           </div>
         </div>
       </div>
-    </CRMSection>
+    </div>
   )
 })
 
@@ -329,13 +350,13 @@ export const PipelineBoard = memo(function PipelineBoard({
 
   return (
     <div className="space-y-4">
-      <PipelineTopMetrics visibleLeads={visibleLeads} stages={stages} currency={currency} />
       <div className="relative">
         <div className="flex gap-4 overflow-x-auto scroll-smooth pb-4 pr-2 snap-x snap-mandatory">
           {stages.map((stage, index) => (
             <PipelineColumn
               key={stage.key || stage.id || stage.name || index}
               stage={stage}
+              accent={stageAccents[index % stageAccents.length]}
               currency={currency}
               activeLeadId={activeLeadId}
               onMoveLeadToStage={onMoveLeadToStage}
@@ -351,6 +372,7 @@ export const PipelineBoard = memo(function PipelineBoard({
 
 export const PipelineColumn = memo(function PipelineColumn({
   stage,
+  accent = stageAccents[0],
   currency = 'INR',
   activeLeadId = null,
   onMoveLeadToStage,
@@ -363,29 +385,29 @@ export const PipelineColumn = memo(function PipelineColumn({
   return (
     <section
       ref={setDroppableRef}
-      className={`flex max-h-[calc(100vh-16rem)] flex-none flex-col overflow-hidden rounded-[28px] border border-surface-border/80 bg-gradient-to-b from-white to-slate-50/70 shadow-sm transition-shadow dark:border-gray-800 dark:from-gray-900 dark:to-gray-950 ${leadColumnStyle} snap-start ${isOver ? 'ring-2 ring-primary-500/30 shadow-lg' : ''}`}
+      className={`flex max-h-[calc(100vh-15rem)] flex-none flex-col overflow-hidden rounded-xl border border-surface-border/80 bg-white shadow-sm transition-shadow dark:border-gray-800 dark:bg-gray-900 ${leadColumnStyle} snap-start ${isOver ? 'ring-2 ring-primary-500/30 shadow-lg' : ''}`}
       aria-label={`${stage.name} stage`}
     >
-      <header className="sticky top-0 z-20 border-b border-surface-border/80 bg-white/95 px-4 py-4 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
+      <div className="h-1.5 w-full" style={{ backgroundColor: accent }} />
+      <header className="sticky top-0 z-20 border-b border-surface-border/80 bg-white/95 px-3.5 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="truncate text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+            <h3 className="truncate text-sm font-semibold tracking-tight text-gray-900 dark:text-gray-100">
               {stage.name}
             </h3>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {leads.length} leads
-            </p>
-          </div>
-          <div className="text-right">
-            <Badge label={`${leads.length}`} colorKey="draft" />
-            <p className="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+            <p className="mt-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
               {formatCurrency(getStageDealValue(leads), currency)}
             </p>
           </div>
+          <Badge label={`${leads.length}`} colorKey="draft" />
+        </div>
+        <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+          <span>Avg age: {Math.round((leads.reduce((sum, lead) => sum + Number(lead.days_in_stage || 0), 0) / Math.max(leads.length, 1)) || 0)} days</span>
+          <span className="text-rose-500">Hot: {leads.filter((lead) => ['critical', 'high'].includes(getLeadPriority(lead))).length}</span>
         </div>
       </header>
       <div
-        className={`flex-1 space-y-3 overflow-y-auto p-4 ${isActive ? 'bg-primary-50/20 dark:bg-primary-950/10' : ''}`}
+        className={`flex-1 space-y-3 overflow-y-auto bg-gray-50/70 p-3 dark:bg-gray-950/30 ${isActive ? 'bg-primary-50/30 dark:bg-primary-950/10' : ''}`}
         data-stage-key={stage.key}
       >
         <SortableContext items={leads.map((lead) => lead.id || lead._id)} strategy={verticalListSortingStrategy}>
@@ -423,6 +445,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   const dealValue = getLeadDealValue(lead)
   const ownerLabel = getLeadOwnerLabel(lead)
   const contactLabel = getLeadContactLabel(lead)
+  const dueText = lead.next_follow_up_at || lead.next_followup_at || lead.follow_up_date || lead.next_activity_at
   const sortableId = lead.id || lead._id
   const {
     attributes,
@@ -446,13 +469,13 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
     <article
       ref={setNodeRef}
       style={leadStyle}
-      className="group rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm transition-all duration-150 hover:shadow-md focus-within:ring-2 focus-within:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-900"
+      className="group rounded-xl border border-surface-border/80 bg-white p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-900"
       aria-label={`${lead.company_name || contactLabel} lead card`}
     >
       <div className="flex items-start gap-3">
         <button
           type="button"
-          className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-surface-border/80 bg-white text-gray-400 transition-colors hover:border-primary-300 hover:text-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-primary-700 dark:hover:text-primary-300"
+          className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg ${iconTileStyles[Math.abs(String(sortableId || '').length) % iconTileStyles.length]} transition-colors focus-visible:ring-2 focus-visible:ring-primary-500/30`}
           aria-label={`Drag ${lead.company_name || contactLabel}`}
           {...attributes}
           {...listeners}
@@ -475,14 +498,39 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
         </button>
       </div>
 
-      <div className="mt-4 grid gap-2 text-xs text-gray-500 dark:text-gray-400">
+      <div className="mt-3 grid gap-1.5 text-xs text-gray-500 dark:text-gray-400">
         <LeadMetaRow label="Owner" value={ownerLabel} />
-        <LeadMetaRow label="Value" value={formatCurrency(dealValue, currency)} strong />
-        <LeadMetaRow label="Stage" value={stage.name} />
+        <LeadMetaRow label="Deal value" value={formatCurrency(dealValue, currency)} strong />
+        <LeadMetaRow label="Days in stage" value={`${Number(lead.days_in_stage || 0)} days`} />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ring-1 ${priorityStyles[priority] || priorityStyles.medium}`}>
+          {priority}
+        </span>
+        {dueText ? (
+          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+            Next: {formatShortDate(dueText)}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-border/70 pt-3 dark:border-gray-800">
+        <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+          <button type="button" className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label={`Call ${lead.company_name || contactLabel}`}>
+            <Phone className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label={`Email ${lead.company_name || contactLabel}`}>
+            <Mail className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-100 text-[10px] font-semibold text-primary-700 dark:bg-primary-950/40 dark:text-primary-200">
+          {ownerLabel.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'NA'}
+        </span>
       </div>
 
       {tags.length ? (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           {tags.slice(0, 4).map((tag) => (
             <Badge key={tag} label={tag} colorKey="draft" className="text-[10px]" />
           ))}
@@ -494,7 +542,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
         </div>
       ) : null}
 
-      <details className="mt-4 relative">
+      <details className="mt-3 relative">
         <summary className="list-none">
           <Button type="button" variant="ghost" size="sm" className="w-full justify-between px-2">
             <MoreHorizontal className="h-4 w-4" />
@@ -530,6 +578,117 @@ function LeadMetaRow({ label, value, strong = false }) {
     </div>
   )
 }
+
+export const PipelineInsightRail = memo(function PipelineInsightRail({ visibleLeads = [], stages = [], currency = 'INR', onLeadSelect }) {
+  const hotLeads = useMemo(() => (
+    visibleLeads
+      .filter((lead) => ['critical', 'high'].includes(getLeadPriority(lead)))
+      .slice(0, 3)
+  ), [visibleLeads])
+
+  const stageTotal = Math.max(visibleLeads.length, 1)
+  const stagePerformance = stages
+    .map((stage, index) => ({
+      name: stage.name,
+      count: stage.leads?.length || 0,
+      value: getStageDealValue(stage.leads || []),
+      color: stageAccents[index % stageAccents.length],
+    }))
+    .filter((stage) => stage.count > 0)
+
+  const recent = visibleLeads.slice(0, 3)
+
+  return (
+    <aside className="space-y-4">
+      <section className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-700 dark:bg-primary-950/40 dark:text-primary-200">
+              <Sparkles className="h-4 w-4" />
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">AI Assistant</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Top priorities</p>
+            </div>
+          </div>
+          <Badge label="Beta" colorKey="draft" />
+        </div>
+        <div className="mt-4 space-y-3">
+          {hotLeads.length ? hotLeads.map((lead, index) => (
+            <button
+              key={lead.id || lead._id || index}
+              type="button"
+              onClick={() => onLeadSelect?.(lead)}
+              className="w-full rounded-xl border border-rose-100 bg-rose-50/50 p-3 text-left transition hover:border-primary-200 hover:bg-primary-50/50 dark:border-rose-950/40 dark:bg-rose-950/10 dark:hover:border-primary-800 dark:hover:bg-primary-950/20"
+            >
+              <div className="flex gap-3">
+                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-xs font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-200">
+                  {index + 1}
+                </span>
+                <div className="min-w-0">
+                  <p className="line-clamp-2 text-xs font-semibold text-gray-900 dark:text-gray-100">
+                    {lead.company_name || getLeadContactLabel(lead)}
+                  </p>
+                  <p className="mt-1 text-xs text-primary-700 dark:text-primary-300">View now</p>
+                </div>
+              </div>
+            </button>
+          )) : (
+            <p className="rounded-xl bg-gray-50 p-3 text-xs text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">No urgent leads in the current view.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Stage Performance</h3>
+        <div className="mt-4 space-y-3">
+          {stagePerformance.slice(0, 6).map((stage) => {
+            const percent = Math.round((stage.count / stageTotal) * 100)
+            return (
+              <div key={stage.name}>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate text-gray-600 dark:text-gray-300">{stage.name}</span>
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">{stage.count} ({percent}%)</span>
+                </div>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                  <div className="h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: stage.color }} />
+                </div>
+                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{formatCurrency(stage.value, currency)}</p>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Recent Activities</h3>
+          <span className="text-xs font-medium text-primary-700 dark:text-primary-300">View all</span>
+        </div>
+        <div className="mt-4 space-y-3">
+          {recent.map((lead, index) => (
+            <button
+              key={lead.id || lead._id || index}
+              type="button"
+              onClick={() => onLeadSelect?.(lead)}
+              className="flex w-full items-start gap-3 rounded-xl p-2 text-left transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
+            >
+              <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${iconTileStyles[index % iconTileStyles.length]}`}>
+                <MoveRight className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold text-gray-900 dark:text-gray-100">{lead.company_name || getLeadContactLabel(lead)}</span>
+                <span className="mt-1 block truncate text-[11px] text-gray-500 dark:text-gray-400">
+                  {getLeadOwnerLabel(lead)}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </aside>
+  )
+})
 
 function ActionItem({ label, onClick, disabled = false }) {
   return (
