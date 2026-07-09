@@ -18,6 +18,7 @@ import {
 import {
   buildPipelineBoard,
   filterPipelineLeads,
+  getLeadDealValue,
   getLeadOwnerLabel,
   getStageKey,
   moveLeadInBoard,
@@ -25,6 +26,8 @@ import {
   parsePipelineFilters,
   stageOptionsFromBoard,
 } from './utils'
+import { CRMContent, CRMStatCard } from '../../../components/crm'
+import { FolderKanban, Layers3, TrendingUp, Users } from 'lucide-react'
 
 const PIPELINE_QUERY_KEY = 'crm-pipeline-board'
 
@@ -213,6 +216,9 @@ export default function CRMPipelinePage() {
   const currency = rawPipeline?.meta?.currency || 'INR'
   const loading = pipelineQuery.isLoading
   const hasError = pipelineQuery.isError
+  const visibleLeadCount = visibleLeads.length
+  const visibleDealValue = visibleLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0)
+  const activeStageCount = visibleBoard.stages.filter((stage) => stage.leads.length > 0).length
 
   return (
     <CRMPage>
@@ -232,65 +238,105 @@ export default function CRMPipelinePage() {
         )}
       />
 
-      <CRMSection
-        title="Board Controls"
-        description="Search and filters shape the visible board without refetching the full dataset."
-      >
-        <PipelineFiltersBar
-          filters={filters}
-          onChange={updateFilters}
-          onResetFilters={clearFilters}
-          ownerOptions={ownerOptionsFromBoard(board)}
-          stageOptions={stageOptionsFromBoard(board)}
-          searchValue={searchValue}
-          onSearchChange={handleSearchChange}
-          currency={currency}
-        />
-      </CRMSection>
-
-      <PipelineBoardShell
-        title="CRM Board"
-        description="Drag leads between stages, or use the quick actions menu to move them with a single click."
-      >
-        {loading ? (
-          <PipelineLoadingState />
-        ) : hasError ? (
-          <PipelineErrorState
-            onRetry={() => pipelineQuery.refetch()}
-            message={pipelineQuery.error?.response?.data?.detail || 'We could not load the pipeline board. Please retry.'}
-          />
-        ) : (
-          <DndContext
-            collisionDetection={closestCorners}
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <PipelineBoard
-              stages={visibleBoard.stages}
-              currency={currency}
-              activeLeadId={activeLeadId}
-              onMoveLeadToStage={handleLeadMove}
-              onCopyLeadId={handleCopyLeadId}
-              onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
-              onResetFilters={clearFilters}
-              visibleLeads={visibleLeads}
+      <CRMContent
+        aside={(
+          <div className="space-y-4">
+            <CRMStatCard
+              icon={FolderKanban}
+              label="Visible leads"
+              value={visibleLeadCount}
+              helper="Matches the current filters and search."
+              tone="emerald"
             />
-            <DragOverlay>
-              {dragOverlayLead ? (
-                <div className="w-80 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-xl dark:border-gray-800 dark:bg-gray-900">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    {dragOverlayLead.company_name || dragOverlayLead.prospect_name || 'Lead'}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {getLeadOwnerLabel(dragOverlayLead)}
-                  </p>
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
+            <CRMStatCard
+              icon={TrendingUp}
+              label="Visible deal value"
+              value={visibleDealValue.toLocaleString('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 })}
+              helper="Approximate pipeline value from visible leads."
+              tone="amber"
+            />
+            <CRMStatCard
+              icon={Layers3}
+              label="Active stages"
+              value={activeStageCount}
+              helper="Columns with at least one visible lead."
+              tone="slate"
+            />
+            <CRMStatCard
+              icon={Users}
+              label="Board width"
+              value={visibleBoard.stages.length}
+              helper="All configured pipeline stages."
+              tone="blue"
+            />
+          </div>
         )}
-      </PipelineBoardShell>
+      >
+        <CRMSection
+          title="Board controls"
+          description="Search and filters shape the visible board without refetching the full dataset."
+          actions={(
+            <Button type="button" variant="secondary" size="sm" onClick={clearFilters}>
+              Reset filters
+            </Button>
+          )}
+        >
+          <PipelineFiltersBar
+            filters={filters}
+            onChange={updateFilters}
+            onResetFilters={clearFilters}
+            ownerOptions={ownerOptionsFromBoard(board)}
+            stageOptions={stageOptionsFromBoard(board)}
+            searchValue={searchValue}
+            onSearchChange={handleSearchChange}
+            currency={currency}
+          />
+        </CRMSection>
+
+        <PipelineBoardShell
+          title="CRM board"
+          description="Drag leads between stages, or use the quick actions menu to move them with a single click."
+        >
+          {loading ? (
+            <PipelineLoadingState />
+          ) : hasError ? (
+            <PipelineErrorState
+              onRetry={() => pipelineQuery.refetch()}
+              message={pipelineQuery.error?.response?.data?.detail || 'We could not load the pipeline board. Please retry.'}
+            />
+          ) : (
+            <DndContext
+              collisionDetection={closestCorners}
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <PipelineBoard
+                stages={visibleBoard.stages}
+                currency={currency}
+                activeLeadId={activeLeadId}
+                onMoveLeadToStage={handleLeadMove}
+                onCopyLeadId={handleCopyLeadId}
+                onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
+                onResetFilters={clearFilters}
+                visibleLeads={visibleLeads}
+              />
+              <DragOverlay>
+                {dragOverlayLead ? (
+                  <div className="w-80 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-xl dark:border-gray-800 dark:bg-gray-900">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {dragOverlayLead.company_name || dragOverlayLead.prospect_name || 'Lead'}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {getLeadOwnerLabel(dragOverlayLead)}
+                    </p>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </PipelineBoardShell>
+      </CRMContent>
     </CRMPage>
   )
 }

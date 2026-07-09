@@ -16,6 +16,8 @@ from app.crm.timeline import publish_crm_timeline_event
 from app.models.crm_company import CRMCompany
 from app.models.sales_contact import SalesContact
 from app.models.sales_masters import SalesStage
+from app.models.sales_import_job import SalesImportJob
+from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.sales_prospect import InterestLevel, ProspectStatus, SalesProspect
 from app.models.user import User, UserRole, UserStatus
@@ -531,7 +533,7 @@ class LeadEngine:
             estimated_close_date=_parse_datetime(normalized.get("estimated_close_date")),
             assigned_to=str(normalized.get("assigned_to")),
             assigned_by=str(normalized.get("assigned_by")),
-            current_stage=normalized.get("current_stage") or "new",
+            current_stage="new",
             due_date=_parse_datetime(normalized.get("due_date"), normalized.get("due_time")),
             due_time=normalized.get("due_time"),
             remark=normalized.get("remark"),
@@ -647,9 +649,19 @@ class LeadEngine:
                 department_id = getattr(prospect, "department_id", None) or getattr(current_user, "department_id", None)
                 assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
                 if str(target_assignee) in {str(user.id) for user in assignable_users}:
+                    previous_assignee = prospect.assigned_to
                     prospect.assigned_to = str(target_assignee)
-        if "current_stage" in payload:
-            prospect.current_stage = _normalize_text(payload.get("current_stage")) or prospect.current_stage
+                    if previous_assignee != prospect.assigned_to:
+                        await OwnershipTransfer(
+                            company_id=str(prospect.company_id),
+                            entity_type="lead",
+                            entity_id=str(prospect.id),
+                            from_user_id=str(previous_assignee) if previous_assignee else None,
+                            to_user_id=str(prospect.assigned_to),
+                            reason="manual_reassignment",
+                            transferred_by=str(current_user.id),
+                            notes="Manual reassignment from lead update",
+                        ).insert()
         if "due_date" in payload:
             prospect.due_date = _parse_datetime(payload.get("due_date"), payload.get("due_time"))
         if "due_time" in payload:
@@ -680,14 +692,6 @@ class LeadEngine:
             prospect.tag = list(payload.get("tag") or [])
         if "greeting_preference" in payload:
             prospect.greeting_preference = _normalize_text(payload.get("greeting_preference")) or None
-        if "status" in payload:
-            prospect.status = ProspectStatus(_normalize_text(payload.get("status")).lower())
-            if prospect.status in [ProspectStatus.WON, ProspectStatus.LOST]:
-                prospect.closed_date = now
-                prospect.closed_by = str(current_user.id)
-            else:
-                prospect.closed_date = None
-                prospect.closed_by = None
         if "reason_for_lost" in payload:
             prospect.reason_for_lost = _normalize_text(payload.get("reason_for_lost")) or None
         if "won_amount" in payload:
@@ -845,6 +849,85 @@ class LeadEngine:
             assigned_breakdown=dict(assignment_counts),
             warnings=skipped_rows[:50],
         ).__dict__
+
+    @staticmethod
+    async def preview_import(
+        current_user: User,
+        file: UploadFile,
+        *,
+        strategy: str,
+        target_user_id: Optional[str] = None,
+        target_department_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if not current_user.company_id and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
+        file_name = file.filename or "upload.csv"
+        if not file_name.lower().endswith((".csv", ".xlsx")) and file.content_type not in {
+            "text/csv",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV and XLSX files are supported")
+
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded")
+
+        headers, rows = _parse_tabular_upload(file_name, content)
+        normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
+        preview_rows = []
+        failed_rows = []
+        for idx, row in enumerate(rows, start=2):
+            row_norm = {_normalize_lead_csv_header(key): (value or "").strip() for key, value in row.items() if key is not None}
+            email = (row_norm.get("email") or "").lower()
+            if not email:
+                failed_rows.append({"row": idx, "error": "Missing email"})
+                continue
+            if not any(h in normalized_headers for h in ["name", "first_name"]):
+                failed_rows.append({"row": idx, "error": "Missing name"})
+                continue
+            preview_rows.append(
+                {
+                    "row": idx,
+                    "first_name": row_norm.get("first_name") or row_norm.get("name") or "",
+                    "last_name": row_norm.get("last_name") or "",
+                    "email": email,
+                    "phone": row_norm.get("phone") or "",
+                    "company_name": row_norm.get("company") or row_norm.get("company_name") or "",
+                    "current_stage": row_norm.get("stage") or row_norm.get("current_stage") or "new",
+                    "assigned_to": target_user_id if strategy == "manual" else None,
+                    "status": row_norm.get("status") or ProspectStatus.ACTIVE.value,
+                }
+            )
+
+        job = SalesImportJob(
+            company_id=current_user.company_id,
+            created_by=str(current_user.id),
+            filename=file_name,
+            strategy=strategy,
+            target_user_id=target_user_id,
+            target_department_id=target_department_id,
+            status="previewed",
+            total_rows=len(rows),
+            skipped_rows=len(failed_rows),
+            failed_rows=failed_rows,
+            preview_rows=preview_rows[:100],
+            source_payload={"headers": headers},
+        )
+        await job.insert()
+        return {
+            "job_id": str(job.id),
+            "total_rows": len(rows),
+            "preview_rows": preview_rows[:100],
+            "failed_rows": failed_rows[:100],
+        }
+
+    @staticmethod
+    async def retry_import_job(current_user: User, job_id: str) -> Dict[str, Any]:
+        job = await SalesImportJob.get(job_id)
+        if not job or job.company_id != current_user.company_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found")
+        _ = dict(job.source_payload or {})
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Retry requires the original uploaded file; use preview to re-upload the file.")
 
     @staticmethod
     async def move_stage(current_user: User, lead_id: str, target_stage: str, reason: Optional[str] = None) -> Dict[str, Any]:

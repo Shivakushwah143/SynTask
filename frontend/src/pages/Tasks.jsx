@@ -38,6 +38,7 @@ const Tasks = () => {
   const [loadingDepartments, setLoadingDepartments] = useState(false)
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
   const [dueDateValue, setDueDateValue] = useState('')
+  const [estimatedHoursValue, setEstimatedHoursValue] = useState('')
 
   const statuses = [
     { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
@@ -161,6 +162,7 @@ const Tasks = () => {
     setShowCreateModal(false)
     setSelectedDepartmentId('')
     setDueDateValue('')
+    setEstimatedHoursValue('')
   }
 
   // Handle create task
@@ -172,6 +174,14 @@ const Tasks = () => {
     
     try {
       setSubmitting(true)
+      if (!dueDateValue.trim()) {
+        toast.error('Due date is required')
+        return
+      }
+      if (!estimatedHoursValue.trim()) {
+        toast.error('Estimated hours is required')
+        return
+      }
       
       const taskData = {
         title: formData.get('title'),
@@ -179,6 +189,7 @@ const Tasks = () => {
         assigned_to: formData.get('assigned_to') || '',
         priority: formData.get('priority') || 'medium',
         due_date: formData.get('due_date') || dueDateValue || '',
+        estimated_hours: formData.get('estimated_hours') || estimatedHoursValue || '',
       }
 
       if (isCompanyAdmin && selectedDepartmentId) {
@@ -190,6 +201,7 @@ const Tasks = () => {
       setShowCreateModal(false)
       setSelectedDepartmentId('')
       setDueDateValue('')
+      setEstimatedHoursValue('')
       await fetchTasks()
       e.target.reset()
     } catch (error) {
@@ -547,7 +559,23 @@ const Tasks = () => {
                   onChange={(value) => setDueDateValue(value)}
                   onDateResolved={(date) => setDueDateValue(date ? date.toISOString() : '')}
                 />
-                <input type="hidden" name="due_date" value={dueDateValue} />
+                <input type="hidden" name="due_date" value={dueDateValue} required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Estimated hours
+                </label>
+                <input
+                  type="number"
+                  name="estimated_hours"
+                  min="0.25"
+                  step="0.25"
+                  required
+                  value={estimatedHoursValue}
+                  onChange={(event) => setEstimatedHoursValue(event.target.value)}
+                  className="input"
+                  placeholder="8"
+                />
               </div>
               <div className="flex space-x-3 pt-4">
                 <button

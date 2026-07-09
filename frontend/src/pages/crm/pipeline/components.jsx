@@ -11,7 +11,12 @@ const leadColumnStyle = 'w-80 flex-none snap-start'
 
 export const PipelineBoardShell = ({ title, description, actions, children }) => (
   <div className="space-y-6">
-    <CRMSection title={title} description={description} actions={actions}>
+    <CRMSection
+      title={title}
+      description={description}
+      actions={actions}
+      className="overflow-hidden"
+    >
       {children}
     </CRMSection>
   </div>
@@ -291,7 +296,7 @@ export const PipelineSearchEmptyState = memo(function PipelineSearchEmptyState({
 
 export const PipelineStageEmptyState = memo(function PipelineStageEmptyState({ label }) {
   return (
-    <div className="rounded-2xl border border-dashed border-surface-border/80 bg-white/70 px-4 py-10 text-center text-sm text-gray-500 dark:border-gray-800 dark:bg-gray-900/70 dark:text-gray-400">
+    <div className="rounded-2xl border border-dashed border-surface-border/80 bg-gradient-to-b from-white to-slate-50/70 px-4 py-10 text-center text-sm text-gray-500 dark:border-gray-800 dark:from-gray-900 dark:to-gray-950 dark:text-gray-400">
       No leads in {label}
     </div>
   )
@@ -358,7 +363,7 @@ export const PipelineColumn = memo(function PipelineColumn({
   return (
     <section
       ref={setDroppableRef}
-      className={`flex max-h-[calc(100vh-16rem)] flex-none flex-col rounded-[28px] border border-surface-border/80 bg-gradient-to-b from-white to-slate-50/70 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:to-gray-950 ${leadColumnStyle} snap-start ${isOver ? 'ring-2 ring-primary-500/30' : ''}`}
+      className={`flex max-h-[calc(100vh-16rem)] flex-none flex-col overflow-hidden rounded-[28px] border border-surface-border/80 bg-gradient-to-b from-white to-slate-50/70 shadow-sm transition-shadow dark:border-gray-800 dark:from-gray-900 dark:to-gray-950 ${leadColumnStyle} snap-start ${isOver ? 'ring-2 ring-primary-500/30 shadow-lg' : ''}`}
       aria-label={`${stage.name} stage`}
     >
       <header className="sticky top-0 z-20 border-b border-surface-border/80 bg-white/95 px-4 py-4 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
@@ -372,7 +377,7 @@ export const PipelineColumn = memo(function PipelineColumn({
             </p>
           </div>
           <div className="text-right">
-            <Badge label={leads.length} colorKey="draft" />
+            <Badge label={`${leads.length}`} colorKey="draft" />
             <p className="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
               {formatCurrency(getStageDealValue(leads), currency)}
             </p>
@@ -491,7 +496,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
 
       <details className="mt-4 relative">
         <summary className="list-none">
-          <Button type="button" variant="ghost" size="sm" className="px-2">
+          <Button type="button" variant="ghost" size="sm" className="w-full justify-between px-2">
             <MoreHorizontal className="h-4 w-4" />
             Actions
             <ChevronDown className="h-3.5 w-3.5" />

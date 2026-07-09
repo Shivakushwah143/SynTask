@@ -13,6 +13,18 @@ import { hasCompanyAdminAccess } from '../utils/roles'
 import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, Table, inputClassName } from '../components/ui'
 import { buildProjectGraphRows, buildProjectGraphSummary } from './projectsData'
 
+const PROJECT_WORKFLOW = {
+  active: ['created', 'kickoff', 'execution', 'review', 'on_hold'],
+  created: ['kickoff', 'on_hold'],
+  kickoff: ['execution', 'on_hold'],
+  execution: ['review', 'on_hold'],
+  review: ['completed', 'on_hold'],
+  completed: ['reporting'],
+  reporting: ['archived'],
+  on_hold: ['created', 'kickoff', 'execution', 'review'],
+  archived: [],
+}
+
 export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
@@ -128,6 +140,17 @@ export default function Projects() {
       toast.error('Failed to load project details')
     } finally {
       setLoadingDetails(false)
+    }
+  }
+
+  const handleProjectStatusChange = async (project, nextStatus) => {
+    try {
+      await projectsApi.updateProject(project.id, { status: nextStatus })
+      toast.success(`Project moved to ${nextStatus.replace(/_/g, ' ')}`)
+      await loadProjects()
+      await openProject(project)
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update project status')
     }
   }
 
@@ -551,7 +574,7 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => onOpenBoard(project)}>Open board</Button>
-            <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">×</button>
+            <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">x</button>
           </div>
         </div>
         <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
@@ -567,6 +590,27 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
                 <section className="card p-4">
                   <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Overview</h3>
                   <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{details?.description || project.description || 'No project description available.'}</p>
+                </section>
+                <section className="card p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Workflow</h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Advance the project through the locked delivery stages.</p>
+                    </div>
+                    <Badge label={(details?.status || project.status || 'active').replace(/_/g, ' ')} colorKey={details?.status || project.status || 'active'} />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {(PROJECT_WORKFLOW[(details?.status || project.status || 'active').toLowerCase()] || []).map((nextStatus) => (
+                      <Button
+                        key={nextStatus}
+                        size="sm"
+                        variant={nextStatus === 'completed' ? 'primary' : 'secondary'}
+                        onClick={() => handleProjectStatusChange(project, nextStatus)}
+                      >
+                        {nextStatus.replace(/_/g, ' ')}
+                      </Button>
+                    ))}
+                  </div>
                 </section>
                 <section className="card p-4">
                   <div className="mb-3 flex items-center justify-between">

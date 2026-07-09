@@ -38,10 +38,12 @@ const NotFound = lazy(() => import('./pages/NotFound'))
 const Projects = lazy(() => import('./pages/Projects'))
 const ProjectBoard = lazy(() => import('./pages/ProjectBoard'))
 const TaskDetail = lazy(() => import('./pages/TaskDetail'))
+const WorkflowAdmin = lazy(() => import('./pages/WorkflowAdmin'))
 const TimeTracking = lazy(() => import('./pages/TimeTracking'))
 const Tickets = lazy(() => import('./pages/Tickets'))
 const Chat = lazy(() => import('./pages/Chat'))
 const Clients = lazy(() => import('./pages/Clients'))
+const ClientWorkspacePage = lazy(() => import('./pages/ClientWorkspace'))
 const Invoices = lazy(() => import('./pages/Invoices'))
 const MSA = lazy(() => import('./pages/MSA'))
 const MSASign = lazy(() => import('./pages/MSASign'))
@@ -64,10 +66,7 @@ const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReport
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
 const SalesContacts = lazy(() => import('./pages/sales/SalesContacts'))
 const ContactDetail = lazy(() => import('./pages/sales/ContactDetail'))
-const SalesProspects = lazy(() => import('./pages/sales/SalesProspects'))
 const BulkLeads = lazy(() => import('./pages/BulkLeads'))
-const ProspectDetail = lazy(() => import('./pages/sales/ProspectDetail'))
-const SalesPipeline = lazy(() => import('./pages/sales/SalesPipeline'))
 const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
 const SalesSettings = lazy(() => import('./pages/sales/SalesSettings'))
 const CRMPipelinePage = lazy(() => import('./pages/crm/pipeline/page'))
@@ -178,6 +177,7 @@ function App() {
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
           <Route path="clients" element={withBoundary(<Clients />)} />
+          <Route path="clients/:clientId/workspace" element={withBoundary(<ClientWorkspacePage />)} />
           <Route path="invoices" element={withBoundary(<Invoices />)} />
           <Route path="msa" element={withBoundary(<MSA />)} />
           <Route path="ledger" element={withBoundary(<Ledger />)} />
@@ -186,6 +186,7 @@ function App() {
           <Route path="projects/:projectId/board" element={withBoundary(<ProjectBoard />)} />
           <Route path="projects/:projectId/tasks/:taskId" element={withBoundary(<TaskDetail />)} />
           <Route path="tasks/:taskId" element={withBoundary(<TaskDetail />)} />
+          <Route path="workflows" element={<CompanyAdminGuard>{withBoundary(<WorkflowAdmin />)}</CompanyAdminGuard>} />
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
           <Route path="calendar" element={withBoundary(<Calendar />)} />
@@ -229,10 +230,10 @@ function App() {
           <Route index element={withBoundary(<SalesDashboard />)} />
           <Route path="contacts" element={withBoundary(<SalesContacts />)} />
           <Route path="contacts/:id" element={withBoundary(<ContactDetail />)} />
-          <Route path="prospects" element={withBoundary(<SalesProspects />)} />
-          <Route path="prospects/:id" element={withBoundary(<ProspectDetail />)} />
-          <Route path="queue" element={withBoundary(<SalesPipeline />)} />
-          <Route path="pipeline" element={withBoundary(<SalesPipeline />)} />
+          <Route path="prospects" element={<Navigate to="/crm/leads" replace />} />
+          <Route path="prospects/:id" element={<Navigate to="/crm/leads" replace />} />
+          <Route path="queue" element={<Navigate to="/crm/pipeline" replace />} />
+          <Route path="pipeline" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="reports" element={withBoundary(<SalesReports />)} />
           <Route path="settings" element={withBoundary(<SalesSettings />)} />
         </Route>

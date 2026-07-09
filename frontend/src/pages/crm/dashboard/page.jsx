@@ -7,6 +7,7 @@ import { crmApi } from '../../../api/crm'
 import { meetingsApi } from '../../../api/meetings'
 import { CRMEmptyState, CRMPage, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Skeleton } from '../../../components/ui'
+import { WorkflowGuide } from '../../../components/workflow/WorkflowGuide'
 
 const formatCurrency = (value, currency = 'INR') => {
   const numericValue = Number(value || 0)
@@ -75,6 +76,18 @@ export default function CRMDashboardPage() {
 
   return (
     <CRMPage>
+      <WorkflowGuide
+        title="Open the next sales action"
+        description="This CRM dashboard is the control point for the next lead, the next meeting, and the next piece of revenue."
+        nextStep="Review the pipeline, then open the lead or activity that needs attention."
+        primaryAction={{ label: 'View Pipeline', href: '/crm/pipeline' }}
+        secondaryAction={{ label: 'Open Leads', href: '/crm/leads' }}
+        bullets={[
+          { label: 'Where am I?', value: 'CRM dashboard and pipeline overview.' },
+          { label: 'What next?', value: 'Pick the lead or deal that needs movement.' },
+          { label: 'After this?', value: 'Jump into the lead workspace or CRM reports.' },
+        ]}
+      />
       <CRMSection
         title="Overview"
         description="Sales-derived signal for the CRM workspace foundation."

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 from app.models.client import Client, ClientStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
+from app.crm.client_workspace import ClientWorkspaceService
 from app.api.dependencies import (
     get_current_user,
     get_current_company_admin_or_lead,
@@ -264,6 +265,15 @@ async def get_client(
     }
 
 
+@router.get("/{client_id}/workspace")
+async def get_client_workspace(
+    client_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Get client workspace with projects, meetings, tasks, leads, and timeline."""
+    return await ClientWorkspaceService.load_workspace(current_user, client_id)
+
+
 @router.put("/{client_id}")
 async def update_client(
     client_id: str,
@@ -383,6 +393,7 @@ async def add_project_to_client(
     # Add project if not already added
     if project_id not in client.project_ids:
         client.project_ids.append(project_id)
+    project.client_id = str(client.id)
     
     # Update project-specific data
     if budget is not None:
@@ -404,6 +415,8 @@ async def add_project_to_client(
     
     client.updated_at = datetime.utcnow()
     await client.save()
+    project.updated_at = datetime.utcnow()
+    await project.save()
     
     return {
         "message": "Project added to client successfully",
@@ -443,6 +456,15 @@ async def remove_project_from_client(
     
     client.updated_at = datetime.utcnow()
     await client.save()
+
+    try:
+        project = await Project.get(project_id)
+        if project and project.client_id == str(client.id):
+            project.client_id = None
+            project.updated_at = datetime.utcnow()
+            await project.save()
+    except Exception:
+        logger.debug("Unable to clear client_id on project %s", project_id)
     
     return {
         "message": "Project removed from client successfully",
@@ -625,4 +647,3 @@ async def delete_client(
     return {
         "message": "Client deleted successfully",
     }
-

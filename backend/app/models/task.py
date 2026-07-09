@@ -2,7 +2,7 @@
 Task Management Models
 """
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from beanie import Document, Indexed
 from pydantic import Field
 from enum import Enum
@@ -42,6 +42,8 @@ class Task(Document):
     # Task Details
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
+    progress_percentage: float = 0.0
+    expected_completion_time: Optional[datetime] = None
     
     # Dates
     due_date: Optional[datetime] = None
@@ -67,6 +69,9 @@ class Task(Document):
     # Tracking
     estimated_hours: Optional[float] = None
     actual_hours: Optional[float] = None
+    time_logs: List[Dict[str, Any]] = Field(default_factory=list)
+    checklist: List[Dict[str, Any]] = Field(default_factory=list)
+    dependencies: List[str] = Field(default_factory=list)
     
     # Workflow
     workflow_id: Optional[str] = None  # Custom workflow
@@ -98,10 +103,12 @@ class Task(Document):
             "assigned_to",
             "status",
             "priority",
+            "progress_percentage",
             "project_id",
             "project_object_id",
             "due_date",
             "parent_task_id",
+            "expected_completion_time",
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("status", ASCENDING)]),

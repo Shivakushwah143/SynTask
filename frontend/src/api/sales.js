@@ -1,4 +1,5 @@
 import api from './axios'
+import { crmApi } from './crm'
 
 const toFormData = (data) => {
   const formData = new FormData()
@@ -45,9 +46,7 @@ export const salesApi = {
   updateProspect: (id, data) => api.put(`/sales/prospects/${id}`, data),
   updateProspectForm: (id, data) => api.put(`/sales/prospects/${id}`, toFormData(data)),
   updateStage: (id, stageId) => {
-    const formData = new FormData()
-    formData.append('current_stage', stageId)
-    return api.put(`/sales/prospects/${id}`, formData)
+    return crmApi.updatePipelineStage(id, { stage: stageId })
   },
   getDuplicateProspects: (params) => api.get('/sales/prospects/duplicates', { params }),
   mergeProspects: (payload) => api.post('/sales/prospects/merge', payload),
