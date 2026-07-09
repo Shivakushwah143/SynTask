@@ -231,6 +231,7 @@ function App() {
           <Route path="contacts/:id" element={withBoundary(<ContactDetail />)} />
           <Route path="prospects" element={withBoundary(<SalesProspects />)} />
           <Route path="prospects/:id" element={withBoundary(<ProspectDetail />)} />
+          <Route path="queue" element={withBoundary(<SalesPipeline />)} />
           <Route path="pipeline" element={withBoundary(<SalesPipeline />)} />
           <Route path="reports" element={withBoundary(<SalesReports />)} />
           <Route path="settings" element={withBoundary(<SalesSettings />)} />

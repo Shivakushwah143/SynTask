@@ -11,6 +11,10 @@ class SalesStage(Document):
     """Sales Pipeline Stages"""
     name: Indexed(str)  # e.g., "New", "Follow Up Call", "Schedule a Meeting", "Send Proposal"
     order: int = 0  # For ordering stages
+    key: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    is_terminal: bool = False
     company_id: Optional[str] = None
     is_default: bool = False
     deleted: bool = False
@@ -92,4 +96,3 @@ class GreetingTemplate(Document):
     class Settings:
         name = "sales_greeting_templates"
         indexes = ["company_id", "greeting_type", "deleted"]
-

@@ -22,7 +22,7 @@ from app.models.user import User, UserRole, UserStatus
 
 
 CSV_EMAIL_ALIASES = {"email_address", "email_id", "e_mail"}
-DEFAULT_ASSIGNMENT_STRATEGIES = {"round-robin", "evenly", "manual"}
+DEFAULT_ASSIGNMENT_STRATEGIES = {"round-robin", "evenly", "least-loaded", "manual"}
 DEFAULT_SOURCE_LABELS = {
     "manual": "manual",
     "csv": "csv_import",
@@ -372,22 +372,36 @@ class DuplicateResolver:
 
 class AssignmentEngine:
     @staticmethod
-    async def load_assignable_users(current_user: User) -> list[User]:
+    async def load_assignable_users(current_user: User, *, department_id: Optional[str] = None) -> list[User]:
         if not current_user.company_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
+        query: Dict[str, Any] = {
+            "company_id": current_user.company_id,
+            "status": UserStatus.ACTIVE,
+            "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+        }
+        if department_id:
+            query["$or"] = [
+                {"department_id": department_id},
+                {"department": department_id},
+            ]
         users = await User.find(
-            {
-                "company_id": current_user.company_id,
-                "status": UserStatus.ACTIVE,
-                "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
-            }
+            query
         ).to_list()
         if not users:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No assignable users found in your company")
         return users
 
     @staticmethod
-    def choose_assignee(strategy: str, assignable_users: Sequence[User], *, index: int = 0, target_user_id: Optional[str] = None, assignment_counts: Optional[Dict[str, int]] = None) -> str:
+    def choose_assignee(
+        strategy: str,
+        assignable_users: Sequence[User],
+        *,
+        index: int = 0,
+        target_user_id: Optional[str] = None,
+        assignment_counts: Optional[Dict[str, int]] = None,
+        current_user: Optional[User] = None,
+    ) -> str:
         if strategy not in DEFAULT_ASSIGNMENT_STRATEGIES:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid strategy")
         user_ids = [str(user.id) for user in assignable_users]
@@ -400,7 +414,19 @@ class AssignmentEngine:
         if strategy == "round-robin":
             return user_ids[index % len(user_ids)]
         assignment_counts = assignment_counts or {user_id: 0 for user_id in user_ids}
+        if strategy == "least-loaded":
+            return min(user_ids, key=lambda user_id: (assignment_counts.get(user_id, 0), user_ids.index(user_id)))
+        # evenly
         return min(user_ids, key=lambda user_id: (assignment_counts.get(user_id, 0), user_ids.index(user_id)))
+
+    @staticmethod
+    def allow_manager_override(current_user: User, target_user_id: Optional[str], assignable_users: Sequence[User]) -> bool:
+        if not target_user_id or current_user.role != UserRole.MANAGER:
+            return False
+        if str(current_user.id) == target_user_id:
+            return True
+        valid_ids = {str(user.id) for user in assignable_users}
+        return target_user_id in valid_ids
 
 
 class LeadEventPublisher:
@@ -472,15 +498,24 @@ class LeadEngine:
         if contact_id:
             normalized["contact_id"] = contact_id
         assigned_to = normalized.get("assigned_to")
+        department_id = normalized.get("department_id") or getattr(current_user, "department_id", None)
         if assigned_to:
-            assignable_users = await AssignmentEngine.load_assignable_users(current_user)
+            assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
             normalized["assigned_to"] = AssignmentEngine.choose_assignee(
                 "manual",
                 assignable_users,
                 target_user_id=str(assigned_to),
             )
         else:
-            normalized["assigned_to"] = str(getattr(current_user, "id", ""))
+            assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
+            if current_user.role == UserRole.MANAGER and str(current_user.id) in {str(user.id) for user in assignable_users}:
+                normalized["assigned_to"] = str(getattr(current_user, "id", ""))
+            else:
+                normalized["assigned_to"] = AssignmentEngine.choose_assignee(
+                    "least-loaded",
+                    assignable_users,
+                    assignment_counts={str(user.id): 0 for user in assignable_users},
+                )
 
         prospect = SalesProspect(
             first_name=normalized["first_name"],
@@ -570,6 +605,7 @@ class LeadEngine:
             "stage_entered_at": prospect.stage_entered_at,
             "stage_last_changed_at": prospect.stage_last_changed_at,
             "days_in_stage": prospect.days_in_stage,
+            "department_id": getattr(prospect, "department_id", None),
         }
 
     @staticmethod
@@ -606,7 +642,12 @@ class LeadEngine:
         if "estimated_close_date" in payload:
             prospect.estimated_close_date = _parse_datetime(payload.get("estimated_close_date"))
         if "assigned_to" in payload:
-            prospect.assigned_to = payload.get("assigned_to") or prospect.assigned_to
+            target_assignee = payload.get("assigned_to") or prospect.assigned_to
+            if target_assignee:
+                department_id = getattr(prospect, "department_id", None) or getattr(current_user, "department_id", None)
+                assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
+                if str(target_assignee) in {str(user.id) for user in assignable_users}:
+                    prospect.assigned_to = str(target_assignee)
         if "current_stage" in payload:
             prospect.current_stage = _normalize_text(payload.get("current_stage")) or prospect.current_stage
         if "due_date" in payload:
@@ -663,6 +704,7 @@ class LeadEngine:
         *,
         strategy: str,
         target_user_id: Optional[str] = None,
+        target_department_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not current_user.company_id and current_user.role != UserRole.SUPER_ADMIN:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
@@ -683,7 +725,7 @@ class LeadEngine:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must include either 'name' or 'first_name' column")
 
         source_label = DEFAULT_SOURCE_LABELS.get("xlsx" if file_name.lower().endswith(".xlsx") else "csv", "csv_import")
-        assignable_users = await AssignmentEngine.load_assignable_users(current_user)
+        assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=target_department_id)
         if strategy == "manual":
             if not target_user_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")

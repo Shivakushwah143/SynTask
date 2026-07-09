@@ -18,6 +18,7 @@ from app.models.sales_contact import SalesContact
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct
 from app.models.sales_masters import SalesStage
+from app.models.sales_import_job import SalesImportJob
 from app.crm.lead_engine import LeadEngine
 
 
@@ -75,6 +76,18 @@ def _parse_custom_fields(value: Optional[str]) -> dict:
         return parsed if isinstance(parsed, dict) else {}
     except Exception:
         return {}
+
+
+def _parse_tabular_preview(file_name: str, content: bytes) -> tuple[list[str], list[dict[str, str]]]:
+    lowered = file_name.lower()
+    if lowered.endswith(".xlsx"):
+        from app.crm.lead_engine import _load_xlsx_rows
+        return _load_xlsx_rows(content)
+    text = content.decode('utf-8-sig', errors='replace')
+    reader = csv.DictReader(io.StringIO(text))
+    headers = reader.fieldnames or []
+    rows = [{str(key): (value or "") for key, value in row.items() if key is not None} for row in reader]
+    return headers, rows
 
 def _parse_interest_level(value: str) -> InterestLevel:
     normalized = (value or "").strip().lower()
@@ -548,6 +561,11 @@ async def bulk_upload_prospects(
             "status": UserStatus.ACTIVE,
         }
     ).to_list()
+    if target_department_id:
+        assignable_users = [
+            user for user in assignable_users
+            if getattr(user, "department_id", None) == target_department_id or getattr(user, "department", None) == target_department_id
+        ]
 
     if not assignable_users:
         raise HTTPException(
@@ -558,7 +576,7 @@ async def bulk_upload_prospects(
     employee_ids = [str(user.id) for user in assignable_users]
     assigned_counts = {user_id: 0 for user_id in employee_ids}
 
-    if strategy not in ['round-robin', 'evenly', 'manual']:
+    if strategy not in ['round-robin', 'evenly', 'least-loaded', 'manual']:
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid strategy")
 
     if strategy == 'manual':
@@ -705,11 +723,14 @@ async def bulk_upload_prospects(
                 assignee = employee_ids[idx % assign_count]
                 row['assigned_to'] = assignee
                 assigned_counts[assignee] += 1
-        elif strategy == 'evenly':
+        elif strategy in {'evenly', 'least-loaded'}:
             base = total // assign_count
             remainder = total % assign_count
             assignment_list = []
-            for idx_user, user_id in enumerate(employee_ids):
+            ordered_ids = employee_ids
+            if strategy == 'least-loaded':
+                ordered_ids = sorted(employee_ids, key=lambda user_id: (assigned_counts.get(user_id, 0), employee_ids.index(user_id)))
+            for idx_user, user_id in enumerate(ordered_ids):
                 count = base + (1 if idx_user < remainder else 0)
                 assignment_list.extend([user_id] * count)
             for row, assignee in zip(parsed_rows, assignment_list):
@@ -749,6 +770,101 @@ async def bulk_upload_prospects(
         "assigned_breakdown": assigned_breakdown,
         "warnings": skipped_rows[:50],
     }
+
+
+@router.post("/bulk-upload/preview", dependencies=[Depends(require_module("sales"))])
+async def preview_bulk_upload_prospects(
+    strategy: str = Form(...),
+    file: UploadFile = File(...),
+    target_user_id: Optional[str] = Form(None),
+    target_department_id: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_company_admin_or_lead)
+):
+    if not file.filename.lower().endswith(('.csv', '.xlsx')) and file.content_type not in {'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Only CSV and XLSX files are supported")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded")
+
+    headers, rows = _parse_tabular_preview(file.filename, content)
+    normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
+    preview_rows = []
+    failed_rows = []
+    for idx, row in enumerate(rows, start=2):
+        row_norm = {_normalize_lead_csv_header(key): (value or '').strip() for key, value in row.items() if key is not None}
+        email = (row_norm.get('email') or '').lower()
+        if not email:
+            failed_rows.append({"row": idx, "error": "Missing email"})
+            continue
+        if not any(h in normalized_headers for h in ['name', 'first_name']):
+            failed_rows.append({"row": idx, "error": "Missing name"})
+            continue
+        preview_rows.append({
+            "row": idx,
+            "first_name": row_norm.get('first_name') or row_norm.get('name') or '',
+            "last_name": row_norm.get('last_name') or '',
+            "email": email,
+            "phone": row_norm.get('phone') or '',
+            "company_name": row_norm.get('company') or row_norm.get('company_name') or '',
+            "current_stage": row_norm.get('stage') or row_norm.get('current_stage') or 'new',
+            "assigned_to": target_user_id if strategy == 'manual' else None,
+            "status": row_norm.get('status') or ProspectStatus.ACTIVE.value,
+        })
+
+    job = SalesImportJob(
+        company_id=current_user.company_id,
+        created_by=str(current_user.id),
+        filename=file.filename,
+        strategy=strategy,
+        target_user_id=target_user_id,
+        target_department_id=target_department_id,
+        status="previewed",
+        total_rows=len(rows),
+        skipped_rows=len(failed_rows),
+        failed_rows=failed_rows,
+        preview_rows=preview_rows[:100],
+        source_payload={"headers": headers},
+    )
+    await job.insert()
+    return {
+        "job_id": str(job.id),
+        "total_rows": len(rows),
+        "preview_rows": preview_rows[:100],
+        "failed_rows": failed_rows[:100],
+    }
+
+
+@router.get("/imports")
+async def list_import_history(current_user: User = Depends(get_current_user)):
+    query = {"company_id": current_user.company_id}
+    jobs = await SalesImportJob.find(query).sort(-SalesImportJob.created_at).limit(50).to_list()
+    return {
+        "items": [
+            {
+                "id": str(job.id),
+                "filename": job.filename,
+                "strategy": job.strategy,
+                "status": job.status,
+                "total_rows": job.total_rows,
+                "total_uploaded": job.total_uploaded,
+                "skipped_rows": job.skipped_rows,
+                "failed_rows": job.failed_rows,
+                "created_at": job.created_at,
+                "completed_at": job.completed_at,
+            }
+            for job in jobs
+        ]
+    }
+
+
+@router.post("/imports/{job_id}/retry")
+async def retry_import_job(job_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
+    job = await SalesImportJob.get(job_id)
+    if not job or job.company_id != current_user.company_id:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Import job not found")
+    payload = dict(job.source_payload or {})
+    raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Retry requires the original uploaded file; use preview to re-upload the file.")
 
 
 @router.get("/search/contact")
