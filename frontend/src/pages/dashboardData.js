@@ -1,12 +1,27 @@
-import { addDays, format, isValid, parseISO, startOfDay } from 'date-fns'
+import { differenceInCalendarDays, format, isValid, parseISO, startOfDay } from 'date-fns'
 
-const PRIORITIES = ['high', 'medium', 'low']
 const PROJECT_STATUSES = ['active', 'planning', 'completed', 'on_hold']
+export const TASK_PRIORITY_COLORS = {
+  critical: '#991B1B',
+  high: '#EF4444',
+  medium: '#F59E0B',
+  low: '#2FB47C',
+}
 
 const normalizePriority = (priority) => {
   const value = String(priority || '').toLowerCase()
-  if (value === 'critical') return 'high'
-  return PRIORITIES.includes(value) ? value : 'low'
+  return TASK_PRIORITY_COLORS[value] ? value : 'low'
+}
+
+const titleCase = (value) => String(value).replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+const getTaskId = (task) => task.id || task._id
+
+const getTaskTitle = (task) => task.title || task.name || 'Untitled task'
+
+const truncate = (value, limit = 18) => {
+  const text = String(value)
+  return text.length > limit ? `${text.slice(0, limit - 1)}...` : text
 }
 
 const parseDate = (value) => {
@@ -17,28 +32,29 @@ const parseDate = (value) => {
 
 export function buildTaskDuePriorityData(tasks, today = new Date(), days = 7) {
   const start = startOfDay(today)
-  const buckets = Array.from({ length: days }, (_, index) => {
-    const date = addDays(start, index)
-    return {
-      date: format(date, 'MMM d'),
-      isoDate: format(date, 'yyyy-MM-dd'),
-      high: 0,
-      medium: 0,
-      low: 0,
-      route: '/tasks',
-    }
-  })
-
-  tasks.forEach((task) => {
-    const dueDate = parseDate(task.due_date)
-    if (!dueDate) return
-    const isoDate = format(dueDate, 'yyyy-MM-dd')
-    const bucket = buckets.find((item) => item.isoDate === isoDate)
-    if (!bucket) return
-    bucket[normalizePriority(task.priority)] += 1
-  })
-
-  return buckets.filter((bucket) => bucket.high || bucket.medium || bucket.low)
+  return tasks
+    .map((task) => {
+      const dueDate = parseDate(task.due_date)
+      if (!dueDate) return null
+      const daysUntilDue = differenceInCalendarDays(startOfDay(dueDate), start)
+      if (daysUntilDue < 0 || daysUntilDue >= days) return null
+      const priorityKey = normalizePriority(task.priority)
+      const taskId = getTaskId(task)
+      const title = getTaskTitle(task)
+      return {
+        id: taskId,
+        name: title,
+        shortName: truncate(title),
+        priority: titleCase(priorityKey),
+        priorityKey,
+        daysRemaining: daysUntilDue + 1,
+        dueDate: format(dueDate, 'MMM d'),
+        fill: TASK_PRIORITY_COLORS[priorityKey],
+        route: taskId ? `/tasks/${taskId}` : '/tasks',
+      }
+    })
+    .filter(Boolean)
+    .sort((first, second) => first.daysRemaining - second.daysRemaining || first.name.localeCompare(second.name))
 }
 
 export function buildProjectHealthData(projects) {

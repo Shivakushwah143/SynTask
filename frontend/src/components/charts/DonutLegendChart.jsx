@@ -46,6 +46,8 @@ const DonutLegendChart = ({ title, data, colors = DEFAULT_COLORS, emptyLabel = '
                 key={item.name}
                 type="button"
                 onClick={() => onItemClick?.(item)}
+                title={`${item.name}: ${item.value?.toLocaleString?.() ?? item.value}`}
+                aria-label={`${item.name}: ${item.value?.toLocaleString?.() ?? item.value}`}
                 className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${onItemClick ? 'hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:hover:bg-gray-800' : ''}`}
               >
                 <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: item.color }} />

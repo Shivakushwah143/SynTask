@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Calendar, User, MoreVertical, Search, Filter } from 'lucide-react'
+import { Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
@@ -12,6 +12,7 @@ import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
 import { useViewStore } from '../store/viewStore'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
+import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
 
 const Tasks = () => {
   const navigate = useNavigate()
@@ -152,6 +153,9 @@ const Tasks = () => {
     ? assignableUsers.filter((item) => item.department_id === selectedDepartmentId)
     : assignableUsers
 
+  const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks), [tasks])
+  const taskGraphSummary = useMemo(() => buildTaskGraphSummary(tasks), [tasks])
+
   const closeCreateModal = () => {
     if (submitting) return
     setShowCreateModal(false)
@@ -237,6 +241,14 @@ const Tasks = () => {
           )}
         </div>
       </div>
+
+      <TaskGraphPanel
+        rows={taskGraphRows}
+        summary={taskGraphSummary}
+        onOpenTask={(task) => {
+          handleTaskClick({ id: task.id, project_id: task.projectId })
+        }}
+      />
 
       {/* Search and Filters */}
       <div className="card">
@@ -559,6 +571,102 @@ const Tasks = () => {
         </div>
       )}
 
+    </div>
+  )
+}
+
+function TaskGraphPanel({ rows, summary, onOpenTask }) {
+  return (
+    <section className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Tasks</h2>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">?</span>
+        </div>
+        <div className="hidden flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400 sm:flex">
+          {Object.entries(TASK_GRAPH_PRIORITY_COLORS).map(([priority, color]) => (
+            <span key={priority} className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+              {priority.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid border-b border-gray-200 dark:border-gray-800 sm:grid-cols-3">
+        <TaskGraphStat icon={ListTodo} label="Total tasks" value={summary.total} />
+        <TaskGraphStat icon={Calendar} label="Active tasks" value={summary.active} muted />
+        <TaskGraphStat icon={CheckCircle2} label="Completed" value={summary.completed} muted />
+      </div>
+
+      <div className="p-3">
+        {rows.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {rows.map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => onOpenTask(task)}
+                title={`${task.title}: ${task.statusLabel}, ${task.priorityLabel} priority, ${task.progress}% progress`}
+                className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-700 dark:hover:bg-gray-950"
+              >
+                <div className="flex items-start gap-3">
+                  <TaskProgressRing value={task.progress} color={task.priorityColor} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold leading-5 text-gray-900 dark:text-gray-100">{task.title}</p>
+                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">{task.assignee}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">{task.statusLabel}</span>
+                      <span className="rounded-full px-2 py-0.5 text-xs font-medium text-white" style={{ backgroundColor: task.priorityColor }}>{task.priorityLabel}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>Status Progress</span>
+                    <span>{task.progress}%</span>
+                  </div>
+                  {/* <TaskStatusBar value={task.progress} color={task.priorityColor} /> */}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No task graph data" description="Tasks will appear here when they match your filters." />
+        )}
+      </div>
+    </section>
+  )
+}
+
+function TaskGraphStat({ icon: Icon, label, value, muted = false }) {
+  return (
+    <div className={`flex items-center gap-2 px-4 py-3 ${muted ? 'border-t border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/50 sm:border-l sm:border-t-0' : ''}`}>
+      <Icon className={`h-5 w-5 ${muted ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`} />
+      <div>
+        <p className={`text-lg font-semibold tabular-nums ${muted ? 'text-gray-600 dark:text-gray-300' : 'text-gray-900 dark:text-gray-100'}`}>{value}</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+function TaskProgressRing({ value, color }) {
+  const bounded = Math.max(0, Math.min(100, value || 0))
+  return (
+    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(${color} ${bounded * 3.6}deg, #eeeeee 0deg)` }}>
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+        {bounded}%
+      </div>
+    </div>
+  )
+}
+
+function TaskStatusBar({ value, color }) {
+  const bounded = Math.max(0, Math.min(100, value || 0))
+  return (
+    <div className="h-2.5 overflow-hidden rounded-sm bg-gray-100 dark:bg-gray-800">
+      <div className="h-full rounded-sm" style={{ width: `${bounded}%`, backgroundColor: color }} />
     </div>
   )
 }

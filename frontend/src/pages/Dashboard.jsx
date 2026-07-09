@@ -8,6 +8,7 @@ import {
   Line,
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -29,10 +30,9 @@ import { ChartTooltip } from '../components/charts/ChartTooltip'
 import { ChartCard } from '../components/charts/ChartCard'
 import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
 import DonutLegendChart from '../components/charts/DonutLegendChart'
-import { DASHBOARD_PROJECT_STATUSES, buildProjectHealthData, buildTaskDuePriorityData } from './dashboardData'
+import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthData, buildTaskDuePriorityData } from './dashboardData'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const PRIORITY_COLORS = { high: '#EF4444', medium: '#F59E0B', low: '#2FB47C' }
 const PROJECT_STATUS_COLORS = { active: '#4285F4', planning: '#7C6FE0', completed: '#2FB47C', on_hold: '#FFB020' }
 
 const Dashboard = () => {
@@ -150,7 +150,6 @@ const Dashboard = () => {
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
   const taskSource = role === ROLE.EMPLOYEE ? recentTickets : recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
-  const openTasksCount = Math.max(taskSource.length - priorityTasks.length, 0)
   const dueTodayCount = metrics?.tasks_due_today ?? 0
 
   // ---- Chart datasets (replace the old static / zero-filled placeholders) ----
@@ -183,13 +182,6 @@ const Dashboard = () => {
         { name: 'Won', value: metrics?.won_deals ?? 0, route: '/crm/pipeline' },
       ]
     : []
-
-  // Task overview -> donut instead of plain numbers
-  const taskOverviewData = [
-    { name: 'Due Today', value: dueTodayCount, route: '/tasks' },
-    { name: 'High Priority', value: priorityTasks.length, route: '/tasks' },
-    { name: 'Open', value: openTasksCount, route: '/tasks' },
-  ]
 
   const monthlyPerformance = canSeeSalesWidgets
     ? [
@@ -308,19 +300,6 @@ const Dashboard = () => {
             onBarClick={() => navigate('/crm/pipeline')}
           />
           <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline' }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
-          <ChartCard title="Conversion Rate">
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={conversionData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/crm/pipeline')}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <ChartTooltip />
-                  <Line type="monotone" dataKey="value" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 5, fill: '#FF8A4C', cursor: 'pointer' }} activeDot={{ r: 7, onClick: (_, item) => navigateFromChart(item, '/crm/pipeline') }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </ChartCard>
         </section>
       ) : (
         <section className="card p-5">
@@ -330,44 +309,35 @@ const Dashboard = () => {
       )}
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <DonutLegendChart title="Tasks Overview" data={taskOverviewData} emptyLabel="Nothing on your plate right now" onItemClick={(item) => navigateFromChart(item, '/tasks')} />
-        <ChartCard title="Task Due Dates by Priority" period="Next 7 Days">
-          {taskDuePriorityData.length ? (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={taskDuePriorityData} barCategoryGap="28%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/tasks')}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <ChartTooltip />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="high" name="High" stackId="priority" fill={PRIORITY_COLORS.high} radius={[4, 4, 0, 0]} className="cursor-pointer" />
-                  <Bar dataKey="medium" name="Medium" stackId="priority" fill={PRIORITY_COLORS.medium} radius={[4, 4, 0, 0]} className="cursor-pointer" />
-                  <Bar dataKey="low" name="Low" stackId="priority" fill={PRIORITY_COLORS.low} radius={[4, 4, 0, 0]} className="cursor-pointer" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="flex h-72 items-center justify-center text-sm text-gray-400">No dated tasks in the next week</div>
-          )}
-        </ChartCard>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
         {canSeeSalesWidgets ? (
-          <ChartCard title="Monthly Performance">
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyPerformance} barCategoryGap="35%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <ChartTooltip />
-                  <Bar dataKey="value" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} className="cursor-pointer" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </ChartCard>
+          <>
+            <ChartCard title="Conversion Rate">
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={conversionData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/crm/pipeline')}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <ChartTooltip />
+                    <Line type="monotone" dataKey="value" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 5, fill: '#FF8A4C', cursor: 'pointer' }} activeDot={{ r: 7, onClick: (_, item) => navigateFromChart(item, '/crm/pipeline') }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+            <ChartCard title="Monthly Performance">
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyPerformance} barCategoryGap="35%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <ChartTooltip />
+                    <Bar dataKey="value" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} className="cursor-pointer" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+          </>
         ) : (
           <ChartCard title="Monthly Performance">
             <p className="text-sm text-gray-500 dark:text-gray-400">This chart is available to sales-oriented roles only.</p>
@@ -438,7 +408,14 @@ const Dashboard = () => {
                   ['Working', attendanceStats.working_now ?? 0],
                   ['On break', attendanceStats.on_break ?? 0],
                 ].map(([label, value]) => (
-                  <button key={label} type="button" onClick={() => navigate('/live-monitor')} className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-primary-300 hover:bg-primary-50/50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-primary-700 dark:hover:bg-primary-950/30">
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => navigate('/live-monitor')}
+                    title={`${label}: ${value}`}
+                    aria-label={`${label}: ${value}`}
+                    className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-primary-300 hover:bg-primary-50/50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-primary-700 dark:hover:bg-primary-950/30"
+                  >
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</p>
                     <p className="mt-3 text-3xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
                   </button>
@@ -452,7 +429,50 @@ const Dashboard = () => {
       <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
 
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-        <div className="card p-5">
+        <div className="space-y-6">
+          <ChartCard title="Task Due Dates by Priority" period="Next 7 Days">
+            {taskDuePriorityData.length ? (
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={taskDuePriorityData} barCategoryGap="24%" margin={{ top: 10, right: 12, left: 0, bottom: 18 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/tasks')}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                    <XAxis
+                      dataKey="shortName"
+                      interval={0}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={6}
+                      tick={{ fontSize: 11, fill: '#9ca3af' }}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 11, fill: '#9ca3af' }}
+                      label={{ value: 'Days remaining', angle: -90, position: 'insideLeft', style: { fill: '#9ca3af', fontSize: 11 } }}
+                    />
+                    <ChartTooltip labelFormatter={(_, point) => point.name} valueFormatter={(value, key) => key === 'daysRemaining' ? `${value} day${value === 1 ? '' : 's'}` : value} />
+                    <Bar dataKey="daysRemaining" name="Days Remaining" radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer">
+                      {taskDuePriorityData.map((entry) => (
+                        <Cell key={entry.id || entry.name} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex h-72 items-center justify-center text-sm text-gray-400">No dated tasks in the next week</div>
+            )}
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-gray-100 pt-4 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+              {Object.entries(TASK_PRIORITY_COLORS).map(([priority, color]) => (
+                <span key={priority} className="inline-flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                  {priority.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                </span>
+              ))}
+            </div>
+          </ChartCard>
+          <div className="card p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Today&apos;s work</h2>
@@ -485,6 +505,7 @@ const Dashboard = () => {
             )) : (
               <EmptyState title="No work in view" description="No tasks or requests need your attention right now." />
             )}
+          </div>
           </div>
         </div>
 

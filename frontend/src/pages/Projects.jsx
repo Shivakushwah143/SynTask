@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowRight, FolderKanban, Grid2x2, List, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ArrowRight, Clock3, FolderKanban, Grid2x2, List, Plus, Receipt, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -11,6 +11,7 @@ import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
 import { hasCompanyAdminAccess } from '../utils/roles'
 import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, Table, inputClassName } from '../components/ui'
+import { buildProjectGraphRows, buildProjectGraphSummary } from './projectsData'
 
 export default function Projects() {
   const navigate = useNavigate()
@@ -104,6 +105,9 @@ export default function Projects() {
         ? Math.min(100, Math.round(((project.completed_task_count || 0) / project.task_count) * 100))
         : 0,
   })), [filteredProjects])
+
+  const projectGraphRows = useMemo(() => buildProjectGraphRows(projectCards), [projectCards])
+  const projectGraphSummary = useMemo(() => buildProjectGraphSummary(projectCards), [projectCards])
 
   const openProject = async (project) => {
     setSelectedProject(project)
@@ -223,6 +227,16 @@ export default function Projects() {
         <MetricCard title="Active projects" value={summary.active} />
         <MetricCard title="At risk" value={summary.overdue} />
       </section>
+
+      <ProjectGraphPanel
+        rows={projectGraphRows}
+        summary={projectGraphSummary}
+        loading={loading}
+        onOpenProject={(project) => {
+          const match = projectCards.find((item) => item.id === project.id)
+          if (match) openProject(match)
+        }}
+      />
 
       <section className="card p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -396,6 +410,108 @@ export default function Projects() {
         onClose={() => setShowDetails(false)}
         onOpenBoard={(project) => navigate(`/projects/${project.id}/board`)}
       />
+    </div>
+  )
+}
+
+function ProjectGraphPanel({ rows, summary, loading, onOpenProject }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+        <div className="flex items-center gap-1.5">
+        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Projects</h2>
+        <span className="flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">?</span>
+        </div>
+        <div className="hidden items-center gap-4 text-xs text-gray-500 dark:text-gray-400 sm:flex">
+          <span>{summary.remainingTasks} remaining</span>
+          <span>{summary.totalTasks} total tasks</span>
+        </div>
+      </div>
+
+      <div className="grid border-b border-gray-200 dark:border-gray-800 sm:grid-cols-2">
+        <div className="flex items-center gap-2 px-4 py-3">
+          <Clock3 className="h-5 w-5 text-gray-900 dark:text-gray-100" />
+          <div>
+            <p className="text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">{summary.remainingTasks}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Remaining tasks</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50 sm:border-l sm:border-t-0">
+          <Receipt className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+          <div>
+            <p className="text-lg font-semibold tabular-nums text-gray-600 dark:text-gray-300">{summary.totalTasks}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total project tasks</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-3">
+        {loading ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <SkeletonCard lines={4} />
+            <SkeletonCard lines={4} />
+            <SkeletonCard lines={4} />
+          </div>
+        ) : rows.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.slice(0, 6).map((project) => (
+          <button
+            key={project.id}
+            type="button"
+            onClick={() => onOpenProject(project)}
+            title={`${project.name}: ${project.progress}% complete, ${project.remainingTasks} tasks remaining`}
+            className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-700 dark:hover:bg-gray-950"
+          >
+            <div className="flex items-start gap-3">
+              <ProgressRing value={project.progress} />
+              <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold leading-5 text-primary-600 dark:text-primary-400">{project.name}</p>
+              <p className="truncate text-sm text-gray-500 dark:text-gray-400">{project.owner}</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {project.key ? <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">{project.key}</span> : null}
+                <Badge label={project.status.replace(/_/g, ' ')} colorKey={project.status} />
+              </div>
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>Task Budget</span>
+                <span>{project.completedTasks}/{project.totalTasks}</span>
+              </div>
+              <StackedBudgetBar completed={project.completedTasks} remaining={project.remainingTasks} total={project.totalTasks} />
+            </div>
+          </button>
+          ))}
+          </div>
+        ) : (
+          <div className="py-6">
+            <EmptyState title="No project graph data" description="Projects will appear here when they match your filters." />
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ProgressRing({ value }) {
+  const bounded = Math.max(0, Math.min(100, value || 0))
+  return (
+    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(#3B82F6 ${bounded * 3.6}deg, #eeeeee 0deg)` }}>
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+        {bounded}%
+      </div>
+    </div>
+  )
+}
+
+function StackedBudgetBar({ completed, remaining, total }) {
+  const safeTotal = Math.max(total || 0, 1)
+  const completedWidth = Math.min(100, Math.round((completed / safeTotal) * 100))
+  const remainingWidth = Math.max(0, 100 - completedWidth)
+  return (
+    <div className="flex h-2.5 overflow-hidden rounded-sm bg-gray-100 dark:bg-gray-800">
+      <div className="bg-emerald-400" style={{ width: `${completedWidth}%` }} />
+      <div className="bg-orange-400" style={{ width: `${remainingWidth}%`, opacity: remaining ? 1 : 0 }} />
     </div>
   )
 }
