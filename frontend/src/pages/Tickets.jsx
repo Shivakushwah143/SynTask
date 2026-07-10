@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2 } from 'lucide-react'
+import { Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2, Filter, Inbox, AlertCircle, Activity, CheckCircle2, Clock3, LineChart, TrendingUp, Users } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Link } from 'react-router-dom'
 import { ticketsAPI } from '../api/tickets'
@@ -8,7 +8,8 @@ import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import TicketDetailModal from '../components/TicketDetailModal'
-import { SkeletonKanban } from '../components/ui'
+import { Button, FormField, SkeletonKanban, inputClassName } from '../components/ui'
+import { CRMSection, CRMStatCard } from '../components/crm'
 import {
   DndContext,
   DragOverlay,
@@ -31,6 +32,8 @@ import { ROLE, normalizeRole } from '../utils/roles'
 // Sortable Ticket Card Component
 const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
   const {
+    attributes,
+    listeners,
     setNodeRef,
     transform,
     transition,
@@ -51,23 +54,25 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
         console.log('Ticket card clicked (container):', ticket)
         onClick?.(ticket)
       }}
-      className="rounded-2xl border border-purple-100/80 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-[0_14px_32px_rgba(124,58,237,0.10)] dark:border-gray-800 dark:bg-gray-950"
+      className="group cursor-pointer rounded-lg border border-surface-border bg-white p-4 shadow-sm transition-colors hover:border-primary-200 hover:bg-surface-muted/50 dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-900"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2">
-          <span
-            className="mt-0.5 cursor-grab text-gray-300 transition group-hover:text-purple-400"
-            {...useSortable({ id: ticket.id }).attributes}
-            {...useSortable({ id: ticket.id }).listeners}
+          <button
+            type="button"
+            aria-label={`Move ${ticket.title}`}
+            className="mt-0.5 cursor-grab rounded-md p-1 text-gray-300 transition hover:bg-gray-100 hover:text-primary-600 active:cursor-grabbing dark:hover:bg-gray-800"
+            {...attributes}
+            {...listeners}
             onClick={(e) => e.stopPropagation()}
           >
-            <GripVertical className="h-4 w-4" />
-          </span>
+            <GripVertical className="h-4 w-4" aria-hidden="true" />
+          </button>
           <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-gray-900 dark:text-gray-100">
             {ticket.title}
           </p>
         </div>
-        <span className={`badge ${statuses[ticket.status]?.color || 'badge-secondary'} text-xs ml-2`}>
+        <span className={`badge ${statuses[ticket.status]?.color || 'badge-secondary'} ml-2 text-xs`}>
           {statuses[ticket.status]?.label || ticket.status}
         </span>
       </div>
@@ -104,7 +109,7 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
               onClick(ticket)
             }
           }}
-          className="inline-flex w-fit items-center rounded-full bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 transition hover:bg-purple-100 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/70"
+          className="inline-flex min-h-9 w-fit items-center rounded-lg bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 dark:bg-primary-950/40 dark:text-primary-200 dark:hover:bg-primary-950/70"
         >
           Open
         </button>
@@ -119,9 +124,10 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-[28px] border bg-gradient-to-b p-4 shadow-sm transition-colors ${isOver ? 'ring-2 ring-purple-200 bg-purple-50/40' : 'border-purple-100 bg-white/90 dark:border-gray-800 dark:bg-gray-950'}`}
+      className={`flex min-h-[420px] w-[min(82vw,310px)] flex-shrink-0 flex-col overflow-hidden rounded-2xl border shadow-sm transition-colors md:w-[292px] ${isOver ? 'border-primary-300 bg-primary-50/60 ring-2 ring-primary-200 dark:bg-primary-950/30' : 'border-surface-border bg-white/90 dark:border-gray-800 dark:bg-gray-950'}`}
     >
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className={`h-1.5 ${statusAccent(status.id)}`} />
+      <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-4 dark:border-gray-800">
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-gray-100">{status.label}</h3>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{columnSubtitle(status.id)}</p>
@@ -137,8 +143,9 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
                   e.stopPropagation()
                   onEditColumn(status)
                 }}
-                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-white/70 hover:text-purple-600 dark:hover:bg-gray-900"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-gray-900"
                 title="Edit column"
+                aria-label={`Edit ${status.label} column`}
               >
                 <Edit className="h-4 w-4" />
               </button>
@@ -147,8 +154,9 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
                   e.stopPropagation()
                   onDeleteColumn(status)
                 }}
-                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-white/70 hover:text-red-500 dark:hover:bg-gray-900"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
                 title="Delete column"
+                aria-label={`Delete ${status.label} column`}
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -156,30 +164,82 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
           )}
         </div>
       </div>
-      <SortableContext
-        id={status.id}
-        items={tickets.map(t => t.id)}
-        strategy={verticalListSortingStrategy}
-      >
-        <div className="min-h-[220px] space-y-3">
-          {tickets.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-purple-200 bg-white/70 py-10 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-950/60">
-              No requests in this stage
-            </div>
-          ) : (
-            tickets.map((ticket) => (
-              <SortableTicketCard
-                key={ticket.id}
-                ticket={ticket}
-                onClick={() => onTicketClick(ticket)}
-                priorities={priorities}
-                statuses={statusesMap}
-              />
-            ))
-          )}
-        </div>
-      </SortableContext>
+      <div className="flex-1 bg-gray-50/60 p-3 dark:bg-gray-950/40">
+        <SortableContext
+          id={status.id}
+          items={tickets.map(t => t.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-3">
+            {tickets.length === 0 ? (
+              <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-surface-border bg-white/80 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/60">
+                <Inbox className="mb-2 h-5 w-5 text-gray-400" aria-hidden="true" />
+                No requests here
+              </div>
+            ) : (
+              tickets.map((ticket) => (
+                <SortableTicketCard
+                  key={ticket.id}
+                  ticket={ticket}
+                  onClick={() => onTicketClick(ticket)}
+                  priorities={priorities}
+                  statuses={statusesMap}
+                />
+              ))
+            )}
+          </div>
+        </SortableContext>
+      </div>
     </div>
+  )
+}
+
+const TicketBarChart = ({ title, description, data }) => {
+  const maxValue = Math.max(...data.map((item) => item.value), 1)
+  return (
+    <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{description}</p>
+        </div>
+        <LineChart className="h-5 w-5 text-primary-600" />
+      </div>
+      <div className="mt-4 space-y-3">
+        {data.map((item) => {
+          const width = `${Math.max((item.value / maxValue) * 100, item.value ? 8 : 0)}%`
+          return (
+            <div key={item.label}>
+              <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                <span className="truncate font-medium text-gray-600 dark:text-gray-300">{item.label}</span>
+                <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{item.value}</span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <div className={`h-full rounded-full ${item.color}`} style={{ width }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </article>
+  )
+}
+
+const SignalTile = ({ label, value, helper, icon: Icon, tone = 'blue' }) => {
+  const tones = {
+    blue: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200',
+    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200',
+    amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
+  }
+  return (
+    <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone] || tones.blue}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
+    </article>
   )
 }
 
@@ -267,6 +327,28 @@ const Tickets = () => {
     query: 'Query',
     complaint: 'Complaint',
   }
+
+  const ticketStats = useMemo(() => {
+    const activeCount = tickets.filter((ticket) => !['closed', 'resolved'].includes(ticket.status)).length
+    const urgentCount = tickets.filter((ticket) => ticket.priority === 'urgent').length
+    const unassignedCount = tickets.filter((ticket) => !ticket.assigned_to).length
+    const resolvedCount = tickets.filter((ticket) => ['closed', 'resolved'].includes(ticket.status)).length
+    return { activeCount, urgentCount, unassignedCount, resolvedCount }
+  }, [tickets])
+
+  const sortedStatuses = useMemo(() => [...statuses].sort((a, b) => (a.order || 0) - (b.order || 0)), [statuses])
+  const statusChartData = useMemo(() => sortedStatuses.map((status) => ({
+    label: status.label,
+    value: tickets.filter((ticket) => ticket.status === status.id).length,
+    color: statusBarColor(status.id),
+  })), [sortedStatuses, tickets])
+  const priorityChartData = useMemo(() => Object.keys(priorities).map((priority) => ({
+    label: priorities[priority].label,
+    value: tickets.filter((ticket) => ticket.priority === priority).length,
+    color: priorityBarColor(priority),
+  })), [priorities, tickets])
+
+  const hasFilters = Boolean(filters.status || filters.priority || filters.type)
 
   // Fetch team members for Leads
   useEffect(() => {
@@ -409,7 +491,7 @@ const Tickets = () => {
       }
 
       const result = await ticketsAPI.createTicket(ticketData)
-      toast.success(`✅ Ticket created! Number: ${result.ticket_number}`)
+      toast.success(`Ticket created. Number: ${result.ticket_number}`)
       setShowCreateModal(false)
       await fetchTickets()
       e.target.reset()
@@ -567,80 +649,137 @@ const Tickets = () => {
   }
 
   return (
-    <div className="p-4">
-      <div className="mb-4 rounded-[28px] border border-purple-100 bg-gradient-to-r from-white via-white to-purple-50/70 p-5 shadow-sm dark:border-gray-800 dark:from-gray-950 dark:via-gray-950 dark:to-gray-900">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-purple-500">Support</p>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Requests</h1>
-            <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Track issues and move work across stages.
-            </p>
-          </div>
+    <div className="space-y-6 p-4">
+      <section className="overflow-hidden rounded-3xl border border-emerald-100/80 bg-white/90 shadow-sm dark:border-gray-800 dark:bg-gray-950">
+        <div className="h-1.5 bg-gradient-to-r from-primary-500 via-emerald-400 to-amber-300" />
+        <div className="p-5">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600 dark:text-primary-300">Support desk</p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">Requests</h1>
+              <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                Triage, assign, and move tickets across a CRM-style operations board.
+              </p>
+            </div>
           <div className="flex flex-wrap items-center gap-2">
             {canManageColumns && (
-              <button
+              <Button
+                type="button"
+                variant="secondary"
                 onClick={() => {
                   setEditingColumn(null)
                   setColumnForm({ label: '', color: 'badge-secondary' })
                   setShowColumnModal(true)
                 }}
-                className="btn btn-secondary flex items-center justify-center"
+                className="min-h-11"
                 title="Manage columns"
               >
-                <Settings className="h-4 w-4 mr-1.5" />
+                <Settings className="h-4 w-4" />
                 Columns
-              </button>
+              </Button>
             )}
             {canManageRequests && userRole === ROLE.LEAD && (
               <Link
                 to="/tasks?createTask=true"
-                className="btn btn-outline flex items-center justify-center w-full sm:w-auto"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-surface-border bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
               >
-                <Plus className="h-4 w-4 mr-1.5" />
+                <Plus className="h-4 w-4" />
                 Add Task
               </Link>
             )}
-            <button
+            <Button
+              type="button"
               onClick={() => setShowCreateModal(true)}
-              className="btn btn-primary flex items-center justify-center w-full sm:w-auto shadow-[0_14px_30px_rgba(124,58,237,0.24)]"
+              className="min-h-11"
             >
-              <Plus className="h-4 w-4 mr-1.5" />
-                New
-            </button>
+              <Plus className="h-4 w-4" />
+              New request
+            </Button>
           </div>
         </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <CRMStatCard icon={Inbox} label="Total Requests" value={String(tickets.length)} helper="All tickets in the current view." tone="blue" />
+        <CRMStatCard icon={Activity} label="Active" value={String(ticketStats.activeCount)} helper="Not resolved or closed." tone="emerald" />
+        <CRMStatCard icon={AlertCircle} label="Urgent" value={String(ticketStats.urgentCount)} helper="Needs immediate attention." tone="amber" />
+        <CRMStatCard icon={Users} label="Unassigned" value={String(ticketStats.unassignedCount)} helper={`${ticketStats.resolvedCount} resolved or closed.`} tone="slate" />
       </div>
 
-      <div className="mb-4 rounded-[28px] border border-purple-100 bg-white/90 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-950/90">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Priority</label>
-            <select
-              value={filters.priority}
-              onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-              className="input"
-            >
-              <option value="">All Priorities</option>
-              {Object.keys(priorities).map(priority => (
-                <option key={priority} value={priority}>{priorities[priority].label}</option>
-              ))}
-            </select>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)]">
+        <CRMSection
+          title="Ticket Controls"
+          description="Filter the board without leaving the request workflow."
+          actions={hasFilters ? (
+            <Button type="button" variant="secondary" size="sm" onClick={() => setFilters({ status: '', priority: '', type: '' })}>
+              Clear filters
+            </Button>
+          ) : null}
+        >
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <FormField label="Status" htmlFor="ticket-status-filter">
+              <select
+                id="ticket-status-filter"
+                value={filters.status}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                className={inputClassName}
+              >
+                <option value="">All statuses</option>
+                {sortedStatuses.map(status => (
+                  <option key={status.id} value={status.id}>{status.label}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Priority" htmlFor="ticket-priority-filter">
+              <select
+                id="ticket-priority-filter"
+                value={filters.priority}
+                onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+                className={inputClassName}
+              >
+                <option value="">All priorities</option>
+                {Object.keys(priorities).map(priority => (
+                  <option key={priority} value={priority}>{priorities[priority].label}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Type" htmlFor="ticket-type-filter">
+              <select
+                id="ticket-type-filter"
+                value={filters.type}
+                onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                className={inputClassName}
+              >
+                <option value="">All types</option>
+                {Object.keys(types).map(type => (
+                  <option key={type} value={type}>{types[type]}</option>
+                ))}
+              </select>
+            </FormField>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Type</label>
-            <select
-              value={filters.type}
-              onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-              className="input"
-            >
-              <option value="">All Types</option>
-              {Object.keys(types).map(type => (
-                <option key={type} value={type}>{types[type]}</option>
-              ))}
-            </select>
+        </CRMSection>
+
+        <TicketBarChart
+          title="Priority Mix"
+          description="Distribution of requests by urgency."
+          data={priorityChartData}
+        />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <TicketBarChart
+          title="Status Flow"
+          description="How tickets are distributed across columns."
+          data={statusChartData}
+        />
+        <CRMSection title="Operating Signal" description="Fast read of current desk pressure.">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <SignalTile label="Resolution" value={`${ticketStats.resolvedCount}/${tickets.length || 0}`} helper="Closed or resolved" icon={CheckCircle2} tone="emerald" />
+            <SignalTile label="Queue" value={String(ticketStats.activeCount)} helper="Still open" icon={Clock3} tone="blue" />
+            <SignalTile label="Pressure" value={String(ticketStats.urgentCount)} helper="Urgent priority" icon={TrendingUp} tone="amber" />
           </div>
-        </div>
+        </CRMSection>
       </div>
 
       {/* Kanban Board */}
@@ -650,8 +789,8 @@ const Tickets = () => {
         onDragStart={(event) => setActiveId(event.active.id)}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
-          {statuses.sort((a, b) => (a.order || 0) - (b.order || 0)).map((status) => {
+        <div className="viewport-scroll-x -mx-1 flex gap-4 px-1 pb-3">
+          {sortedStatuses.map((status) => {
             const statusTickets = getTicketsByStatus(status.id)
             return (
               <StatusColumn
@@ -670,7 +809,7 @@ const Tickets = () => {
         </div>
         <DragOverlay>
           {activeId ? (
-            <div className="rounded-2xl border border-purple-200 bg-white px-4 py-3 shadow-lg">
+            <div className="rounded-lg border border-primary-200 bg-white px-4 py-3 text-sm font-medium shadow-lg dark:bg-gray-950">
               Moving request
             </div>
           ) : null}
@@ -679,70 +818,68 @@ const Tickets = () => {
 
       {/* Create Ticket Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="max-h-screen w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl dark:bg-gray-950">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New Request</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-screen w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-2xl dark:bg-gray-950">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New request</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Capture the issue clearly so it can be routed quickly.</p>
+              </div>
               <button
+                type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-900"
+                aria-label="Close new request modal"
               >
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
             <form onSubmit={handleCreateTicket} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title
-                </label>
+              <FormField label="Title" htmlFor="ticket-title" required>
                 <input
+                  id="ticket-title"
                   type="text"
                   name="title"
                   required
-                  className="input"
+                  className={inputClassName}
                   placeholder="Brief description of the issue"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Details
-                </label>
+              </FormField>
+              <FormField label="Details" htmlFor="ticket-description" required>
                 <textarea
+                  id="ticket-description"
                   name="description"
                   required
                   rows="4"
-                  className="input"
+                  className={`${inputClassName} resize-y`}
                   placeholder="Detailed description of the issue..."
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category
-                </label>
-                <select name="type" className="input">
-                  <option value="support">Support</option>
-                  <option value="feature_request">Feature Request</option>
-                  <option value="query">Query</option>
-                  <option value="complaint">Complaint</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Priority
-                </label>
-                <select name="priority" className="input" defaultValue="medium">
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
+              </FormField>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField label="Category" htmlFor="ticket-type">
+                  <select id="ticket-type" name="type" className={inputClassName}>
+                    <option value="support">Support</option>
+                    <option value="feature_request">Feature Request</option>
+                    <option value="query">Query</option>
+                    <option value="complaint">Complaint</option>
+                  </select>
+                </FormField>
+                <FormField label="Priority" htmlFor="ticket-priority">
+                  <select id="ticket-priority" name="priority" className={inputClassName} defaultValue="medium">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </FormField>
               </div>
               {assignableUsers.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assignee
-                  </label>
-                  <select name="assigned_to" className="input">
+                <FormField
+                  label="Assignee"
+                  htmlFor="ticket-assignee"
+                  helperText={userRole === ROLE.EMPLOYEE ? 'Lead or Admin.' : userRole === ROLE.LEAD ? 'Anyone in the company.' : 'Team member.'}
+                >
+                  <select id="ticket-assignee" name="assigned_to" className={inputClassName}>
                     <option value="">Unassigned</option>
                     {assignableUsers.map((assignUser, index) => {
                       const userId = String(assignUser.id || assignUser._id || index)
@@ -753,31 +890,27 @@ const Tickets = () => {
                       )
                     })}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {userRole === ROLE.EMPLOYEE
-                      ? 'Lead or Admin.'
-                      : userRole === ROLE.LEAD
-                        ? 'Anyone in the company.'
-                        : 'Team member.'}
-                  </p>
-                </div>
+                </FormField>
               )}
-              <div className="flex space-x-3 pt-4">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="btn btn-primary flex-1"
-                >
-                  {submitting ? 'Creating...' : 'Create'}
-                </button>
-                <button
+              <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row">
+                <Button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
                   disabled={submitting}
-                  className="btn btn-secondary flex-1"
+                  variant="secondary"
+                  className="flex-1"
                 >
                   Cancel
-                </button>
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  loading={submitting}
+                  loadingText="Creating"
+                  className="flex-1"
+                >
+                  Create request
+                </Button>
               </div>
             </form>
           </div>
@@ -801,36 +934,38 @@ const Tickets = () => {
 
       {/* Column Management Modal */}
       {canManageColumns && showColumnModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-gray-950">
-            <h2 className="mb-4 text-xl font-bold text-gray-900 dark:text-gray-100">
-              {editingColumn ? 'Edit Column' : 'Create Column'}
-            </h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl dark:bg-gray-950">
+            <div className="mb-5 flex items-start gap-3">
+              <AlertCircle className="mt-1 h-5 w-5 text-primary-600" aria-hidden="true" />
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                  {editingColumn ? 'Edit column' : 'Create column'}
+                </h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Keep stages short and easy for the team to scan.</p>
+              </div>
+            </div>
             <form onSubmit={handleColumnSubmit}>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Column name
-                  </label>
+                <FormField label="Column name" htmlFor="column-name" required>
                   <input
+                    id="column-name"
                     type="text"
                     value={columnForm.label}
                     onChange={(e) => setColumnForm({ ...columnForm, label: e.target.value })}
-                    className="input"
+                    className={inputClassName}
                     placeholder="e.g., Open, In Progress, Resolved"
                     required
                     autoComplete="off"
                   />
-                </div>
+                </FormField>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Color
-                  </label>
+                <FormField label="Color" htmlFor="column-color">
                   <select
+                    id="column-color"
                     value={columnForm.color}
                     onChange={(e) => setColumnForm({ ...columnForm, color: e.target.value })}
-                    className="input"
+                    className={inputClassName}
                   >
                     <option value="badge-secondary">Gray</option>
                     <option value="badge-primary">Blue</option>
@@ -840,14 +975,14 @@ const Tickets = () => {
                     <option value="badge-info">Cyan</option>
                     <option value="badge-purple">Purple</option>
                   </select>
-                </div>
+                </FormField>
 
                 {editingColumn && (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => handleDeleteColumn(editingColumn)}
-                      className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                      className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-white transition hover:bg-red-700"
                     >
                       Delete
                     </button>
@@ -855,24 +990,25 @@ const Tickets = () => {
                 )}
               </div>
 
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="submit"
-                  className="btn btn-primary flex-1"
-                >
-                  {editingColumn ? 'Save' : 'Create'}
-                </button>
-                <button
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+                <Button
                   type="button"
                   onClick={() => {
                     setShowColumnModal(false)
                     setEditingColumn(null)
                     setColumnForm({ label: '', color: 'badge-secondary' })
                   }}
-                  className="btn btn-secondary flex-1"
+                  variant="secondary"
+                  className="flex-1"
                 >
                   Cancel
-                </button>
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                >
+                  {editingColumn ? 'Save' : 'Create'}
+                </Button>
               </div>
             </form>
           </div>
@@ -896,6 +1032,59 @@ function ticketPriorityPill(priority) {
       return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
     default:
       return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'
+  }
+}
+
+function priorityBarColor(priority) {
+  switch (priority) {
+    case 'urgent':
+      return 'bg-rose-500'
+    case 'high':
+      return 'bg-orange-500'
+    case 'medium':
+      return 'bg-amber-500'
+    case 'low':
+      return 'bg-emerald-500'
+    default:
+      return 'bg-slate-400'
+  }
+}
+
+function statusBarColor(statusId) {
+  switch (statusId) {
+    case 'open':
+      return 'bg-amber-500'
+    case 'in_progress':
+      return 'bg-blue-500'
+    case 'waiting_for_customer':
+      return 'bg-sky-500'
+    case 'resolved':
+      return 'bg-emerald-500'
+    case 'closed':
+      return 'bg-slate-500'
+    case 'reopened':
+      return 'bg-rose-500'
+    default:
+      return 'bg-primary-500'
+  }
+}
+
+function statusAccent(statusId) {
+  switch (statusId) {
+    case 'open':
+      return 'bg-amber-400'
+    case 'in_progress':
+      return 'bg-blue-500'
+    case 'waiting_for_customer':
+      return 'bg-sky-400'
+    case 'resolved':
+      return 'bg-emerald-500'
+    case 'closed':
+      return 'bg-slate-500'
+    case 'reopened':
+      return 'bg-rose-500'
+    default:
+      return 'bg-primary-500'
   }
 }
 
