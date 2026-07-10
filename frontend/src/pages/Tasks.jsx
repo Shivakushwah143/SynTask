@@ -702,13 +702,4 @@ function TaskProgressRing({ value, color }) {
   )
 }
 
-function TaskStatusBar({ value, color }) {
-  const bounded = Math.max(0, Math.min(100, value || 0))
-  return (
-    <div className="h-2.5 overflow-hidden rounded-sm bg-gray-100 dark:bg-gray-800">
-      <div className="h-full rounded-sm" style={{ width: `${bounded}%`, backgroundColor: color }} />
-    </div>
-  )
-}
-
 export default Tasks

@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2, Filter, Inbox, AlertCircle, Activity, CheckCircle2, Clock3, LineChart, TrendingUp, Users } from 'lucide-react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2, Inbox, AlertCircle, Activity, CheckCircle2, Clock3, LineChart, TrendingUp, Users } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Link } from 'react-router-dom'
 import { ticketsAPI } from '../api/tickets'
@@ -54,21 +54,21 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
         console.log('Ticket card clicked (container):', ticket)
         onClick?.(ticket)
       }}
-      className="group cursor-pointer rounded-lg border border-surface-border bg-white p-4 shadow-sm transition-colors hover:border-primary-200 hover:bg-surface-muted/50 dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-900"
+      className="group cursor-pointer rounded-lg border border-surface-border bg-surface/95 p-4 shadow-sm transition-colors hover:border-primary-200 hover:bg-surface-muted/70 dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-900"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2">
           <button
             type="button"
             aria-label={`Move ${ticket.title}`}
-            className="mt-0.5 cursor-grab rounded-md p-1 text-gray-300 transition hover:bg-gray-100 hover:text-primary-600 active:cursor-grabbing dark:hover:bg-gray-800"
+            className="mt-0.5 cursor-grab rounded-md p-1 text-text-muted transition hover:bg-surface-muted hover:text-primary-600 active:cursor-grabbing dark:hover:bg-gray-800"
             {...attributes}
             {...listeners}
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-4 w-4" aria-hidden="true" />
           </button>
-          <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-gray-900 dark:text-gray-100">
+          <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-text-primary dark:text-gray-100">
             {ticket.title}
           </p>
         </div>
@@ -78,25 +78,25 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
       </div>
 
       {ticket.description && (
-        <p className="mb-3 mt-3 line-clamp-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+        <p className="mb-3 mt-3 line-clamp-2 text-sm leading-6 text-text-secondary dark:text-gray-400">
           {ticket.description}
         </p>
       )}
 
-      <div className="grid gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+      <div className="grid gap-3 border-t border-surface-border pt-3 dark:border-gray-800">
         <div className="flex items-center justify-between gap-2">
           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${ticketPriorityPill(ticket.priority)}`}>
             {priorities[ticket.priority]?.label || ticket.priority}
           </span>
           {ticket.created_at ? (
-            <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
+            <div className="flex items-center text-xs text-text-secondary dark:text-gray-400">
               <Calendar className="mr-1 h-3.5 w-3.5" />
               {format(new Date(ticket.created_at), 'MMM d')}
             </div>
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-2 text-xs text-text-secondary dark:text-gray-400">
           <User className="h-3.5 w-3.5" />
           <span>{ticket.assigned_to ? 'Assigned' : 'Unassigned'}</span>
         </div>
@@ -124,13 +124,13 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[420px] w-[min(82vw,310px)] flex-shrink-0 flex-col overflow-hidden rounded-2xl border shadow-sm transition-colors md:w-[292px] ${isOver ? 'border-primary-300 bg-primary-50/60 ring-2 ring-primary-200 dark:bg-primary-950/30' : 'border-surface-border bg-white/90 dark:border-gray-800 dark:bg-gray-950'}`}
+      className={`flex min-h-[420px] w-[min(82vw,310px)] flex-shrink-0 flex-col overflow-hidden rounded-2xl border shadow-sm transition-colors md:w-[292px] ${isOver ? 'border-primary-300 bg-primary-50/60 ring-2 ring-primary-200 dark:bg-primary-950/30' : 'border-surface-border bg-surface/95 dark:border-gray-800 dark:bg-gray-900'}`}
     >
       <div className={`h-1.5 ${statusAccent(status.id)}`} />
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-4 dark:border-gray-800">
+      <div className="flex items-center justify-between gap-3 border-b border-surface-border p-4 dark:border-gray-800">
         <div>
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">{status.label}</h3>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{columnSubtitle(status.id)}</p>
+          <h3 className="font-semibold text-text-primary dark:text-gray-100">{status.label}</h3>
+          <p className="mt-1 text-xs text-text-secondary dark:text-gray-400">{columnSubtitle(status.id)}</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="badge badge-secondary text-xs">
@@ -143,7 +143,7 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
                   e.stopPropagation()
                   onEditColumn(status)
                 }}
-                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-gray-900"
+                className="rounded-lg p-1.5 text-text-muted transition hover:bg-surface-muted hover:text-primary-600 dark:hover:bg-gray-900"
                 title="Edit column"
                 aria-label={`Edit ${status.label} column`}
               >
@@ -154,7 +154,7 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
                   e.stopPropagation()
                   onDeleteColumn(status)
                 }}
-                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+                className="rounded-lg p-1.5 text-text-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
                 title="Delete column"
                 aria-label={`Delete ${status.label} column`}
               >
@@ -164,7 +164,7 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
           )}
         </div>
       </div>
-      <div className="flex-1 bg-gray-50/60 p-3 dark:bg-gray-950/40">
+      <div className="flex-1 bg-surface-muted/60 p-3 dark:bg-gray-950/40">
         <SortableContext
           id={status.id}
           items={tickets.map(t => t.id)}
@@ -172,8 +172,8 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
         >
           <div className="space-y-3">
             {tickets.length === 0 ? (
-              <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-surface-border bg-white/80 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/60">
-                <Inbox className="mb-2 h-5 w-5 text-gray-400" aria-hidden="true" />
+              <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-surface-border bg-surface/90 px-4 py-8 text-center text-sm text-text-muted dark:border-gray-700 dark:bg-gray-900/60">
+                <Inbox className="mb-2 h-5 w-5 text-text-muted" aria-hidden="true" />
                 No requests here
               </div>
             ) : (
@@ -197,11 +197,11 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
 const TicketBarChart = ({ title, description, data }) => {
   const maxValue = Math.max(...data.map((item) => item.value), 1)
   return (
-    <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <article className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{description}</p>
+          <h3 className="text-sm font-semibold text-text-primary dark:text-gray-100">{title}</h3>
+          <p className="mt-1 text-xs text-text-secondary dark:text-gray-400">{description}</p>
         </div>
         <LineChart className="h-5 w-5 text-primary-600" />
       </div>
@@ -211,10 +211,10 @@ const TicketBarChart = ({ title, description, data }) => {
           return (
             <div key={item.label}>
               <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                <span className="truncate font-medium text-gray-600 dark:text-gray-300">{item.label}</span>
-                <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{item.value}</span>
+                <span className="truncate font-medium text-text-secondary dark:text-gray-300">{item.label}</span>
+                <span className="font-semibold tabular-nums text-text-primary dark:text-gray-100">{item.value}</span>
               </div>
-              <div className="h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <div className="h-2.5 overflow-hidden rounded-full bg-surface-muted dark:bg-gray-800">
                 <div className={`h-full rounded-full ${item.color}`} style={{ width }} />
               </div>
             </div>
@@ -225,20 +225,20 @@ const TicketBarChart = ({ title, description, data }) => {
   )
 }
 
-const SignalTile = ({ label, value, helper, icon: Icon, tone = 'blue' }) => {
+const SignalTile = ({ label, value, helper, icon: Icon, tone = 'amber' }) => {
   const tones = {
-    blue: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200',
-    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200',
     amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
+    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200',
+    stone: 'bg-stone-50 text-stone-700 dark:bg-stone-950/40 dark:text-stone-200',
   }
   return (
-    <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <article className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone] || tones.blue}`}>
         <Icon className="h-5 w-5" />
       </div>
-      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
+      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted dark:text-gray-400">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-text-primary dark:text-gray-100">{value}</p>
+      <p className="mt-1 text-xs text-text-secondary dark:text-gray-400">{helper}</p>
     </article>
   )
 }
@@ -314,12 +314,12 @@ const Tickets = () => {
   const [editingColumn, setEditingColumn] = useState(null)
   const [columnForm, setColumnForm] = useState({ label: '', color: 'badge-secondary' })
 
-  const priorities = {
-    low: { label: 'Low', color: 'text-gray-600' },
-    medium: { label: 'Medium', color: 'text-yellow-600' },
+  const priorities = useMemo(() => ({
+    low: { label: 'Low', color: 'text-stone-600' },
+    medium: { label: 'Medium', color: 'text-amber-600' },
     high: { label: 'High', color: 'text-orange-600' },
     urgent: { label: 'Urgent', color: 'text-red-600' },
-  }
+  }), [])
 
   const types = {
     support: 'Support',
@@ -378,7 +378,7 @@ const Tickets = () => {
   }
 
   // Fetch tickets
-  const fetchTickets = async () => {
+  const fetchTickets = useCallback(async () => {
     try {
       setLoading(true)
       const data = await ticketsAPI.listTickets(filters)
@@ -390,11 +390,11 @@ const Tickets = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filters])
 
   useEffect(() => {
     fetchTickets()
-  }, [filters])
+  }, [fetchTickets])
 
   // Check if we need to open a ticket from notification
   useEffect(() => {
@@ -650,14 +650,14 @@ const Tickets = () => {
 
   return (
     <div className="space-y-6 p-4">
-      <section className="overflow-hidden rounded-3xl border border-emerald-100/80 bg-white/90 shadow-sm dark:border-gray-800 dark:bg-gray-950">
+      <section className="overflow-hidden rounded-3xl border border-surface-border/80 bg-surface/95 shadow-sm dark:border-gray-800 dark:bg-gray-950">
         <div className="h-1.5 bg-gradient-to-r from-primary-500 via-emerald-400 to-amber-300" />
         <div className="p-5">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-2xl">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600 dark:text-primary-300">Support desk</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">Requests</h1>
-              <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary dark:text-gray-100">Requests</h1>
+              <p className="mt-2 text-sm leading-6 text-text-secondary dark:text-gray-400">
                 Triage, assign, and move tickets across a CRM-style operations board.
               </p>
             </div>
@@ -681,7 +681,7 @@ const Tickets = () => {
             {canManageRequests && userRole === ROLE.LEAD && (
               <Link
                 to="/tasks?createTask=true"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-surface-border bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-surface-border bg-surface px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-muted dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
               >
                 <Plus className="h-4 w-4" />
                 Add Task
@@ -701,7 +701,7 @@ const Tickets = () => {
       </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <CRMStatCard icon={Inbox} label="Total Requests" value={String(tickets.length)} helper="All tickets in the current view." tone="blue" />
+        <CRMStatCard icon={Inbox} label="Total Requests" value={String(tickets.length)} helper="All tickets in the current view." tone="amber" />
         <CRMStatCard icon={Activity} label="Active" value={String(ticketStats.activeCount)} helper="Not resolved or closed." tone="emerald" />
         <CRMStatCard icon={AlertCircle} label="Urgent" value={String(ticketStats.urgentCount)} helper="Needs immediate attention." tone="amber" />
         <CRMStatCard icon={Users} label="Unassigned" value={String(ticketStats.unassignedCount)} helper={`${ticketStats.resolvedCount} resolved or closed.`} tone="slate" />
@@ -776,7 +776,7 @@ const Tickets = () => {
         <CRMSection title="Operating Signal" description="Fast read of current desk pressure.">
           <div className="grid gap-3 sm:grid-cols-3">
             <SignalTile label="Resolution" value={`${ticketStats.resolvedCount}/${tickets.length || 0}`} helper="Closed or resolved" icon={CheckCircle2} tone="emerald" />
-            <SignalTile label="Queue" value={String(ticketStats.activeCount)} helper="Still open" icon={Clock3} tone="blue" />
+            <SignalTile label="Queue" value={String(ticketStats.activeCount)} helper="Still open" icon={Clock3} tone="amber" />
             <SignalTile label="Pressure" value={String(ticketStats.urgentCount)} helper="Urgent priority" icon={TrendingUp} tone="amber" />
           </div>
         </CRMSection>
@@ -809,7 +809,7 @@ const Tickets = () => {
         </div>
         <DragOverlay>
           {activeId ? (
-            <div className="rounded-lg border border-primary-200 bg-white px-4 py-3 text-sm font-medium shadow-lg dark:bg-gray-950">
+            <div className="rounded-lg border border-primary-200 bg-surface px-4 py-3 text-sm font-medium shadow-lg dark:bg-gray-950">
               Moving request
             </div>
           ) : null}
@@ -819,16 +819,16 @@ const Tickets = () => {
       {/* Create Ticket Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-screen w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-2xl dark:bg-gray-950">
+          <div className="max-h-screen w-full max-w-lg overflow-y-auto rounded-lg bg-surface/95 p-6 shadow-2xl dark:bg-gray-900">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New request</h2>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Capture the issue clearly so it can be routed quickly.</p>
+                <h2 className="text-xl font-bold text-text-primary dark:text-gray-100">New request</h2>
+                <p className="mt-1 text-sm text-text-secondary dark:text-gray-400">Capture the issue clearly so it can be routed quickly.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-900"
+                className="rounded-lg p-2 text-text-muted transition hover:bg-surface-muted hover:text-text-primary dark:hover:bg-gray-900"
                 aria-label="Close new request modal"
               >
                 <X className="h-5 w-5" aria-hidden="true" />
@@ -935,14 +935,14 @@ const Tickets = () => {
       {/* Column Management Modal */}
       {canManageColumns && showColumnModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl dark:bg-gray-950">
+          <div className="w-full max-w-md rounded-lg bg-surface/95 p-6 shadow-2xl dark:bg-gray-900">
             <div className="mb-5 flex items-start gap-3">
               <AlertCircle className="mt-1 h-5 w-5 text-primary-600" aria-hidden="true" />
               <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                <h2 className="text-xl font-bold text-text-primary dark:text-gray-100">
                   {editingColumn ? 'Edit column' : 'Create column'}
                 </h2>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Keep stages short and easy for the team to scan.</p>
+                <p className="mt-1 text-sm text-text-secondary dark:text-gray-400">Keep stages short and easy for the team to scan.</p>
               </div>
             </div>
             <form onSubmit={handleColumnSubmit}>
@@ -1031,7 +1031,7 @@ function ticketPriorityPill(priority) {
     case 'low':
       return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
     default:
-      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'
+      return 'bg-surface-muted text-text-secondary dark:bg-gray-800 dark:text-gray-200'
   }
 }
 
@@ -1046,7 +1046,7 @@ function priorityBarColor(priority) {
     case 'low':
       return 'bg-emerald-500'
     default:
-      return 'bg-slate-400'
+      return 'bg-stone-400'
   }
 }
 
@@ -1055,13 +1055,13 @@ function statusBarColor(statusId) {
     case 'open':
       return 'bg-amber-500'
     case 'in_progress':
-      return 'bg-blue-500'
+      return 'bg-amber-500'
     case 'waiting_for_customer':
-      return 'bg-sky-500'
+      return 'bg-stone-400'
     case 'resolved':
       return 'bg-emerald-500'
     case 'closed':
-      return 'bg-slate-500'
+      return 'bg-stone-500'
     case 'reopened':
       return 'bg-rose-500'
     default:
@@ -1074,13 +1074,13 @@ function statusAccent(statusId) {
     case 'open':
       return 'bg-amber-400'
     case 'in_progress':
-      return 'bg-blue-500'
+      return 'bg-amber-500'
     case 'waiting_for_customer':
-      return 'bg-sky-400'
+      return 'bg-stone-300'
     case 'resolved':
       return 'bg-emerald-500'
     case 'closed':
-      return 'bg-slate-500'
+      return 'bg-stone-500'
     case 'reopened':
       return 'bg-rose-500'
     default:

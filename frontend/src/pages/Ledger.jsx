@@ -133,38 +133,38 @@ const Ledger = () => {
     return (
       <div className="p-6">
         <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading ledger data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-text-secondary">Loading ledger data...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="min-h-screen bg-surface-muted p-6 text-text-primary dark:bg-black dark:text-text-primary">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Ledger</h1>
+        <h1 className="text-3xl font-bold text-text-primary">Ledger</h1>
       </div>
 
       {/* Summary Cards */}
       {ledgerData?.summary && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-sm font-medium text-gray-600 mb-1">Total Invoiced</div>
-            <div className="text-3xl font-bold text-gray-900">
+          <div className="rounded-lg bg-surface/95 p-6 shadow dark:bg-black/85 dark:border dark:border-border">
+            <div className="mb-1 text-sm font-medium text-text-secondary">Total Invoiced</div>
+            <div className="text-3xl font-bold text-text-primary">
               {formatCurrency(ledgerData.summary.total_invoiced)}
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-sm font-medium text-gray-600 mb-1">Total Received</div>
-            <div className="text-3xl font-bold text-green-600">
+          <div className="rounded-lg bg-surface/95 p-6 shadow">
+            <div className="mb-1 text-sm font-medium text-text-secondary">Total Received</div>
+            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-300">
               {formatCurrency(ledgerData.summary.total_received)}
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-sm font-medium text-gray-600 mb-1">Total Outstanding</div>
-            <div className="text-3xl font-bold text-red-600">
+          <div className="rounded-lg bg-surface/95 p-6 shadow">
+            <div className="mb-1 text-sm font-medium text-text-secondary">Total Outstanding</div>
+            <div className="text-3xl font-bold text-rose-600 dark:text-rose-300">
               {formatCurrency(ledgerData.summary.total_outstanding)}
             </div>
           </div>
@@ -172,34 +172,34 @@ const Ledger = () => {
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
+      <div className="mb-6 rounded-lg bg-surface/95 p-4 shadow dark:bg-black/85 dark:border dark:border-border">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Invoice ID</label>
+            <label className="block text-sm font-medium text-text-secondary mb-1">Invoice ID</label>
             <input
               type="text"
               value={filters.invoice_id}
               onChange={(e) => setFilters(prev => ({ ...prev, invoice_id: e.target.value }))}
               placeholder="Enter invoice ID"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-primary focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-black/70 dark:text-text-primary"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Client Name</label>
+            <label className="block text-sm font-medium text-text-secondary mb-1">Client Name</label>
             <input
               type="text"
               value={filters.client_name}
               onChange={(e) => setFilters(prev => ({ ...prev, client_name: e.target.value }))}
               placeholder="Enter client name"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-primary focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-black/70 dark:text-text-primary"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">All Status</label>
+            <label className="block text-sm font-medium text-text-secondary mb-1">All Status</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-primary focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-black/70 dark:text-text-primary"
             >
               <option value="">All Status</option>
               <option value="draft">Draft</option>
@@ -211,13 +211,13 @@ const Ledger = () => {
           <div className="flex items-end gap-2">
             <button
               onClick={handleApplyFilters}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
             >
               Apply
             </button>
             <button
               onClick={handleRefresh}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              className="px-4 py-2 bg-surface-muted text-text-primary rounded-lg hover:bg-surface dark:bg-black/70 dark:text-text-primary dark:hover:bg-white/5"
               title="Refresh"
             >
               <RefreshCw className="h-5 w-5" />
@@ -227,38 +227,38 @@ const Ledger = () => {
       </div>
 
       {/* Invoices Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-surface rounded-lg shadow overflow-hidden dark:bg-black/85 dark:border dark:border-border">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">Loading...</div>
+          <div className="p-8 text-center text-text-muted">Loading...</div>
         ) : !ledgerData?.invoices || ledgerData.invoices.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">No invoices found</div>
+          <div className="p-8 text-center text-text-muted">No invoices found</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-surface-muted dark:bg-black/70">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">INVOICE ID</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CLIENT</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">INVOICE DATE</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">DAYS PASSED</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TOTAL</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RECEIVED</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">OUTSTANDING</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TDS</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ACTIONS</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">INVOICE ID</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">CLIENT</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">INVOICE DATE</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">DAYS PASSED</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">TOTAL</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">RECEIVED</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">OUTSTANDING</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">TDS</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">ACTIONS</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-surface divide-y divide-border dark:bg-black/85">
                 {ledgerData.invoices.map((invoice) => (
-                  <tr key={invoice.id} className="hover:bg-gray-50">
+                  <tr key={invoice.id} className="hover:bg-surface-muted dark:hover:bg-white/5">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{invoice.invoice_id}</div>
+                      <div className="text-sm font-medium text-text-primary">{invoice.invoice_id}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{invoice.client_name}</div>
+                      <div className="text-sm text-text-primary">{invoice.client_name}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{invoice.invoice_date_formatted}</div>
+                      <div className="text-sm text-text-primary">{invoice.invoice_date_formatted}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDaysPassedBadge(invoice.days_passed)}`}>
@@ -276,14 +276,14 @@ const Ledger = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-900">{formatCurrency(invoice.tds_amount)}</span>
+                        <span className="text-sm text-text-primary">{formatCurrency(invoice.tds_amount)}</span>
                         <button
                           onClick={() => {
                             setSelectedInvoice(invoice)
                             setTdsAmount(invoice.tds_amount.toString())
                             setShowTDSModal(true)
                           }}
-                          className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
+                          className="px-2 py-1 text-xs bg-amber-100 text-amber-800 rounded hover:bg-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50"
                         >
                           Edit
                         </button>
@@ -302,7 +302,7 @@ const Ledger = () => {
                           })
                           setShowPaymentModal(true)
                         }}
-                        className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        className="px-3 py-1 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
                       >
                         Add Payment
                       </button>

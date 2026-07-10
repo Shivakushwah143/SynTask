@@ -1,23 +1,23 @@
 export function Table({ columns, data, rowKey = 'id', emptyMessage = 'No records found' }) {
   return (
-    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-3xl border border-surface-border bg-surface/95 dark:border-gray-800 dark:bg-black">
       <div className="viewport-scroll-x">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
-          <thead className="bg-gray-50 dark:bg-gray-950">
+        <table className="min-w-full divide-y divide-surface-border dark:divide-gray-800">
+          <thead className="bg-surface-muted dark:bg-gray-950">
             <tr>
               {columns.map((column) => (
-                <th key={column.key} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <th key={column.key} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:text-gray-400">
                   {column.header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-800 dark:bg-gray-900">
+          <tbody className="divide-y divide-surface-border bg-surface/95 dark:divide-gray-800 dark:bg-black">
             {data?.length ? (
               data.map((row, index) => (
-                <tr key={row[rowKey] || row._id || index} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                <tr key={row[rowKey] || row._id || index} className="hover:bg-surface-muted/80 dark:hover:bg-gray-800/80">
                   {columns.map((column) => (
-                    <td key={column.key} className="whitespace-nowrap px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                    <td key={column.key} className="whitespace-nowrap px-5 py-4 text-sm text-text-primary dark:text-gray-200">
                       {column.render ? column.render(row) : row[column.key]}
                     </td>
                   ))}
@@ -25,7 +25,7 @@ export function Table({ columns, data, rowKey = 'id', emptyMessage = 'No records
               ))
             ) : (
               <tr>
-                <td className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400" colSpan={columns.length}>
+                <td className="px-4 py-10 text-center text-sm text-text-muted dark:text-gray-400" colSpan={columns.length}>
                   {emptyMessage}
                 </td>
               </tr>

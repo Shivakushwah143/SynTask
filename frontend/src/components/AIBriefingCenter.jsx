@@ -439,7 +439,7 @@ const AccessibilityMenu = ({ onFontSizeChange, onContrastToggle, isHighContrast 
 }
 
 // Keyboard Shortcuts Guide Component
-const KeyboardShortcutsGuide = ({ onClose }) => {
+const KeyboardShortcutsGuide = () => {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -779,7 +779,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
     },
   }
 
-  const itemVariants = {
+  const itemVariants = useMemo(() => ({
     hidden: { opacity: 0, y: 20 },
     visible: {
       opacity: 1,
@@ -790,7 +790,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
         damping: 24,
       },
     },
-  }
+  }), [])
 
   // Render utility
   const renderMetrics = useCallback(() => (

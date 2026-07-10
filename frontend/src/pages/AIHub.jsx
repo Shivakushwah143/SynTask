@@ -132,12 +132,12 @@ export default function AIHub() {
                   key={employee.id}
                   type="button"
                   onClick={() => navigate(employee.path)}
-                  className="rounded-2xl border border-gray-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900"
+                  className="rounded-2xl border border-border bg-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary-300 hover:bg-surface-muted hover:shadow-lg dark:border-border dark:bg-black/80 dark:hover:bg-white/5"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{employee.title}</h3>
-                      <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{employee.description}</p>
+                      <h3 className="text-sm font-semibold text-text-primary dark:text-text-primary">{employee.title}</h3>
+                      <p className="mt-1 text-xs leading-5 text-text-muted dark:text-text-secondary">{employee.description}</p>
                     </div>
                     <Badge label={employee.status} colorKey={employee.status === 'active' ? 'active' : 'scheduled'} />
                   </div>
@@ -156,17 +156,17 @@ export default function AIHub() {
             ) : logs.filter((item) => item.status !== 'success').length ? (
               <div className="space-y-3">
                 {logs.filter((item) => item.status !== 'success').slice(0, 4).map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
+                  <div key={item.id} className="rounded-2xl border border-border bg-surface p-4 dark:border-border dark:bg-black/80">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.feature || 'AI action'}</div>
-                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        <div className="text-sm font-semibold text-text-primary dark:text-text-primary">{item.feature || 'AI action'}</div>
+                        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">
                           {item.provider || 'System'} • {item.timestamp}
                         </div>
                       </div>
                       <Badge label={item.status || 'pending'} colorKey={item.status === 'success' ? 'active' : 'pending'} />
                     </div>
-                    <p className="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                    <p className="mt-3 text-sm leading-6 text-text-secondary dark:text-text-secondary">
                       {item.error_message || 'Requires review before the workflow can move forward.'}
                     </p>
                   </div>
@@ -186,7 +186,7 @@ export default function AIHub() {
                     key={action.label}
                     type="button"
                     onClick={() => navigate(action.path)}
-                    className="rounded-2xl border border-gray-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900"
+                    className="rounded-2xl border border-border bg-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary-300 hover:bg-surface-muted hover:shadow-lg dark:border-border dark:bg-black/80 dark:hover:bg-white/5"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
@@ -194,11 +194,11 @@ export default function AIHub() {
                           <Icon className="h-5 w-5" />
                         </div>
                         <div>
-                          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{action.label}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">Open verified workflow</div>
+                          <div className="text-sm font-semibold text-text-primary dark:text-text-primary">{action.label}</div>
+                          <div className="text-xs text-text-muted dark:text-text-secondary">Open verified workflow</div>
                         </div>
                       </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
+                      <ArrowRight className="h-4 w-4 text-text-muted" />
                     </div>
                   </button>
                 )
@@ -212,15 +212,15 @@ export default function AIHub() {
             {activityItems.length ? (
               <div className="space-y-3">
                 {activityItems.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+                  <div key={item.id} className="rounded-2xl border border-border bg-surface p-4 dark:border-border dark:bg-black/80">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.feature || 'AI feature'}</div>
-                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.timestamp}</div>
+                        <div className="text-sm font-semibold text-text-primary dark:text-text-primary">{item.feature || 'AI feature'}</div>
+                        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">{item.timestamp}</div>
                       </div>
                       <Badge label={item.status || 'pending'} colorKey={item.status === 'success' ? 'active' : 'pending'} />
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-muted dark:text-text-secondary">
                       <Badge label={item.provider || 'provider'} colorKey="info" />
                       {item.model ? <Badge label={item.model} colorKey="scheduled" /> : null}
                       {item.fallback_used ? <Badge label="Fallback" colorKey="warning" /> : null}
@@ -237,9 +237,9 @@ export default function AIHub() {
             {activityItems.length ? (
               <div className="space-y-3">
                 {activityItems.slice(0, 3).map((item) => (
-                  <div key={`${item.id}-knowledge`} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.feature || 'Knowledge signal'}</div>
-                    <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                  <div key={`${item.id}-knowledge`} className="rounded-2xl border border-border bg-surface-muted p-4 dark:border-border dark:bg-black/55">
+                    <div className="text-sm font-semibold text-text-primary dark:text-text-primary">{item.feature || 'Knowledge signal'}</div>
+                    <p className="mt-2 text-sm leading-6 text-text-secondary dark:text-text-secondary">
                       AI context updated from the latest verified run. Use this signal to keep responses aligned with current work.
                     </p>
                   </div>
@@ -257,23 +257,23 @@ export default function AIHub() {
 
 function MetricCard({ label, value }) {
   return (
-    <div className="card p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{label}</p>
-      <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+    <div className="card p-4 bg-surface dark:bg-black/80">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">{label}</p>
+      <p className="mt-2 text-3xl font-semibold text-text-primary dark:text-text-primary">{value}</p>
     </div>
   )
 }
 
 function Panel({ title, icon: Icon, description, children }) {
   return (
-    <section className="card p-5">
+    <section className="card p-5 bg-surface dark:bg-black/85">
       <div className="flex items-start gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
           <Icon className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>
+          <h2 className="text-lg font-semibold text-text-primary dark:text-text-primary">{title}</h2>
+          <p className="mt-1 text-sm text-text-muted dark:text-text-secondary">{description}</p>
         </div>
       </div>
       <div className="mt-5">{children}</div>

@@ -318,7 +318,7 @@ const NotificationBell = () => {
           e.stopPropagation()
           setShowDropdown(!showDropdown)
         }}
-        className="relative rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+        className="relative rounded-xl p-2 text-text-secondary transition-colors hover:bg-surface-muted dark:text-gray-300 dark:hover:bg-gray-800"
         aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
         aria-expanded={showDropdown}
       >
@@ -334,9 +334,9 @@ const NotificationBell = () => {
       </button>
 
       {showDropdown && (
-        <div className="absolute right-0 z-50 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900 dark:shadow-none">
-          <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-800">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
+        <div className="absolute right-0 z-50 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-surface-border bg-surface/95 shadow-xl dark:border-gray-800 dark:bg-black dark:shadow-none">
+          <div className="flex items-center justify-between border-b border-surface-border p-4 dark:border-gray-800">
+            <h3 className="font-semibold text-text-primary dark:text-gray-100">Notifications</h3>
             {unreadCount > 0 && (
               <button
                 type="button"
@@ -349,9 +349,9 @@ const NotificationBell = () => {
               </button>
             )}
           </div>
-          <div className="divide-y divide-gray-200 dark:divide-gray-800">
+          <div className="divide-y divide-surface-border dark:divide-gray-800">
             {notifications.length === 0 ? (
-              <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+              <div className="p-4 text-center text-sm text-text-secondary dark:text-gray-400">
                 No notifications
               </div>
             ) : (
@@ -359,25 +359,25 @@ const NotificationBell = () => {
                 <div
                   key={notif.id}
                   className={`cursor-pointer p-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${
-                    !notif.is_read ? 'bg-blue-50 dark:bg-blue-950/30' : ''
+                    !notif.is_read ? 'bg-primary-50/70 dark:bg-primary-950/30' : ''
                   }`}
                   onClick={() => handleNotificationClick(notif)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <p className="text-sm font-medium text-text-primary dark:text-gray-100">
                         {notif.title}
                       </p>
-                      <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                      <p className="mt-1 text-xs text-text-secondary dark:text-gray-300">
                         {notif.message}
                       </p>
-                      <p className="mt-1 text-xs text-gray-400">
+                      <p className="mt-1 text-xs text-text-muted">
                         {format(new Date(notif.created_at), 'MMM d, h:mm a')}
                       </p>
                     </div>
                     {!notif.is_read && (
-                    <div className="ml-2 mt-1 h-2 w-2 rounded-full bg-primary-600" aria-hidden="true"></div>
-                  )}
+                      <div className="ml-2 mt-1 h-2 w-2 rounded-full bg-primary-600" aria-hidden="true"></div>
+                    )}
                 </div>
               </div>
               ))

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { X, Send, User, Edit, Trash2, Save } from 'lucide-react'
 import { ticketsAPI } from '../api/tickets'
 import { usersAPI } from '../api/users'
@@ -37,7 +37,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
       priority: ticket.priority || 'medium',
     })
     setIsEditing(false)
-  }, [ticket?.id, ticket?.assigned_to, ticket?.title, ticket?.description, ticket?.type, ticket?.priority])
+  }, [ticket])
 
   const statuses = {
     open: { label: 'Open', color: 'badge-warning' },
@@ -48,6 +48,18 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
     reopened: { label: 'Reopened', color: 'badge-warning' },
   }
 
+  const loadComments = useCallback(async () => {
+    try {
+      setLoadingComments(true)
+      const data = await ticketsAPI.getComments(ticket.id)
+      setComments(data.comments || [])
+    } catch (error) {
+      console.error('Error loading comments:', error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }, [ticket])
+
   useEffect(() => {
     if (ticket?.id) {
       loadComments()
@@ -56,7 +68,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
         loadAssignableUsers()
       }
     }
-  }, [ticket?.id, user])
+  }, [ticket, user, loadComments])
 
   // Safety check after hooks so React hook order stays stable.
   if (!ticket) {
@@ -75,18 +87,6 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
       setAssignableUsers(uniqueUsers)
     } catch (error) {
       console.error('Error loading assignable users:', error)
-    }
-  }
-
-  const loadComments = async () => {
-    try {
-      setLoadingComments(true)
-      const data = await ticketsAPI.getComments(ticket.id)
-      setComments(data.comments || [])
-    } catch (error) {
-      console.error('Error loading comments:', error)
-    } finally {
-      setLoadingComments(false)
     }
   }
 
