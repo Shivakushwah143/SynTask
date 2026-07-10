@@ -5,10 +5,10 @@ import { useDebounce } from '../hooks/useDebounce'
 import { Skeleton } from './ui'
 
 const COMMANDS = [
-  { id: 'dashboard', label: 'Open Dashboard', description: 'Return to the overview', href: '/dashboard', icon: Sparkles },
+  { id: 'dashboard', label: 'Open Main Dashboard', description: 'Return to the workspace overview', href: '/dashboard', icon: Sparkles },
   { id: 'projects', label: 'Open Projects', description: 'View project workspace', href: '/projects', icon: FolderKanban },
   { id: 'tasks', label: 'Open Tasks', description: 'Review task list', href: '/tasks', icon: CheckSquare },
-  { id: 'calendar', label: 'Open Calendar', description: 'Check schedule', href: '/calendar', icon: CalendarDays },
+  { id: 'calendar', label: 'Open Workspace Calendar', description: 'Check workspace schedule', href: '/calendar', icon: CalendarDays },
   { id: 'meetings', label: 'Open Meetings', description: 'Review meeting cadence', href: '/meetings', icon: MessageSquareText },
 ]
 
