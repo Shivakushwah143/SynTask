@@ -1,13 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, X } from 'lucide-react'
 import { ledgerAPI } from '../api/ledger'
-import { useAuthStore } from '../store/authStore'
-import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
 const Ledger = () => {
-  const { user } = useAuthStore()
   const [ledgerData, setLedgerData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -31,11 +28,7 @@ const Ledger = () => {
   const [tdsAmount, setTdsAmount] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    loadLedger()
-  }, [])
-
-  const loadLedger = async () => {
+  const loadLedger = useCallback(async () => {
     try {
       setLoading(true)
       const params = {}
@@ -51,7 +44,11 @@ const Ledger = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filters.client_name, filters.invoice_id, filters.status])
+
+  useEffect(() => {
+    loadLedger()
+  }, [loadLedger])
 
   const handleApplyFilters = () => {
     loadLedger()

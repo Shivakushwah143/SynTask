@@ -16,14 +16,10 @@ export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'notes', label: 'Notes' },
   { key: 'files', label: 'Files' },
-<<<<<<< HEAD
   { key: 'tasks', label: 'Tasks' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'emails', label: 'Emails' },
   { key: 'call_logs', label: 'Calls' },
-=======
-  { key: 'timeline', label: 'Timeline' },
->>>>>>> origin/main
   { key: 'proposal', label: 'Proposal' },
   { key: 'ai', label: 'AI' },
 ]
@@ -362,7 +358,6 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
         </div>
       </CRMSection>
 
-<<<<<<< HEAD
       <CRMSection title="Activity" description="Lead activity and meetings stay visible without duplicating records.">
         <div className="grid gap-4 xl:grid-cols-2">
           <LeadTimelineTab />
@@ -378,8 +373,6 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
           <LeadAITab />
         </div>
       </CRMSection>
-=======
->>>>>>> origin/main
     </div>
   )
 })

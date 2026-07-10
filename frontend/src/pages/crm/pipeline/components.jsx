@@ -356,11 +356,8 @@ export const PipelineBoard = memo(function PipelineBoard({
             <PipelineColumn
               key={stage.key || stage.id || stage.name || index}
               stage={stage}
-<<<<<<< HEAD
               stages={stages}
-=======
               accent={stageAccents[index % stageAccents.length]}
->>>>>>> origin/main
               currency={currency}
               activeLeadId={activeLeadId}
               onMoveLeadToStage={onMoveLeadToStage}
@@ -376,11 +373,8 @@ export const PipelineBoard = memo(function PipelineBoard({
 
 export const PipelineColumn = memo(function PipelineColumn({
   stage,
-<<<<<<< HEAD
   stages = [],
-=======
   accent = stageAccents[0],
->>>>>>> origin/main
   currency = 'INR',
   activeLeadId = null,
   onMoveLeadToStage,
@@ -543,41 +537,11 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
 
       <div className="mt-3 grid gap-1.5 text-xs text-gray-500 dark:text-gray-400">
         <LeadMetaRow label="Owner" value={ownerLabel} />
-<<<<<<< HEAD
         <LeadMetaRow label="Value" value={formatCurrency(dealValue, currency)} strong />
         <LeadMetaRow label="Priority" value={<Badge label={priority} colorKey={priority} />} />
         <LeadMetaRow label="Days in stage" value={String(Math.max(Number(lead.days_in_stage || 0), 0))} />
         <LeadMetaRow label="Created" value={formatShortDate(lead.created_at || lead.createdAt || lead.created_date)} />
         <LeadMetaRow label="Stage" value={stage.name} />
-=======
-        <LeadMetaRow label="Deal value" value={formatCurrency(dealValue, currency)} strong />
-        <LeadMetaRow label="Days in stage" value={`${Number(lead.days_in_stage || 0)} days`} />
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ring-1 ${priorityStyles[priority] || priorityStyles.medium}`}>
-          {priority}
-        </span>
-        {dueText ? (
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-            Next: {formatShortDate(dueText)}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-border/70 pt-3 dark:border-gray-800">
-        <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-          <button type="button" className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label={`Call ${lead.company_name || contactLabel}`}>
-            <Phone className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label={`Email ${lead.company_name || contactLabel}`}>
-            <Mail className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-100 text-[10px] font-semibold text-primary-700 dark:bg-primary-950/40 dark:text-primary-200">
-          {ownerLabel.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'NA'}
-        </span>
->>>>>>> origin/main
       </div>
 
       {tags.length ? (
@@ -593,7 +557,6 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
         </div>
       ) : null}
 
-<<<<<<< HEAD
       <div className="mt-4 flex items-center justify-between gap-2">
         <div className="relative">
           <Button
@@ -603,11 +566,6 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
             className="px-2"
             onClick={() => setMenuOpen((open) => !open)}
           >
-=======
-      <details className="mt-3 relative">
-        <summary className="list-none">
-          <Button type="button" variant="ghost" size="sm" className="w-full justify-between px-2">
->>>>>>> origin/main
             <MoreHorizontal className="h-4 w-4" />
             Actions
             <ChevronDown className="h-3.5 w-3.5" />

@@ -251,25 +251,39 @@ async def create_project(
         )
         await notification.insert()
 
-    await publish_event(
-        build_domain_event(
-            event_name="ProjectCreated",
-            aggregate_type="project",
-            aggregate_id=str(project.id),
-            company_id=str(current_user.company_id),
-            actor_id=str(current_user.id),
-            payload={
-                "project_id": project.project_id,
-                "name": project.name,
-                "description": project.description,
-                "status": project.status.value if getattr(project, "status", None) else None,
-                "client_id": project.client_id,
-                "updated_at": project.updated_at.isoformat() if getattr(project, "updated_at", None) else None,
-            },
-            project_id=str(project.project_id or project.id),
-            metadata={"source": "project_create"},
+    background_warnings = []
+    try:
+        await publish_event(
+            build_domain_event(
+                event_name="ProjectCreated",
+                aggregate_type="project",
+                aggregate_id=str(project.id),
+                company_id=str(current_user.company_id),
+                actor_id=str(current_user.id),
+                payload={
+                    "project_id": project.project_id,
+                    "name": project.name,
+                    "description": project.description,
+                    "status": project.status.value if getattr(project, "status", None) else None,
+                    "client_id": project.client_id,
+                    "updated_at": project.updated_at.isoformat() if getattr(project, "updated_at", None) else None,
+                },
+                project_id=str(project.project_id or project.id),
+                metadata={"source": "project_create"},
+            )
         )
-    )
+    except Exception as exc:
+        logger.warning(
+            "project_created_event_publish_degraded",
+            extra={
+                "project_id": str(project.project_id or project.id),
+                "mongo_id": str(project.id),
+                "company_id": str(current_user.company_id),
+                "event_name": "ProjectCreated",
+                "error": str(exc),
+            },
+        )
+        background_warnings.append("Project created, but background processing is degraded.")
     
     # Return ONLY user-provided project_id. Never return MongoDB _id as project_id.
     # Build response from final_project_id only (set from form at start of handler).
@@ -285,9 +299,12 @@ async def create_project(
         )
     logger.info(f"Returning project_id: {out_project_id} (user-provided), MongoDB _id: {project.id}")
     
-    return {
+    response = {
         "message": "Project created successfully",
         "project_id": out_project_id,
         "id": str(project.id),
         "key": project.key
     }
+    if background_warnings:
+        response["warnings"] = background_warnings
+    return response

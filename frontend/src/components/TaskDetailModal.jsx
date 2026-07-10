@@ -270,6 +270,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
       const newAttachments = [...attachments, result.file_url]
       setAttachments(newAttachments)
       toast.success('File uploaded successfully')
+      onRefresh?.()
     } catch (error) {
       toast.error('Failed to upload file')
     } finally {

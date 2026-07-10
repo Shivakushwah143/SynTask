@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
-import { X, MessageSquare, Paperclip, Send, User, Edit, Trash2, Save } from 'lucide-react'
+import { X, Send, User, Edit, Trash2, Save } from 'lucide-react'
 import { ticketsAPI } from '../api/tickets'
-import { filesAPI } from '../api/files'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -27,23 +26,17 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
   const [deleting, setDeleting] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Safety check
-  if (!ticket) {
-    return null
-  }
-
   // Update state when ticket changes
   useEffect(() => {
-    if (ticket) {
-      setAssignTo(ticket.assigned_to || '')
-      setEditForm({
-        title: ticket.title || '',
-        description: ticket.description || '',
-        type: ticket.type || 'support',
-        priority: ticket.priority || 'medium',
-      })
-      setIsEditing(false)
-    }
+    if (!ticket) return
+    setAssignTo(ticket.assigned_to || '')
+    setEditForm({
+      title: ticket.title || '',
+      description: ticket.description || '',
+      type: ticket.type || 'support',
+      priority: ticket.priority || 'medium',
+    })
+    setIsEditing(false)
   }, [ticket?.id, ticket?.assigned_to, ticket?.title, ticket?.description, ticket?.type, ticket?.priority])
 
   const statuses = {
@@ -64,6 +57,11 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
       }
     }
   }, [ticket?.id, user])
+
+  // Safety check after hooks so React hook order stays stable.
+  if (!ticket) {
+    return null
+  }
 
   const loadAssignableUsers = async () => {
     try {

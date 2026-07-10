@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useNavigate } from 'react-router-dom'
-<<<<<<< HEAD
-import { ArrowRight, CalendarDays, Download, Filter, Import, Merge, Plus, Sparkles, Users } from 'lucide-react'
-=======
-import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Search, Sparkles, Users } from 'lucide-react'
->>>>>>> origin/main
+import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Plus, Search, Sparkles, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -80,14 +76,11 @@ export default function CRMLeadsPage() {
   const stages = useMemo(() => (Array.isArray(board?.stages) ? board.stages : []), [board])
   const leadCount = useMemo(() => stages.reduce((sum, stage) => sum + (stage.leads?.length || 0), 0), [stages])
   const activeCount = useMemo(() => stages.reduce((sum, stage) => sum + (stage.leads || []).filter((lead) => !['won', 'lost', 'closed'].includes(String(lead?.status || '').toLowerCase())).length, 0), [stages])
-<<<<<<< HEAD
   const recentLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []).slice(0, 6), [stages])
   const allAccountLeads = useMemo(() => {
     const items = leadsQuery.data?.prospects || leadsQuery.data?.items || leadsQuery.data?.data?.prospects || leadsQuery.data?.data?.items || []
     return Array.isArray(items) ? items : []
   }, [leadsQuery.data])
-=======
->>>>>>> origin/main
   const duplicateGroups = useMemo(() => duplicatesQuery.data?.groups || duplicatesQuery.data?.data?.groups || [], [duplicatesQuery.data])
   const allLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []), [stages])
   const stageOptions = useMemo(() => stages.filter((stage) => (stage.leads || []).length).map((stage) => ({ value: stage.key, label: stage.name })), [stages])
@@ -285,14 +278,9 @@ export default function CRMLeadsPage() {
           <div className="flex flex-wrap items-center gap-2">
             {!isEmployee && (
               <>
-<<<<<<< HEAD
                 <Button variant="secondary" onClick={() => setCreateOpen(true)}>
                   <Plus className="h-4 w-4" />
                   Add Lead
-=======
-                <Button variant="primary" onClick={() => navigate('/sales/prospects?createProspect=true')}>
-                  New lead
->>>>>>> origin/main
                 </Button>
                 <Button variant="secondary" onClick={() => setImportOpen(true)}>
                   <Import className="h-4 w-4" />
@@ -321,7 +309,6 @@ export default function CRMLeadsPage() {
         <CRMStatCard icon={CalendarDays} label="Pipeline value" value={formatCurrency(totalPipelineValue, pipelineQuery.data?.meta?.currency || 'INR')} helper={`${stages.length} configured stages`} tone="amber" />
       </div>
 
-<<<<<<< HEAD
       <CRMSection
         title="Lead entry points"
         description="The CRM lead workspace lives at /crm/leads/:leadId. Start from the pipeline or related activity screens."
@@ -471,8 +458,6 @@ export default function CRMLeadsPage() {
         </Modal>
       )}
 
-=======
->>>>>>> origin/main
       {isEmployee && (
         <CRMSection
           title="My assigned leads"
@@ -784,7 +769,6 @@ export default function CRMLeadsPage() {
         )}
       </CRMSection>
 
-<<<<<<< HEAD
       <CRMSection
         title={isEmployee ? 'Recent leads' : 'All account leads'}
         description={isEmployee ? 'Recently visible leads from the live pipeline board.' : 'All leads in the account appear here with owner and employee status markers.'}
@@ -942,8 +926,6 @@ export default function CRMLeadsPage() {
         </CRMSection>
       )}
 
-=======
->>>>>>> origin/main
       <MergeModal
         group={mergeGroup}
         isOpen={Boolean(mergeGroup)}
@@ -1038,7 +1020,7 @@ function MergeModal({ group, isOpen, onClose, onConfirm, loading }) {
   const [sourceId, setSourceId] = useState('')
   const [targetId, setTargetId] = useState('')
 
-  const leads = group?.leads || []
+  const leads = useMemo(() => group?.leads || [], [group?.leads])
 
   useEffect(() => {
     if (!isOpen || !leads.length) return
