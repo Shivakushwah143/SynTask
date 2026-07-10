@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, CalendarDays, Download, Filter, Import, Merge, Sparkles, Users } from 'lucide-react'
+import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Search, Sparkles, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -11,6 +11,7 @@ import { Badge, Button, Modal, Skeleton, inputClassName } from '../../../compone
 import BulkImportProspectsModal from '../../../components/BulkImportProspectsModal'
 import { useAuthStore } from '../../../store/authStore'
 import { isEmployeeRole, normalizeRole } from '../../../utils/roles'
+import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, normalizeText } from '../pipeline/utils'
 
 export default function CRMLeadsPage() {
   const queryClient = useQueryClient()
@@ -23,6 +24,9 @@ export default function CRMLeadsPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState([])
+  const [leadSearch, setLeadSearch] = useState('')
+  const [stageFilter, setStageFilter] = useState('')
+  const [priorityFilter, setPriorityFilter] = useState('')
   const pipelineQuery = useQuery('crm-leads-entry', crmApi.getPipeline, {
     staleTime: 5 * 60 * 1000,
   })
@@ -43,13 +47,34 @@ export default function CRMLeadsPage() {
   const usersQuery = useQuery('crm-lead-users', () => usersAPI.getAssignableUsers(), { staleTime: 5 * 60 * 1000 })
   const productsQuery = useQuery('crm-lead-products', salesApi.getProducts, { staleTime: 5 * 60 * 1000 })
 
-  const board = useMemo(() => pipelineQuery.data || {}, [pipelineQuery.data])
+  const board = useMemo(() => buildPipelineBoard(pipelineQuery.data || {}), [pipelineQuery.data])
   const stages = useMemo(() => (Array.isArray(board?.stages) ? board.stages : []), [board])
   const leadCount = useMemo(() => stages.reduce((sum, stage) => sum + (stage.leads?.length || 0), 0), [stages])
   const activeCount = useMemo(() => stages.reduce((sum, stage) => sum + (stage.leads || []).filter((lead) => !['won', 'lost', 'closed'].includes(String(lead?.status || '').toLowerCase())).length, 0), [stages])
-  const recentLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []).slice(0, 6), [stages])
   const duplicateGroups = useMemo(() => duplicatesQuery.data?.groups || duplicatesQuery.data?.data?.groups || [], [duplicatesQuery.data])
   const allLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []), [stages])
+  const stageOptions = useMemo(() => stages.filter((stage) => (stage.leads || []).length).map((stage) => ({ value: stage.key, label: stage.name })), [stages])
+  const totalPipelineValue = useMemo(() => allLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0), [allLeads])
+  const filteredLeads = useMemo(() => {
+    const query = normalizeText(leadSearch)
+    const stage = normalizeText(stageFilter)
+    const priority = normalizeText(priorityFilter)
+    return allLeads.filter((lead) => {
+      const searchable = [
+        lead.company_name,
+        lead.prospect_name,
+        lead.email,
+        lead.phone,
+        getLeadContactLabel(lead),
+        getLeadOwnerLabel(lead),
+        getLeadTags(lead).join(' '),
+      ].filter(Boolean).map(normalizeText).join(' ')
+      if (query && !searchable.includes(query)) return false
+      if (stage && getLeadStageKey(lead) !== stage) return false
+      if (priority && getLeadPriority(lead) !== priority) return false
+      return true
+    })
+  }, [allLeads, leadSearch, priorityFilter, stageFilter])
   const selectedLeads = useMemo(() => allLeads.filter((lead) => selectedIds.includes(lead.id || lead._id)), [allLeads, selectedIds])
   const employeeLeads = useMemo(() => {
     const items = assignedLeadsQuery.data?.data?.prospects
@@ -155,26 +180,29 @@ export default function CRMLeadsPage() {
       <CRMPageTitle
         eyebrow="CRM"
         title="Leads"
-        description={isEmployee ? 'Review your assigned leads and update meeting status.' : 'Open a lead from the pipeline to view its workspace.'}
+        description={isEmployee ? 'Review assigned leads and update status.' : 'Open a lead from the pipeline.'}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             {!isEmployee && (
               <>
+                <Button variant="primary" onClick={() => navigate('/sales/prospects?createProspect=true')}>
+                  New lead
+                </Button>
                 <Button variant="secondary" onClick={() => setImportOpen(true)}>
                   <Import className="h-4 w-4" />
-                  Import CSV
+                  Import
                 </Button>
                 <Button variant="secondary" onClick={exportLeads}>
                   <Download className="h-4 w-4" />
-                  Export CSV
+                  Export
                 </Button>
                 <Button variant="secondary" onClick={() => setBulkOpen(true)} disabled={!selectedIds.length}>
-                  Bulk update
+                  Bulk edit
                 </Button>
               </>
             )}
             <Button variant="primary" onClick={() => navigate('/crm/pipeline')}>
-              Open Pipeline
+              Open pipeline
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
@@ -182,33 +210,15 @@ export default function CRMLeadsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <CRMStatCard icon={Users} label="Total leads" value={String(leadCount)} tone="blue" />
-        <CRMStatCard icon={Sparkles} label="Active leads" value={String(activeCount)} tone="emerald" />
-        <CRMStatCard icon={CalendarDays} label="Pipeline stages" value={String(stages.length)} tone="amber" />
+        <CRMStatCard icon={Users} label="Total leads" value={String(leadCount)} helper={`${filteredLeads.length} visible now`} tone="blue" />
+        <CRMStatCard icon={Sparkles} label="Active leads" value={String(activeCount)} helper="Open records in the current pipeline" tone="emerald" />
+        <CRMStatCard icon={CalendarDays} label="Pipeline value" value={formatCurrency(totalPipelineValue, pipelineQuery.data?.meta?.currency || 'INR')} helper={`${stages.length} configured stages`} tone="amber" />
       </div>
-
-      <CRMSection
-        title="Lead entry points"
-        description="The CRM lead workspace lives at /crm/leads/:leadId. Start from the pipeline or related activity screens."
-        actions={<Badge label="Sales module" colorKey="draft" />}
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>
-            Go to Pipeline
-          </Button>
-          <Button variant="secondary" onClick={() => navigate('/crm/activities')}>
-            View Activities
-          </Button>
-          <Button variant="secondary" onClick={() => navigate('/crm/companies')}>
-            Open Companies
-          </Button>
-        </div>
-      </CRMSection>
 
       {isEmployee && (
         <CRMSection
           title="My assigned leads"
-          description="Read-only except for the meeting scheduled and dead-end markers."
+          description="Read-only except for meeting and dead-end markers."
           actions={<Badge label={`${employeeLeads.length} assigned`} colorKey="draft" />}
         >
           {assignedLeadsQuery.isLoading ? (
@@ -272,7 +282,7 @@ export default function CRMLeadsPage() {
                             }}
                             className={`rounded-full px-3 py-1 text-xs font-medium ${meetingScheduled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}
                           >
-                            {meetingScheduled ? '✓ Scheduled' : '○ Not scheduled'}
+                            {meetingScheduled ? 'Scheduled' : 'Not scheduled'}
                           </button>
                         </td>
                         <td className="px-4 py-3">
@@ -284,7 +294,7 @@ export default function CRMLeadsPage() {
                             }}
                             className={`rounded-full px-3 py-1 text-xs font-medium ${deadEnd ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}
                           >
-                            {deadEnd ? '✕ Dead end' : '○ Open'}
+                            {deadEnd ? 'Dead end' : 'Open'}
                           </button>
                         </td>
                       </tr>
@@ -299,9 +309,175 @@ export default function CRMLeadsPage() {
         </CRMSection>
       )}
 
+      {!isEmployee && (
+        <CRMSection
+          title="Lead workspace"
+          description="Search, review, select, and update pipeline leads from one place."
+          actions={(
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge label={`${filteredLeads.length} visible`} colorKey="draft" />
+              <Button variant="secondary" size="sm" onClick={() => navigate('/crm/pipeline')}>
+                Pipeline
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        >
+          <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto]">
+            <label className="relative block">
+              <span className="sr-only">Search leads</span>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                className="input pl-10"
+                value={leadSearch}
+                onChange={(event) => setLeadSearch(event.target.value)}
+                placeholder="Search leads, contacts, owner..."
+              />
+            </label>
+            <label className="block">
+              <span className="sr-only">Stage</span>
+              <select className="input" value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}>
+                <option value="">All stages</option>
+                {stageOptions.map((stage) => (
+                  <option key={stage.value} value={stage.value}>{stage.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="sr-only">Priority</span>
+              <select className="input" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+                <option value="">All priorities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="hot">Hot</option>
+                <option value="medium">Medium</option>
+                <option value="warm">Warm</option>
+                <option value="low">Low</option>
+                <option value="cold">Cold</option>
+              </select>
+            </label>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setLeadSearch('')
+                setStageFilter('')
+                setPriorityFilter('')
+              }}
+            >
+              <Filter className="h-4 w-4" />
+              Reset
+            </Button>
+          </div>
+
+          {pipelineQuery.isLoading ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-3xl" />)}
+            </div>
+          ) : pipelineQuery.isError ? (
+            <CRMEmptyState
+              icon={Filter}
+              title="Unable to load leads"
+              description={pipelineQuery.error?.response?.data?.detail || 'Try again from the pipeline screen.'}
+              action={<Button variant="secondary" onClick={() => pipelineQuery.refetch()}>Retry</Button>}
+            />
+          ) : filteredLeads.length ? (
+            <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-800">
+                  <thead className="bg-gray-50 dark:bg-gray-950">
+                    <tr>
+                      <th className="w-10 px-4 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          checked={filteredLeads.length > 0 && filteredLeads.every((lead) => selectedIds.includes(lead.id || lead._id))}
+                          onChange={(event) => {
+                            const ids = filteredLeads.map((lead) => lead.id || lead._id).filter(Boolean)
+                            setSelectedIds((current) => event.target.checked ? Array.from(new Set([...current, ...ids])) : current.filter((id) => !ids.includes(id)))
+                          }}
+                          aria-label="Select visible leads"
+                        />
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Lead</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Owner</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Stage</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Priority</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Value</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Meeting</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Dead end</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                    {filteredLeads.map((lead) => {
+                      const leadId = lead.id || lead._id
+                      const custom = parseLeadCustomFields(lead)
+                      const meetingScheduled = Boolean(custom.meeting_scheduled)
+                      const deadEnd = Boolean(custom.dead_end)
+                      const priority = getLeadPriority(lead)
+                      return (
+                        <tr key={leadId} className="hover:bg-gray-50 dark:hover:bg-gray-950">
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(leadId)}
+                              onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, leadId] : current.filter((value) => value !== leadId))}
+                              aria-label={`Select ${lead.company_name || lead.prospect_name || leadId}`}
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <button type="button" onClick={() => navigate(`/crm/leads/${leadId}`)} className="text-left">
+                              <span className="block font-semibold text-gray-900 hover:text-primary-700 dark:text-gray-100 dark:hover:text-primary-300">
+                                {lead.company_name || lead.prospect_name || 'Lead'}
+                              </span>
+                              <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                {lead.email ? <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{lead.email}</span> : null}
+                                {lead.phone ? <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{lead.phone}</span> : null}
+                                {!lead.email && !lead.phone ? getLeadContactLabel(lead) : null}
+                              </span>
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{getLeadOwnerLabel(lead)}</td>
+                          <td className="px-4 py-3"><Badge label={lead.current_stage || lead.stage || 'Unstaged'} colorKey="draft" /></td>
+                          <td className="px-4 py-3"><PriorityPill priority={priority} /></td>
+                          <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{formatCurrency(getLeadDealValue(lead), pipelineQuery.data?.meta?.currency || 'INR')}</td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              className={`rounded-full px-3 py-1 text-xs font-medium ${meetingScheduled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}
+                              onClick={() => statusMutation.mutate({ leadId, customFields: { ...custom, meeting_scheduled: !meetingScheduled, dead_end: deadEnd } })}
+                            >
+                              {meetingScheduled ? 'Scheduled' : 'Not scheduled'}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              className={`rounded-full px-3 py-1 text-xs font-medium ${deadEnd ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}
+                              onClick={() => statusMutation.mutate({ leadId, customFields: { ...custom, dead_end: !deadEnd, meeting_scheduled: meetingScheduled } })}
+                            >
+                              {deadEnd ? 'Dead end' : 'Open'}
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <CRMEmptyState
+              icon={Users}
+              title="No leads found"
+              description={allLeads.length ? 'Clear filters to see all pipeline leads.' : 'Leads will appear here once the pipeline has records.'}
+              action={allLeads.length ? <Button variant="secondary" onClick={() => { setLeadSearch(''); setStageFilter(''); setPriorityFilter('') }}>Clear filters</Button> : <Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Pipeline</Button>}
+            />
+          )}
+        </CRMSection>
+      )}
+
       <CRMSection
-        title="Duplicate leads"
-        description="Review likely duplicate records before they create noise in the pipeline."
+        title="Duplicates"
+        description="Review likely duplicate records."
         actions={<Badge label={`${duplicateGroups.length} groups`} colorKey="draft" />}
       >
         {duplicatesQuery.isLoading ? (
@@ -325,7 +501,7 @@ export default function CRMLeadsPage() {
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{group.leads.length} matching leads</p>
                   </div>
                   <Button type="button" variant="primary" size="sm" onClick={() => setMergeGroup(group)}>
-                    Merge leads
+                    Merge
                   </Button>
                 </div>
                 <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -346,114 +522,9 @@ export default function CRMLeadsPage() {
             ))}
           </div>
         ) : (
-          <CRMEmptyState icon={Merge} title="No duplicate groups found" description="The current lead set does not have obvious duplicates." />
+          <CRMEmptyState icon={Merge} title="No duplicates" description="The current lead set looks clean." />
         )}
       </CRMSection>
-
-      <CRMSection title="Recent leads" description="Recently visible leads from the live pipeline board.">
-        {pipelineQuery.isLoading ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-3xl" />)}
-          </div>
-        ) : pipelineQuery.isError ? (
-          <CRMEmptyState
-            icon={Filter}
-            title="Unable to load leads"
-            description={pipelineQuery.error?.response?.data?.detail || 'Try again from the pipeline screen.'}
-            action={<Button variant="secondary" onClick={() => pipelineQuery.refetch()}>Retry</Button>}
-          />
-        ) : recentLeads.length ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {recentLeads.map((lead) => (
-              <label key={lead.id || lead._id} className="rounded-3xl border border-surface-border/80 bg-white p-4 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800">
-                <div className="flex items-start justify-between gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(lead.id || lead._id)}
-                    onChange={(event) => {
-                      const id = lead.id || lead._id
-                      setSelectedIds((current) => event.target.checked ? [...current, id] : current.filter((value) => value !== id))
-                    }}
-                  />
-                  <button type="button" onClick={() => navigate(`/crm/leads/${lead.id || lead._id}`)} className="min-w-0 flex-1 text-left">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{lead.company_name || lead.prospect_name || 'Lead'}</p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{lead.owner_name || lead.assigned_to_name || lead.assigned_to || 'Unassigned'}</p>
-                  </button>
-                  <Badge label={lead.current_stage || lead.stage || 'Unknown'} colorKey="draft" />
-                </div>
-              </label>
-            ))}
-          </div>
-        ) : (
-          <CRMEmptyState
-            icon={Users}
-            title="No leads yet"
-            description="Leads will appear here once the pipeline has records."
-            action={<Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Open Pipeline</Button>}
-          />
-        )}
-      </CRMSection>
-
-      {!isEmployee && (
-        <CRMSection
-          title="Employee lead status"
-          description="Quickly mark whether a meeting is scheduled or the lead is a dead end."
-        >
-          {recentLeads.length ? (
-            <div className="overflow-hidden rounded-3xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-800">
-                <thead className="bg-gray-50 dark:bg-gray-950">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Lead</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Owner</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Meeting</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Dead end</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {recentLeads.map((lead) => {
-                    const leadId = lead.id || lead._id
-                    const custom = lead.custom_fields || {}
-                    const meetingScheduled = Boolean(custom.meeting_scheduled)
-                    const deadEnd = Boolean(custom.dead_end)
-                    return (
-                      <tr key={leadId} className="hover:bg-gray-50 dark:hover:bg-gray-950">
-                        <td className="px-4 py-3">
-                          <button className="font-medium text-primary-700" type="button" onClick={() => navigate(`/crm/leads/${leadId}`)}>
-                            {lead.company_name || lead.prospect_name || 'Lead'}
-                          </button>
-                          <p className="text-xs text-gray-500">{lead.email || lead.phone || '-'}</p>
-                        </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{lead.owner_name || lead.assigned_to_name || lead.assigned_to || 'Unassigned'}</td>
-                        <td className="px-4 py-3">
-                          <button
-                            type="button"
-                            className={`rounded-full px-3 py-1 text-xs font-medium ${meetingScheduled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}
-                            onClick={() => statusMutation.mutate({ leadId, customFields: { ...custom, meeting_scheduled: !meetingScheduled, dead_end: deadEnd } })}
-                          >
-                            {meetingScheduled ? 'Scheduled' : 'Not scheduled'}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            type="button"
-                            className={`rounded-full px-3 py-1 text-xs font-medium ${deadEnd ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}
-                            onClick={() => statusMutation.mutate({ leadId, customFields: { ...custom, dead_end: !deadEnd, meeting_scheduled: meetingScheduled } })}
-                          >
-                            {deadEnd ? 'Dead end' : 'Open'}
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <CRMEmptyState icon={Users} title="No leads yet" description="Leads will appear here once the pipeline has records." />
-          )}
-        </CRMSection>
-      )}
 
       <MergeModal
         group={mergeGroup}
@@ -514,6 +585,35 @@ function BulkUpdateModal({ isOpen, onClose, leadCount, onSubmit, loading, stages
 
 function Field({ label, children }) {
   return <label className="block"><span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>{children}</label>
+}
+
+function parseLeadCustomFields(lead) {
+  if (typeof lead?.custom_fields === 'string') {
+    try {
+      return JSON.parse(lead.custom_fields) || {}
+    } catch {
+      return {}
+    }
+  }
+  return lead?.custom_fields || {}
+}
+
+function PriorityPill({ priority }) {
+  const normalized = normalizeText(priority || 'medium')
+  const styles = {
+    critical: 'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-200 dark:ring-rose-900',
+    high: 'bg-orange-100 text-orange-700 ring-orange-200 dark:bg-orange-950/40 dark:text-orange-200 dark:ring-orange-900',
+    hot: 'bg-orange-100 text-orange-700 ring-orange-200 dark:bg-orange-950/40 dark:text-orange-200 dark:ring-orange-900',
+    medium: 'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900',
+    warm: 'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900',
+    low: 'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-900',
+    cold: 'bg-sky-100 text-sky-700 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-200 dark:ring-sky-900',
+  }
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ring-1 ${styles[normalized] || styles.medium}`}>
+      {normalized || 'medium'}
+    </span>
+  )
 }
 
 function MergeModal({ group, isOpen, onClose, onConfirm, loading }) {

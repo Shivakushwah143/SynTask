@@ -9,6 +9,7 @@ export class BrowserMonitoringProvider extends MonitoringProvider {
     this.onFrameCallback = null
     this.onStopCallback = null
     this.isPaused = false
+    this.isStopping = false
 
     // Offscreen video elements (reused across start/stop)
     this._cameraVideo = null
@@ -21,6 +22,8 @@ export class BrowserMonitoringProvider extends MonitoringProvider {
 
   async requestPermissions() {
     try {
+      this.stopCapture()
+
       // 1. Request Camera Permission
       this.cameraStream = await navigator.mediaDevices.getUserMedia({
         video: { width: 320, height: 240, frameRate: 10 },
@@ -39,14 +42,16 @@ export class BrowserMonitoringProvider extends MonitoringProvider {
       this.screenStream.getVideoTracks().forEach(track => {
         track.onended = () => {
           this.screenStatus = 'Stopped'
-          if (this.onStopCallback) this.onStopCallback('screen_sharing_ended')
+          this.screenStream = null
+          if (!this.isStopping && this.onStopCallback) this.onStopCallback('screen_sharing_ended')
         }
       })
 
       this.cameraStream.getVideoTracks().forEach(track => {
         track.onended = () => {
           this.cameraStatus = 'Disabled'
-          if (this.onStopCallback) this.onStopCallback('camera_ended')
+          this.cameraStream = null
+          if (!this.isStopping && this.onStopCallback) this.onStopCallback('camera_ended')
         }
       })
 
@@ -81,6 +86,11 @@ export class BrowserMonitoringProvider extends MonitoringProvider {
   }
 
   async startCapture({ onFrame, onStop }) {
+    if (this.frameInterval) {
+      clearInterval(this.frameInterval)
+      this.frameInterval = null
+    }
+
     this.onFrameCallback = onFrame
     this.onStopCallback = onStop
     this.isPaused = false
@@ -170,6 +180,8 @@ export class BrowserMonitoringProvider extends MonitoringProvider {
   }
 
   stopCapture() {
+    this.isStopping = true
+
     if (this.frameInterval) {
       clearInterval(this.frameInterval)
       this.frameInterval = null
@@ -199,6 +211,7 @@ export class BrowserMonitoringProvider extends MonitoringProvider {
     this.isPaused = false
     this.onFrameCallback = null
     this.onStopCallback = null
+    this.isStopping = false
   }
 
   getCameraStatus() { return this.cameraStatus }

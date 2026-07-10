@@ -1,0 +1,71 @@
+const STATUS_PROGRESS = {
+  todo: 12,
+  open: 12,
+  in_progress: 45,
+  in_review: 75,
+  review: 75,
+  completed: 100,
+  done: 100,
+}
+
+const STATUS_LABELS = {
+  todo: 'To Do',
+  open: 'Open',
+  in_progress: 'In Progress',
+  in_review: 'Review',
+  review: 'Review',
+  completed: 'Completed',
+  done: 'Completed',
+}
+
+export const TASK_GRAPH_PRIORITY_COLORS = {
+  critical: '#991B1B',
+  high: '#EF4444',
+  medium: '#F59E0B',
+  low: '#2FB47C',
+}
+
+const normalizeStatus = (status) => String(status || 'todo').toLowerCase()
+
+const normalizePriority = (priority) => {
+  const value = String(priority || 'medium').toLowerCase()
+  return TASK_GRAPH_PRIORITY_COLORS[value] ? value : 'medium'
+}
+
+const getAssigneeName = (task) => (
+  task.assigned_to_name
+  || task.assignee_name
+  || task.user_name
+  || task.assigned_user?.name
+  || 'Unassigned'
+)
+
+export function buildTaskGraphRows(tasks, limit = 8) {
+  return tasks.slice(0, limit).map((task) => {
+    const statusKey = normalizeStatus(task.status)
+    const priorityKey = normalizePriority(task.priority)
+    return {
+      id: task.id || task._id,
+      title: task.title || 'Untitled task',
+      assignee: getAssigneeName(task),
+      statusKey,
+      statusLabel: STATUS_LABELS[statusKey] || statusKey.replace(/_/g, ' '),
+      progress: STATUS_PROGRESS[statusKey] ?? 12,
+      priorityKey,
+      priorityLabel: priorityKey.replace(/\b\w/g, (letter) => letter.toUpperCase()),
+      priorityColor: TASK_GRAPH_PRIORITY_COLORS[priorityKey],
+      dueDate: task.due_date,
+      projectId: task.project_id,
+    }
+  })
+}
+
+export function buildTaskGraphSummary(tasks) {
+  return tasks.reduce((summary, task) => {
+    const status = normalizeStatus(task.status)
+    summary.total += 1
+    if (['completed', 'done'].includes(status)) summary.completed += 1
+    else summary.active += 1
+    return summary
+  }, { total: 0, active: 0, completed: 0 })
+}

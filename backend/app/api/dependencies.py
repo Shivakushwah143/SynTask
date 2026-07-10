@@ -5,6 +5,8 @@ from fastapi import Depends, HTTPException, status
 from typing import Optional
 
 from app.core.security import get_token_from_header, decode_token_with_blacklist_check
+from app.models.department import Department
+from app.models.capability import get_capabilities_for_role
 from app.models.user import User, UserRole, UserStatus
 
 
@@ -51,6 +53,39 @@ def require_module(module_name: str):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access to module '{module_name}' is forbidden"
+            )
+        return current_user
+    return _checker
+
+
+def require_capability(capability: str):
+    """Dependency factory to ensure the current user has a department capability."""
+    async def _checker(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role == UserRole.SUPER_ADMIN:
+            return current_user
+        if current_user.role == UserRole.ADMIN:
+            return current_user
+        department_id = getattr(current_user, "department_id", None)
+        if not department_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing capability: {capability}",
+            )
+        department = await Department.get(department_id)
+        if not department or department.company_id != current_user.company_id or department.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing capability: {capability}",
+            )
+        allowed = await get_capabilities_for_role(
+            department.department_type,
+            current_user.role,
+            current_user.company_id,
+        )
+        if capability not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing capability: {capability}",
             )
         return current_user
     return _checker

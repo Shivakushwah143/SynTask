@@ -4,6 +4,7 @@ Attendance & Employee Monitoring Endpoints (Phase 1) — Fixed
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi import status as http_status
 from datetime import datetime, timedelta
+import asyncio
 import csv
 import io
 import json
@@ -52,33 +53,165 @@ def compute_work_type(total_seconds: float) -> dict:
 
 
 async def finalize_active_session(attendance: Attendance, now_utc: datetime) -> float:
-    """Close any open AttendanceSession and return elapsed seconds."""
-    active_session = await AttendanceSession.find_one(
+    """Close all open AttendanceSessions and return elapsed seconds."""
+    active_sessions = await AttendanceSession.find(
         AttendanceSession.attendance_id == str(attendance.id),
         AttendanceSession.end_time == None
-    )
+    ).to_list()
     elapsed = 0.0
-    if active_session:
+    for active_session in active_sessions:
         active_session.end_time = now_utc
-        elapsed = (now_utc - active_session.start_time).total_seconds()
-        active_session.duration = elapsed
+        session_elapsed = max(0.0, (now_utc - active_session.start_time).total_seconds())
+        active_session.duration = session_elapsed
+        elapsed += session_elapsed
         await active_session.save()
     return elapsed
 
 
 async def finalize_active_break(attendance: Attendance, now_utc: datetime) -> float:
-    """Close any open BreakLog and return elapsed seconds."""
-    active_break = await BreakLog.find_one(
+    """Close all open BreakLogs and return elapsed seconds."""
+    active_breaks = await BreakLog.find(
         BreakLog.attendance_id == str(attendance.id),
         BreakLog.end_time == None
-    )
+    ).to_list()
     elapsed = 0.0
-    if active_break:
+    for active_break in active_breaks:
         active_break.end_time = now_utc
-        elapsed = (now_utc - active_break.start_time).total_seconds()
-        active_break.duration = elapsed
+        break_elapsed = max(0.0, (now_utc - active_break.start_time).total_seconds())
+        active_break.duration = break_elapsed
+        elapsed += break_elapsed
         await active_break.save()
     return elapsed
+
+
+def normalize_camera_status(value: Optional[str]) -> str:
+    if value in {"Connected", "Granted"}:
+        return "Connected"
+    if value == "Disabled":
+        return "Disabled"
+    return "Denied"
+
+
+def normalize_screen_status(value: Optional[str]) -> str:
+    if value in {"Sharing", "Granted"}:
+        return "Sharing"
+    if value == "Stopped":
+        return "Stopped"
+    return "Denied"
+
+
+async def get_active_attendance(attendance: Attendance) -> tuple[float, float, dict]:
+    now_utc = datetime.utcnow()
+    working_seconds = attendance.total_working_hours
+    break_seconds = attendance.break_duration
+
+    if attendance.status == AttendanceStatus.WORKING:
+        active_sessions = await AttendanceSession.find(
+            AttendanceSession.attendance_id == str(attendance.id),
+            AttendanceSession.end_time == None
+        ).to_list()
+        working_seconds += sum(
+            max(0.0, (now_utc - session.start_time).total_seconds())
+            for session in active_sessions
+        )
+    elif attendance.status == AttendanceStatus.ON_BREAK:
+        active_breaks = await BreakLog.find(
+            BreakLog.attendance_id == str(attendance.id),
+            BreakLog.end_time == None
+        ).to_list()
+        break_seconds += sum(
+            max(0.0, (now_utc - active_break.start_time).total_seconds())
+            for active_break in active_breaks
+        )
+
+    return working_seconds, break_seconds, compute_work_type(working_seconds)
+
+
+async def close_monitoring_sessions(attendance: Attendance, now_utc: datetime) -> None:
+    monitoring_sessions = await MonitoringSession.find(
+        MonitoringSession.attendance_id == str(attendance.id),
+        MonitoringSession.end_time == None
+    ).to_list()
+    for monitoring_session in monitoring_sessions:
+        monitoring_session.end_time = now_utc
+        monitoring_session.status = "Stopped"
+        await monitoring_session.save()
+
+        camera_sessions = await CameraSession.find(
+            CameraSession.monitoring_session_id == str(monitoring_session.id),
+            CameraSession.end_time == None
+        ).to_list()
+        for camera_session in camera_sessions:
+            camera_session.end_time = now_utc
+            camera_session.status = "Disabled"
+            await camera_session.save()
+
+        screen_sessions = await ScreenShareSession.find(
+            ScreenShareSession.monitoring_session_id == str(monitoring_session.id),
+            ScreenShareSession.end_time == None
+        ).to_list()
+        for screen_session in screen_sessions:
+            screen_session.end_time = now_utc
+            screen_session.status = "Stopped"
+            await screen_session.save()
+
+
+async def user_can_monitor(monitor: User, employee: User) -> bool:
+    if monitor.role == UserRole.SUPER_ADMIN:
+        return employee.role != UserRole.SUPER_ADMIN
+    if monitor.role == UserRole.ADMIN:
+        return employee.company_id == monitor.company_id and employee.role != UserRole.ADMIN
+    if employee.company_id != monitor.company_id:
+        return False
+    if monitor.role in [UserRole.MANAGER, UserRole.LEAD]:
+        monitor_id = str(monitor.id)
+        if employee.reports_to == monitor_id or monitor_id in (employee.ancestors or []):
+            return True
+        if monitor.role == UserRole.LEAD and getattr(employee, "lead_id", None) == monitor_id:
+            return True
+        if monitor.role == UserRole.MANAGER and employee.role == UserRole.EMPLOYEE and getattr(employee, "lead_id", None):
+            lead = await User.get(employee.lead_id)
+            if lead and lead.company_id == monitor.company_id:
+                return lead.reports_to == monitor_id or monitor_id in (lead.ancestors or [])
+    return False
+
+
+async def get_monitorable_users(current_user: User) -> List[User]:
+    company_id = current_user.company_id
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return await User.find(User.role != UserRole.SUPER_ADMIN).to_list()
+    if current_user.role == UserRole.ADMIN:
+        return await User.find(User.company_id == company_id, User.role != UserRole.ADMIN).to_list()
+    if current_user.role not in [UserRole.MANAGER, UserRole.LEAD]:
+        return []
+
+    candidates = await User.find(
+        User.company_id == company_id,
+        User.status == UserStatus.ACTIVE,
+        User.role != UserRole.ADMIN
+    ).to_list()
+    visible = []
+    for candidate in candidates:
+        if str(candidate.id) != str(current_user.id) and await user_can_monitor(current_user, candidate):
+            visible.append(candidate)
+    return visible
+
+
+async def build_status_message(user: User, attendance: Attendance, message_type: str = "status_changed") -> dict:
+    working_seconds, break_seconds, wt = await get_active_attendance(attendance)
+    return {
+        "type": message_type,
+        "employee_id": str(user.id),
+        "employee_name": user.full_name(),
+        "status": attendance.status.value,
+        "camera_status": attendance.camera_permission_status,
+        "screen_share_status": attendance.screen_sharing_status,
+        "total_working_seconds": working_seconds,
+        "break_seconds": break_seconds,
+        "work_type": wt["work_type"],
+        "overtime_seconds": wt["overtime_seconds"],
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 
 # -----------------------------------------------------------------------------
@@ -126,14 +259,13 @@ class ConnectionManager:
         except Exception:
             pass
 
-    async def broadcast_to_company_managers(self, company_id: str, message: dict):
-        """Broadcasts messages to leads, managers, and admins of the same company"""
+    async def broadcast_monitoring_update(self, employee: User, message: dict):
+        """Broadcast monitoring state only to users allowed to monitor this employee."""
         for user_id, websockets in list(self.active_connections.items()):
             user = self.connection_users.get(user_id)
-            if user and user.company_id == company_id:
-                if user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD]:
-                    for ws in list(websockets):
-                        await self.send_personal_message(message, ws)
+            if user and await user_can_monitor(user, employee):
+                for ws in list(websockets):
+                    await self.send_personal_message(message, ws)
 
     async def forward_frame_to_subscribers(self, employee_id: str, frame_type: str, frame_data: str):
         """Forwards screen or camera base64 frames ONLY to managers actively watching this employee"""
@@ -169,6 +301,61 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+async def delayed_logout_check(user_id: str, user: User, company_id: str):
+    """Wait for a 10s grace period and mark employee Offline if they have not reconnected"""
+    await asyncio.sleep(10)
+    # Check if there are active connections now
+    if user_id in manager.active_connections:
+        logger.info(f"User {user.email} reconnected within grace period. Disconnect ignored.")
+        return
+
+    logger.info(f"User {user.email} did not reconnect within grace period. Finalizing shift.")
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    attendance = await Attendance.find_one(
+        Attendance.employee_id == user_id,
+        Attendance.date == today_str
+    )
+    if attendance and attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
+        now_utc = datetime.utcnow()
+
+        if attendance.status == AttendanceStatus.WORKING:
+            elapsed = await finalize_active_session(attendance, now_utc)
+            attendance.total_working_hours += elapsed
+        elif attendance.status == AttendanceStatus.ON_BREAK:
+            elapsed_break = await finalize_active_break(attendance, now_utc)
+            attendance.break_duration += elapsed_break
+
+        # Close MonitoringSession
+        monitoring_session = await MonitoringSession.find_one(
+            MonitoringSession.attendance_id == str(attendance.id),
+            MonitoringSession.end_time == None
+        )
+        if monitoring_session:
+            monitoring_session.end_time = now_utc
+            monitoring_session.status = "Stopped"
+            await monitoring_session.save()
+
+        wt = compute_work_type(attendance.total_working_hours)
+        attendance.work_type = wt["work_type"]
+        attendance.overtime_seconds = wt["overtime_seconds"]
+        attendance.status = AttendanceStatus.OFFLINE
+        attendance.logout_time = now_utc
+        attendance.monitoring_end_time = now_utc
+        attendance.camera_permission_status = "Denied"
+        attendance.screen_sharing_status = "Denied"
+        attendance.updated_at = now_utc
+        await attendance.save()
+
+        broadcast_msg = {
+            "type": "status_changed",
+            "employee_id": user_id,
+            "employee_name": user.full_name(),
+            "status": AttendanceStatus.OFFLINE.value,
+            "timestamp": now_utc.isoformat()
+        }
+        await manager.broadcast_to_company_managers(company_id, broadcast_msg)
 
 
 # -----------------------------------------------------------------------------
@@ -224,7 +411,15 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
             elif msg_type == "subscribe_employee":
                 target_emp_id = message.get("employee_id")
                 if target_emp_id:
-                    manager.subscribe_manager(websocket, target_emp_id)
+                    target_employee = await User.get(target_emp_id)
+                    if target_employee and await user_can_monitor(user, target_employee):
+                        manager.subscribe_manager(websocket, target_emp_id)
+                    else:
+                        await manager.send_personal_message({
+                            "type": "subscription_denied",
+                            "employee_id": target_emp_id,
+                            "detail": "You are not allowed to monitor this employee"
+                        }, websocket)
                 continue
 
             elif msg_type == "unsubscribe_employee":
@@ -246,12 +441,29 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     await manager.forward_frame_to_subscribers(user_id_str, "screen", frame_data)
                 continue
 
+            elif msg_type == "media_status":
+                today_str = datetime.utcnow().strftime("%Y-%m-%d")
+                attendance = await Attendance.find_one(
+                    Attendance.employee_id == user_id_str,
+                    Attendance.date == today_str
+                )
+                if attendance and attendance.status == AttendanceStatus.WORKING:
+                    now_utc = datetime.utcnow()
+                    if "camera_status" in message:
+                        attendance.camera_permission_status = normalize_camera_status(message.get("camera_status"))
+                    if "screen_share_status" in message:
+                        attendance.screen_sharing_status = normalize_screen_status(message.get("screen_share_status"))
+                    attendance.updated_at = now_utc
+                    await attendance.save()
+                    await manager.broadcast_monitoring_update(user, await build_status_message(user, attendance))
+                continue
+
             # WORKFLOW EVENTS (Start work, pause, resume, stop)
             today_str = datetime.utcnow().strftime("%Y-%m-%d")
 
             if msg_type == "start_work":
-                camera_perm = message.get("camera_permission", "Denied")
-                screen_perm = message.get("screen_share_permission", "Denied")
+                camera_perm = normalize_camera_status(message.get("camera_permission", "Denied"))
+                screen_perm = normalize_screen_status(message.get("screen_share_permission", "Denied"))
                 now_utc = datetime.utcnow()
 
                 # Check for existing record
@@ -276,10 +488,19 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                         screen_sharing_status=screen_perm
                     )
                 else:
+                    previous_status = attendance.status
+                    if previous_status == AttendanceStatus.WORKING:
+                        attendance.total_working_hours += await finalize_active_session(attendance, now_utc)
+                    elif previous_status == AttendanceStatus.ON_BREAK:
+                        attendance.break_duration += await finalize_active_break(attendance, now_utc)
+                    await close_monitoring_sessions(attendance, now_utc)
                     attendance.status = AttendanceStatus.WORKING
                     attendance.camera_permission_status = camera_perm
                     attendance.screen_sharing_status = screen_perm
-                    attendance.updated_at = datetime.utcnow()
+                    attendance.monitoring_start_time = attendance.monitoring_start_time or now_utc
+                    attendance.monitoring_end_time = None
+                    attendance.logout_time = None
+                    attendance.updated_at = now_utc
                     if not attendance.login_time:
                         attendance.login_time = now_utc
                         attendance.is_late = now_utc.hour >= LATE_CLOCK_IN_HOUR_UTC
@@ -306,7 +527,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                 await monitoring_session.insert()
 
                 # Log Camera / Screen Share status
-                if camera_perm == "Granted":
+                if camera_perm == "Connected":
                     cam_session = CameraSession(
                         monitoring_session_id=str(monitoring_session.id),
                         employee_id=user_id_str,
@@ -315,7 +536,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     )
                     await cam_session.insert()
 
-                if screen_perm == "Granted":
+                if screen_perm == "Sharing":
                     screen_session = ScreenShareSession(
                         monitoring_session_id=str(monitoring_session.id),
                         employee_id=user_id_str,
@@ -325,27 +546,18 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     await screen_session.insert()
 
                 # Broadcast status change to managers
-                broadcast_msg = {
-                    "type": "status_changed",
-                    "employee_id": user_id_str,
-                    "employee_name": user.full_name(),
-                    "status": AttendanceStatus.WORKING.value,
-                    "camera_status": camera_perm,
-                    "screen_share_status": screen_perm,
-                    "timestamp": now_utc.isoformat()
-                }
-                await manager.broadcast_to_company_managers(user.company_id, broadcast_msg)
+                await manager.broadcast_monitoring_update(user, await build_status_message(user, attendance))
 
                 # Acknowledge client with seeding data
-                wt = compute_work_type(attendance.total_working_hours)
+                working_seconds, break_seconds, wt = await get_active_attendance(attendance)
                 await manager.send_personal_message({
                     "type": "start_work_ack",
                     "status": "Working",
                     "attendance_id": str(attendance.id),
                     "login_time": attendance.login_time.isoformat() if attendance.login_time else None,
                     "is_late": attendance.is_late,
-                    "total_working_seconds": attendance.total_working_hours,
-                    "break_seconds": attendance.break_duration,
+                    "total_working_seconds": working_seconds,
+                    "break_seconds": break_seconds,
                     "work_type": wt["work_type"],
                     "overtime_seconds": wt["overtime_seconds"],
                 }, websocket)
@@ -376,14 +588,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     await break_log.insert()
 
                     wt = compute_work_type(attendance.total_working_hours)
-                    broadcast_msg = {
-                        "type": "status_changed",
-                        "employee_id": user_id_str,
-                        "employee_name": user.full_name(),
-                        "status": AttendanceStatus.ON_BREAK.value,
-                        "timestamp": now_utc.isoformat()
-                    }
-                    await manager.broadcast_to_company_managers(user.company_id, broadcast_msg)
+                    await manager.broadcast_monitoring_update(user, await build_status_message(user, attendance))
 
                     await manager.send_personal_message({
                         "type": "pause_work_ack",
@@ -418,14 +623,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     )
                     await session.insert()
 
-                    broadcast_msg = {
-                        "type": "status_changed",
-                        "employee_id": user_id_str,
-                        "employee_name": user.full_name(),
-                        "status": AttendanceStatus.WORKING.value,
-                        "timestamp": now_utc.isoformat()
-                    }
-                    await manager.broadcast_to_company_managers(user.company_id, broadcast_msg)
+                    await manager.broadcast_monitoring_update(user, await build_status_message(user, attendance))
 
                     await manager.send_personal_message({
                         "type": "resume_work_ack",
@@ -448,15 +646,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                         elapsed_break = await finalize_active_break(attendance, now_utc)
                         attendance.break_duration += elapsed_break
 
-                    # Close MonitoringSession
-                    monitoring_session = await MonitoringSession.find_one(
-                        MonitoringSession.attendance_id == str(attendance.id),
-                        MonitoringSession.end_time == None
-                    )
-                    if monitoring_session:
-                        monitoring_session.end_time = now_utc
-                        monitoring_session.status = "Stopped"
-                        await monitoring_session.save()
+                    await close_monitoring_sessions(attendance, now_utc)
 
                     # Compute and persist work type
                     wt = compute_work_type(attendance.total_working_hours)
@@ -471,14 +661,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     attendance.updated_at = now_utc
                     await attendance.save()
 
-                    broadcast_msg = {
-                        "type": "status_changed",
-                        "employee_id": user_id_str,
-                        "employee_name": user.full_name(),
-                        "status": AttendanceStatus.OFFLINE.value,
-                        "timestamp": now_utc.isoformat()
-                    }
-                    await manager.broadcast_to_company_managers(user.company_id, broadcast_msg)
+                    await manager.broadcast_monitoring_update(user, await build_status_message(user, attendance))
 
                     await manager.send_personal_message({
                         "type": "stop_work_ack",
@@ -492,51 +675,8 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
         manager.disconnect(websocket, user_id_str)
 
         # Automatic logout on websocket disconnect (tab close/navigation)
-        if user and user.role == UserRole.EMPLOYEE:
-            today_str = datetime.utcnow().strftime("%Y-%m-%d")
-            attendance = await Attendance.find_one(
-                Attendance.employee_id == user_id_str,
-                Attendance.date == today_str
-            )
-            if attendance and attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
-                now_utc = datetime.utcnow()
-
-                if attendance.status == AttendanceStatus.WORKING:
-                    elapsed = await finalize_active_session(attendance, now_utc)
-                    attendance.total_working_hours += elapsed
-                elif attendance.status == AttendanceStatus.ON_BREAK:
-                    elapsed_break = await finalize_active_break(attendance, now_utc)
-                    attendance.break_duration += elapsed_break
-
-                # Close MonitoringSession
-                monitoring_session = await MonitoringSession.find_one(
-                    MonitoringSession.attendance_id == str(attendance.id),
-                    MonitoringSession.end_time == None
-                )
-                if monitoring_session:
-                    monitoring_session.end_time = now_utc
-                    monitoring_session.status = "Stopped"
-                    await monitoring_session.save()
-
-                wt = compute_work_type(attendance.total_working_hours)
-                attendance.work_type = wt["work_type"]
-                attendance.overtime_seconds = wt["overtime_seconds"]
-                attendance.status = AttendanceStatus.OFFLINE
-                attendance.logout_time = now_utc
-                attendance.monitoring_end_time = now_utc
-                attendance.camera_permission_status = "Denied"
-                attendance.screen_sharing_status = "Denied"
-                attendance.updated_at = now_utc
-                await attendance.save()
-
-                broadcast_msg = {
-                    "type": "status_changed",
-                    "employee_id": user_id_str,
-                    "employee_name": user.full_name(),
-                    "status": AttendanceStatus.OFFLINE.value,
-                    "timestamp": now_utc.isoformat()
-                }
-                await manager.broadcast_to_company_managers(user.company_id, broadcast_msg)
+        if user and user.role in [UserRole.EMPLOYEE, UserRole.MANAGER]:
+            asyncio.create_task(delayed_logout_check(user_id_str, user, user.company_id))
 
 
 # -----------------------------------------------------------------------------
@@ -568,27 +708,7 @@ async def get_today_attendance(current_user: User = Depends(get_current_user)):
             }
         }
 
-    # Add live elapsed time if currently active
-    live_working_seconds = 0.0
-    if attendance.status == AttendanceStatus.WORKING:
-        active_session = await AttendanceSession.find_one(
-            AttendanceSession.attendance_id == str(attendance.id),
-            AttendanceSession.end_time == None
-        )
-        if active_session:
-            live_working_seconds = (datetime.utcnow() - active_session.start_time).total_seconds()
-
-    live_break_seconds = 0.0
-    if attendance.status == AttendanceStatus.ON_BREAK:
-        active_break = await BreakLog.find_one(
-            BreakLog.attendance_id == str(attendance.id),
-            BreakLog.end_time == None
-        )
-        if active_break:
-            live_break_seconds = (datetime.utcnow() - active_break.start_time).total_seconds()
-
-    total_seconds = attendance.total_working_hours + live_working_seconds
-    wt = compute_work_type(total_seconds)
+    total_seconds, break_seconds, wt = await get_active_attendance(attendance)
 
     return {
         "success": True,
@@ -599,7 +719,7 @@ async def get_today_attendance(current_user: User = Depends(get_current_user)):
             "login_time": attendance.login_time.isoformat() if attendance.login_time else None,
             "logout_time": attendance.logout_time.isoformat() if attendance.logout_time else None,
             "total_working_hours": total_seconds,
-            "break_duration": attendance.break_duration + live_break_seconds,
+            "break_duration": break_seconds,
             "overtime_seconds": wt["overtime_seconds"],
             "work_type": wt["work_type"],
             "regular_seconds": wt["regular_seconds"],
@@ -650,27 +770,7 @@ async def get_timesheet_summary(
             }
         }
 
-    # Live elapsed if currently working
-    live_working_seconds = 0.0
-    if attendance.status == AttendanceStatus.WORKING:
-        active_session = await AttendanceSession.find_one(
-            AttendanceSession.attendance_id == str(attendance.id),
-            AttendanceSession.end_time == None
-        )
-        if active_session:
-            live_working_seconds = (datetime.utcnow() - active_session.start_time).total_seconds()
-
-    live_break_seconds = 0.0
-    if attendance.status == AttendanceStatus.ON_BREAK:
-        active_break = await BreakLog.find_one(
-            BreakLog.attendance_id == str(attendance.id),
-            BreakLog.end_time == None
-        )
-        if active_break:
-            live_break_seconds = (datetime.utcnow() - active_break.start_time).total_seconds()
-
-    total_seconds = attendance.total_working_hours + live_working_seconds
-    wt = compute_work_type(total_seconds)
+    total_seconds, break_seconds, wt = await get_active_attendance(attendance)
 
     return {
         "success": True,
@@ -683,7 +783,7 @@ async def get_timesheet_summary(
             "total_working_seconds": total_seconds,
             "regular_seconds": wt["regular_seconds"],
             "overtime_seconds": wt["overtime_seconds"],
-            "break_seconds": attendance.break_duration + live_break_seconds,
+            "break_seconds": break_seconds,
             "work_type": wt["work_type"],
             "standard_hours": STANDARD_WORK_SECONDS,
         }
@@ -700,20 +800,8 @@ async def get_live_monitoring(current_user: User = Depends(get_current_user)):
     if not company_id and current_user.role != UserRole.SUPER_ADMIN:
         raise HTTPException(status_code=400, detail="User does not belong to any company")
 
-    if current_user.role == UserRole.SUPER_ADMIN:
-        users = await User.find(User.role != UserRole.SUPER_ADMIN).to_list()
-    elif current_user.role == UserRole.ADMIN:
-        users = await User.find(User.company_id == company_id, User.role != UserRole.ADMIN).to_list()
-    elif current_user.role == UserRole.MANAGER:
-        subordinates = await current_user.get_all_subordinates()
-        users = subordinates
-    elif current_user.role == UserRole.LEAD:
-        users = await User.find(
-            User.company_id == company_id,
-            User.reports_to == str(current_user.id),
-            User.role == UserRole.EMPLOYEE
-        ).to_list()
-    else:
+    users = await get_monitorable_users(current_user)
+    if not users and current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD]:
         raise HTTPException(status_code=403, detail="Only Managers/Admins can access live monitoring dashboard")
 
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
@@ -744,23 +832,7 @@ async def get_live_monitoring(current_user: User = Depends(get_current_user)):
             login_time = attendance.login_time.isoformat() if attendance.login_time else None
             is_late = attendance.is_late
 
-            if attendance.status == AttendanceStatus.WORKING:
-                active_session = await AttendanceSession.find_one(
-                    AttendanceSession.attendance_id == str(attendance.id),
-                    AttendanceSession.end_time == None
-                )
-                if active_session:
-                    working_hours += (datetime.utcnow() - active_session.start_time).total_seconds()
-
-            elif attendance.status == AttendanceStatus.ON_BREAK:
-                active_break = await BreakLog.find_one(
-                    BreakLog.attendance_id == str(attendance.id),
-                    BreakLog.end_time == None
-                )
-                if active_break:
-                    break_duration += (datetime.utcnow() - active_break.start_time).total_seconds()
-
-            wt = compute_work_type(working_hours)
+            working_hours, break_duration, wt = await get_active_attendance(attendance)
             work_type = wt["work_type"]
             overtime_seconds = wt["overtime_seconds"]
 

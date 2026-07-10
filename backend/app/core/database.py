@@ -35,6 +35,8 @@ from app.models.chat import Conversation, ChatMessage
 from app.models.page import Page
 from app.models.client import Client
 from app.models.department import Department
+from app.models.capability import RoleCapability
+from app.models.ownership_transfer import OwnershipTransfer
 from app.models.ai_log import AIInteractionLog
 from app.models.ai_conversation import AIConversation
 from app.models.ai_user_state import AIUserState
@@ -61,6 +63,7 @@ from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_prospect import SalesProspect
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_pipeline_history import SalesPipelineHistory
+from app.models.sales_import_job import SalesImportJob
 from app.models.sales_masters import (
     SalesStage, ReasonForLost, SalesChannel, SalesTag,
     Nationality, BusinessCategory, GreetingTemplate
@@ -69,6 +72,7 @@ from app.models.attendance import (
     Attendance, AttendanceSession, BreakLog,
     MonitoringSession, CameraSession, ScreenShareSession
 )
+from app.models.capability import seed_default_capabilities
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +168,8 @@ async def init_db():
                 Page,
                 Client,
                 Department,
+                RoleCapability,
+                OwnershipTransfer,
                 AIInteractionLog,
                 AIConversation,
                 AIUserState,
@@ -193,6 +199,7 @@ async def init_db():
                 SalesProspect,
                 SalesLeadNote,
                 SalesPipelineHistory,
+                SalesImportJob,
                 SalesStage,
                 ReasonForLost,
                 SalesChannel,
@@ -208,6 +215,8 @@ async def init_db():
                 ScreenShareSession,
             ]
         )
+
+        await seed_default_capabilities()
         
         logger.info("Beanie ODM initialized successfully")
         

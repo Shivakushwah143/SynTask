@@ -4,12 +4,11 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
+import { EmailComposer } from '../../../components/EmailComposer'
 import { Button } from '../../../components/ui'
-import { LeadAccessDeniedState, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadWorkspace } from './components'
-import { Badge, Button, Modal } from '../../../components/ui'
-import { LeadAITab, LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadTasksTab, LeadWorkspace } from './components'
+import { LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadTasksTab, LeadWorkspace } from './components'
 import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
-import { LEAD_NOTES_QUERY_KEY } from './notes'
+import { LEAD_NOTES_QUERY_KEY, LeadNotesTab } from './notes'
 import { LeadTimelineTab } from './timeline'
 import { LeadAISalesTab } from './ai'
 
@@ -22,8 +21,9 @@ export default function CRMLeadWorkspacePage() {
   const { leadId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const [timelineSearch, setTimelineSearch] = useState('')
+  const [composerOpen, setComposerOpen] = useState(false)
 
-  const activeTab = searchParams.get(ACTIVE_TAB_KEY) || 'ai'
+  const activeTab = searchParams.get(ACTIVE_TAB_KEY) || 'overview'
 
   const leadQuery = useQuery(
     [WORKSPACE_QUERY_KEY, leadId],
@@ -87,6 +87,8 @@ export default function CRMLeadWorkspacePage() {
     }, { replace: true })
   }, [setSearchParams])
 
+  const openComposer = useCallback(() => setComposerOpen(true), [])
+
   let body
   if (activeTab === 'notes') body = <LeadNotesTab leadId={leadId} lead={lead} />
   else if (activeTab === 'files') body = <LeadFilesTab leadId={leadId} lead={lead} />
@@ -147,8 +149,7 @@ export default function CRMLeadWorkspacePage() {
     )
   } else {
     body = (
-      <div className="space-y-6">
-        <LeadSummaryCards lead={lead} />
+      <div className="space-y-4">
         <LeadOverview lead={lead} />
       </div>
     )
@@ -199,17 +200,33 @@ export default function CRMLeadWorkspacePage() {
   }
 
   return (
-    <LeadWorkspace
-      title={lead.company_name || lead.prospect_name || 'Lead workspace'}
-      description="Single source of truth for this CRM lead."
-      breadcrumbs={['CRM', 'Pipeline', leadLabel]}
-      lead={lead}
-      activeTab={activeTab}
-      onTabChange={handleTabChange}
-      onBack={() => navigate('/crm/pipeline')}
-      onRefresh={handleRefresh}
-      body={body}
-      sidebar={<LeadSidebar lead={lead} />}
-    />
+    <>
+      <LeadWorkspace
+        title={lead.company_name || lead.prospect_name || 'Lead workspace'}
+        description="Important lead details, activity, notes, files, and deal context."
+        breadcrumbs={['CRM', 'Pipeline', leadLabel]}
+        lead={lead}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        onBack={() => navigate('/crm/pipeline')}
+        onRefresh={handleRefresh}
+        onSendEmail={openComposer}
+        body={body}
+        sidebar={<LeadSidebar lead={lead} onSendEmail={openComposer} />}
+      />
+      <EmailComposer
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        initialData={{
+          to: lead?.email ? [{ email: lead.email, name: lead.prospect_name || lead.company_name || '' }] : [],
+          subject: lead?.company_name ? `Hello ${lead.company_name}` : `Hello ${lead?.prospect_name || 'there'}`,
+          html: '<p>Hi,</p><p></p>',
+          text: 'Hi,',
+          related_entity_type: 'lead',
+          related_entity_id: leadId,
+          related_module: 'crm',
+        }}
+      />
+    </>
   )
 }

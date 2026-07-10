@@ -13,6 +13,17 @@ from app.models.sales_masters import (
 
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
 
+APPROVED_STAGE_METADATA = {
+    "new": {"name": "New", "key": "new", "order": 0, "category": "intake", "description": "Fresh lead awaiting outreach.", "is_terminal": False},
+    "contacted": {"name": "Contacted", "key": "contacted", "order": 1, "category": "qualification", "description": "Initial contact has been made.", "is_terminal": False},
+    "qualified": {"name": "Qualified", "key": "qualified", "order": 2, "category": "qualification", "description": "Lead fits the target criteria.", "is_terminal": False},
+    "discovery": {"name": "Discovery", "key": "discovery", "order": 3, "category": "evaluation", "description": "Needs analysis or discovery is underway.", "is_terminal": False},
+    "proposal": {"name": "Proposal", "key": "proposal", "order": 4, "category": "proposal", "description": "Proposal or quote has been delivered.", "is_terminal": False},
+    "negotiation": {"name": "Negotiation", "key": "negotiation", "order": 5, "category": "proposal", "description": "Commercial terms are under discussion.", "is_terminal": False},
+    "won": {"name": "Won", "key": "won", "order": 6, "category": "closed", "description": "Opportunity closed successfully.", "is_terminal": True},
+    "lost": {"name": "Lost", "key": "lost", "order": 7, "category": "closed", "description": "Opportunity closed without conversion.", "is_terminal": True},
+}
+
 
 def _ensure_admin_permission(user: User):
     if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
@@ -49,6 +60,10 @@ async def list_stages(
                 "name": s.name,
                 "order": s.order,
                 "is_default": s.is_default,
+                "key": getattr(s, "key", None),
+                "description": getattr(s, "description", None),
+                "category": getattr(s, "category", None),
+                "is_terminal": bool(getattr(s, "is_terminal", False)),
             }
             for s in stages
         ]
@@ -70,10 +85,17 @@ async def create_stage(
     )
     if existing:
         raise HTTPException(status_code=400, detail="Stage already exists")
+
+    normalized_name = name.strip().lower()
+    metadata = APPROVED_STAGE_METADATA.get(normalized_name, {})
     
     stage = SalesStage(
         name=name.strip(),
-        order=order,
+        order=order if order else metadata.get("order", 0),
+        key=metadata.get("key") or normalized_name.replace(" ", "-"),
+        description=metadata.get("description"),
+        category=metadata.get("category"),
+        is_terminal=bool(metadata.get("is_terminal", False)),
         is_default=is_default,
         company_id=current_user.company_id,
     )
@@ -102,9 +124,15 @@ async def update_stage(
     )
     if existing:
         raise HTTPException(status_code=400, detail="Stage name already exists")
-    
+
+    normalized_name = name.strip().lower()
+    metadata = APPROVED_STAGE_METADATA.get(normalized_name, {})
     stage.name = name.strip()
-    stage.order = order
+    stage.order = order if order else metadata.get("order", stage.order)
+    stage.key = metadata.get("key") or normalized_name.replace(" ", "-")
+    stage.description = metadata.get("description", stage.description)
+    stage.category = metadata.get("category", stage.category)
+    stage.is_terminal = bool(metadata.get("is_terminal", stage.is_terminal))
     stage.is_default = is_default
     await stage.save()
     return {"message": "Stage updated"}
@@ -700,4 +728,3 @@ async def delete_greeting(
     greeting.deleted = True
     await greeting.save()
     return {"message": "Greeting template deleted"}
-

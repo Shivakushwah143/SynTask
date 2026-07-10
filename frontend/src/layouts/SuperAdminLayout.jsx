@@ -24,28 +24,20 @@ const SuperAdminLayout = () => {
   const { user, logout, isLoggingOut } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-<<<<<<< HEAD
-  const handleLogout = () => {
-    ;(async () => {
-      useUIStore.getState().setLoading(true)
-      try {
-        await logout()
-      } finally {
-        useUIStore.getState().setLoading(false)
-        navigate('/login')
-      }
-    })()
-=======
   const handleLogout = async () => {
     if (isLoggingOut) return
-    await logout()
-    navigate('/login', { replace: true })
->>>>>>> 99943a0444c5216e640779533caf906547cb2156
+    useUIStore.getState().setLoading(true)
+    try {
+      await logout()
+    } finally {
+      useUIStore.getState().setLoading(false)
+      navigate('/login', { replace: true })
+    }
   }
 
   const navigation = [
     {
-      name: 'Dashboard',
+      name: 'Admin Dashboard',
       href: '/super-admin/dashboard',
       icon: LayoutDashboard
     },
@@ -55,7 +47,7 @@ const SuperAdminLayout = () => {
       icon: Users
     },
     {
-      name: 'Companies',
+      name: 'Tenant Companies',
       href: '/super-admin/companies',
       icon: Building2
     },
@@ -80,7 +72,7 @@ const SuperAdminLayout = () => {
       icon: TrendingUp
     },
     {
-      name: 'Activity Logs',
+      name: 'Platform Audit Log',
       href: '/super-admin/activity',
       icon: Activity
     },
@@ -206,4 +198,3 @@ const SuperAdminLayout = () => {
 }
 
 export default SuperAdminLayout
-

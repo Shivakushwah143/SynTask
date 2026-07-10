@@ -1,36 +1,32 @@
-# Multi-stage build for production
-FROM node:20-alpine as build
+# Frontend Docker image for both dev and prod targets.
+FROM node:20-alpine AS base
 
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
+RUN npm ci
 
-# Install dependencies
-RUN npm ci --only=production
-
-# Copy source code
 COPY . .
 
-# Build the app
+FROM base AS dev
+EXPOSE 3000
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
+
+FROM base AS build
+ARG VITE_API_URL=https://task.synzent.ai/api/v1
+ARG VITE_LOGIN_URL=https://task.synzent.ai/login
+ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_LOGIN_URL=${VITE_LOGIN_URL}
 RUN npm run build
 
-# Production stage - Nginx
-FROM nginx:alpine
+FROM nginx:1.27-alpine AS prod
 
-# Copy built assets from build stage
 COPY --from=build /app/dist /usr/share/nginx/html
-
-# Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port 80
 EXPOSE 80
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
 
-# Start nginx
 CMD ["nginx", "-g", "daemon off;"]
-

@@ -6,6 +6,7 @@ import { salesApi } from '../../api/sales'
 import { Button, EmptyState, PageHeader, SkeletonCard } from '../../components/ui'
 import { ChartTooltip } from '../../components/charts/ChartTooltip'
 import { asArray, formatMoney, sumBy } from '../phase4Utils'
+import { WorkflowGuide } from '../../components/workflow/WorkflowGuide'
 
 export default function SalesDashboard() {
   const overview = useQuery('sales-overview', salesApi.getOverview)
@@ -30,6 +31,19 @@ export default function SalesDashboard() {
         title="Sales Dashboard"
         description="Pipeline, contact, and revenue snapshot."
         actions={<Button as={Link} onClick={undefined}><Link to="/sales/prospects">Open Prospects</Link></Button>}
+      />
+      <WorkflowGuide
+        className="mb-6"
+        title="Move the next prospect forward"
+        description="This view is the sales control surface. It should point directly to the next prospect, the next contact, or the next stage update."
+        nextStep="Open prospects, then move the current lead to the next stage."
+        primaryAction={{ label: 'Open Prospects', href: '/sales/prospects' }}
+        secondaryAction={{ label: 'Open Contacts', href: '/sales/contacts' }}
+        bullets={[
+          { label: 'Where am I?', value: 'The sales workspace overview.' },
+          { label: 'What next?', value: 'Pick the lead that needs a stage change.' },
+          { label: 'After this?', value: 'Check the pipeline or follow up on contacts.' },
+        ]}
       />
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
