@@ -28,7 +28,6 @@ import {
   LayoutDashboard,
   LineChart,
   Megaphone,
-  MessageCircle,
   MonitorCheck,
   Network,
   Palette,
@@ -40,13 +39,13 @@ import {
   UserCheck,
   UserCog,
   UserRoundSearch,
-  Video,
   X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
+const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
@@ -61,7 +60,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       return []
     }
   });
-  const [crmOpen, setCrmOpen] = useState(true);
+  const [openGroups, setOpenGroups] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(NAV_GROUPS_OPEN_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  });
   const [favoritesOpen, setFavoritesOpen] = useState(() => {
     try {
       return localStorage.getItem(FAVORITES_OPEN_KEY) !== "false";
@@ -104,6 +109,14 @@ const Sidebar = ({ isOpen, onClose }) => {
     }
   }, [favoritesOpen]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAV_GROUPS_OPEN_KEY, JSON.stringify(openGroups));
+    } catch {
+      // ignore storage write failures
+    }
+  }, [openGroups]);
+
   const navigation = [
     {
       name: "Dashboard",
@@ -119,28 +132,14 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
-      name: "Requests",
+      name: "Service Requests",
       href: "/tickets",
       icon: ClipboardList,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
-      name: "Chat",
-      href: "/chat",
-      icon: MessageCircle,
-      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "task",
-    },
-    {
-      name: "Meetings",
-      href: "/meetings",
-      icon: Video,
-      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "task",
-    },
-    {
-      name: "Calendar",
+      name: "Workspace Calendar",
       href: "/calendar",
       icon: CalendarDays,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
@@ -160,7 +159,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
-      name: "Live Monitor",
+      name: "Live Attendance",
       href: "/live-monitor",
       icon: MonitorCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
@@ -179,34 +178,34 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
-      name: "Reports",
+      name: "Workspace Reports",
       href: "/reports",
       icon: LineChart,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
-      name: "Leads",
-      href: "/crm/leads",
+      name: "Lead Directory",
+      href: "/leads",
       icon: Contact,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
-      name: "AI Hub",
+      name: "AI Command Center",
       href: "/ai-hub",
       icon: Bot,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
-      name: "Creative AI",
+      name: "Creative Studio",
       href: "/creative-director",
       icon: Palette,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
-      name: "Marketing Support",
+      name: "Marketing Assistant",
       href: "/marketing-support",
       icon: Headphones,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
@@ -227,7 +226,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
-      name: "Bulk Leads",
+      name: "Bulk Lead Import",
       href: "/bulk-leads",
       icon: Megaphone,
       roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
@@ -248,7 +247,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
-      name: "MSA",
+      name: "Agreements",
       href: "/msa",
       icon: FileCheck2,
       roles: [ROLE.ADMIN, ROLE.LEAD],
@@ -288,7 +287,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
-      name: "Companies",
+      name: "Company Directory",
       href: "/companies",
       icon: Landmark,
       roles: [ROLE.SUPER_ADMIN],
@@ -300,7 +299,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.ADMIN],
     },
     {
-      name: "Activity Log",
+      name: "Audit Log",
       href: "/activity",
       icon: AlarmClockCheck,
       roles: [ROLE.ADMIN, ROLE.LEAD],
@@ -325,62 +324,104 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const crmNavigation = [
     {
-      name: "Pipeline",
+      name: "CRM Pipeline",
       href: "/crm/pipeline",
       icon: GitBranch,
     },
     {
-      name: "Dashboard",
+      name: "CRM Dashboard",
       href: "/crm/dashboard",
       icon: Gauge,
     },
     {
-      name: "Leads",
+      name: "CRM Leads",
       href: "/crm/leads",
       icon: UserRoundSearch,
     },
     {
-      name: "Companies",
+      name: "CRM Companies",
       href: "/crm/companies",
       icon: Factory,
     },
     {
-      name: "Contacts",
+      name: "CRM Contacts",
       href: "/crm/contacts",
       icon: UserCheck,
     },
     {
-      name: "Activities",
+      name: "CRM Activities",
       href: "/crm/activities",
       icon: CalendarClock,
     },
     {
-      name: "Calendar",
+      name: "CRM Calendar",
       href: "/crm/calendar",
       icon: CalendarRange,
     },
     {
-      name: "Reports",
+      name: "CRM Reports",
       href: "/crm/reports",
       icon: LineChart,
     },
     {
-      name: "Settings",
+      name: "CRM Configuration",
       href: "/crm/settings",
       icon: Settings,
     },
   ];
 
   const filteredCrmNavigation = crmNavigation
-    .filter((item) => item && (item.roles ? item.roles.includes(userRole) : true))
-    .filter((item) => ['Pipeline', 'Dashboard', 'Leads', 'Activities', 'Calendar'].includes(item.name));
+    .filter((item) => item && (item.roles ? item.roles.includes(userRole) : true));
 
-  const taskNavigation = filteredNavigation.filter((item) =>
-    ['Projects', 'Requests', 'Chat', 'Meetings', 'Calendar', 'Timesheet', 'Reports', 'AI Hub', 'Creative AI', 'Marketing Support', 'Marketing Calendar'].includes(item.name)
-  )
-  const adminNavigation = filteredNavigation.filter((item) =>
-    ['Attendance', 'Live Monitor', 'Attendance Reports', 'Notifications', 'Users', 'Departments', 'Subscriptions', 'Activity Log', 'Settings', 'Clients', 'Invoices', 'MSA', 'Ledger', 'Companies', 'Bulk Leads', 'Leads'].includes(item.name)
-  )
+  const itemByName = filteredNavigation.reduce((acc, item) => {
+    acc[item.name] = item;
+    return acc;
+  }, {});
+
+  const dashboardNavigation = filteredNavigation.filter((item) => item.name === "Dashboard");
+
+  const navigationGroups = [
+    {
+      key: "workspace",
+      label: "Workspace",
+      items: ["Projects", "Service Requests", "Workspace Calendar", "Timesheet", "Workspace Reports", "My Team", "Workflows"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
+      key: "communication",
+      label: "Communication",
+      items: ["Notifications"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
+      key: "crm",
+      label: "CRM",
+      items: filteredCrmNavigation,
+    },
+    {
+      key: "ai-marketing",
+      label: "AI & Marketing",
+      items: ["AI Command Center", "Creative Studio", "Marketing Assistant", "Marketing Calendar"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
+      key: "finance",
+      label: "Finance",
+      items: ["Clients", "Invoices", "Ledger", "Agreements", "Subscriptions"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
+      key: "administration",
+      label: "Administration",
+      items: ["Users", "Departments", "Attendance", "Live Attendance", "Attendance Reports", "Company Directory", "Bulk Lead Import", "Audit Log", "Settings"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+  ].filter((group) => group.items.length);
 
   return (
     <>
@@ -480,122 +521,32 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </div>
               </div>
             ) : null}
-            <SectionLabel label="Workspace" collapsed={collapsed} />
-            {taskNavigation.map((item) => {
-              const isActive =
-                location.pathname === item.href ||
-                (item.match && location.pathname.startsWith(item.match));
-              return (
-                <div
-                  key={item.name}
-                  className="group flex items-center gap-1"
-                >
-                  <Link
-                    to={item.href}
-                    aria-current={isActive ? "page" : undefined}
-                    aria-label={item.name}
-                    onClick={onClose}
-                    className={`group relative flex flex-1 items-center rounded-2xl px-3 py-2.5 text-sm font-medium transition-all ${
-                      collapsed ? "lg:justify-center lg:px-0" : ""
-                    } ${
-                      isActive
-                        ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-[0_10px_24px_rgba(124,58,237,0.22)]"
-                        : "text-gray-700 hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
-                    }`}
-                  >
-                    <item.icon className={`h-5 w-5 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-white" : ""}`} />
-                    <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>
-                      {item.name}
-                    </span>
-                    {isActive ? <span className="ml-auto h-2 w-2 rounded-full bg-white/90" /> : null}
-                    {collapsed && <SidebarTooltip label={item.name} />}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => toggleFavorite(item.href)}
-                    className={`hidden lg:inline-flex rounded-xl p-1.5 text-gray-400 transition hover:bg-white hover:text-purple-500 dark:hover:bg-gray-900 ${collapsed ? 'lg:hidden' : ''}`}
-                    aria-label={favorites.includes(item.href) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
-                  >
-                    <Star className={`h-4 w-4 ${favorites.includes(item.href) ? 'fill-purple-500 text-purple-500' : ''}`} />
-                  </button>
-                </div>
-              );
-            })}
-            {filteredCrmNavigation.length ? (
-              <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-2 shadow-sm dark:border-purple-950/40 dark:bg-purple-950/20">
-                <button
-                  type="button"
-                  onClick={() => setCrmOpen((open) => !open)}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-500 transition-colors hover:bg-white/70 hover:text-purple-700 dark:text-gray-400 dark:hover:bg-gray-900/70 dark:hover:text-purple-200 ${collapsed ? "lg:hidden" : ""}`}
-                >
-                  <span>CRM</span>
-                  <ChevronDown className={`h-3 w-3 transition-transform ${crmOpen ? '' : '-rotate-90'}`} />
-                </button>
-                <div className={`space-y-1 ${crmOpen ? '' : 'hidden'}`}>
-                  {filteredCrmNavigation.map((item) => {
-                    const isActive =
-                      location.pathname === item.href ||
-                      location.pathname.startsWith(`${item.href}/`);
+            {dashboardNavigation.map((item) => (
+              <SidebarNavItem
+                key={item.name}
+                item={item}
+                location={location}
+                collapsed={collapsed}
+                onClose={onClose}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
+                showFavorite
+              />
+            ))}
 
-                    return (
-                      <Link
-                        key={item.name}
-                        to={item.href}
-                        aria-current={isActive ? "page" : undefined}
-                        aria-label={item.name}
-                        onClick={onClose}
-                        className={`group relative flex items-center rounded-2xl px-3 py-2.5 text-sm font-medium transition-all ${
-                          collapsed ? "lg:justify-center lg:px-0" : "ml-2"
-                        } ${
-                          isActive
-                            ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-[0_10px_24px_rgba(124,58,237,0.22)]"
-                            : "text-gray-700 hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
-                        }`}
-                      >
-                        <item.icon className={`h-4 w-4 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-white" : ""}`} />
-                        <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>
-                          {item.name}
-                        </span>
-                        {collapsed && <SidebarTooltip label={item.name} />}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            {adminNavigation.length ? (
-              <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-2 shadow-sm dark:border-purple-950/40 dark:bg-purple-950/20">
-                <div className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-500 ${collapsed ? "lg:hidden" : ""}`}>Admin</div>
-                <div className="space-y-1">
-                  {adminNavigation.slice(0, 6).map((item) => {
-                    const isActive =
-                      location.pathname === item.href ||
-                      (item.match && location.pathname.startsWith(item.match));
-                    return (
-                      <Link
-                        key={item.name}
-                        to={item.href}
-                        aria-current={isActive ? "page" : undefined}
-                        aria-label={item.name}
-                        onClick={onClose}
-                        className={`group relative flex items-center rounded-2xl px-3 py-2.5 text-sm font-medium transition-all ${
-                          collapsed ? "lg:justify-center lg:px-0" : ""
-                        } ${
-                          isActive
-                            ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-[0_10px_24px_rgba(124,58,237,0.22)]"
-                            : "text-gray-700 hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
-                        }`}
-                      >
-                        <item.icon className={`h-4 w-4 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-white" : ""}`} />
-                        <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.name}</span>
-                        {collapsed && <SidebarTooltip label={item.name} />}
-                      </Link>
-                    )
-                  })}
-                </div>
-              </div>
-            ) : null}
+            {navigationGroups.map((group) => (
+              <SidebarNavGroup
+                key={group.key}
+                group={group}
+                location={location}
+                collapsed={collapsed}
+                onClose={onClose}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
+                isOpen={openGroups[group.key] ?? true}
+                onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? true) }))}
+              />
+            ))}
           </nav>
 
           {/* User Info */}
@@ -667,6 +618,107 @@ function SectionLabel({ label, collapsed }) {
     <div className={`px-3 pt-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 ${collapsed ? 'lg:hidden' : ''}`}>
       {label}
     </div>
+  )
+}
+
+function SidebarNavGroup({
+  group,
+  location,
+  collapsed,
+  onClose,
+  favorites,
+  onToggleFavorite,
+  isOpen,
+  onToggle,
+}) {
+  const isGroupActive = group.items.some((item) => isNavItemActive(item, location))
+
+  return (
+    <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-2 shadow-sm dark:border-purple-950/40 dark:bg-purple-950/20">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] transition-colors hover:bg-white/70 hover:text-purple-700 dark:hover:bg-gray-900/70 dark:hover:text-purple-200 ${collapsed ? "lg:hidden" : ""} ${isGroupActive ? "text-purple-700 dark:text-purple-200" : "text-gray-500 dark:text-gray-400"}`}
+      >
+        <span>{group.label}</span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-200">
+            {group.items.length}
+          </span>
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+        </span>
+      </button>
+      <div className={`space-y-1 ${isOpen || collapsed ? '' : 'hidden'}`}>
+        {group.items.map((item) => (
+          <SidebarNavItem
+            key={`${group.key}-${item.name}`}
+            item={item}
+            location={location}
+            collapsed={collapsed}
+            onClose={onClose}
+            favorites={favorites}
+            onToggleFavorite={onToggleFavorite}
+            showFavorite={group.key !== "crm"}
+            nested={!collapsed}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SidebarNavItem({
+  item,
+  location,
+  collapsed,
+  onClose,
+  favorites,
+  onToggleFavorite,
+  showFavorite = false,
+  nested = false,
+}) {
+  const isActive = isNavItemActive(item, location)
+
+  return (
+    <div className="group flex items-center gap-1">
+      <Link
+        to={item.href}
+        aria-current={isActive ? "page" : undefined}
+        aria-label={item.name}
+        onClick={onClose}
+        className={`group relative flex flex-1 items-center rounded-2xl px-3 py-2.5 text-sm font-medium transition-all ${
+          collapsed ? "lg:justify-center lg:px-0" : nested ? "ml-1" : ""
+        } ${
+          isActive
+            ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-[0_10px_24px_rgba(124,58,237,0.22)]"
+            : "text-gray-700 hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
+        }`}
+      >
+        <item.icon className={`h-5 w-5 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-white" : ""}`} />
+        <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.name}</span>
+        {isActive && !collapsed ? <span className="ml-auto h-2 w-2 rounded-full bg-white/90" /> : null}
+        {collapsed && <SidebarTooltip label={item.name} />}
+      </Link>
+      {showFavorite ? (
+        <button
+          type="button"
+          onClick={() => onToggleFavorite(item.href)}
+          className={`hidden rounded-xl p-1.5 text-gray-400 transition hover:bg-white hover:text-purple-500 dark:hover:bg-gray-900 ${collapsed ? 'lg:hidden' : 'lg:inline-flex'}`}
+          aria-label={favorites.includes(item.href) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
+        >
+          <Star className={`h-4 w-4 ${favorites.includes(item.href) ? 'fill-purple-500 text-purple-500' : ''}`} />
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+function isNavItemActive(item, location) {
+  return (
+    location.pathname === item.href ||
+    (item.match && location.pathname.startsWith(item.match)) ||
+    location.pathname.startsWith(`${item.href}/`)
   )
 }
 

@@ -6,22 +6,29 @@ import { GlobalSearch } from '../components/GlobalSearch'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
 
 const BREADCRUMB_LABELS = {
-  dashboard: 'Dashboard',
+  dashboard: 'Main Dashboard',
   tasks: 'Tasks',
-  tickets: 'Requests',
+  tickets: 'Service Requests',
   chat: 'Chat',
   projects: 'Projects',
-  calendar: 'Calendar',
+  calendar: 'Workspace Calendar',
   meetings: 'Meetings',
   notifications: 'Notifications',
   'crm': 'CRM',
-  pipeline: 'Pipeline',
-  leads: 'Leads',
-  companies: 'Companies',
-  contacts: 'Contacts',
-  activities: 'Activities',
-  reports: 'Reports',
-  settings: 'Settings',
+  reports: 'Workspace Reports',
+  settings: 'System Settings',
+}
+
+const CRM_BREADCRUMB_LABELS = {
+  pipeline: 'CRM Pipeline',
+  dashboard: 'CRM Dashboard',
+  leads: 'CRM Leads',
+  companies: 'CRM Companies',
+  contacts: 'CRM Contacts',
+  activities: 'CRM Activities',
+  calendar: 'CRM Calendar',
+  reports: 'CRM Reports',
+  settings: 'CRM Configuration',
 }
 
 const MainLayout = () => {
@@ -30,10 +37,10 @@ const MainLayout = () => {
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
   const openSearch = () => setSearchOpen(true)
-  const breadcrumb = location.pathname
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => BREADCRUMB_LABELS[segment] || segment)
+  const pathSegments = location.pathname.split('/').filter(Boolean)
+  const isCrmPath = pathSegments[0] === 'crm'
+  const breadcrumb = pathSegments
+    .map((segment, index) => (isCrmPath && index > 0 ? CRM_BREADCRUMB_LABELS[segment] : BREADCRUMB_LABELS[segment]) || segment)
     .join(' / ')
 
   useKeyboardShortcut('k', openSearch, { ctrlKey: true })
@@ -47,7 +54,7 @@ const MainLayout = () => {
       {/* Main Content */}
       <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <Header title="Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
+        <Header title="Main Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
 
         {/* Page Content */}
         <main className={`min-w-0 flex-1 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 

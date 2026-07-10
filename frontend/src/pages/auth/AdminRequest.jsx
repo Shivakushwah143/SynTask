@@ -10,13 +10,14 @@ import {
   Mail,
   MapPin,
   Phone,
+  Sparkles,
   ShieldCheck,
   User,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { companiesAPI } from '../../api/companies'
 import { subscriptionsAPI } from '../../api/subscriptions'
-import { Button, inputClassName } from '../../components/ui'
+import { Button, FormField, inputClassName } from '../../components/ui'
 
 const paymentOptions = [
   { value: 'stripe', label: 'Stripe' },
@@ -54,6 +55,37 @@ const initialFormState = {
   payment_reference: '',
   notes: '',
 }
+
+const sectionClassName = 'rounded-lg border border-surface-border bg-white/90 p-5 shadow-sm dark:border-gray-800 dark:bg-gray-950'
+
+const SectionHeader = ({ icon: Icon, title, description }) => (
+  <div className="mb-5 flex items-start gap-3">
+    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700 dark:bg-primary-950/50 dark:text-primary-300">
+      <Icon className="h-5 w-5" aria-hidden="true" />
+    </span>
+    <div>
+      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+      <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-400">{description}</p>
+    </div>
+  </div>
+)
+
+const TextInput = ({ label, name, required = false, helperText, icon: Icon, className = '', ...props }) => (
+  <FormField label={label} htmlFor={name} required={required} helperText={helperText} className={className}>
+    <div className={Icon ? 'relative' : ''}>
+      {Icon ? <Icon className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-gray-400" aria-hidden="true" /> : null}
+      <input id={name} name={name} className={`${inputClassName} ${Icon ? 'pl-10' : ''}`} required={required} {...props} />
+    </div>
+  </FormField>
+)
+
+const SelectField = ({ label, name, required = false, children, ...props }) => (
+  <FormField label={label} htmlFor={name} required={required}>
+    <select id={name} name={name} className={inputClassName} required={required} {...props}>
+      {children}
+    </select>
+  </FormField>
+)
 
 const AdminRequest = () => {
   const navigate = useNavigate()
@@ -188,104 +220,111 @@ const AdminRequest = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600">Admin access</p>
-          <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">Request an admin account</h2>
-          <p className="max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-400">
-            Share company, billing, and onboarding details so our team can review access.
+    <div className="space-y-6 font-['Plus_Jakarta_Sans',theme(fontFamily.sans)]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-600">Admin access</p>
+          <h2 className="mt-2 text-2xl font-bold tracking-tight text-gray-950 dark:text-gray-50 sm:text-3xl">Request an admin account</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-400">
+            Tell us who should own the workspace. We will verify the company, activate the plan, and send access details.
           </p>
         </div>
-        <Link to="/login" className="inline-flex items-center gap-2 text-sm font-medium text-primary-600 hover:text-primary-700">
-          <ArrowLeft className="h-4 w-4" />
+        <Link to="/login" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-950/50">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back to sign in
         </Link>
       </div>
 
-      <div className="flex gap-3 rounded-2xl border border-primary-100 bg-primary-50/70 p-4 dark:border-primary-900/40 dark:bg-primary-950/30">
-        <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary-600 dark:text-primary-300" />
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">What happens next?</p>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            We verify details, activate the right plan, and send admin credentials to your email.
-          </p>
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <section className="rounded-2xl border border-surface-border bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
-          <div className="mb-4 flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-primary-600" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Company profile</h3>
+      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="space-y-3 rounded-lg border border-surface-border bg-surface-muted/80 p-4 dark:border-gray-800 dark:bg-gray-950">
+          {[
+            ['Company', 'Basic profile and size'],
+            ['Admin', 'Primary account owner'],
+            ['Billing', 'Plan and payment method'],
+          ].map(([title, description], index) => (
+            <div key={title} className="flex gap-3">
+              <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">
+                {index + 1}
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</p>
+                <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</p>
+              </div>
+            </div>
+          ))}
+          <div className="mt-4 rounded-lg border border-primary-100 bg-primary-50 p-3 dark:border-primary-900/40 dark:bg-primary-950/30">
+            <div className="flex items-start gap-2">
+              <Sparkles className="mt-0.5 h-4 w-4 text-primary-700 dark:text-primary-300" aria-hidden="true" />
+              <p className="text-xs leading-5 text-gray-700 dark:text-gray-300">Review usually completes after company and billing details are confirmed.</p>
+            </div>
           </div>
+        </aside>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <section className={sectionClassName}>
+          <SectionHeader
+            icon={Building2}
+            title="Company profile"
+            description="Start with the organization details we need for review and workspace setup."
+          />
           <div className="grid gap-4 md:grid-cols-2">
-            <input className={inputClassName} name="name" placeholder="Company name *" value={formData.name} onChange={handleChange} required />
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-gray-400" />
-              <input className={`${inputClassName} pl-10`} name="email" placeholder="Work email *" value={formData.email} onChange={handleChange} required />
-            </div>
-            <div className="relative">
-              <Phone className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-gray-400" />
-              <input className={`${inputClassName} pl-10`} name="phone" placeholder="Phone *" value={formData.phone} onChange={handleChange} required />
-            </div>
-            <div className="relative">
-              <Globe className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-gray-400" />
-              <input className={`${inputClassName} pl-10`} name="website" placeholder="Website" value={formData.website} onChange={handleChange} />
-            </div>
-            <input className={inputClassName} name="registration_number" placeholder="Registration number" value={formData.registration_number} onChange={handleChange} />
-            <input className={inputClassName} name="tax_id" placeholder="Tax ID" value={formData.tax_id} onChange={handleChange} />
-            <select className={inputClassName} name="industry" value={formData.industry} onChange={handleChange}>
+            <TextInput label="Company name" name="name" value={formData.name} onChange={handleChange} required />
+            <TextInput label="Work email" name="email" type="email" value={formData.email} onChange={handleChange} icon={Mail} required />
+            <TextInput label="Phone" name="phone" type="tel" value={formData.phone} onChange={handleChange} icon={Phone} required />
+            <TextInput label="Website" name="website" type="url" value={formData.website} onChange={handleChange} icon={Globe} />
+            <TextInput label="Registration number" name="registration_number" value={formData.registration_number} onChange={handleChange} />
+            <TextInput label="Tax ID" name="tax_id" value={formData.tax_id} onChange={handleChange} />
+            <SelectField label="Industry" name="industry" value={formData.industry} onChange={handleChange}>
               <option value="">Select industry</option>
               {industries.map((industry) => <option key={industry} value={industry.toLowerCase()}>{industry}</option>)}
-            </select>
-            <select className={inputClassName} name="company_size" value={formData.company_size} onChange={handleChange}>
+            </SelectField>
+            <SelectField label="Company size" name="company_size" value={formData.company_size} onChange={handleChange}>
               <option value="">Select company size</option>
               {companySizes.map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
-            <input className={inputClassName} name="seats_requested" type="number" min="1" placeholder="Seats requested" value={formData.seats_requested} onChange={handleChange} />
-            <input className={inputClassName} name="contact_role" placeholder="Role / title" value={formData.contact_role} onChange={handleChange} />
+            </SelectField>
+            <TextInput label="Seats requested" name="seats_requested" type="number" min="1" value={formData.seats_requested} onChange={handleChange} />
+            <TextInput label="Your role / title" name="contact_role" value={formData.contact_role} onChange={handleChange} />
           </div>
         </section>
 
-        <section className="rounded-2xl border border-surface-border bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
-          <div className="mb-4 flex items-center gap-2">
-            <MapPin className="h-5 w-5 text-primary-600" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Headquarters</h3>
-          </div>
+        <section className={sectionClassName}>
+          <SectionHeader
+            icon={MapPin}
+            title="Headquarters"
+            description="Optional location details help us prepare invoices and regional onboarding."
+          />
           <div className="grid gap-4 md:grid-cols-2">
-            <input className={inputClassName} name="address" placeholder="Address" value={formData.address} onChange={handleChange} />
-            <input className={inputClassName} name="city" placeholder="City" value={formData.city} onChange={handleChange} />
-            <input className={inputClassName} name="state" placeholder="State / region" value={formData.state} onChange={handleChange} />
-            <input className={inputClassName} name="country" placeholder="Country" value={formData.country} onChange={handleChange} />
-            <input className={inputClassName} name="zip_code" placeholder="Postal code" value={formData.zip_code} onChange={handleChange} />
+            <TextInput label="Address" name="address" value={formData.address} onChange={handleChange} className="md:col-span-2" />
+            <TextInput label="City" name="city" value={formData.city} onChange={handleChange} />
+            <TextInput label="State / region" name="state" value={formData.state} onChange={handleChange} />
+            <TextInput label="Country" name="country" value={formData.country} onChange={handleChange} />
+            <TextInput label="Postal code" name="zip_code" value={formData.zip_code} onChange={handleChange} />
           </div>
         </section>
 
-        <section className="rounded-2xl border border-surface-border bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
-          <div className="mb-4 flex items-center gap-2">
-            <User className="h-5 w-5 text-primary-600" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Primary admin contact</h3>
-          </div>
+        <section className={sectionClassName}>
+          <SectionHeader
+            icon={User}
+            title="Primary admin contact"
+            description="This person receives the first admin credentials and onboarding emails."
+          />
           <div className="grid gap-4 md:grid-cols-2">
-            <input className={inputClassName} name="admin_first_name" placeholder="First name *" value={formData.admin_first_name} onChange={handleChange} required />
-            <input className={inputClassName} name="admin_last_name" placeholder="Last name *" value={formData.admin_last_name} onChange={handleChange} required />
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-4 top-3.5 h-4 w-4 text-gray-400" />
-              <input className={`${inputClassName} pl-10`} name="admin_email" placeholder="Admin email *" value={formData.admin_email} onChange={handleChange} required />
-            </div>
-            <input className={inputClassName} name="secondary_email" placeholder="Secondary contact" value={formData.secondary_email} onChange={handleChange} />
+            <TextInput label="First name" name="admin_first_name" value={formData.admin_first_name} onChange={handleChange} required />
+            <TextInput label="Last name" name="admin_last_name" value={formData.admin_last_name} onChange={handleChange} required />
+            <TextInput label="Admin email" name="admin_email" type="email" value={formData.admin_email} onChange={handleChange} icon={Mail} required />
+            <TextInput label="Secondary contact email" name="secondary_email" type="email" value={formData.secondary_email} onChange={handleChange} />
           </div>
         </section>
 
-        <section className="rounded-2xl border border-surface-border bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
-          <div className="mb-4 flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-primary-600" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Subscription and billing</h3>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-4">
+        <section className={sectionClassName}>
+          <SectionHeader
+            icon={CreditCard}
+            title="Subscription and billing"
+            description="Choose a plan now, or submit with offline payment details for review."
+          />
+          <div className="grid gap-3 lg:grid-cols-2">
             {loadingPlans ? (
-              <div className="flex items-center justify-center py-8 lg:col-span-4">
+              <div className="flex items-center justify-center rounded-lg border border-dashed border-surface-border py-8 lg:col-span-2">
                 <Loader2 className="h-6 w-6 animate-spin text-primary-600" />
               </div>
             ) : (
@@ -295,16 +334,16 @@ const AdminRequest = () => {
                 return (
                   <label
                     key={plan.id}
-                    className={`cursor-pointer rounded-2xl border p-4 transition-colors ${
-                      isSelected ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/30' : 'border-surface-border bg-white hover:border-primary-200 dark:bg-gray-950'
+                    className={`cursor-pointer rounded-lg border p-4 transition-colors ${
+                      isSelected ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-500/10 dark:bg-primary-950/30' : 'border-surface-border bg-white hover:border-primary-200 dark:bg-gray-950'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-2">
-                        <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{plan.name}</p>
-                        <p className="text-2xl font-bold text-primary-600">${price}<span className="text-sm font-medium text-gray-500">/{formData.billing_cycle === 'annual' ? 'year' : 'month'}</span></p>
+                        <p className="text-base font-semibold text-gray-900 dark:text-gray-100">{plan.name}</p>
+                        <p className="text-2xl font-bold text-primary-700 dark:text-primary-300">${price}<span className="text-sm font-medium text-gray-500">/{formData.billing_cycle === 'annual' ? 'year' : 'month'}</span></p>
                       </div>
-                      <input type="radio" name="subscription_plan" value={plan.id} checked={isSelected} onChange={handleChange} />
+                      <input className="mt-1 h-4 w-4 accent-primary-600" type="radio" name="subscription_plan" value={plan.id} checked={isSelected} onChange={handleChange} />
                     </div>
                     <ul className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
                       {plan.features.map((feature, index) => (
@@ -321,55 +360,60 @@ const AdminRequest = () => {
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <select className={inputClassName} name="billing_cycle" value={formData.billing_cycle} onChange={handleChange}>
+            <SelectField label="Billing cycle" name="billing_cycle" value={formData.billing_cycle} onChange={handleChange}>
               <option value="monthly">Monthly</option>
               <option value="annual">Annual</option>
-            </select>
-            <select className={inputClassName} name="payment_method" value={formData.payment_method} onChange={handleChange}>
+            </SelectField>
+            <SelectField label="Payment method" name="payment_method" value={formData.payment_method} onChange={handleChange}>
               {paymentOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-            <input className={inputClassName} name="payment_reference" placeholder="Payment reference" value={formData.payment_reference} onChange={handleChange} />
+            </SelectField>
+            <TextInput label="Payment reference" name="payment_reference" value={formData.payment_reference} onChange={handleChange} />
           </div>
         </section>
 
-        <section className="rounded-2xl border border-surface-border bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
-          <div className="mb-4 flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-primary-600" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Notes for our team</h3>
-          </div>
-          <textarea
-            name="notes"
-            value={formData.notes}
-            onChange={handleChange}
-            className={`${inputClassName} min-h-28`}
-            placeholder="Security review, launch timing, procurement notes..."
+        <section className={sectionClassName}>
+          <SectionHeader
+            icon={ShieldCheck}
+            title="Notes for our team"
+            description="Add procurement, security, launch timing, or onboarding context."
           />
+          <FormField label="Additional notes" htmlFor="notes">
+            <textarea
+              id="notes"
+              name="notes"
+              value={formData.notes}
+              onChange={handleChange}
+              className={`${inputClassName} min-h-28 resize-y`}
+              placeholder="Example: We need SSO review before launch."
+            />
+          </FormField>
         </section>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="sticky bottom-0 -mx-1 flex flex-col gap-3 border-t border-surface-border bg-white/95 px-1 py-4 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-gray-500 dark:text-gray-400">
             By submitting, you agree to receive onboarding emails. Billing and admin details are encrypted.
           </p>
           <div className="flex gap-3">
             <Link
               to="/login"
-              className="inline-flex items-center justify-center rounded-xl border border-surface-border bg-white px-4 py-2.5 font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:bg-gray-950 dark:text-gray-100 dark:hover:bg-gray-900"
+              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-surface-border bg-white px-4 py-2.5 font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:bg-gray-950 dark:text-gray-100 dark:hover:bg-gray-900"
             >
               Cancel
             </Link>
-            <Button type="submit" loading={loading || loadingPlans}>
+            <Button type="submit" loading={loading || loadingPlans} size="lg" className="min-h-11">
               <ShieldCheck className="h-4 w-4" />
               {formData.subscription_plan === 'free' ? 'Submit request' : 'Continue to payment'}
             </Button>
           </div>
         </div>
       </form>
+      </div>
 
       {showPayment && paymentOrder ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-950">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-950">
             <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Complete payment</h3>
-            <div className="mt-4 rounded-xl bg-primary-50 p-4 dark:bg-primary-950/30">
+            <div className="mt-4 rounded-lg bg-primary-50 p-4 dark:bg-primary-950/30">
               <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Payment details</p>
               <div className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
                 <p>Plan: <span className="font-semibold capitalize">{formData.subscription_plan}</span></p>

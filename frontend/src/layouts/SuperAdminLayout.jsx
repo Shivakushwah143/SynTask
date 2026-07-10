@@ -37,7 +37,7 @@ const SuperAdminLayout = () => {
 
   const navigation = [
     {
-      name: 'Dashboard',
+      name: 'Admin Dashboard',
       href: '/super-admin/dashboard',
       icon: LayoutDashboard
     },
@@ -47,7 +47,7 @@ const SuperAdminLayout = () => {
       icon: Users
     },
     {
-      name: 'Companies',
+      name: 'Tenant Companies',
       href: '/super-admin/companies',
       icon: Building2
     },
@@ -72,7 +72,7 @@ const SuperAdminLayout = () => {
       icon: TrendingUp
     },
     {
-      name: 'Activity Logs',
+      name: 'Platform Audit Log',
       href: '/super-admin/activity',
       icon: Activity
     },
