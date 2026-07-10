@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Upload, AlertCircle, CheckCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Upload, AlertCircle, CheckCircle, AlertTriangle, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { salesApi } from '../api/sales'
 import { useQueryClient } from 'react-query'
@@ -16,6 +16,9 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
   const [processing, setProcessing] = useState(false)
   const [strategy, setStrategy] = useState('round-robin')
   const [targetUserId, setTargetUserId] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [importHistory, setImportHistory] = useState([])
+  const [importSummary, setImportSummary] = useState(null)
   const [step, setStep] = useState('upload') // 'upload' | 'preview' | 'importing'
   const employeeOptions = Array.isArray(users) ? users : []
 
@@ -135,9 +138,14 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
     // Find stage by name
     const stageName = row['stage'] || row['current_stage'] || ''
     if (stageName) {
-      const stage = stages?.find((s) => s.name?.toLowerCase() === stageName.toLowerCase())
+      const stage = stages?.find((s) => {
+        const candidate = `${s.name || ''}`.toLowerCase()
+        const candidateId = `${getId(s) || ''}`.toLowerCase()
+        const normalizedStage = stageName.trim().toLowerCase()
+        return candidate === normalizedStage || candidateId === normalizedStage
+      })
       if (stage) {
-        data.current_stage = getId(stage)
+        data.current_stage = stage.name || getId(stage)
       } else {
         errors.push(`Row ${rowNum}: Stage "${stageName}" not found`)
       }
@@ -190,8 +198,8 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
     const selectedFile = event.target.files?.[0]
     if (!selectedFile) return
 
-    if (!/\.csv$/i.test(selectedFile.name)) {
-      toast.error('Please select a CSV file')
+    if (!/\.(csv|xlsx)$/i.test(selectedFile.name)) {
+      toast.error('Please select a CSV or XLSX file')
       event.target.value = ''
       return
     }
@@ -210,21 +218,28 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
       return
     }
 
-    if (/\.csv$/i.test(file.name)) {
+    if (/\.(csv|xlsx)$/i.test(file.name)) {
       setProcessing(true)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const text = e.target?.result
-        parseCSV(text)
-        setProcessing(false)
-      }
-      reader.onerror = () => {
-        setProcessing(false)
-        toast.error('Could not read the selected file')
-      }
-      reader.readAsText(file)
+      salesApi.previewBulkUploadProspects({
+        file,
+        strategy,
+        target_user_id: targetUserId,
+        target_department_id: departmentId,
+      })
+        .then((response) => {
+          const payload = response?.data || response || {}
+          setData(payload.preview_rows || [])
+          setErrors((payload.failed_rows || []).map((item) => `Row ${item.row}: ${item.error}`))
+          setStep('preview')
+        })
+        .catch(() => {
+          toast.error('Could not preview the selected file')
+        })
+        .finally(() => {
+          setProcessing(false)
+        })
     } else {
-      toast.error('Excel file support requires additional library. Please use CSV format.')
+      toast.error('Please select a CSV or XLSX file')
     }
   }
 
@@ -244,11 +259,16 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
       if (strategy === 'manual' && targetUserId) {
         formData.append('target_user_id', targetUserId)
       }
+      if (departmentId) {
+        formData.append('target_department_id', departmentId)
+      }
       const result = await salesApi.bulkUploadProspects(formData)
-      const successCount = result.total_uploaded || result.success_count || 0
-      const importErrors = (result.failed_rows || []).map(
+      const payload = result?.data || result || {}
+      const successCount = payload.total_uploaded || payload.success_count || 0
+      const importErrors = (payload.failed_rows || []).map(
         (failure) => `Row ${failure.row}: ${failure.error}`
       )
+      const assignedCount = Object.values(payload.assigned_breakdown || {}).reduce((sum, count) => sum + Number(count || 0), 0)
 
       if (successCount > 0) {
         toast.success(`${successCount} prospect${successCount !== 1 ? 's' : ''} created`)
@@ -258,14 +278,22 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
         queryClient.invalidateQueries('crm-assigned-leads')
         queryClient.invalidateQueries('crm-lead-workspace')
         queryClient.invalidateQueries('sales-prospects')
-        onSuccess?.()
+        queryClient.invalidateQueries('crm-import-history')
+        setImportSummary({
+          total_uploaded: successCount,
+          skipped_rows: payload.skipped_rows || 0,
+          assigned_count: assignedCount,
+          warnings: payload.warnings || [],
+          strategy,
+        })
+        setStep('success')
       }
 
       if (importErrors.length > 0) {
         setErrors(importErrors)
         setStep('preview')
         toast.error(`${importErrors.length} prospect${importErrors.length !== 1 ? 's' : ''} failed to import`)
-      } else {
+      } else if (successCount === 0) {
         setFile(null)
         setData([])
         setErrors([])
@@ -288,13 +316,74 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
     setLoading(false)
     setStrategy('round-robin')
     setTargetUserId('')
+    setDepartmentId('')
+    setImportSummary(null)
     setStep('upload')
     onClose()
   }
 
+  useEffect(() => {
+    if (!isOpen) return
+    salesApi.getImportHistory()
+      .then((response) => setImportHistory(response?.data?.items || response?.items || []))
+      .catch(() => setImportHistory([]))
+  }, [isOpen])
+
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Bulk Import Prospects" size="lg">
-      {step === 'upload' && (
+      {step === 'success' ? (
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-surface-border/80 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Imported</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">{importSummary?.total_uploaded || 0}</p>
+            </div>
+            <div className="rounded-lg border border-surface-border/80 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Assigned</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">{importSummary?.assigned_count || 0}</p>
+            </div>
+            <div className="rounded-lg border border-surface-border/80 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Failed</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">{importSummary?.skipped_rows || 0}</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-surface-border/80 bg-gray-50 p-4">
+            <p className="text-sm font-semibold text-gray-900">Assignment strategy</p>
+            <p className="mt-1 text-sm text-gray-600">
+              {importSummary?.strategy === 'manual'
+                ? 'Manual assignment was used.'
+                : `Automatic ${importSummary?.strategy || strategy} assignment was used.`}
+            </p>
+          </div>
+
+          {importSummary?.warnings?.length ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                <AlertTriangle className="h-4 w-4" />
+                Failed or flagged rows
+              </p>
+              <div className="mt-2 max-h-36 space-y-1 overflow-auto text-sm text-amber-800">
+                {importSummary.warnings.slice(0, 8).map((item) => (
+                  <div key={`${item.row}-${item.reason}`}>Row {item.row}: {item.reason}</div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex justify-end">
+            <Button
+              onClick={() => {
+                onSuccess?.(importSummary)
+                handleClose()
+              }}
+            >
+              Open Sales Pipeline
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : step === 'upload' && (
         <form className="space-y-4" onSubmit={handleProcessFile}>
           <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center">
             <Upload className="mx-auto h-12 w-12 text-gray-400" />
@@ -407,7 +496,10 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
                   </thead>
                   <tbody>
                     {data.map((prospect, idx) => {
-                      const stage = stages?.find((s) => getId(s) === prospect.current_stage)
+                      const stage = stages?.find((s) => {
+                        const value = `${prospect.current_stage || ''}`.toLowerCase()
+                        return `${s.name || ''}`.toLowerCase() === value || `${getId(s) || ''}`.toLowerCase() === value
+                      })
                       return (
                         <tr key={idx} className="border-b hover:bg-gray-50">
                           <td className="px-3 py-2">
@@ -448,6 +540,20 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
           </div>
           <p className="text-sm font-medium text-gray-900">Importing prospects...</p>
           <p className="text-xs text-gray-500">This may take a moment</p>
+        </div>
+      )}
+
+      {importHistory.length > 0 && (
+        <div className="rounded-lg border border-gray-200 p-4">
+          <p className="text-sm font-semibold text-gray-900">Recent imports</p>
+          <div className="mt-2 space-y-2 text-xs text-gray-600">
+            {importHistory.slice(0, 3).map((job) => (
+              <div key={job.id} className="flex items-center justify-between gap-3">
+                <span>{job.filename || 'Import job'}</span>
+                <span>{job.total_uploaded}/{job.total_rows}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </Modal>

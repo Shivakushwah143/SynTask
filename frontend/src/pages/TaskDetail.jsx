@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
-  ArrowLeft, Trash2, Paperclip, Eye, History,
+  ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
   Zap, Sparkles
 } from 'lucide-react'
@@ -14,6 +14,7 @@ import { watchersApi } from '../api/watchers'
 import { changelogApi } from '../api/changelog'
 import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
+import { EmailComposer } from '../components/EmailComposer'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -48,6 +49,7 @@ const TaskDetail = () => {
   const [deleting, setDeleting] = useState(false)
   const [updatingWatch, setUpdatingWatch] = useState(false)
   const [updatingField, setUpdatingField] = useState(null)
+  const [composerOpen, setComposerOpen] = useState(false)
 
   useEffect(() => {
     if (taskId) {
@@ -113,6 +115,7 @@ const TaskDetail = () => {
         priority: data.priority,
         assigned_to: data.assigned_to || '',
         due_date: data.due_date ? format(new Date(data.due_date), "yyyy-MM-dd'T'HH:mm") : '',
+        estimated_hours: data.estimated_hours ?? '',
         tags: data.tags ? data.tags.join(', ') : '',
         issue_type_id: data.issue_type_id || '',
         component_id: data.component_id || '',
@@ -384,6 +387,7 @@ const TaskDetail = () => {
   }
 
   return (
+    <>
     <div className="h-full flex flex-col bg-white -m-6" style={{ minHeight: 'calc(100vh - 96px)' }}>
       {/* Top Header */}
       <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between bg-white">
@@ -410,6 +414,13 @@ const TaskDetail = () => {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setComposerOpen(true)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <Mail className="inline-block h-4 w-4 mr-1" />
+            Send Email
+          </button>
           <button className="p-2 hover:bg-gray-100 rounded">
             <Lock className="h-5 w-5 text-gray-600" />
           </button>
@@ -493,6 +504,33 @@ const TaskDetail = () => {
               </div>
             )}
           </div>
+
+          {isEditing && (
+            <div className="mb-6 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Due date</label>
+                <input
+                  type="datetime-local"
+                  value={editData.due_date || ''}
+                  onChange={(e) => setEditData({ ...editData, due_date: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  onBlur={handleSaveEdit}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Estimated hours</label>
+                <input
+                  type="number"
+                  min="0.25"
+                  step="0.25"
+                  value={editData.estimated_hours}
+                  onChange={(e) => setEditData({ ...editData, estimated_hours: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  onBlur={handleSaveEdit}
+                />
+              </div>
+            </div>
+          )}
 
           {/* AI Task Breakdown */}
           <div className="mb-6 rounded-2xl border border-primary-200 bg-primary-50/60 p-4 dark:border-primary-900/40 dark:bg-primary-950/20">
@@ -989,6 +1027,20 @@ const TaskDetail = () => {
         </div>
       </div>
     </div>
+      <EmailComposer
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        initialData={{
+          to: task?.assigned_to ? [{ email: users.find((item) => String(item.id) === String(task.assigned_to))?.email || '', name: users.find((item) => String(item.id) === String(task.assigned_to))?.first_name || '' }] : [],
+          subject: task?.title ? `Task update: ${task.title}` : 'Task update',
+          html: '<p>Hello,</p><p></p>',
+          text: 'Hello,',
+          related_entity_type: 'task',
+          related_entity_id: task?.id || '',
+          related_module: 'tasks',
+        }}
+      />
+    </>
   )
 }
 

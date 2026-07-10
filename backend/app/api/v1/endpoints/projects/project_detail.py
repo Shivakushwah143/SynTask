@@ -111,6 +111,7 @@ async def get_project(
         "description": project.description,
         "type": project.type.value,
         "status": project.status.value,
+        "client_id": project.client_id,
         "lead_id": project.lead_id,
         "team_member_ids": project.team_member_ids,
         "task_count": task_count,
@@ -153,5 +154,4 @@ async def get_project(
                     task_data["assigned_to_name"] = user.full_name()
     
     return response
-
 

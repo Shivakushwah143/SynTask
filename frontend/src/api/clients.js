@@ -19,6 +19,12 @@ export const clientsAPI = {
     return response.data
   },
 
+  // Get client workspace
+  getWorkspace: async (clientId) => {
+    const response = await api.get(`/clients/${clientId}/workspace`)
+    return response.data
+  },
+
   // Update client
   updateClient: async (clientId, formData) => {
     const response = await api.put(`/clients/${clientId}`, formData)
@@ -65,4 +71,3 @@ export const clientsAPI = {
     return response.data
   },
 }
-

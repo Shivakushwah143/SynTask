@@ -1,4 +1,5 @@
 import api from './axios'
+import { crmApi } from './crm'
 
 const toFormData = (data) => {
   const formData = new FormData()
@@ -29,14 +30,23 @@ export const salesApi = {
     if (payload?.file) formData.append('file', payload.file)
     if (payload?.strategy) formData.append('strategy', payload.strategy)
     if (payload?.target_user_id) formData.append('target_user_id', payload.target_user_id)
+    if (payload?.target_department_id) formData.append('target_department_id', payload.target_department_id)
     return api.post('/sales/prospects/bulk-upload', formData)
   },
+  previewBulkUploadProspects: (payload) => {
+    const formData = new FormData()
+    if (payload?.file) formData.append('file', payload.file)
+    if (payload?.strategy) formData.append('strategy', payload.strategy)
+    if (payload?.target_user_id) formData.append('target_user_id', payload.target_user_id)
+    if (payload?.target_department_id) formData.append('target_department_id', payload.target_department_id)
+    return api.post('/sales/prospects/bulk-upload/preview', formData)
+  },
+  getImportHistory: () => api.get('/sales/prospects/imports'),
+  retryImportJob: (id) => api.post(`/sales/prospects/imports/${id}/retry`),
   updateProspect: (id, data) => api.put(`/sales/prospects/${id}`, data),
   updateProspectForm: (id, data) => api.put(`/sales/prospects/${id}`, toFormData(data)),
   updateStage: (id, stageId) => {
-    const formData = new FormData()
-    formData.append('current_stage', stageId)
-    return api.put(`/sales/prospects/${id}`, formData)
+    return crmApi.updatePipelineStage(id, { stage: stageId })
   },
   getDuplicateProspects: (params) => api.get('/sales/prospects/duplicates', { params }),
   mergeProspects: (payload) => api.post('/sales/prospects/merge', payload),

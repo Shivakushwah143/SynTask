@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Calendar, User, MoreVertical, Search, Filter } from 'lucide-react'
+import { Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
@@ -12,6 +12,7 @@ import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
 import { useViewStore } from '../store/viewStore'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
+import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
 
 const Tasks = () => {
   const navigate = useNavigate()
@@ -37,6 +38,7 @@ const Tasks = () => {
   const [loadingDepartments, setLoadingDepartments] = useState(false)
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
   const [dueDateValue, setDueDateValue] = useState('')
+  const [estimatedHoursValue, setEstimatedHoursValue] = useState('')
 
   const statuses = [
     { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
@@ -164,11 +166,15 @@ const Tasks = () => {
     ? assignableUsers.filter((item) => item.department_id === selectedDepartmentId)
     : assignableUsers
 
+  const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks), [tasks])
+  const taskGraphSummary = useMemo(() => buildTaskGraphSummary(tasks), [tasks])
+
   const closeCreateModal = () => {
     if (submitting) return
     setShowCreateModal(false)
     setSelectedDepartmentId('')
     setDueDateValue('')
+    setEstimatedHoursValue('')
   }
 
   // Handle create task
@@ -180,6 +186,14 @@ const Tasks = () => {
     
     try {
       setSubmitting(true)
+      if (!dueDateValue.trim()) {
+        toast.error('Due date is required')
+        return
+      }
+      if (!estimatedHoursValue.trim()) {
+        toast.error('Estimated hours is required')
+        return
+      }
       
       const taskData = {
         title: formData.get('title'),
@@ -187,6 +201,7 @@ const Tasks = () => {
         assigned_to: formData.get('assigned_to') || '',
         priority: formData.get('priority') || 'medium',
         due_date: formData.get('due_date') || dueDateValue || '',
+        estimated_hours: formData.get('estimated_hours') || estimatedHoursValue || '',
       }
 
       if (isCompanyAdmin && selectedDepartmentId) {
@@ -198,6 +213,7 @@ const Tasks = () => {
       setShowCreateModal(false)
       setSelectedDepartmentId('')
       setDueDateValue('')
+      setEstimatedHoursValue('')
       await fetchTasks()
       e.target.reset()
     } catch (error) {
@@ -231,7 +247,7 @@ const Tasks = () => {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
         <div>
           <h1 className="text-lg font-bold text-gray-900">Tasks</h1>
-          <p className="text-gray-600 text-xs mt-0.5">Manage and track your tasks</p>
+          <p className="text-gray-600 text-xs mt-0.5">Track work and priorities.</p>
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle />
@@ -244,11 +260,19 @@ const Tasks = () => {
               className="btn btn-primary flex items-center justify-center w-full sm:w-auto"
             >
               <Plus className="h-4 w-4 mr-1.5" />
-              Create Task
+              New Task
             </button>
           )}
         </div>
       </div>
+
+      <TaskGraphPanel
+        rows={taskGraphRows}
+        summary={taskGraphSummary}
+        onOpenTask={(task) => {
+          handleTaskClick({ id: task.id, project_id: task.projectId })
+        }}
+      />
 
       {/* Search and Filters */}
       <div className="card">
@@ -275,7 +299,7 @@ const Tasks = () => {
         {showFilters && (
           <div className="mt-4 grid grid-cols-2 gap-4 pt-4 border-t">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
               <select
                 value={filters.priority}
                 onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
@@ -289,7 +313,7 @@ const Tasks = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assignee</label>
               <select
                 value={filters.assigned_to}
                 onChange={(e) => setFilters({ ...filters, assigned_to: e.target.value })}
@@ -305,7 +329,7 @@ const Tasks = () => {
               </div>
             {isCompanyAdmin && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                 <select
                   value={filters.department_id}
                   onChange={(e) => setFilters({ ...filters, department_id: e.target.value })}
@@ -451,11 +475,11 @@ const Tasks = () => {
       {canManageTasks && showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Create New Task</h2>
+              <h2 className="text-xl font-bold mb-4">New task</h2>
             <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title *
+                  Title
                 </label>
                 <input
                   type="text"
@@ -467,7 +491,7 @@ const Tasks = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
+                  Details
                 </label>
                 <textarea
                   name="description"
@@ -478,7 +502,7 @@ const Tasks = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Assign To
+                  Assignee
                 </label>
                 <select
                   name="assigned_to"
@@ -498,8 +522,8 @@ const Tasks = () => {
                 {!loadingUsers && visibleAssignableUsers.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">
                     {userRole === ROLE.ADMIN 
-                      ? 'No leads or employees available. Create users first.'
-                      : 'No employees available. Create employees first.'}
+                      ? 'No leads or employees available yet.'
+                      : 'No employees available yet.'}
                   </p>
                 )}
               </div>
@@ -540,14 +564,30 @@ const Tasks = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Due Date
+                  Due date
                 </label>
                 <NaturalDateInput
                   value={dueDateValue}
                   onChange={(value) => setDueDateValue(value)}
                   onDateResolved={(date) => setDueDateValue(date ? date.toISOString() : '')}
                 />
-                <input type="hidden" name="due_date" value={dueDateValue} />
+                <input type="hidden" name="due_date" value={dueDateValue} required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Estimated hours
+                </label>
+                <input
+                  type="number"
+                  name="estimated_hours"
+                  min="0.25"
+                  step="0.25"
+                  required
+                  value={estimatedHoursValue}
+                  onChange={(event) => setEstimatedHoursValue(event.target.value)}
+                  className="input"
+                  placeholder="8"
+                />
               </div>
               <div className="flex space-x-3 pt-4">
                 <button
@@ -555,7 +595,7 @@ const Tasks = () => {
                   disabled={submitting}
                   className="btn btn-primary flex-1"
                 >
-                  {submitting ? 'Creating...' : 'Create Task'}
+                  {submitting ? 'Creating...' : 'Create'}
                 </button>
                 <button
                   type="button"
@@ -571,6 +611,102 @@ const Tasks = () => {
         </div>
       )}
 
+    </div>
+  )
+}
+
+function TaskGraphPanel({ rows, summary, onOpenTask }) {
+  return (
+    <section className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Tasks</h2>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">?</span>
+        </div>
+        <div className="hidden flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400 sm:flex">
+          {Object.entries(TASK_GRAPH_PRIORITY_COLORS).map(([priority, color]) => (
+            <span key={priority} className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+              {priority.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid border-b border-gray-200 dark:border-gray-800 sm:grid-cols-3">
+        <TaskGraphStat icon={ListTodo} label="Total tasks" value={summary.total} />
+        <TaskGraphStat icon={Calendar} label="Active tasks" value={summary.active} muted />
+        <TaskGraphStat icon={CheckCircle2} label="Completed" value={summary.completed} muted />
+      </div>
+
+      <div className="p-3">
+        {rows.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {rows.map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => onOpenTask(task)}
+                title={`${task.title}: ${task.statusLabel}, ${task.priorityLabel} priority, ${task.progress}% progress`}
+                className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-700 dark:hover:bg-gray-950"
+              >
+                <div className="flex items-start gap-3">
+                  <TaskProgressRing value={task.progress} color={task.priorityColor} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold leading-5 text-gray-900 dark:text-gray-100">{task.title}</p>
+                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">{task.assignee}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">{task.statusLabel}</span>
+                      <span className="rounded-full px-2 py-0.5 text-xs font-medium text-white" style={{ backgroundColor: task.priorityColor }}>{task.priorityLabel}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>Status Progress</span>
+                    <span>{task.progress}%</span>
+                  </div>
+                  {/* <TaskStatusBar value={task.progress} color={task.priorityColor} /> */}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No task graph data" description="Tasks will appear here when they match your filters." />
+        )}
+      </div>
+    </section>
+  )
+}
+
+function TaskGraphStat({ icon: Icon, label, value, muted = false }) {
+  return (
+    <div className={`flex items-center gap-2 px-4 py-3 ${muted ? 'border-t border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/50 sm:border-l sm:border-t-0' : ''}`}>
+      <Icon className={`h-5 w-5 ${muted ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`} />
+      <div>
+        <p className={`text-lg font-semibold tabular-nums ${muted ? 'text-gray-600 dark:text-gray-300' : 'text-gray-900 dark:text-gray-100'}`}>{value}</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+function TaskProgressRing({ value, color }) {
+  const bounded = Math.max(0, Math.min(100, value || 0))
+  return (
+    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(${color} ${bounded * 3.6}deg, #eeeeee 0deg)` }}>
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+        {bounded}%
+      </div>
+    </div>
+  )
+}
+
+function TaskStatusBar({ value, color }) {
+  const bounded = Math.max(0, Math.min(100, value || 0))
+  return (
+    <div className="h-2.5 overflow-hidden rounded-sm bg-gray-100 dark:bg-gray-800">
+      <div className="h-full rounded-sm" style={{ width: `${bounded}%`, backgroundColor: color }} />
     </div>
   )
 }

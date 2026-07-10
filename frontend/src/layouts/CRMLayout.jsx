@@ -19,9 +19,9 @@ const CRMLayout = () => {
       ? 'Leads'
       : CRM_ROUTE_LABELS[routePath] || 'CRM'
   const description = routePath.startsWith('/crm/companies/')
-    ? 'Company workspace for account management and related contacts.'
+    ? 'Company workspace for accounts and contacts.'
     : routePath.startsWith('/crm/leads/')
-      ? 'Lead workspace for the selected CRM record.'
+      ? 'Lead workspace for the selected record.'
       : CRM_ROUTE_DESCRIPTIONS[routePath] || 'Workspace foundation for agency relationships.'
   const searchPlaceholder = routePath.startsWith('/crm/companies')
     ? 'Search companies'

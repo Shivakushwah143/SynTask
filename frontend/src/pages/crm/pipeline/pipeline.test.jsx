@@ -16,8 +16,8 @@ const pipelineResponse = {
   meta: { currency: 'INR' },
   stages: [
     {
-      key: 'lead',
-      name: 'Lead',
+      key: 'new',
+      name: 'New',
       order: 1,
       leads: [
         {
@@ -30,7 +30,7 @@ const pipelineResponse = {
           deal_value: 250000,
           days_in_stage: 4,
           created_at: '2026-06-20T00:00:00.000Z',
-          current_stage: 'lead',
+          current_stage: 'new',
         },
       ],
     },
@@ -50,7 +50,7 @@ const renderWithDnd = (ui) => render(<DndContext>{ui}</DndContext>)
 describe('crm pipeline helpers', () => {
   it('normalizes board data from the pipeline response', () => {
     expect(board.stages).toHaveLength(2)
-    expect(board.leadIndex['lead-1']).toEqual({ stageKey: 'lead', stageName: 'Lead' })
+    expect(board.leadIndex['lead-1']).toEqual({ stageKey: 'new', stageName: 'New' })
   })
 
   it('filters leads by search and metadata', () => {
@@ -64,7 +64,7 @@ describe('crm pipeline helpers', () => {
       maxValue: '',
       createdFrom: '',
       createdTo: '',
-      stage: 'lead',
+      stage: 'new',
     })
     expect(filtered).toHaveLength(1)
   })
@@ -76,7 +76,7 @@ describe('crm pipeline helpers', () => {
       days_in_stage: 0,
     })
 
-    expect(moved.stages.find((stage) => stage.key === 'lead').leadCount).toBe(0)
+    expect(moved.stages.find((stage) => stage.key === 'new').leadCount).toBe(0)
     expect(moved.stages.find((stage) => stage.key === 'qualified').leadCount).toBe(1)
     expect(moved.leadIndex['lead-1']).toEqual({ stageKey: 'qualified', stageName: 'Qualified' })
   })
@@ -93,11 +93,11 @@ describe('crm pipeline ui', () => {
       />
     )
 
-    expect(screen.getByLabelText('Lead stage')).toBeInTheDocument()
+    expect(screen.getByLabelText('New stage')).toBeInTheDocument()
     expect(screen.getByLabelText('Qualified stage')).toBeInTheDocument()
     expect(screen.getByText('Acme Pvt Ltd')).toBeInTheDocument()
     expect(screen.getByText('Priya Shah')).toBeInTheDocument()
-    expect(screen.getByText('AI')).toBeInTheDocument()
+    expect(screen.getByText('high')).toBeInTheDocument()
   })
 
   it('renders the empty board state', () => {
@@ -121,8 +121,8 @@ describe('crm pipeline ui', () => {
         <PipelineLeadCard
           lead={board.stages[0].leads[0]}
           stage={{
-            key: 'lead',
-            name: 'Lead',
+            key: 'new',
+            name: 'New',
             previousStageKey: null,
             nextStageKey: 'qualified',
           }}

@@ -51,20 +51,19 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
         console.log('Ticket card clicked (container):', ticket)
         onClick?.(ticket)
       }}
-      className="p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+      className="rounded-2xl border border-purple-100/80 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-[0_14px_32px_rgba(124,58,237,0.10)] dark:border-gray-800 dark:bg-gray-950"
     >
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-start gap-2">
-          {/* Drag handle - only this small icon is draggable */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
           <span
-            className="cursor-grab text-gray-400 mt-0.5"
+            className="mt-0.5 cursor-grab text-gray-300 transition group-hover:text-purple-400"
             {...useSortable({ id: ticket.id }).attributes}
             {...useSortable({ id: ticket.id }).listeners}
             onClick={(e) => e.stopPropagation()}
           >
-            <GripVertical className="h-3 w-3" />
+            <GripVertical className="h-4 w-4" />
           </span>
-          <p className="font-medium text-gray-900 text-sm flex-1">
+          <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-gray-900 dark:text-gray-100">
             {ticket.title}
           </p>
         </div>
@@ -74,44 +73,42 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
       </div>
 
       {ticket.description && (
-        <p className="text-xs text-gray-500 mb-2 line-clamp-2">
+        <p className="mb-3 mt-3 line-clamp-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
           {ticket.description}
         </p>
       )}
 
-      <div className="flex items-center justify-between mt-2">
-        <span className={`text-xs ${priorities[ticket.priority]?.color || 'text-gray-600'}`}>
-          {priorities[ticket.priority]?.label || ticket.priority}
-        </span>
-        {ticket.created_at && (
-          <div className="flex items-center text-xs text-gray-500">
-            <Calendar className="h-3 w-3 mr-1" />
-            {format(new Date(ticket.created_at), 'MMM d')}
-          </div>
-        )}
-      </div>
-
-      {ticket.assigned_to && (
-        <div className="flex items-center mt-2 text-xs text-gray-500">
-          <User className="h-3 w-3 mr-1" />
-          Assigned
+      <div className="grid gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+        <div className="flex items-center justify-between gap-2">
+          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${ticketPriorityPill(ticket.priority)}`}>
+            {priorities[ticket.priority]?.label || ticket.priority}
+          </span>
+          {ticket.created_at ? (
+            <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
+              <Calendar className="mr-1 h-3.5 w-3.5" />
+              {format(new Date(ticket.created_at), 'MMM d')}
+            </div>
+          ) : null}
         </div>
-      )}
 
-      {/* Explicit View button so users can clearly open the full ticket details */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          console.log('View button clicked for ticket:', ticket)
-          if (onClick) {
-            onClick(ticket)
-          }
-        }}
-        className="mt-3 text-xs font-medium text-primary-600 hover:text-primary-800 underline"
-      >
-        View / Edit Request
-      </button>
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <User className="h-3.5 w-3.5" />
+          <span>{ticket.assigned_to ? 'Assigned' : 'Unassigned'}</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            if (onClick) {
+              onClick(ticket)
+            }
+          }}
+          className="inline-flex w-fit items-center rounded-full bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 transition hover:bg-purple-100 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/70"
+        >
+          Open
+        </button>
+      </div>
     </div>
   )
 }
@@ -122,10 +119,13 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
   return (
     <div
       ref={setNodeRef}
-      className={`card transition-colors ${isOver ? 'ring-2 ring-primary-100 bg-primary-50/40' : ''}`}
+      className={`rounded-[28px] border bg-gradient-to-b p-4 shadow-sm transition-colors ${isOver ? 'ring-2 ring-purple-200 bg-purple-50/40' : 'border-purple-100 bg-white/90 dark:border-gray-800 dark:bg-gray-950'}`}
     >
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">{status.label}</h3>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100">{status.label}</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{columnSubtitle(status.id)}</p>
+        </div>
         <div className="flex items-center gap-2">
           <span className="badge badge-secondary text-xs">
             {tickets.length}
@@ -137,7 +137,7 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
                   e.stopPropagation()
                   onEditColumn(status)
                 }}
-                className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-gray-700"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-white/70 hover:text-purple-600 dark:hover:bg-gray-900"
                 title="Edit column"
               >
                 <Edit className="h-4 w-4" />
@@ -147,7 +147,7 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
                   e.stopPropagation()
                   onDeleteColumn(status)
                 }}
-                className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-red-600"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-white/70 hover:text-red-500 dark:hover:bg-gray-900"
                 title="Delete column"
               >
                 <Trash2 className="h-4 w-4" />
@@ -161,10 +161,10 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
         items={tickets.map(t => t.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="space-y-3 min-h-[200px]">
+        <div className="min-h-[220px] space-y-3">
           {tickets.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 text-sm">
-              No requests
+            <div className="rounded-2xl border border-dashed border-purple-200 bg-white/70 py-10 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-950/60">
+              No requests in this stage
             </div>
           ) : (
             tickets.map((ticket) => (
@@ -568,51 +568,54 @@ const Tickets = () => {
 
   return (
     <div className="p-4">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Requests</h1>
-          <p className="text-gray-600 text-xs mt-0.5">Support and issue tracking</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {canManageColumns && (
+      <div className="mb-4 rounded-[28px] border border-purple-100 bg-gradient-to-r from-white via-white to-purple-50/70 p-5 shadow-sm dark:border-gray-800 dark:from-gray-950 dark:via-gray-950 dark:to-gray-900">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-purple-500">Support</p>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Requests</h1>
+            <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+              Track issues and move work across stages.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {canManageColumns && (
+              <button
+                onClick={() => {
+                  setEditingColumn(null)
+                  setColumnForm({ label: '', color: 'badge-secondary' })
+                  setShowColumnModal(true)
+                }}
+                className="btn btn-secondary flex items-center justify-center"
+                title="Manage columns"
+              >
+                <Settings className="h-4 w-4 mr-1.5" />
+                Columns
+              </button>
+            )}
+            {canManageRequests && userRole === ROLE.LEAD && (
+              <Link
+                to="/tasks?createTask=true"
+                className="btn btn-outline flex items-center justify-center w-full sm:w-auto"
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
+                Add Task
+              </Link>
+            )}
             <button
-              onClick={() => {
-                setEditingColumn(null)
-                setColumnForm({ label: '', color: 'badge-secondary' })
-                setShowColumnModal(true)
-              }}
-              className="btn btn-secondary flex items-center justify-center"
-              title="Manage columns"
-            >
-              <Settings className="h-4 w-4 mr-1.5" />
-              Columns
-            </button>
-          )}
-          {canManageRequests && userRole === ROLE.LEAD && (
-            <Link
-              to="/tasks?createTask=true"
-              className="btn btn-outline flex items-center justify-center w-full sm:w-auto"
+              onClick={() => setShowCreateModal(true)}
+              className="btn btn-primary flex items-center justify-center w-full sm:w-auto shadow-[0_14px_30px_rgba(124,58,237,0.24)]"
             >
               <Plus className="h-4 w-4 mr-1.5" />
-              Add Task
-            </Link>
-          )}
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="btn btn-primary flex items-center justify-center w-full sm:w-auto"
-          >
-            <Plus className="h-4 w-4 mr-1.5" />
-            Create Request
-          </button>
+                New
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="card">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="mb-4 rounded-[28px] border border-purple-100 bg-white/90 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-950/90">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Priority</label>
             <select
               value={filters.priority}
               onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
@@ -625,7 +628,7 @@ const Tickets = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Type</label>
             <select
               value={filters.type}
               onChange={(e) => setFilters({ ...filters, type: e.target.value })}
@@ -647,7 +650,7 @@ const Tickets = () => {
         onDragStart={(event) => setActiveId(event.active.id)}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
           {statuses.sort((a, b) => (a.order || 0) - (b.order || 0)).map((status) => {
             const statusTickets = getTicketsByStatus(status.id)
             return (
@@ -667,8 +670,8 @@ const Tickets = () => {
         </div>
         <DragOverlay>
           {activeId ? (
-            <div className="p-3 bg-white rounded-lg border border-gray-200 shadow-lg">
-              Dragging...
+            <div className="rounded-2xl border border-purple-200 bg-white px-4 py-3 shadow-lg">
+              Moving request
             </div>
           ) : null}
         </DragOverlay>
@@ -677,9 +680,9 @@ const Tickets = () => {
       {/* Create Ticket Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
+          <div className="max-h-screen w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl dark:bg-gray-950">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Create New Request</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">New Request</h2>
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -690,7 +693,7 @@ const Tickets = () => {
             <form onSubmit={handleCreateTicket} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title *
+                  Title
                 </label>
                 <input
                   type="text"
@@ -702,7 +705,7 @@ const Tickets = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description *
+                  Details
                 </label>
                 <textarea
                   name="description"
@@ -714,7 +717,7 @@ const Tickets = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Type
+                  Category
                 </label>
                 <select name="type" className="input">
                   <option value="support">Support</option>
@@ -737,7 +740,7 @@ const Tickets = () => {
               {assignableUsers.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assign To (Optional)
+                    Assignee
                   </label>
                   <select name="assigned_to" className="input">
                     <option value="">Unassigned</option>
@@ -752,10 +755,10 @@ const Tickets = () => {
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     {userRole === ROLE.EMPLOYEE
-                      ? 'Assign this request to a Lead or Admin'
+                      ? 'Lead or Admin.'
                       : userRole === ROLE.LEAD
-                        ? 'Assign this request to anyone in the company'
-                        : 'Assign this request to a team member'}
+                        ? 'Anyone in the company.'
+                        : 'Team member.'}
                   </p>
                 </div>
               )}
@@ -765,7 +768,7 @@ const Tickets = () => {
                   disabled={submitting}
                   className="btn btn-primary flex-1"
                 >
-                  {submitting ? 'Creating...' : 'Create Request'}
+                  {submitting ? 'Creating...' : 'Create'}
                 </button>
                 <button
                   type="button"
@@ -799,15 +802,15 @@ const Tickets = () => {
       {/* Column Management Modal */}
       {canManageColumns && showColumnModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-gray-950">
+            <h2 className="mb-4 text-xl font-bold text-gray-900 dark:text-gray-100">
               {editingColumn ? 'Edit Column' : 'Create Column'}
             </h2>
             <form onSubmit={handleColumnSubmit}>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Column Name *
+                    Column name
                   </label>
                   <input
                     type="text"
@@ -846,7 +849,7 @@ const Tickets = () => {
                       onClick={() => handleDeleteColumn(editingColumn)}
                       className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                     >
-                      Delete Column
+                      Delete
                     </button>
                   </div>
                 )}
@@ -857,7 +860,7 @@ const Tickets = () => {
                   type="submit"
                   className="btn btn-primary flex-1"
                 >
-                  {editingColumn ? 'Update Column' : 'Create Column'}
+                  {editingColumn ? 'Save' : 'Create'}
                 </button>
                 <button
                   type="button"
@@ -880,3 +883,37 @@ const Tickets = () => {
 }
 
 export default Tickets
+
+function ticketPriorityPill(priority) {
+  switch (priority) {
+    case 'urgent':
+      return 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200'
+    case 'high':
+      return 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200'
+    case 'medium':
+      return 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200'
+    case 'low':
+      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
+    default:
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'
+  }
+}
+
+function columnSubtitle(statusId) {
+  switch (statusId) {
+    case 'open':
+      return 'New issues to review.'
+    case 'in_progress':
+      return 'Work in motion.'
+    case 'waiting_for_customer':
+      return 'Waiting on a reply.'
+    case 'resolved':
+      return 'Ready for review.'
+    case 'closed':
+      return 'Archived requests.'
+    case 'reopened':
+      return 'Needs another look.'
+    default:
+      return 'Requests in this stage.'
+  }
+}

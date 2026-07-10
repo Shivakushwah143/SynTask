@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from 'react-query'
 import { Bar, BarChart, CartesianGrid, Line, LineChart, Pie, PieChart, ResponsiveContainer, XAxis, YAxis, Cell } from 'recharts'
 import { BarChart3 } from 'lucide-react'
@@ -28,6 +29,9 @@ export default function Reports() {
                 {item}
               </Button>
             ))}
+            <Button as={Link} to="/subscriptions" variant="secondary" size="sm">
+              Renewal
+            </Button>
           </div>
         )}
       />
@@ -83,6 +87,20 @@ export default function Reports() {
           </ChartCard>
         </div>
       )}
+
+      <section className="card p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Renewal handoff</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Move from performance review into the subscription renewal workspace.
+            </p>
+          </div>
+          <Button as={Link} to="/subscriptions">
+            Open Renewal
+          </Button>
+        </div>
+      </section>
     </div>
   )
 }

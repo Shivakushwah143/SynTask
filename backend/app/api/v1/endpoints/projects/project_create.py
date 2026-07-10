@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.models.client import Client
 from app.events import publish_event
 from app.events.factories import build_domain_event
 
@@ -13,6 +14,7 @@ async def create_project(
     key: str = Form(...),
     description: Optional[str] = Form(None),
     type: str = Form("software"),
+    client_id: Optional[str] = Form(None),
     lead_id: Optional[str] = Form(None),
     assigned_to: Optional[str] = Form(None),
     start_date: Optional[str] = Form(None),
@@ -69,6 +71,15 @@ async def create_project(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Invalid lead"
             )
+
+    client = None
+    if client_id:
+        client = await Client.get(client_id)
+        if not client or client.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Invalid client"
+            )
     
     # Validate assigned user if provided
     assigned_user = None
@@ -121,6 +132,7 @@ async def create_project(
         "project_id": final_project_id,  # User द्वारा enter किया गया unique project_id store करें
         "description": description,
         "company_id": current_user.company_id,
+        "client_id": client_id,
         "type": project_type,
         "lead_id": lead_id,
         "assigned_to": assigned_to,
@@ -180,6 +192,13 @@ async def create_project(
         # Also set on model so Beanie state is correct
         project.project_id = final_project_id
         await project.save()
+
+    if client:
+        client_project_ids = [str(item) for item in (client.project_ids or [])]
+        if str(project.id) not in client_project_ids:
+            client.project_ids = client_project_ids + [str(project.id)]
+        client.updated_at = datetime.utcnow()
+        await client.save()
     
     # Immediately refresh and verify user-provided project_id was saved correctly
     project_refreshed = await Project.get(project.id)
@@ -244,6 +263,7 @@ async def create_project(
                 "name": project.name,
                 "description": project.description,
                 "status": project.status.value if getattr(project, "status", None) else None,
+                "client_id": project.client_id,
                 "updated_at": project.updated_at.isoformat() if getattr(project, "updated_at", None) else None,
             },
             project_id=str(project.project_id or project.id),

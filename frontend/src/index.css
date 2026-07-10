@@ -19,11 +19,12 @@
   }
 
   :root {
-    --color-app-bg: theme('colors.surface.muted');
-    --color-app-surface: theme('colors.surface.DEFAULT');
-    --color-app-surface-muted: theme('colors.surface.muted');
-    --color-app-surface-subtle: theme('colors.surface.subtle');
-    --color-app-border: theme('colors.surface.border');
+    --color-app-bg: linear-gradient(180deg, #f8fdf9 0%, #f4fbf6 28%, #eef7f0 100%);
+    --color-app-bg-solid: theme('colors.surface.muted');
+    --color-app-surface: rgba(255, 255, 255, 0.88);
+    --color-app-surface-muted: rgba(248, 252, 249, 0.92);
+    --color-app-surface-subtle: rgba(240, 247, 241, 0.95);
+    --color-app-border: theme('colors.emerald.100');
     --color-app-text: theme('colors.text.primary');
     --color-app-text-secondary: theme('colors.text.secondary');
     --color-app-text-muted: theme('colors.text.muted');
@@ -53,7 +54,11 @@
   body {
     @apply antialiased;
     margin: 0;
-    background: var(--color-app-bg);
+    background:
+      radial-gradient(circle at top left, rgb(16 185 129 / 0.08), transparent 28%),
+      radial-gradient(circle at top right, rgb(59 130 246 / 0.06), transparent 22%),
+      radial-gradient(circle at bottom left, rgb(34 197 94 / 0.07), transparent 26%),
+      var(--color-app-bg);
     color: var(--color-app-text);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
@@ -138,7 +143,7 @@
     @apply min-w-0 max-w-full rounded-2xl border p-4 dark:shadow-none;
     background: var(--color-app-surface);
     border-color: var(--color-app-border);
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 10px 30px -22px rgb(16 185 129 / 0.35), var(--shadow-sm);
   }
 
   .page-header {
@@ -233,14 +238,36 @@
     background-color: theme('colors.gray.900');
   }
 
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-white {
+    background-color: rgba(255, 255, 255, 0.88);
+  }
+
   :where(html.dark, html[data-theme='dark']) .bg-gray-50,
   :where(html.dark, html[data-theme='dark']) .bg-gray-50\/60 {
     background-color: theme('colors.gray.950');
   }
 
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50,
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/60 {
+    background-color: rgba(243, 250, 245, 0.95);
+  }
+
   :where(html.dark, html[data-theme='dark']) .bg-gray-100,
   :where(html.dark, html[data-theme='dark']) .bg-gray-200 {
     background-color: theme('colors.gray.800');
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100,
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-200 {
+    background-color: rgba(233, 246, 236, 0.95);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-surface-muted {
+    background-color: rgba(244, 251, 245, 0.96);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-surface-subtle {
+    background-color: rgba(236, 248, 239, 0.96);
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-gray-300 {
@@ -287,6 +314,13 @@
   :where(html.dark, html[data-theme='dark']) .border-gray-300,
   :where(html.dark, html[data-theme='dark']) .border-surface-border {
     border-color: theme('colors.gray.800');
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .border-gray-100,
+  :where(html:not(.dark):not([data-theme='dark'])) .border-gray-200,
+  :where(html:not(.dark):not([data-theme='dark'])) .border-gray-300,
+  :where(html:not(.dark):not([data-theme='dark'])) .border-surface-border {
+    border-color: theme('colors.emerald.100');
   }
 
   :where(html.dark, html[data-theme='dark']) .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
@@ -353,5 +387,11 @@
   :where(html.dark, html[data-theme='dark']) .hover\:bg-gray-100:hover,
   :where(html.dark, html[data-theme='dark']) .hover\:bg-gray-200:hover {
     background-color: theme('colors.gray.800');
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-gray-50:hover,
+  :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-gray-100:hover,
+  :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-gray-200:hover {
+    background-color: rgba(225, 245, 231, 0.95);
   }
 }

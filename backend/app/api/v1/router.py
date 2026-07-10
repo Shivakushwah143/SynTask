@@ -8,7 +8,7 @@ from app.api.v1.endpoints import (
     auth, users, companies, tasks, notifications, dashboard, files, reports, 
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
-    sales, search, departments, attendance
+    sales, search, departments, attendance, notification_emails
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import creative
@@ -54,6 +54,7 @@ api_router.include_router(
     dependencies=[Depends(require_module("task"))]
 )
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+api_router.include_router(notification_emails.router, prefix="/notifications", tags=["Notification Email"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 api_router.include_router(files.router, prefix="/files", tags=["Files"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])

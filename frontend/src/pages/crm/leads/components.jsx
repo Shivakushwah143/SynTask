@@ -4,6 +4,7 @@ import { useMutation, useQuery } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, BadgeInfo, CalendarClock, Clock3, FileText, History, Lock, Mail, MessageSquare, Sparkles, StickyNote, Video, Wand2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
@@ -13,16 +14,43 @@ import { LeadFilesTab } from './files'
 
 export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'timeline', label: 'Timeline' },
   { key: 'notes', label: 'Notes' },
   { key: 'files', label: 'Files' },
+<<<<<<< HEAD
   { key: 'tasks', label: 'Tasks' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'emails', label: 'Emails' },
   { key: 'call_logs', label: 'Calls' },
+=======
+  { key: 'timeline', label: 'Timeline' },
+>>>>>>> origin/main
   { key: 'proposal', label: 'Proposal' },
   { key: 'ai', label: 'AI' },
 ]
+
+const leadTone = (value) => {
+  const key = String(value || '').toLowerCase()
+  if (['critical', 'high', 'hot', 'lost', 'dead'].some((item) => key.includes(item))) return 'rose'
+  if (['warm', 'medium', 'proposal', 'qualified', 'contacted'].some((item) => key.includes(item))) return 'amber'
+  if (['won', 'active', 'low', 'cold', 'new'].some((item) => key.includes(item))) return 'emerald'
+  return 'slate'
+}
+
+const toneClass = (tone) => ({
+  rose: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-950/30 dark:text-rose-200 dark:ring-rose-900/50',
+  amber: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900/50',
+  emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-200 dark:ring-emerald-900/50',
+  slate: 'bg-slate-50 text-slate-700 ring-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-800',
+}[tone] || 'bg-slate-50 text-slate-700 ring-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-800')
+
+function LeadPill({ label, value }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold capitalize ring-1 ${toneClass(leadTone(value))}`}>
+      {label ? <span className="text-current/70">{label}</span> : null}
+      {value || '-'}
+    </span>
+  )
+}
 
 export const LeadWorkspace = memo(function LeadWorkspace({
   title,
@@ -33,17 +61,22 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   onTabChange,
   onBack,
   onRefresh,
+  onSendEmail,
   body,
   sidebar,
 }) {
   return (
     <CRMPage>
       <CRMPageTitle
-        eyebrow="CRM Lead Workspace"
+        eyebrow="CRM Lead"
         title={title}
         description={description}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="primary" size="sm" onClick={onSendEmail}>
+              <Mail className="h-4 w-4" />
+              Send Email
+            </Button>
             <Button type="button" variant="secondary" size="sm" onClick={onBack}>
               <ArrowLeft className="h-4 w-4" />
               Back
@@ -66,7 +99,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
 
 export const LeadWorkspaceLayout = memo(function LeadWorkspaceLayout({ body, sidebar }) {
   return (
-    <CRMContent aside={sidebar}>
+    <CRMContent className="xl:grid-cols-[minmax(0,1fr)_320px]" aside={sidebar}>
       {body}
     </CRMContent>
   )
@@ -79,52 +112,49 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [] }) {
   const leadTags = getLeadTags(lead)
   const dealValue = lead?.won_amount ?? lead?.deal_value ?? 0
   const stage = lead?.current_stage || 'Unassigned'
+  const priority = lead?.priority || lead?.interest_level || 'medium'
+  const status = lead?.status || 'active'
   const createdDate = formatShortDate(lead?.created_at || lead?.createdAt || lead?.created_date)
 
   return (
-    <CRMSection
-      title="Lead summary"
-      description="Single source of truth for the selected CRM lead."
-      actions={(
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge label={stage} colorKey="draft" />
-          <Badge label={lead?.priority || lead?.interest_level || 'medium'} colorKey={lead?.priority || 'medium'} />
-        </div>
-      )}
-    >
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
-        <article className="rounded-2xl border border-surface-border/80 bg-gradient-to-br from-slate-50 to-white p-5 dark:border-gray-800 dark:from-gray-900 dark:to-gray-950">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500 dark:text-gray-400">Company</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+    <section className="overflow-hidden rounded-2xl border border-emerald-100/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="h-1.5 bg-gradient-to-r from-primary-500 via-emerald-400 to-amber-300" />
+      <div className="p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <LeadPill label="Stage" value={stage} />
+              <LeadPill label="Priority" value={priority} />
+              <LeadPill label="Status" value={status} />
+            </div>
+            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
             {companyName}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-            {contactName || 'Primary contact not available'}
-          </p>
-        </article>
-        <SummaryChip label="Owner" value={ownerName} />
-        <SummaryChip label="Deal value" value={formatCurrency(dealValue)} />
-        <SummaryChip label="Created" value={createdDate} />
-      </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Quick tags</span>
-        {leadTags.length ? leadTags.slice(0, 5).map((tag) => (
-          <Badge key={tag} label={tag} colorKey="draft" />
-        )) : (
-          <span className="text-sm text-gray-500 dark:text-gray-400">No tags</span>
-        )}
-      </div>
-      {breadcrumbs?.length ? (
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          {breadcrumbs.map((crumb, index) => (
-            <span key={`${crumb}-${index}`} className="inline-flex items-center gap-2">
-              {index > 0 ? <ArrowRight className="h-3.5 w-3.5" /> : null}
-              <span>{crumb}</span>
-            </span>
-          ))}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{contactName || 'Primary contact not available'}</p>
+            {breadcrumbs?.length ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                {breadcrumbs.map((crumb, index) => (
+                  <span key={`${crumb}-${index}`} className="inline-flex items-center gap-2">
+                    {index > 0 ? <ArrowRight className="h-3.5 w-3.5" /> : null}
+                    <span>{crumb}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="grid min-w-[240px] gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <SummaryChip label="Owner" value={ownerName} compact />
+            <SummaryChip label="Deal value" value={formatCurrency(dealValue)} compact />
+            <SummaryChip label="Created" value={createdDate} compact />
+          </div>
         </div>
-      ) : null}
-    </CRMSection>
+        {leadTags.length ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+            {leadTags.slice(0, 5).map((tag) => <Badge key={tag} label={tag} colorKey="draft" />)}
+          </div>
+        ) : null}
+      </div>
+    </section>
   )
 })
 
@@ -177,47 +207,38 @@ export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
 export const LeadOverview = memo(function LeadOverview({ lead }) {
   const customFields = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
   const items = [
-    { label: 'Company', value: lead?.crm_company_name || lead?.company_name || '-' },
-    { label: 'Primary Contact', value: lead?.crm_contact_name || lead?.primary_contact || lead?.contact_name || lead?.prospect_name || '-' },
-    { label: 'Owner', value: lead?.owner_name || lead?.assigned_to_name || lead?.assigned_to || '-' },
-    { label: 'Stage', value: lead?.current_stage || '-' },
-    { label: 'Deal Value', value: formatCurrency(lead?.won_amount ?? lead?.deal_value ?? 0) },
-    { label: 'Created Date', value: formatShortDate(lead?.created_at || lead?.createdAt || lead?.created_date) },
+    { label: 'Contact', value: lead?.crm_contact_name || lead?.primary_contact || lead?.contact_name || lead?.prospect_name || '-' },
+    { label: 'Email', value: lead?.email || '-' },
+    { label: 'Phone', value: lead?.phone || '-' },
     { label: 'Source', value: lead?.channel || '-' },
-    { label: 'Status', value: lead?.status || '-' },
+    { label: 'Estimated close', value: formatShortDate(lead?.estimated_close_date) },
+    { label: 'Days in stage', value: String(Math.max(Number(lead?.days_in_stage || 0), 0)) },
   ]
 
   return (
-    <div className="space-y-6">
-      <CRMSection title="Overview" description="Core lead data sourced from the Sales domain.">
+    <div className="space-y-4">
+      <CRMSection title="Lead details" description="The main fields you need before contacting or updating this lead.">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
-            <article key={item.label} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{item.label}</p>
+            <article key={item.label} className="rounded-xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{item.label}</p>
               <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{item.value}</p>
             </article>
           ))}
         </div>
       </CRMSection>
-      <details className="rounded-3xl border border-surface-border/80 bg-white/90 p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
-        <summary className="cursor-pointer list-none text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-          Custom fields
-        </summary>
-        <div className="mt-4">
-          {Object.keys(customFields).length ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {Object.entries(customFields).map(([key, value]) => (
-                <article key={key} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{key}</p>
-                  <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{String(value)}</p>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <CRMEmptyState icon={BadgeInfo} title="No custom fields" description="Custom values will appear here when added to the lead." />
-          )}
-        </div>
-      </details>
+      {Object.keys(customFields).length ? (
+        <CRMSection title="Custom fields" description="Additional values saved with this lead.">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {Object.entries(customFields).map(([key, value]) => (
+              <article key={key} className="rounded-xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{key}</p>
+                <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{String(value)}</p>
+              </article>
+            ))}
+          </div>
+        </CRMSection>
+      ) : null}
     </div>
   )
 })
@@ -233,7 +254,7 @@ export const LeadSummaryCards = memo(function LeadSummaryCards({ lead }) {
   )
 })
 
-export const LeadSidebar = memo(function LeadSidebar({ lead }) {
+export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const navigate = useNavigate()
   const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
   const { data: stagesData } = useQuery('crm-lead-edit-stages', salesApi.getStages)
@@ -256,6 +277,11 @@ export const LeadSidebar = memo(function LeadSidebar({ lead }) {
     setCustomFields(JSON.stringify(custom, null, 2))
   }, [lead])
 
+  const stageMutation = useMutation((stage) => crmApi.updatePipelineStage(lead?.id, { stage }), {
+    onSuccess: () => toast.success('Lead stage updated'),
+    onError: (error) => toast.error(error?.response?.data?.detail || 'Stage update failed'),
+  })
+
   const saveMutation = useMutation((payload) => salesApi.updateProspectForm(lead?.id, payload), {
     onSuccess: () => toast.success('Lead updated'),
     onError: (error) => toast.error(error?.response?.data?.detail || 'Update failed'),
@@ -273,12 +299,16 @@ export const LeadSidebar = memo(function LeadSidebar({ lead }) {
       toast.error('Custom fields must be valid JSON')
       return
     }
+    const nextStage = form.current_stage?.trim()
+    if (nextStage && nextStage !== (lead?.current_stage || '')) {
+      stageMutation.mutate(nextStage)
+    }
     saveMutation.mutate(payload)
   }
   return (
     <div className="space-y-6">
-      <CRMSection title="Lead controls" description="Quick edit for ownership and pipeline fields.">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <CRMSection title="Update lead" description="Quick edit for ownership and pipeline fields.">
+        <div className="grid gap-3">
           <select className={inputClassName} value={form.current_stage} onChange={(e) => setForm((s) => ({ ...s, current_stage: e.target.value }))}>
             <option value="">Stage</option>
             {stages.map((stage) => <option key={stage.id || stage.name} value={stage.id || stage.name}>{stage.name}</option>)}
@@ -303,7 +333,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead }) {
           <input className={inputClassName} value={form.channel} onChange={(e) => setForm((s) => ({ ...s, channel: e.target.value }))} placeholder="Source" />
           <input className={inputClassName} value={form.tag} onChange={(e) => setForm((s) => ({ ...s, tag: e.target.value }))} placeholder="Tags, pipe-separated" />
         </div>
-        <details className="mt-4 rounded-2xl border border-surface-border/80 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
+        <details className="mt-4 rounded-xl border border-surface-border/80 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
           <summary className="cursor-pointer list-none text-sm font-medium text-gray-700 dark:text-gray-200">
             Advanced fields
           </summary>
@@ -315,8 +345,12 @@ export const LeadSidebar = memo(function LeadSidebar({ lead }) {
           </div>
         </details>
       </CRMSection>
-      <CRMSection title="Shortcuts" description="Fast links to the related CRM areas.">
-        <div className="grid gap-2 sm:grid-cols-3">
+      <CRMSection title="Actions" description="Fast links to related CRM areas.">
+        <div className="grid gap-2">
+          <Button type="button" variant="primary" className="justify-between" onClick={onSendEmail}>
+            <span>Send Email</span>
+            <Mail className="h-4 w-4" />
+          </Button>
           <Link className="btn btn-secondary justify-between" to={activityPath}>
             <span>Activities</span>
             <ArrowRight className="h-4 w-4" />
@@ -325,13 +359,10 @@ export const LeadSidebar = memo(function LeadSidebar({ lead }) {
             <span>Pipeline</span>
             <ArrowRight className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="secondary" className="justify-between" onClick={() => navigate('/crm/dashboard')}>
-            <span>Dashboard</span>
-            <ArrowRight className="h-4 w-4" />
-          </Button>
         </div>
       </CRMSection>
 
+<<<<<<< HEAD
       <CRMSection title="Activity" description="Lead activity and meetings stay visible without duplicating records.">
         <div className="grid gap-4 xl:grid-cols-2">
           <LeadTimelineTab />
@@ -347,6 +378,8 @@ export const LeadSidebar = memo(function LeadSidebar({ lead }) {
           <LeadAITab />
         </div>
       </CRMSection>
+=======
+>>>>>>> origin/main
     </div>
   )
 })
@@ -731,11 +764,11 @@ export const LeadAITab = memo(function LeadAITab() {
   )
 })
 
-function SummaryChip({ label, value }) {
+function SummaryChip({ label, value, compact = false }) {
   return (
-    <article className="rounded-2xl border border-surface-border/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-2 text-base font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+    <article className={`rounded-xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 ${compact ? 'p-3' : 'p-5'}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{label}</p>
+      <p className={`${compact ? 'mt-1 text-sm' : 'mt-2 text-base'} font-semibold text-gray-900 dark:text-gray-100`}>{value}</p>
     </article>
   )
 }

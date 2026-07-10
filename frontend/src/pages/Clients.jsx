@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Button, EmptyState, FormField, LoadingSpinner, Modal, SkeletonTable, inputClassName } from '../components/ui'
@@ -12,6 +13,7 @@ import { format } from 'date-fns'
 
 const Clients = () => {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const { confirm, showUndoNotification } = useConfirmation()
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -43,6 +45,7 @@ const Clients = () => {
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
   const [assignableUsers, setAssignableUsers] = useState([])
   const [projectForm, setProjectForm] = useState({
+    project_id: '',
     name: '',
     key: '',
     description: '',
@@ -197,6 +200,10 @@ const Clients = () => {
     }
   }
 
+  const openClientWorkspace = (clientId) => {
+    navigate(`/clients/${clientId}/workspace`)
+  }
+
   const handleEditClient = (client) => {
     setFormErrors({})
     setEditingClient(client)
@@ -244,11 +251,13 @@ const Clients = () => {
       
       // Create project first
       const projectData = {
+        project_id: projectForm.project_id,
         name: projectForm.name,
         key: projectForm.key,
         description: projectForm.description || '',
         type: projectForm.type || 'software',
         assigned_to: projectForm.assigned_to || '',
+        client_id: selectedClient.id,
       }
       
       // Convert dates to ISO format
@@ -278,6 +287,7 @@ const Clients = () => {
       toast.success('Project created and linked to client successfully')
       setShowCreateProjectModal(false)
       setProjectForm({
+        project_id: '',
         name: '',
         key: '',
         description: '',
@@ -653,6 +663,16 @@ const Clients = () => {
                       >
                         <Eye className="h-4 w-4" />
                       </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openClientWorkspace(client.id)
+                        }}
+                        className="p-1 text-gray-600 hover:text-primary-600"
+                        title="Open workspace"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </button>
                       {(isCompanyAdmin || isLead) && (
                         <button
                           onClick={(e) => {
@@ -885,15 +905,24 @@ const Clients = () => {
                     <p className="text-xs text-gray-600">{selectedClient.company_name}</p>
                   )}
                 </div>
-                <button
-                  onClick={() => {
-                    setShowDetailModal(false)
-                    setSelectedClient(null)
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openClientWorkspace(selectedClient.id)}
+                    className="btn btn-sm btn-secondary inline-flex items-center gap-1"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Workspace
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowDetailModal(false)
+                      setSelectedClient(null)
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Client Info */}
@@ -957,6 +986,7 @@ const Clients = () => {
                         type="button"
                         onClick={() => {
                           setProjectForm({
+                            project_id: '',
                             name: '',
                             key: '',
                             description: '',
@@ -1119,7 +1149,7 @@ const Clients = () => {
                   </option>
                   {filteredAvailableProjects.map((project) => (
                     <option key={project.id} value={project.id}>
-                      {project.name} ({project.key}){project.project_id ? ` · ${project.project_id}` : ''}
+                      {project.name} ({project.key}){project.project_id ? ` - ${project.project_id}` : ''}
                     </option>
                   ))}
                 </select>
@@ -1160,6 +1190,7 @@ const Clients = () => {
                   onClick={() => {
                     setShowCreateProjectModal(false)
                     setProjectForm({
+                      project_id: '',
                       name: '',
                       key: '',
                       description: '',
@@ -1178,6 +1209,17 @@ const Clients = () => {
 
               <form onSubmit={handleCreateProject} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Project ID *</label>
+                    <input
+                      type="text"
+                      value={projectForm.project_id}
+                      onChange={(e) => setProjectForm({ ...projectForm, project_id: e.target.value })}
+                      className="input"
+                      required
+                      placeholder="e.g., PROJ-001"
+                    />
+                  </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Project Name *</label>
                     <input
@@ -1275,6 +1317,7 @@ const Clients = () => {
                     onClick={() => {
                       setShowCreateProjectModal(false)
                       setProjectForm({
+                        project_id: '',
                         name: '',
                         key: '',
                         description: '',

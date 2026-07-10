@@ -1,9 +1,10 @@
 import { ChevronRight, Search, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '../ui'
+import { WorkflowGuide } from '../workflow/WorkflowGuide'
 
 export function CRMPage({ className = '', children }) {
-  return <div className={`space-y-6 ${className}`}>{children}</div>
+  return <div className={`space-y-6 ${className} bg-transparent`}>{children}</div>
 }
 
 export function CRMPageTitle({ eyebrow = 'CRM', title, description, actions }) {
@@ -29,7 +30,7 @@ export function CRMPageTitle({ eyebrow = 'CRM', title, description, actions }) {
 
 export function CRMHeader({ breadcrumbs = [], title, description, actions }) {
   return (
-    <div className="rounded-3xl border border-surface-border/80 bg-white/90 p-5 shadow-sm 
+    <div className="rounded-3xl border border-emerald-100/80 bg-white/85 p-5 shadow-sm 
     
     
     
@@ -83,7 +84,7 @@ export function CRMToolbar({
   actions,
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-100/80 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85 lg:flex-row lg:items-center lg:justify-between">
       <form
         className="flex min-w-0 flex-1 items-center gap-3"
         onSubmit={(event) => {
@@ -155,7 +156,7 @@ export function CRMContent({ className = '', children, aside }) {
 
 export function CRMSection({ title, description, actions, children, className = '' }) {
   return (
-    <section className={`rounded-3xl border border-surface-border/80 bg-white/90 p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900/85 ${className}`}>
+    <section className={`rounded-3xl border border-emerald-100/80 bg-white/85 p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900/85 ${className}`}>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
@@ -181,7 +182,7 @@ export function CRMStatCard({ icon: Icon, label, value, helper, tone = 'blue' })
   }
 
   return (
-    <article className="rounded-2xl border border-surface-border/80 bg-gradient-to-br p-4 shadow-sm dark:border-gray-800">
+    <article className="rounded-2xl border border-emerald-100/80 bg-gradient-to-br from-white via-emerald-50/50 to-white p-4 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900">
       <div className={`inline-flex rounded-2xl border p-3 ${tones[tone] || tones.blue}`}>
         {Icon ? <Icon className="h-5 w-5" /> : null}
       </div>
@@ -196,9 +197,9 @@ export function CRMStatCard({ icon: Icon, label, value, helper, tone = 'blue' })
 
 export function CRMEmptyState({ title, description, action, icon: Icon }) {
   return (
-    <div className="rounded-3xl border border-dashed border-surface-border bg-white/70 p-8 text-center dark:border-gray-800 dark:bg-gray-900/70">
+    <div className="rounded-3xl border border-dashed border-emerald-100 bg-emerald-50/40 p-8 text-center dark:border-gray-800 dark:bg-gray-900/70">
       {Icon ? (
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/60 dark:text-primary-300">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-primary-950/60 dark:text-primary-300">
           <Icon className="h-7 w-7" />
         </div>
       ) : null}
@@ -270,6 +271,19 @@ export function CRMRoutePlaceholder({
 }) {
   return (
     <CRMSection title={title} description={description}>
+      <WorkflowGuide
+        className="mb-5"
+        title={`Open the next ${routeLabel.toLowerCase()} action`}
+        description="This placeholder exists to preserve the workspace contract while guiding users to the active CRM surface."
+        nextStep="Use the pipeline to continue the workflow."
+        primaryAction={{ label: 'Go to CRM Pipeline', href: '/crm/pipeline' }}
+        secondaryAction={{ label: 'Open Dashboard', href: '/crm/dashboard' }}
+        bullets={[
+          { label: 'Where am I?', value: routeLabel },
+          { label: 'What next?', value: 'Use the live CRM route that already has business data.' },
+          { label: 'After this?', value: 'Return here when the route is implemented.' },
+        ]}
+      />
       <CRMEmptyState
         icon={Icon}
         title={`${routeLabel} is coming next`}

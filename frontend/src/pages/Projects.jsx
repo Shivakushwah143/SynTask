@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowRight, FolderKanban, Grid2x2, List, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Clock3, Plus, Receipt, Search, SlidersHorizontal } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -10,16 +10,31 @@ import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
 import { hasCompanyAdminAccess } from '../utils/roles'
-import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, Table, inputClassName } from '../components/ui'
+import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
+import { buildProjectGraphRows, buildProjectGraphSummary } from './projectsData'
+
+const PROJECT_BATCH_SIZE = 10
+
+const PROJECT_WORKFLOW = {
+  active: ['created', 'kickoff', 'execution', 'review', 'on_hold'],
+  created: ['kickoff', 'on_hold'],
+  kickoff: ['execution', 'on_hold'],
+  execution: ['review', 'on_hold'],
+  review: ['completed', 'on_hold'],
+  completed: ['reporting'],
+  reporting: ['archived'],
+  on_hold: ['created', 'kickoff', 'execution', 'review'],
+  archived: [],
+}
 
 export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const { confirm } = useConfirmation()
   const canCreateProjects = hasCompanyAdminAccess(user?.role)
-  const [view, setView] = useState('grid')
   const [loading, setLoading] = useState(true)
   const [projects, setProjects] = useState([])
+  const [visibleProjectCount, setVisibleProjectCount] = useState(PROJECT_BATCH_SIZE)
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState({ status: '', type: '', owner: '' })
   const [showFilters, setShowFilters] = useState(false)
@@ -105,6 +120,13 @@ export default function Projects() {
         : 0,
   })), [filteredProjects])
 
+  const projectGraphRows = useMemo(() => buildProjectGraphRows(projectCards, visibleProjectCount), [projectCards, visibleProjectCount])
+  const projectGraphSummary = useMemo(() => buildProjectGraphSummary(projectCards), [projectCards])
+
+  useEffect(() => {
+    setVisibleProjectCount(PROJECT_BATCH_SIZE)
+  }, [filters.owner, filters.status, filters.type, searchQuery])
+
   const openProject = async (project) => {
     setSelectedProject(project)
     setShowDetails(true)
@@ -124,6 +146,17 @@ export default function Projects() {
       toast.error('Failed to load project details')
     } finally {
       setLoadingDetails(false)
+    }
+  }
+
+  const handleProjectStatusChange = async (project, nextStatus) => {
+    try {
+      await projectsApi.updateProject(project.id, { status: nextStatus })
+      toast.success(`Project moved to ${nextStatus.replace(/_/g, ' ')}`)
+      await loadProjects()
+      await openProject(project)
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update project status')
     }
   }
 
@@ -192,18 +225,10 @@ export default function Projects() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Projects"
-        description="Premium workspace for project health, team ownership, and AI insights."
+      title="Projects"
+      description="Project health, ownership, and progress."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={view === 'grid' ? 'primary' : 'secondary'} size="sm" onClick={() => setView('grid')}>
-              <Grid2x2 className="h-4 w-4" />
-              Grid
-            </Button>
-            <Button variant={view === 'list' ? 'primary' : 'secondary'} size="sm" onClick={() => setView('list')}>
-              <List className="h-4 w-4" />
-              List
-            </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowFilters((value) => !value)}>
               <SlidersHorizontal className="h-4 w-4" />
               Filters
@@ -211,7 +236,7 @@ export default function Projects() {
             {canCreateProjects ? (
               <Button size="sm" onClick={() => setShowCreateModal(true)}>
                 <Plus className="h-4 w-4" />
-                New Project
+                New project
               </Button>
             ) : null}
           </div>
@@ -223,6 +248,19 @@ export default function Projects() {
         <MetricCard title="Active projects" value={summary.active} />
         <MetricCard title="At risk" value={summary.overdue} />
       </section>
+
+      <ProjectGraphPanel
+        rows={projectGraphRows}
+        summary={projectGraphSummary}
+        loading={loading}
+        totalCount={projectCards.length}
+        visibleCount={visibleProjectCount}
+        onViewMore={() => setVisibleProjectCount((count) => Math.min(count + PROJECT_BATCH_SIZE, projectCards.length))}
+        onOpenProject={(project) => {
+          const match = projectCards.find((item) => item.id === project.id)
+          if (match) openProject(match)
+        }}
+      />
 
       <section className="card p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -255,67 +293,7 @@ export default function Projects() {
         </div>
       </section>
 
-      <section className="card p-0 overflow-hidden">
-        {loading ? (
-          <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map((item) => <SkeletonCard key={item} lines={4} />)}
-          </div>
-        ) : !projectCards.length ? (
-          <div className="p-6">
-            <EmptyState
-              icon={FolderKanban}
-              title="No projects found"
-              description="Use search or filters to refine the workspace."
-              action={canCreateProjects ? <Button onClick={() => setShowCreateModal(true)}><Plus className="h-4 w-4" /> Create Project</Button> : null}
-            />
-          </div>
-        ) : view === 'list' ? (
-          <Table columns={projectTableColumns} data={projectCards} />
-        ) : (
-          <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {projectCards.map((project) => (
-              <button key={project.id} type="button" onClick={() => openProject(project)} className="group overflow-hidden rounded-2xl border border-surface-border bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{project.key}</p>
-                    <h3 className="mt-2 truncate text-base font-semibold text-gray-900 dark:text-gray-100">{project.name}</h3>
-                  </div>
-                  <Badge label={project.statusLabel || 'active'} colorKey={project.status || 'active'} />
-                </div>
-                <p className="mt-3 line-clamp-2 text-sm text-gray-500 dark:text-gray-400">{project.description || 'No description available.'}</p>
-                <div className="mt-4 space-y-3">
-                  <ProgressBar value={project.progress || 0} />
-                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                    <span>{project.task_count || 0} tasks</span>
-                    <span>{project.delivery_date ? format(new Date(project.delivery_date), 'MMM d') : 'No delivery date'}</span>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-3 dark:border-gray-800">
-                  <div className="flex -space-x-2">
-                    {(project.team_members || assignableUsers.slice(0, 3)).slice(0, 3).map((member, index) => (
-                      <div key={`${project.id}-${index}`} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-gray-100 text-xs font-semibold text-gray-700 dark:border-gray-900 dark:bg-gray-800 dark:text-gray-200">
-                        {(member.first_name || member.name || '?').slice(0, 1)}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={(event) => { event.stopPropagation(); openProject(project) }} className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" aria-label={`Open ${project.name}`}>
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                    {canCreateProjects ? (
-                      <button type="button" disabled={Boolean(deletingId)} onClick={(event) => { event.stopPropagation(); handleDelete(project.id) }} className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-500/10 dark:hover:text-red-300" aria-label={deletingId === project.id ? `Deleting ${project.name}` : `Delete ${project.name}`} aria-busy={deletingId === project.id || undefined}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create project" size="xl">
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New project" size="xl">
         <form onSubmit={handleCreate} className="space-y-5">
           <FormField label="Project name" error={formErrors.name} required>
             <input
@@ -339,7 +317,7 @@ export default function Projects() {
           </FormField>
           <FormField label="Project ID" error={formErrors.project_id} required>
             <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">
-              Optional. If left empty, the project key will be used.
+              Optional. If empty, the project key is used.
             </span>
             <input
               name="project_id"
@@ -350,10 +328,10 @@ export default function Projects() {
               placeholder="AK-001"
             />
             <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-              If you leave this empty, it will use the project key.
+              Leaves the key as the ID.
             </span>
           </FormField>
-          <FormField label="Description">
+          <FormField label="Details">
             <textarea className={inputClassName} rows={4} value={formData.description} onChange={(event) => setFormData((state) => ({ ...state, description: event.target.value }))} />
           </FormField>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -380,7 +358,7 @@ export default function Projects() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button type="submit" loading={submitting} loadingText="Creating">Create project</Button>
+            <Button type="submit" loading={submitting} loadingText="Creating">Create</Button>
           </div>
         </form>
       </Modal>
@@ -396,6 +374,116 @@ export default function Projects() {
         onClose={() => setShowDetails(false)}
         onOpenBoard={(project) => navigate(`/projects/${project.id}/board`)}
       />
+    </div>
+  )
+}
+
+function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, onViewMore, onOpenProject }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+        <div className="flex items-center gap-1.5">
+        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Projects</h2>
+        <span className="flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">?</span>
+        </div>
+        <div className="hidden items-center gap-4 text-xs text-gray-500 dark:text-gray-400 sm:flex">
+          <span>{summary.remainingTasks} remaining</span>
+          <span>{summary.totalTasks} total tasks</span>
+        </div>
+      </div>
+
+      <div className="grid border-b border-gray-200 dark:border-gray-800 sm:grid-cols-2">
+        <div className="flex items-center gap-2 px-4 py-3">
+          <Clock3 className="h-5 w-5 text-gray-900 dark:text-gray-100" />
+          <div>
+            <p className="text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">{summary.remainingTasks}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Remaining tasks</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50 sm:border-l sm:border-t-0">
+          <Receipt className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+          <div>
+            <p className="text-lg font-semibold tabular-nums text-gray-600 dark:text-gray-300">{summary.totalTasks}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total project tasks</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-3">
+        {loading ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <SkeletonCard lines={4} />
+            <SkeletonCard lines={4} />
+            <SkeletonCard lines={4} />
+          </div>
+        ) : rows.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map((project) => (
+          <button
+            key={project.id}
+            type="button"
+            onClick={() => onOpenProject(project)}
+            title={`${project.name}: ${project.progress}% complete, ${project.remainingTasks} tasks remaining`}
+            className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-700 dark:hover:bg-gray-950"
+          >
+            <div className="flex items-start gap-3">
+              <ProgressRing value={project.progress} />
+              <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold leading-5 text-primary-600 dark:text-primary-400">{project.name}</p>
+              <p className="truncate text-sm text-gray-500 dark:text-gray-400">{project.owner}</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {project.key ? <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">{project.key}</span> : null}
+                <Badge label={project.status.replace(/_/g, ' ')} colorKey={project.status} />
+              </div>
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>Task Budget</span>
+                <span>{project.completedTasks}/{project.totalTasks}</span>
+              </div>
+              <StackedBudgetBar completed={project.completedTasks} remaining={project.remainingTasks} total={project.totalTasks} />
+            </div>
+          </button>
+          ))}
+          </div>
+        ) : (
+          <div className="py-6">
+            <EmptyState title="No project graph data" description="Projects will appear here when they match your filters." />
+          </div>
+        )}
+        {!loading && rows.length > 0 && visibleCount < totalCount ? (
+          <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+            <span>Showing {rows.length} of {totalCount} projects</span>
+            <Button variant="secondary" size="sm" onClick={onViewMore}>
+              View more
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
+function ProgressRing({ value }) {
+  const bounded = Math.max(0, Math.min(100, value || 0))
+  return (
+    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(#3B82F6 ${bounded * 3.6}deg, #eeeeee 0deg)` }}>
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+        {bounded}%
+      </div>
+    </div>
+  )
+}
+
+function StackedBudgetBar({ completed, remaining, total }) {
+  const safeTotal = Math.max(total || 0, 1)
+  const completedWidth = Math.min(100, Math.round((completed / safeTotal) * 100))
+  const remainingWidth = Math.max(0, 100 - completedWidth)
+  return (
+    <div className="flex h-2.5 overflow-hidden rounded-sm bg-gray-100 dark:bg-gray-800">
+      <div className="bg-emerald-400" style={{ width: `${completedWidth}%` }} />
+      <div className="bg-orange-400" style={{ width: `${remainingWidth}%`, opacity: remaining ? 1 : 0 }} />
     </div>
   )
 }
@@ -427,7 +515,7 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
   if (!isOpen || !project) return null
   return (
     <div className="fixed inset-0 z-50 bg-black/50">
-      <div className="ml-auto flex h-full w-full max-w-6xl flex-col bg-white shadow-2xl dark:bg-gray-950 lg:w-[88vw]">
+      <div className="ml-auto flex h-full w-full flex-col bg-white shadow-2xl dark:bg-gray-950 ">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Project details</p>
@@ -435,7 +523,7 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => onOpenBoard(project)}>Open board</Button>
-            <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">×</button>
+            <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">x</button>
           </div>
         </div>
         <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
@@ -451,6 +539,27 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
                 <section className="card p-4">
                   <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Overview</h3>
                   <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{details?.description || project.description || 'No project description available.'}</p>
+                </section>
+                <section className="card p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Workflow</h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Advance the project through the locked delivery stages.</p>
+                    </div>
+                    <Badge label={(details?.status || project.status || 'active').replace(/_/g, ' ')} colorKey={details?.status || project.status || 'active'} />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {(PROJECT_WORKFLOW[(details?.status || project.status || 'active').toLowerCase()] || []).map((nextStatus) => (
+                      <Button
+                        key={nextStatus}
+                        size="sm"
+                        variant={nextStatus === 'completed' ? 'primary' : 'secondary'}
+                        onClick={() => handleProjectStatusChange(project, nextStatus)}
+                      >
+                        {nextStatus.replace(/_/g, ' ')}
+                      </Button>
+                    ))}
+                  </div>
                 </section>
                 <section className="card p-4">
                   <div className="mb-3 flex items-center justify-between">

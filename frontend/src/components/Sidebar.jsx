@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
+import { Badge } from "./ui";
 
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
@@ -269,6 +270,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
     },
     {
+      name: "Workflows",
+      href: "/workflows",
+      icon: GitBranch,
+      roles: [ROLE.ADMIN],
+      module: "task",
+    },
+    {
       name: "Departments",
       href: "/departments",
       icon: Network,
@@ -369,6 +377,13 @@ const Sidebar = ({ isOpen, onClose }) => {
     .filter((item) => item && (item.roles ? item.roles.includes(userRole) : true))
     .filter((item) => ['Pipeline', 'Dashboard', 'Leads', 'Activities', 'Calendar'].includes(item.name));
 
+  const taskNavigation = filteredNavigation.filter((item) =>
+    ['Projects', 'Requests', 'Chat', 'Meetings', 'Calendar', 'Timesheet', 'Reports', 'AI Hub', 'Creative AI', 'Marketing Support', 'Marketing Calendar'].includes(item.name)
+  )
+  const adminNavigation = filteredNavigation.filter((item) =>
+    ['Attendance', 'Live Monitor', 'Attendance Reports', 'Notifications', 'Users', 'Departments', 'Subscriptions', 'Activity Log', 'Settings', 'Clients', 'Invoices', 'MSA', 'Ledger', 'Companies', 'Bulk Leads', 'Leads'].includes(item.name)
+  )
+
   return (
     <>
       {/* Mobile Overlay */}
@@ -389,13 +404,13 @@ const Sidebar = ({ isOpen, onClose }) => {
           ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
       >
-        <div className="relative flex h-full flex-col overflow-visible border-r border-surface-border/80 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-gray-800 dark:bg-gray-950/95">
+        <div className="relative flex h-full flex-col overflow-visible border-r border-surface-border/80 bg-gradient-to-b from-white via-white to-purple-50/50 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-gray-800 dark:from-gray-950 dark:via-gray-950 dark:to-gray-900">
           {/* Desktop collapse toggle */}
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="absolute -right-3.5 top-[22px] z-10 hidden h-8 w-8 items-center justify-center rounded-full border border-surface-border bg-white text-gray-600 shadow-md transition-all hover:scale-105 hover:border-primary-400 hover:text-primary-600 lg:flex dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
+            className="absolute -right-3.5 top-[22px] z-10 hidden h-8 w-8 items-center justify-center rounded-full border border-surface-border bg-white text-gray-600 shadow-md transition-all hover:scale-105 hover:border-purple-400 hover:text-purple-600 lg:flex dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-purple-500 dark:hover:text-purple-300"
           >
             {collapsed ? (
               <ChevronRight className="h-4 w-4" />
@@ -405,23 +420,24 @@ const Sidebar = ({ isOpen, onClose }) => {
           </button>
 
           {/* Logo */}
-          <div
-            className={`flex h-16 items-center border-b border-surface-border/80 px-4 dark:border-gray-800 ${
-              collapsed ? "lg:justify-center lg:px-0" : "justify-between"
-            }`}
-          >
-            <div className="flex items-center space-x-2">
-              <img
-                src="/logo.svg"
-                alt="SynTask Logo"
-                className="h-8 w-8 object-contain flex-shrink-0"
-                onError={(e) => {
-                  e.target.style.display = "none";
-                }}
-              />
-              <h1 className={`text-base font-bold text-primary-700 ${collapsed ? "lg:hidden" : ""}`}>
-                SynTask
-              </h1>
+          <div className={`flex h-18 items-center border-b border-surface-border/80 px-4 dark:border-gray-800 ${collapsed ? "lg:justify-center lg:px-0" : "justify-between"}`}>
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-purple-700 text-white shadow-[0_10px_30px_rgba(124,58,237,0.28)]">
+                <img
+                  src="/logo.svg"
+                  alt="SynTask Logo"
+                  className="h-6 w-6 object-contain flex-shrink-0"
+                  onError={(e) => {
+                    e.target.style.display = "none";
+                  }}
+                />
+              </div>
+              <div className={collapsed ? "lg:hidden" : ""}>
+                <h1 className="text-base font-bold tracking-tight text-gray-900 dark:text-gray-100">
+                  SynTask
+                </h1>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Workspace OS</p>
+              </div>
             </div>
             <button
               type="button"
@@ -434,22 +450,18 @@ const Sidebar = ({ isOpen, onClose }) => {
           </div>
 
           {/* Navigation */}
-          <nav
-            className={`flex-1 space-y-1 px-3 py-4 ${
-              collapsed ? "overflow-visible" : "overflow-y-auto"
-            }`}
-          >
+          <nav className={`flex-1 space-y-4 px-3 py-4 ${collapsed ? "overflow-visible" : "overflow-y-auto"}`}>
             {favoriteItems.length ? (
-              <div className="mb-4 space-y-2">
+              <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-2 shadow-sm dark:border-purple-950/40 dark:bg-purple-950/20">
                 <button
                   type="button"
                   onClick={() => setFavoritesOpen((open) => !open)}
                   aria-expanded={favoritesOpen}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 transition-colors hover:bg-primary-50 hover:text-primary-700 dark:hover:bg-primary-950/60 dark:hover:text-primary-200 ${collapsed ? "lg:hidden" : ""}`}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-500 transition-colors hover:bg-white/70 hover:text-purple-700 dark:text-gray-400 dark:hover:bg-gray-900/70 dark:hover:text-purple-200 ${collapsed ? "lg:hidden" : ""}`}
                 >
                   <span>Favorites</span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="rounded-full bg-primary-50 px-1.5 py-0.5 text-[10px] text-primary-600 dark:bg-primary-950/60 dark:text-primary-200">
+                    <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-200">
                       {favoriteItems.length}
                     </span>
                     <ChevronDown className={`h-3.5 w-3.5 transition-transform ${favoritesOpen ? '' : '-rotate-90'}`} />
@@ -461,16 +473,17 @@ const Sidebar = ({ isOpen, onClose }) => {
                       key={item.name}
                       to={item.href}
                       onClick={onClose}
-                      className="flex items-center rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
+                      className="flex items-center rounded-xl px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
                     >
-                      <Star className="mr-2 h-4 w-4 text-amber-400" />
+                    <Star className="mr-2 h-4 w-4 text-purple-500" />
                       <span className={collapsed ? "lg:hidden" : ""}>{item.name}</span>
                     </Link>
                   ))}
                 </div>
               </div>
             ) : null}
-            {filteredNavigation.map((item) => {
+            <SectionLabel label="Workspace" collapsed={collapsed} />
+            {taskNavigation.map((item) => {
               const isActive =
                 location.pathname === item.href ||
                 (item.match && location.pathname.startsWith(item.match));
@@ -479,87 +492,43 @@ const Sidebar = ({ isOpen, onClose }) => {
                   key={item.name}
                   className="group flex items-center gap-1"
                 >
-                <Link
-                  to={item.href}
-                  aria-current={isActive ? "page" : undefined}
-                  aria-label={item.name}
-                  onClick={onClose}
-                  className={`group relative flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                    collapsed ? "lg:justify-center lg:px-0" : ""
-                  } ${
-                    isActive
-                      ? "bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200"
-                      : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
-                  }`}
-                >
-                  <item.icon
-                    className={`h-5 w-5 flex-shrink-0 mr-2.5 ${collapsed ? "lg:mr-0" : ""}`}
-                  />
-                  <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>
-                    {item.name}
-                  </span>
-
-                  {/* Tooltip shown only in collapsed desktop rail mode */}
-                {collapsed && (
-  <div
-    className="
-      absolute
-      left-full
-      top-1/2
-      -translate-y-1/2
-      ml-2
-      px-2
-      py-1
-      bg-slate-800
-      text-white
-      text-xs
-      rounded
-      opacity-0
-      invisible
-      group-hover:opacity-100
-      group-hover:visible
-      transition-all
-      duration-200
-      whitespace-nowrap
-      z-[9999]
-      pointer-events-none
-    "
-  >
-    {item.name}
-
-    <div
-      className="
-        absolute
-        left-0
-        top-1/2
-        -translate-y-1/2
-        -translate-x-1
-        w-1.5
-        h-1.5
-        bg-slate-800
-        rotate-45
-      "
-    />
-  </div>
-)}
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => toggleFavorite(item.href)}
-                  className={`hidden lg:inline-flex rounded-lg p-1 text-gray-400 hover:text-amber-500 ${collapsed ? 'lg:hidden' : ''}`}
-                  aria-label={favorites.includes(item.href) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
-                >
-                  <Star className={`h-4 w-4 ${favorites.includes(item.href) ? 'fill-amber-400 text-amber-400' : ''}`} />
-                </button>
+                  <Link
+                    to={item.href}
+                    aria-current={isActive ? "page" : undefined}
+                    aria-label={item.name}
+                    onClick={onClose}
+                    className={`group relative flex flex-1 items-center rounded-2xl px-3 py-2.5 text-sm font-medium transition-all ${
+                      collapsed ? "lg:justify-center lg:px-0" : ""
+                    } ${
+                      isActive
+                        ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-[0_10px_24px_rgba(124,58,237,0.22)]"
+                        : "text-gray-700 hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
+                    }`}
+                  >
+                    <item.icon className={`h-5 w-5 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-white" : ""}`} />
+                    <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>
+                      {item.name}
+                    </span>
+                    {isActive ? <span className="ml-auto h-2 w-2 rounded-full bg-white/90" /> : null}
+                    {collapsed && <SidebarTooltip label={item.name} />}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorite(item.href)}
+                    className={`hidden lg:inline-flex rounded-xl p-1.5 text-gray-400 transition hover:bg-white hover:text-purple-500 dark:hover:bg-gray-900 ${collapsed ? 'lg:hidden' : ''}`}
+                    aria-label={favorites.includes(item.href) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
+                  >
+                    <Star className={`h-4 w-4 ${favorites.includes(item.href) ? 'fill-purple-500 text-purple-500' : ''}`} />
+                  </button>
                 </div>
               );
             })}
             {filteredCrmNavigation.length ? (
-              <div className="mt-4 space-y-2">
+              <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-2 shadow-sm dark:border-purple-950/40 dark:bg-purple-950/20">
                 <button
                   type="button"
                   onClick={() => setCrmOpen((open) => !open)}
-                  className={`flex w-full items-center justify-between px-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 ${collapsed ? "lg:hidden" : ""}`}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-500 transition-colors hover:bg-white/70 hover:text-purple-700 dark:text-gray-400 dark:hover:bg-gray-900/70 dark:hover:text-purple-200 ${collapsed ? "lg:hidden" : ""}`}
                 >
                   <span>CRM</span>
                   <ChevronDown className={`h-3 w-3 transition-transform ${crmOpen ? '' : '-rotate-90'}`} />
@@ -577,22 +546,54 @@ const Sidebar = ({ isOpen, onClose }) => {
                         aria-current={isActive ? "page" : undefined}
                         aria-label={item.name}
                         onClick={onClose}
-                        className={`group relative flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                        className={`group relative flex items-center rounded-2xl px-3 py-2.5 text-sm font-medium transition-all ${
                           collapsed ? "lg:justify-center lg:px-0" : "ml-2"
                         } ${
                           isActive
-                            ? "bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200"
-                            : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
+                            ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-[0_10px_24px_rgba(124,58,237,0.22)]"
+                            : "text-gray-700 hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
                         }`}
                       >
-                        <item.icon
-                          className={`h-4 w-4 flex-shrink-0 mr-2.5 ${collapsed ? "lg:mr-0" : ""}`}
-                        />
+                        <item.icon className={`h-4 w-4 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-white" : ""}`} />
                         <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>
                           {item.name}
                         </span>
+                        {collapsed && <SidebarTooltip label={item.name} />}
                       </Link>
                     );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {adminNavigation.length ? (
+              <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-2 shadow-sm dark:border-purple-950/40 dark:bg-purple-950/20">
+                <div className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-500 ${collapsed ? "lg:hidden" : ""}`}>Admin</div>
+                <div className="space-y-1">
+                  {adminNavigation.slice(0, 6).map((item) => {
+                    const isActive =
+                      location.pathname === item.href ||
+                      (item.match && location.pathname.startsWith(item.match));
+                    return (
+                      <Link
+                        key={item.name}
+                        to={item.href}
+                        aria-current={isActive ? "page" : undefined}
+                        aria-label={item.name}
+                        onClick={onClose}
+                        className={`group relative flex items-center rounded-2xl px-3 py-2.5 text-sm font-medium transition-all ${
+                          collapsed ? "lg:justify-center lg:px-0" : ""
+                        } ${
+                          isActive
+                            ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-[0_10px_24px_rgba(124,58,237,0.22)]"
+                            : "text-gray-700 hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
+                        }`}
+                      >
+                        <item.icon className={`h-4 w-4 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-white" : ""}`} />
+                        <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.name}</span>
+                        {collapsed && <SidebarTooltip label={item.name} />}
+                      </Link>
+                    )
                   })}
                 </div>
               </div>
@@ -600,7 +601,7 @@ const Sidebar = ({ isOpen, onClose }) => {
           </nav>
 
           {/* User Info */}
-          <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+          <div className="border-t border-surface-border/80 p-4 dark:border-gray-800">
             <Link
               to="/settings"
               title={
@@ -608,7 +609,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   ? `${user?.first_name || ""} ${user?.last_name || ""}`.trim()
                   : undefined
               }
-              className={`group relative flex items-center hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors cursor-pointer dark:hover:bg-gray-900 ${
+              className={`group relative flex items-center rounded-2xl border border-transparent bg-white/70 p-3 transition-all hover:border-purple-100 hover:bg-white cursor-pointer dark:bg-gray-900/60 dark:hover:border-gray-700 dark:hover:bg-gray-900 ${
                 collapsed ? "lg:justify-center" : ""
               }`}
               onClick={onClose}
@@ -624,7 +625,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                         : `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${user.avatar}`
                     }
                     alt={user?.first_name}
-                    className="h-10 w-10 rounded-full object-cover border border-gray-200 dark:border-gray-700"
+                    className="h-10 w-10 rounded-full object-cover border border-gray-200 shadow-sm dark:border-gray-700"
                     onError={(e) => {
                       // Fallback to initials if image fails to load
                       e.target.style.display = "none";
@@ -633,10 +634,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                     }}
                   />
                 ) : null}
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 ${user?.avatar ? "hidden" : ""}`}
-                >
-                  <span className="text-sm font-semibold text-primary-600">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-purple-200 shadow-sm ${user?.avatar ? "hidden" : ""}`}>
+                  <span className="text-sm font-semibold text-purple-600">
                     {user?.first_name?.[0]}
                     {user?.last_name?.[0]}
                   </span>
@@ -654,11 +653,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               </div>
 
               {/* Tooltip shown only in collapsed desktop rail mode */}
-              {collapsed && (
-                <span className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50">
-                  {user?.first_name} {user?.last_name}
-                </span>
-              )}
+              {collapsed && <SidebarTooltip label={`${user?.first_name || ''} ${user?.last_name || ''}`.trim()} />}
             </Link>
           </div>
         </div>
@@ -668,3 +663,44 @@ const Sidebar = ({ isOpen, onClose }) => {
 };
 
 export default Sidebar;
+
+function SectionLabel({ label, collapsed }) {
+  return (
+    <div className={`px-3 pt-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 ${collapsed ? 'lg:hidden' : ''}`}>
+      {label}
+    </div>
+  )
+}
+
+function SidebarTooltip({ label }) {
+  if (!label) return null
+  return (
+    <div
+      className="
+        absolute
+        left-full
+        top-1/2
+        z-[9999]
+        ml-2
+        -translate-y-1/2
+        whitespace-nowrap
+        rounded-xl
+        bg-gray-900
+        px-3
+        py-1.5
+        text-xs
+        text-white
+        opacity-0
+        shadow-lg
+        invisible
+        transition-all
+        duration-200
+        group-hover:visible
+        group-hover:opacity-100
+        pointer-events-none
+      "
+    >
+      {label}
+    </div>
+  )
+}

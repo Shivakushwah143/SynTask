@@ -246,13 +246,13 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                     e.stopPropagation()
                     console.log('Edit button clicked, user:', user, 'canEdit:', canEdit)
                     if (!user) {
-                      toast.error('Please log in to edit requests')
+                      toast.error('Please log in to edit')
                       return
                     }
                     handleEdit()
                   }}
                   className="p-2 rounded-xl text-primary-600 hover:text-primary-700 hover:bg-primary-50 transition-colors cursor-pointer border border-primary-200 bg-primary-50/50"
-                  title="Edit request"
+                  title="Edit"
                   style={{ minWidth: '40px', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   <Edit className="h-5 w-5" />
@@ -263,14 +263,14 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                     e.stopPropagation()
                     console.log('Delete button clicked, user:', user, 'canDelete:', canDelete)
                     if (!user) {
-                      toast.error('Please log in to delete requests')
+                      toast.error('Please log in to delete')
                       return
                     }
                     handleDelete()
                   }}
                   disabled={deleting}
                   className="p-2 rounded-xl text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer border border-red-200 bg-red-50/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Delete request"
+                  title="Delete"
                   style={{ minWidth: '40px', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   <Trash2 className="h-5 w-5" />
@@ -309,7 +309,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
 
         <div className="space-y-6">
           <div>
-            <label className="text-sm font-medium text-gray-700">Description</label>
+            <label className="text-sm font-medium text-gray-700">Details</label>
             {isEditing ? (
               <textarea
                 value={editForm.description}
@@ -365,7 +365,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                 ))}
               </select>
               {!onStatusChange && (
-                <p className="text-xs text-red-500 mt-1">Status update handler not available</p>
+                <p className="text-xs text-red-500 mt-1">Status update unavailable</p>
               )}
             </div>
             <div>
@@ -406,7 +406,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
           {/* Assignment Section - For All Users */}
           {assignableUsers.length > 0 && (
             <div>
-              <label className="text-sm font-medium text-gray-700">Assign To</label>
+              <label className="text-sm font-medium text-gray-700">Assignee</label>
               <select
                 value={assignTo || ''}
                 onChange={async (e) => {
@@ -440,10 +440,10 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
               </select>
               <p className="text-xs text-gray-500 mt-1">
                 {user?.role === 'employee'
-                  ? 'Assign this request to a Lead or Admin'
+                  ? 'Lead or Admin'
                   : user?.role === 'lead'
-                    ? 'Assign this request to anyone in the company'
-                    : 'Assign this request to a team member'}
+                    ? 'Anyone in the company'
+                    : 'Team member'}
               </p>
             </div>
           )}
@@ -458,14 +458,14 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
           {/* Comments Section */}
           <div className="border-t pt-4">
             <label className="text-sm font-medium text-gray-700 mb-3 block">
-              Comments ({comments.length})
+              Notes ({comments.length})
             </label>
 
             <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
               {loadingComments ? (
-                <p className="text-gray-500 text-sm">Loading comments...</p>
+                <p className="text-gray-500 text-sm">Loading notes...</p>
               ) : comments.length === 0 ? (
-                <p className="text-gray-500 text-sm">No comments yet</p>
+                <p className="text-gray-500 text-sm">No notes yet</p>
               ) : (
                 comments.map((comment) => (
                   <div
@@ -511,7 +511,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                   type="text"
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Add a comment... (Use @username to mention)"
+                  placeholder="Add a note... (Use @username to mention)"
                   className="input flex-1"
                 />
                 <button
@@ -526,7 +526,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
           </div>
 
           <div className="flex space-x-3 pt-4 border-t">
-            {/* Explicit text buttons so users clearly see edit/delete options */}
+            {/* Action buttons */}
             {!isEditing && (
               <>
                 <button
@@ -535,14 +535,14 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                     e.preventDefault()
                     e.stopPropagation()
                     if (!user) {
-                      toast.error('Please log in to edit requests')
+                      toast.error('Please log in to edit')
                       return
                     }
                     handleEdit()
                   }}
                   className="btn btn-primary flex-1"
                 >
-                  Edit Request
+                  Edit
                 </button>
                 <button
                   type="button"
@@ -550,7 +550,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                     e.preventDefault()
                     e.stopPropagation()
                     if (!user) {
-                      toast.error('Please log in to delete requests')
+                      toast.error('Please log in to delete')
                       return
                     }
                     handleDelete()
@@ -558,7 +558,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                   disabled={deleting}
                   className="btn btn-danger flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Delete Request
+                  Delete
                 </button>
               </>
             )}
@@ -573,7 +573,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                 disabled={saving}
                 className="btn btn-success flex-1 disabled:opacity-50"
               >
-                Save Changes
+                Save
               </button>
             )}
             <button
@@ -591,4 +591,3 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
 }
 
 export default TicketDetailModal
-

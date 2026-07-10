@@ -220,13 +220,12 @@ class ProjectService:
         if description is not None:
             project.description = description
         if status_filter:
-            try:
-                project.status = ProjectStatus(status_filter.lower())
-            except ValueError:
-                raise HTTPException(
-                    status_code=http_status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid project status",
-                )
+            from app.services.project_workflow import advance_project
+            await advance_project(
+                project=project,
+                current_user=current_user,
+                target_status=status_filter,
+            )
 
         if lead_id is not None:
             old_lead_id = project.lead_id
