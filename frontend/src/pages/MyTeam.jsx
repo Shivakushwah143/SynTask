@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, CheckSquare, Ticket, Mail, Phone, Briefcase, Calendar, Plus, MoreVertical } from 'lucide-react'
+import { Users, CheckSquare, Ticket, Phone, Briefcase, Calendar, Plus, MoreVertical } from 'lucide-react'
 import { usersAPI } from '../api/users'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'

@@ -1,6 +1,8 @@
 """
 Main API Router - v1
 """
+from datetime import datetime
+
 from fastapi import APIRouter
 from app.core.config import settings
 from app.core.redis_client import get_redis_health
@@ -49,7 +51,7 @@ async def health_check():
         "status": "healthy",
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
-        "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
     checks = {"mongodb": {"ok": True}, "redis": {"ok": False}, "celery": {"ok": False}}

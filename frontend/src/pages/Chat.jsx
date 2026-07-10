@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Send, Paperclip, Search, X, Image as ImageIcon, File as FileIcon, Download, Users, Settings } from 'lucide-react'
+import { Send, Paperclip, Search, X, File as FileIcon, Users, Settings } from 'lucide-react'
 import { chatAPI } from '../api/chat'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'

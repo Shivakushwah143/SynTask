@@ -10,35 +10,23 @@ import {
   FileText,
   MessageCircle,
   Sparkles,
-  Wand2,
-
   Ticket,
-  
-  
   Users,
   X,
   Zap,
   TrendingUp,
   Activity,
   Target,
-  Cpu,
   Radar,
-  Shield,
-  Network,
-  Scan,
-  Binary,
-  Globe,
-  Menu,
   Keyboard,
   Eye,
-  Type,
   Maximize2,
   Minimize2,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
-import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
+import { ROLE, normalizeRole } from '../utils/roles'
 import * as d3 from 'd3'
 import { buildBriefingChartData } from './aiBriefingData'
 
@@ -107,8 +95,6 @@ const buildBriefing = ({ user, stats, recentTasks, recentTickets }) => {
   const name = user?.first_name || 'there'
   const metrics = calculateMetrics(recentTasks)
   const activeTickets = filterActive(recentTickets)
-  const hasAdminAccess = hasCompanyAdminAccess(role)
-
   // Role-based configuration
   const roleConfigs = {
     [ROLE.ADMIN]: () => {
@@ -322,16 +308,6 @@ const buildSuggestions = ({ stats, recentTasks, recentTickets }) => {
   return suggestions.slice(0, 4)
 }
 
-const commandItems = [
-  { label: 'Prioritize My Day', icon: Sparkles, path: '/ai-prioritization', action: 'prioritize' },
-  { label: 'Creative Review', icon: Wand2, path: '/creative-director' },
-  { label: 'Break Down Tasks', icon: CheckSquare, path: '/ai-hub#breakdown' },
-  { label: 'Generate Daily Report', icon: FileText, action: 'report' },
-  { label: 'Analyze Team Risks', icon: Users, path: '/reports' },
-  { label: 'Review Tickets', icon: Ticket, path: '/tickets' },
-  { label: 'Ask AI', icon: MessageCircle, path: '/ai-assistant' },
-]
-
 // Particle Effect Component
 const ParticleEffect = ({ isActive, onComplete }) => {
   useEffect(() => {
@@ -400,23 +376,8 @@ const ParticleEffect = ({ isActive, onComplete }) => {
 }
 
 // Loading Skeleton Component
-const ShimmerSkeleton = ({ className }) => (
-  <div className={`relative overflow-hidden ${className}`}>
-    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
-    <style jsx>{`
-      @keyframes shimmer {
-        0% { transform: translateX(-100%); }
-        100% { transform: translateX(100%); }
-      }
-      .animate-shimmer {
-        animation: shimmer 2s infinite;
-      }
-    `}</style>
-  </div>
-)
-
 // Accessibility Menu Component
-const AccessibilityMenu = ({ onFontSizeChange, onContrastToggle, isHighContrast, onClose }) => {
+const AccessibilityMenu = ({ onFontSizeChange, onContrastToggle, isHighContrast }) => {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -833,7 +794,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
 
   // Render utility
   const renderMetrics = useCallback(() => (
-    briefing.metrics.map((metric, index) => (
+    briefing.metrics.map((metric) => (
       <motion.div
         key={metric.label}
         variants={itemVariants}
@@ -883,7 +844,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
   ), [suggestions, navigate])
 
   const renderCommandButtons = useCallback(() => (
-    COMMAND_ITEMS.map((item, index) => {
+    COMMAND_ITEMS.map((item) => {
       const Icon = item.icon
       return (
         <motion.button
@@ -943,7 +904,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
           <div className="absolute h-[2px] w-full bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent animate-[scan_3s_linear_infinite] top-0" />
         </div>
 
-        <style jsx>{`
+        <style>{`
           @keyframes scan {
             0% { top: 0; opacity: 1; }
             100% { top: 100%; opacity: 0; }
@@ -1075,8 +1036,8 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
 
                 <div className="grid gap-6 p-6 lg:grid-cols-[0.95fr_1.05fr] sm:p-7">
                   <div className="space-y-5">
-                    <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                      {briefing.metrics.map((metric, index) => (
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                    {briefing.metrics.map((metric, index) => (
                         <motion.div
                           key={metric.label}
                           className="group/metric relative overflow-hidden rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-300 hover:shadow-md dark:border-cyan-500/20 dark:bg-slate-800/40 dark:backdrop-blur-sm dark:hover:border-cyan-400/40 dark:hover:bg-slate-800/60 dark:hover:shadow-[0_0_30px_rgba(6,182,212,0.05)]"

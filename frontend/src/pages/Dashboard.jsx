@@ -50,8 +50,6 @@ const Dashboard = () => {
   const [attendanceToday, setAttendanceToday] = useState(null)
   const [attendanceStats, setAttendanceStats] = useState(null)
   const [metrics, setMetrics] = useState(null)
-  const [recent, setRecent] = useState(null)
-  const [activity, setActivity] = useState([])
   const [revenueMode, setRevenueMode] = useState('Accrual')
 
   useEffect(() => {
@@ -65,10 +63,8 @@ const Dashboard = () => {
           meetingsApi.list({ limit: 6 }),
           projectsApi.getProjects({ limit: 8 }),
         ])
-        const [metricsData, recentData, activityData] = await Promise.all([
+        const [metricsData] = await Promise.all([
           dashboardAPI.getMetrics().catch(() => null),
-          dashboardAPI.getRecent().catch(() => null),
-          dashboardAPI.getActivity().catch(() => null),
         ])
         const dashboardRole = normalizeRole(statsData?.role || user?.role)
 
@@ -80,8 +76,6 @@ const Dashboard = () => {
         if (!active) return
         setStats(statsData || { role: dashboardRole || 'employee' })
         setMetrics(metricsData)
-        setRecent(recentData)
-        setActivity(activityData?.activity || [])
         setRecentTasks(tasksData.tasks || [])
         setRecentTickets(ticketsData.tickets || [])
         setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
@@ -116,7 +110,7 @@ const Dashboard = () => {
     return () => {
       active = false
     }
-  }, [])
+  }, [user?.role])
 
   const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d').toUpperCase(), [])
 
@@ -152,8 +146,6 @@ const Dashboard = () => {
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
   const taskSource = recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
-  const dueTodayCount = metrics?.tasks_due_today ?? 0
-
   // ---- Chart datasets (replace the old static / zero-filled placeholders) ----
 
   // Pipeline funnel -> donut with legend + percentages, styled like "Top Expenses"

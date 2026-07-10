@@ -7,7 +7,6 @@ import toast from 'react-hot-toast'
 import { salesApi } from '../../api/sales'
 import { usersAPI } from '../../api/users'
 import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
-import BulkImportProspectsModal from '../../components/BulkImportProspectsModal'
 import { asArray, formatDate, getId } from '../phase4Utils'
 
 const normalizeLeadCsvHeader = (header = '') => {
@@ -29,16 +28,6 @@ export default function SalesProspects() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const { data, isLoading, isError } = useQuery(['sales-prospects', search], () => salesApi.getProspects({ search, limit: 50 }))
   const prospects = asArray(data, ['prospects', 'items'])
-
-  const { data: categoriesData } = useQuery('sales-categories-for-page', salesApi.getCategories)
-  const { data: stagesData } = useQuery('sales-stages-for-page', salesApi.getStages)
-  const { data: productsData } = useQuery('sales-products-for-page', salesApi.getProducts)
-  const { data: usersData } = useQuery('assignable-users-for-page', () => usersAPI.getAssignableUsers())
-
-  const categories = asArray(categoriesData, ['categories'])
-  const stages = asArray(stagesData, ['stages'])
-  const products = asArray(productsData, ['products'])
-  const users = asArray(usersData, ['users'])
 
   useEffect(() => {
     if (searchParams.get('createProspect') === 'true') {

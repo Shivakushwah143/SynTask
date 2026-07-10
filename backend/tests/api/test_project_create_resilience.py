@@ -1,4 +1,14 @@
+from __future__ import annotations
+
+import os
 from types import SimpleNamespace
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key-test-secret-key-test-secret")
+os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key-test-encryption-key-1234")
+os.environ.setdefault("MONGODB_URL", "mongodb://localhost:27017/test")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("SUPER_ADMIN_EMAIL", "admin@example.com")
+os.environ.setdefault("SUPER_ADMIN_PASSWORD", "SuperAdmin123!")
 
 import pytest
 from bson import ObjectId
@@ -7,6 +17,11 @@ from app.api.v1.endpoints.projects import project_create
 
 
 class DummyProject:
+    project_id = None
+    company_id = None
+    key = None
+    status = SimpleNamespace(value="active")
+
     saved = None
 
     def __init__(self, **data):
@@ -62,9 +77,11 @@ class DummyDB(dict):
 async def test_create_project_returns_success_when_publish_event_fails(monkeypatch):
     monkeypatch.setattr(project_create, "Project", DummyProject)
     monkeypatch.setattr(project_create, "ProjectType", lambda value: SimpleNamespace(value=value))
-    monkeypatch.setattr(project_create, "cache_delete", lambda *args, **kwargs: None)
-    monkeypatch.setattr(project_create, "cache_delete_pattern", lambda *args, **kwargs: None)
-    monkeypatch.setattr(project_create, "get_database", lambda: DummyDB())
+    async def noop(*args, **kwargs):
+        return None
+    monkeypatch.setattr(project_create, "cache_delete", noop)
+    monkeypatch.setattr(project_create, "cache_delete_pattern", noop)
+    monkeypatch.setattr("app.core.database.get_database", lambda: DummyDB())
     monkeypatch.setattr(project_create, "publish_event", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("redis down")))
     monkeypatch.setattr(project_create, "User", SimpleNamespace(get=lambda *args, **kwargs: None))
 

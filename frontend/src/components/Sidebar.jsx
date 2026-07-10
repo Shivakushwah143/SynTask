@@ -613,14 +613,6 @@ const Sidebar = ({ isOpen, onClose }) => {
 
 export default Sidebar;
 
-function SectionLabel({ label, collapsed }) {
-  return (
-    <div className={`px-3 pt-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 ${collapsed ? 'lg:hidden' : ''}`}>
-      {label}
-    </div>
-  )
-}
-
 function SidebarNavGroup({
   group,
   location,

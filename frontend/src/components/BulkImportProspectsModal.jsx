@@ -57,43 +57,6 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, c
     return rows
   }
 
-  const parseCSV = (text) => {
-    const parsedRows = parseCSVRows(text.replace(/^\uFEFF/, ''))
-    if (parsedRows.length < 2) {
-      setErrors(['CSV file must have at least a header and one data row'])
-      return
-    }
-
-    const headers = parsedRows[0].map((header) => header.trim().toLowerCase())
-    const rows = []
-    const rowErrors = []
-
-    for (let i = 1; i < parsedRows.length; i++) {
-      const values = parsedRows[i]
-      const row = {}
-      headers.forEach((header, index) => {
-        row[header] = values[index] || ''
-      })
-
-      const validation = validateRow(row, i + 1)
-      if (validation.errors.length > 0) {
-        rowErrors.push(...validation.errors)
-      } else {
-        rows.push(validation.data)
-      }
-    }
-
-    if (rowErrors.length > 0) {
-      setErrors(rowErrors)
-      setData([])
-      return
-    }
-
-    setErrors([])
-    setData(rows)
-    setStep('preview')
-  }
-
   const validateRow = (row, rowNum) => {
     const errors = []
     const data = {

@@ -18,7 +18,7 @@ export class MonitoringProvider {
    * @param {Function} options.onStop Callback triggered if capture is interrupted or revoked
    * @returns {Promise<boolean>} Resolves to true if streams successfully initialized
    */
-  async startCapture({ onFrame, onStop }) {
+  async startCapture() {
     throw new Error('startCapture not implemented')
   }
 

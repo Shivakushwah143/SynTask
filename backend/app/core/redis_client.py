@@ -11,6 +11,7 @@ No behavior change when Redis is healthy - it still connects once and
 reuses the same client, exactly like before.
 """
 import logging
+import asyncio
 import time
 from typing import Optional
 
@@ -33,8 +34,6 @@ def _backoff_delay(attempt: int) -> float:
 
 
 async def _ping_with_timeout(client: aioredis.Redis) -> bool:
-    import asyncio
-
     return await asyncio.wait_for(client.ping(), timeout=settings.REDIS_OPERATION_TIMEOUT_SECONDS)
 
 
@@ -99,7 +98,7 @@ async def get_redis() -> Optional[aioredis.Redis]:
                 last_error = exc
                 if attempt >= settings.REDIS_RETRY_ATTEMPTS:
                     raise
-                await __import__("asyncio").sleep(_backoff_delay(attempt))
+                await asyncio.sleep(_backoff_delay(attempt))
     except Exception as e:
         logger.warning(f"Redis unavailable: {e}. Token blacklist disabled for {COOLDOWN_SECONDS}s.")
         _redis_client = None
