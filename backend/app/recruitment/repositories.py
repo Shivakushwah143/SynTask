@@ -1,4 +1,5 @@
 from datetime import datetime
+import inspect
 from typing import Optional, TypeVar
 
 from beanie import Document
@@ -12,6 +13,30 @@ from app.recruitment.models import (Application, Candidate, CandidateNote,
                                     Resume, Offer)
 
 T = TypeVar("T", bound=Document)
+
+
+async def aggregate_to_list(model: type[Document], pipeline: list[dict]) -> list[dict]:
+    """Run an aggregation pipeline across Beanie/Motor/PyMongo async variants.
+
+    Beanie 2.x with newer PyMongo/Motor can expose an async cursor whose
+    aggregate()/to_list() awaitability differs by driver. This helper keeps
+    the existing pipeline and response shape while avoiding awaiting a cursor
+    object directly.
+    """
+    cursor = model.get_pymongo_collection().aggregate(pipeline)
+    if inspect.isawaitable(cursor):
+        cursor = await cursor
+
+    if hasattr(cursor, "to_list"):
+        try:
+            result = cursor.to_list(length=None)
+        except TypeError:
+            result = cursor.to_list()
+        if inspect.isawaitable(result):
+            return await result
+        return list(result)
+
+    return [item async for item in cursor]
 
 
 class TenantRepository:
@@ -116,7 +141,7 @@ class JobRepository(TenantRepository):
             {"$group": {"_id": "$lifecycle_status", "count": {"$sum": 1}}},
         ]
 
-        results = await RecruitmentJob.aggregate(pipeline).to_list()
+        results = await aggregate_to_list(RecruitmentJob, pipeline)
         return {r["_id"]: r["count"] for r in results}
 
     @staticmethod
@@ -290,7 +315,7 @@ class RecruitmentReportRepository:
             {"$group": {"_id": f"${field}", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}},
         ]
-        return await model.aggregate(pipeline).to_list()
+        return await aggregate_to_list(model, pipeline)
 
     @staticmethod
     async def dashboard(company_id: str, filters: dict) -> dict:
@@ -318,17 +343,17 @@ class RecruitmentReportRepository:
 
     @staticmethod
     async def applications_by_job(company_id: str, filters: dict) -> list[dict]:
-        return await Application.aggregate([
+        return await aggregate_to_list(Application, [
             {"$match": RecruitmentReportRepository.scoped_match(company_id, filters, "applied_at")},
             {"$group": {"_id": "$job_id", "applications": {"$sum": 1}}},
             {"$addFields": {"job_object_id": {"$convert": {"input": "$_id", "to": "objectId", "onError": None, "onNull": None}}}},
             {"$lookup": {"from": "recruitment_jobs", "localField": "job_object_id", "foreignField": "_id", "as": "job"}},
             {"$sort": {"applications": -1}},
-        ]).to_list()
+        ])
 
     @staticmethod
     async def applications_by_department(company_id: str, filters: dict) -> list[dict]:
-        return await Application.aggregate([
+        return await aggregate_to_list(Application, [
             {"$match": RecruitmentReportRepository.scoped_match(company_id, filters, "applied_at")},
             {"$addFields": {"job_object_id": {"$convert": {"input": "$job_id", "to": "objectId", "onError": None, "onNull": None}}}},
             {"$lookup": {"from": "recruitment_jobs", "localField": "job_object_id", "foreignField": "_id", "as": "job"}},
@@ -336,11 +361,11 @@ class RecruitmentReportRepository:
             {"$match": {"job.department_id": filters["department_id"]} if filters.get("department_id") else {}},
             {"$group": {"_id": "$job.department_id", "applications": {"$sum": 1}}},
             {"$sort": {"applications": -1}},
-        ]).to_list()
+        ])
 
     @staticmethod
     async def recruiter_performance(company_id: str, filters: dict) -> list[dict]:
-        return await Application.aggregate([
+        return await aggregate_to_list(Application, [
             {"$match": RecruitmentReportRepository.scoped_match(company_id, filters, "applied_at")},
             {"$group": {
                 "_id": "$assigned_recruiter_id",
@@ -349,7 +374,7 @@ class RecruitmentReportRepository:
                 "rejected": {"$sum": {"$cond": [{"$eq": ["$status", "rejected"]}, 1, 0]}},
             }},
             {"$sort": {"applications": -1}},
-        ]).to_list()
+        ])
 
     @staticmethod
     async def interview_conversion(company_id: str, filters: dict) -> dict:
@@ -379,25 +404,25 @@ class RecruitmentReportRepository:
 
     @staticmethod
     async def monthly_trends(company_id: str, filters: dict) -> list[dict]:
-        return await Application.aggregate([
+        return await aggregate_to_list(Application, [
             {"$match": RecruitmentReportRepository.scoped_match(company_id, filters, "applied_at")},
             {"$group": {"_id": {"year": {"$year": "$applied_at"}, "month": {"$month": "$applied_at"}}, "applications": {"$sum": 1}}},
             {"$sort": {"_id.year": 1, "_id.month": 1}},
-        ]).to_list()
+        ])
 
     @staticmethod
     async def time_metrics(company_id: str, filters: dict) -> dict:
         match = RecruitmentReportRepository.scoped_match(company_id, filters, "applied_at")
-        time_to_hire = await Application.aggregate([
+        time_to_hire = await aggregate_to_list(Application, [
             {"$match": {**match, "status": {"$in": ["joined", "employee"]}}},
             {"$project": {"days": {"$dateDiff": {"startDate": "$applied_at", "endDate": "$updated_at", "unit": "day"}}}},
             {"$group": {"_id": None, "average_days": {"$avg": "$days"}, "count": {"$sum": 1}}},
-        ]).to_list()
-        time_to_fill = await RecruitmentJob.aggregate([
+        ])
+        time_to_fill = await aggregate_to_list(RecruitmentJob, [
             {"$match": {"company_id": company_id, "deleted_at": None, "lifecycle_status": {"$in": ["closed", "archived"]}}},
             {"$project": {"days": {"$dateDiff": {"startDate": "$created_at", "endDate": "$updated_at", "unit": "day"}}}},
             {"$group": {"_id": None, "average_days": {"$avg": "$days"}, "count": {"$sum": 1}}},
-        ]).to_list()
+        ])
         return {
             "time_to_hire": time_to_hire[0] if time_to_hire else {"average_days": 0, "count": 0},
             "time_to_fill": time_to_fill[0] if time_to_fill else {"average_days": 0, "count": 0},

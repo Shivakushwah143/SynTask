@@ -5,8 +5,8 @@ export function RecruitmentDrawer({ open, title, description, onClose, children,
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} role="presentation" />
-      <aside className="relative flex h-full w-full max-w-2xl flex-col overflow-hidden bg-white shadow-modal dark:bg-gray-950">
-        <header className="flex items-start justify-between gap-4 border-b border-surface-border px-5 py-4 dark:border-gray-800">
+      <aside className="relative flex h-full w-full max-w-3xl flex-col overflow-hidden bg-white shadow-modal transition-transform dark:bg-gray-950">
+        <header className="flex items-start justify-between gap-4 border-b border-surface-border bg-surface/95 px-5 py-4 backdrop-blur dark:border-gray-800">
           <div>
             <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
             {description ? <p className="mt-1 text-sm text-text-muted">{description}</p> : null}
