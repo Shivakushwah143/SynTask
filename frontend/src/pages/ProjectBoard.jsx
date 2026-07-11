@@ -6,6 +6,8 @@ import toast from 'react-hot-toast'
 import { projectsApi } from '../api/projects'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
+import { componentsApi } from '../api/components'
+import { versionsApi } from '../api/versions'
 import { useAuthStore } from '../store/authStore'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
@@ -33,6 +35,8 @@ export default function ProjectBoard() {
   const [summaryData, setSummaryData] = useState(null)
   const [pages, setPages] = useState([])
   const [projectFiles, setProjectFiles] = useState([])
+  const [components, setComponents] = useState([])
+  const [versions, setVersions] = useState([])
   const [assignableUsers, setAssignableUsers] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState({ priority: '', assignee: '', label: '' })
@@ -45,8 +49,20 @@ export default function ProjectBoard() {
 
   const loadProjectInfo = useCallback(async () => {
     try {
-      const response = await projectsApi.getProject(projectId)
-      setProjectInfo(response.data)
+      const [projectResponse, componentsResponse, versionsResponse] = await Promise.all([
+        projectsApi.getProject(projectId),
+        componentsApi.getComponents(projectId).catch(() => ({ data: { components: [] } })),
+        versionsApi.getVersions(projectId).catch(() => ({ data: { versions: [] } })),
+      ])
+      setProjectInfo(projectResponse.data)
+      setComponents(componentsResponse.data.components || [])
+      setVersions(versionsResponse.data.versions || [])
+      const [pagesResponse, filesResponse] = await Promise.all([
+        projectsApi.getPages(projectId).catch(() => ({ data: { pages: [] } })),
+        projectsApi.getProjectFiles(projectId).catch(() => ({ data: { files: [] } })),
+      ])
+      setPages(pagesResponse.data.pages || [])
+      setProjectFiles(filesResponse.data.files || [])
     } catch (error) {
       console.error(error)
     }
@@ -185,7 +201,28 @@ export default function ProjectBoard() {
   }
 
   const currentTasks = Object.values(filteredBoard).flat()
+  const allProjectTasks = Object.values(boardData?.tasks_by_status || {}).flat()
+  const completedTasks = allProjectTasks.filter((task) => ['completed', 'done'].includes((task.status || '').toLowerCase())).length
+  const completionPercentage = allProjectTasks.length ? Math.round((completedTasks / allProjectTasks.length) * 100) : 0
+  const projectRecord = projectInfo || boardData?.project || {}
   const activeProject = projectInfo?.name || boardData?.project?.name || 'Project'
+  const projectDescription = projectRecord.description || 'No project description available.'
+  const projectStatus = projectRecord.status || 'active'
+  const formatProjectDate = (value) => {
+    if (!value) return 'Not set'
+    try {
+      return format(new Date(value), 'MMM d, yyyy')
+    } catch {
+      return 'Not set'
+    }
+  }
+  const projectOwner = projectRecord.lead_name || projectRecord.owner_name || projectRecord.assigned_to_name || projectRecord.created_by_name || 'Unassigned'
+  const overviewCards = [
+    { title: 'Tasks', value: allProjectTasks.length },
+    { title: 'Complete', value: completedTasks },
+    { title: 'In progress', value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === 'in_progress').length },
+    { title: 'Completion', value: `${projectRecord.statistics?.completion_percentage ?? completionPercentage}%` },
+  ]
 
   return (
     <div className="space-y-6">
@@ -211,6 +248,36 @@ export default function ProjectBoard() {
           </div>
         )}
       />
+
+      <section className="card overflow-hidden">
+        <div className="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+          <div className="p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Project overview</p>
+              <Badge label={projectStatus.replace(/_/g, ' ')} colorKey={projectStatus} />
+              {projectRecord.type ? <Badge label={projectRecord.type} colorKey="scheduled" /> : null}
+            </div>
+            <p className="mt-3 max-w-4xl text-sm leading-6 text-text-secondary dark:text-text-secondary">{projectDescription}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {overviewCards.map((card) => (
+                <div key={card.title} className="rounded-xl border border-border bg-surface-muted px-4 py-3 dark:border-border dark:bg-black/60">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{card.title}</p>
+                  <p className="mt-2 text-xl font-semibold tabular-nums text-text-primary dark:text-text-primary">{card.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <aside className="border-t border-border bg-surface-muted/70 p-5 dark:border-border dark:bg-black/40 lg:border-l lg:border-t-0">
+            <div className="grid gap-3 text-sm text-text-secondary dark:text-text-secondary">
+              <ProjectOverviewLine label="Owner" value={projectOwner} />
+              <ProjectOverviewLine label="Start" value={formatProjectDate(projectRecord.start_date)} />
+              <ProjectOverviewLine label="Delivery" value={formatProjectDate(projectRecord.delivery_date)} />
+              <ProjectOverviewLine label="Assets" value={`${projectFiles.length} files / ${pages.length} pages`} />
+              <ProjectOverviewLine label="Build" value={`${components.length} components / ${versions.length} versions`} />
+            </div>
+          </aside>
+        </div>
+      </section>
 
       <section className="grid gap-4 md:grid-cols-4">
         <BoardMetric title="Open tasks" value={currentTasks.length} />
@@ -429,6 +496,15 @@ function BoardMetric({ title, value }) {
     <div className="card p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{title}</p>
       <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+    </div>
+  )
+}
+
+function ProjectOverviewLine({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface px-3 py-2 dark:border-border dark:bg-black/50">
+      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{label}</span>
+      <span className="min-w-0 truncate text-right font-medium text-text-primary dark:text-text-primary">{value}</span>
     </div>
   )
 }

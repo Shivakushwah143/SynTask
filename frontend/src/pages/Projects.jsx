@@ -90,9 +90,9 @@ export default function Projects() {
     if (projectId && projects.length) {
       sessionStorage.removeItem('open_project_id')
       const project = projects.find((item) => item.id === projectId)
-      if (project) openProject(project)
+      if (project) navigate(`/projects/${project.id}/board`)
     }
-  }, [projects])
+  }, [navigate, projects])
 
   const filteredProjects = useMemo(
     () => filterProjects(projects, { searchQuery, filters }),
@@ -270,7 +270,7 @@ export default function Projects() {
         onViewMore={() => setProjectPage((page) => page + 1)}
         onOpenProject={(project) => {
           const match = projectCards.find((item) => item.id === project.id)
-          if (match) openProject(match)
+          if (match) navigate(`/projects/${match.id}/board`)
         }}
       />
 
@@ -345,7 +345,7 @@ export default function Projects() {
       </Modal>
 
       <ProjectDetailsPanel
-        isOpen={showDetails}
+        isOpen={showDetails && false}
         project={selectedProject}
       loading={loadingDetails}
       details={projectDetails}
