@@ -25,7 +25,7 @@ const CRM_BREADCRUMB_LABELS = {
   leads: 'CRM Leads',
   companies: 'CRM Companies',
   contacts: 'CRM Contacts',
-  activities: 'CRM Activities',
+  // activities: 'CRM Activities',
   calendar: 'CRM Calendar',
   reports: 'CRM Reports',
   settings: 'CRM Configuration',

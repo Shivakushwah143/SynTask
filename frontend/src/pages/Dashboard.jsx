@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowRight, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
+import { ArrowRight, CalendarDays, CheckSquare, ChevronRight, FolderKanban, Search, SlidersHorizontal, Sparkles, TrendingUp } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -36,6 +36,17 @@ import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthDat
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const PROJECT_STATUS_COLORS = { active: '#4285F4', planning: '#7C6FE0', completed: '#2FB47C', on_hold: '#FFB020' }
+const DASHBOARD_SECTION_VISIBILITY_KEY = 'syntask-dashboard-section-visibility'
+
+const readStoredSectionVisibility = () => {
+  if (typeof window === 'undefined') return {}
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(DASHBOARD_SECTION_VISIBILITY_KEY) || '{}')
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
 
 const Dashboard = () => {
   const { user } = useAuthStore()
@@ -53,6 +64,9 @@ const Dashboard = () => {
   const [recent, setRecent] = useState(null)
   const [activity, setActivity] = useState([])
   const [revenueMode, setRevenueMode] = useState('Accrual')
+  const [sectionVisibility, setSectionVisibility] = useState(readStoredSectionVisibility)
+  const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(false)
+  const [sectionSearch, setSectionSearch] = useState('')
 
   useEffect(() => {
     let active = true
@@ -117,6 +131,14 @@ const Dashboard = () => {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DASHBOARD_SECTION_VISIBILITY_KEY, JSON.stringify(sectionVisibility))
+    } catch {
+      // Ignore storage failures, such as private browsing restrictions.
+    }
+  }, [sectionVisibility])
 
   const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d').toUpperCase(), [])
 
@@ -224,8 +246,44 @@ const Dashboard = () => {
     return `${hrs}h ${mins}m`
   }
 
+  const dashboardSections = [
+    { id: 'workflow-guide', name: 'Workflow Guide' },
+    { id: 'workflow-journey', name: 'Workflow Journey' },
+    { id: 'snapshot-cards', name: 'Snapshot Cards' },
+    { id: 'sales-pipeline', name: 'Revenue & Pipeline' },
+    { id: 'sales-performance', name: 'Sales Performance' },
+    { id: 'employee-attendance', name: 'My Attendance', available: role === ROLE.EMPLOYEE && Boolean(attendanceToday) },
+    { id: 'workplace-attendance', name: 'Workplace Attendance', available: role !== ROLE.EMPLOYEE && Boolean(attendanceStats) },
+    { id: 'ai-briefing', name: 'AI Briefing Center' },
+    { id: 'work-meetings', name: 'Work & Meetings' },
+    { id: 'project-health', name: 'Project Health' },
+    { id: 'recent-activity', name: 'Recent Activity' },
+  ].filter((section) => section.available !== false)
+
+  const visibleSectionCount = dashboardSections.filter((section) => sectionVisibility[section.id] !== false).length
+  const toggleDashboardSection = (sectionId) => {
+    setSectionVisibility((current) => ({ ...current, [sectionId]: current[sectionId] === false }))
+  }
+  const setAllDashboardSections = (visible) => {
+    setSectionVisibility((current) => {
+      const next = { ...current }
+      dashboardSections.forEach((section) => {
+        next[section.id] = visible
+      })
+      return next
+    })
+  }
+  const renderDashboardSection = (sectionId, content) => {
+    if (sectionVisibility[sectionId] === false) return null
+    return (
+      <div key={sectionId} className="transition-all duration-300 ease-out">
+        {content}
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6 pr-0 xl:pr-16">
       <PageHeader
         title="Dashboard"
         description="Command center for work, meetings, and AI briefings."
@@ -247,6 +305,20 @@ const Dashboard = () => {
         )}
       />
 
+      <DashboardSectionVisibilityPanel
+        sections={dashboardSections}
+        visibility={sectionVisibility}
+        visibleCount={visibleSectionCount}
+        collapsed={sectionPanelCollapsed}
+        search={sectionSearch}
+        onSearchChange={setSectionSearch}
+        onToggleCollapsed={() => setSectionPanelCollapsed((collapsed) => !collapsed)}
+        onToggleSection={toggleDashboardSection}
+        onSelectAll={() => setAllDashboardSections(true)}
+        onClearAll={() => setAllDashboardSections(false)}
+      />
+
+      {renderDashboardSection('workflow-guide', (
       <WorkflowGuide
         title={role === ROLE.MANAGER ? 'Review team load, then assign the next task' : role === ROLE.LEAD ? 'Clear today’s team work, then move the pipeline forward' : 'Focus on the highest-risk work first'}
         description={role === ROLE.MANAGER
@@ -274,12 +346,16 @@ const Dashboard = () => {
         ]} 
         className="mb-6"
       />
+      ))}
 
+      {renderDashboardSection('workflow-journey', (
       <WorkflowJourney
         className="mb-6"
         description="This is the complete operating path in SynTask, from sign-in through revenue, delivery, reporting, and renewal."
       />
+      ))}
 
+      {renderDashboardSection('snapshot-cards', (
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="card p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Today</p>
@@ -307,6 +383,7 @@ const Dashboard = () => {
           </p>
         </div>
       </section>
+      ))}
 
       {/* {canSeeSalesWidgets ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -319,7 +396,8 @@ const Dashboard = () => {
         </section>
       ) : null} */}
 
-      {canSeeSalesWidgets ? (
+      {renderDashboardSection('sales-pipeline', (
+      canSeeSalesWidgets ? (
         <section className="grid gap-6 xl:grid-cols-2">
           <IncomeExpenseBarChart
             title="Revenue and Deals"
@@ -341,8 +419,10 @@ const Dashboard = () => {
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Role-based view</h2>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Sales charts are hidden for this role. Operational widgets remain available below.</p>
         </section>
-      )}
+      )
+      ))}
 
+      {renderDashboardSection('sales-performance', (
       <section className="grid gap-6 xl:grid-cols-2">
         {canSeeSalesWidgets ? (
           <>
@@ -379,9 +459,11 @@ const Dashboard = () => {
           </ChartCard>
         )}
       </section>
+      ))}
 
       {/* Employee Attendance Widget */}
-      {role === ROLE.EMPLOYEE && attendanceToday ? (
+      {renderDashboardSection('employee-attendance', (
+      role === ROLE.EMPLOYEE && attendanceToday ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 bg-emerald-50/20 dark:bg-emerald-950/10 p-4 rounded-2xl border border-emerald-500/20">
           <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 shadow-sm">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance Status</p>
@@ -417,10 +499,12 @@ const Dashboard = () => {
             </div>
           </div>
         </section>
-      ) : null}
+      ) : null
+      ))}
 
       {/* Managers Attendance Dashboard */}
-      {role !== ROLE.EMPLOYEE && attendanceStats ? (
+      {renderDashboardSection('workplace-attendance', (
+      role !== ROLE.EMPLOYEE && attendanceStats ? (
         <section className="bg-primary-50/20 dark:bg-primary-950/10 p-5 rounded-2xl border border-primary-500/20 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-primary-800 dark:text-primary-300 uppercase tracking-wider flex items-center">
@@ -459,10 +543,14 @@ const Dashboard = () => {
             </ChartCard>
           </div>
         </section>
-      ) : null}
+      ) : null
+      ))}
 
+      {renderDashboardSection('ai-briefing', (
       <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
+      ))}
 
+      {renderDashboardSection('work-meetings', (
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
         <div className="space-y-6">
           <ChartCard title="Task Due Dates by Priority" period="Next 7 Days">
@@ -568,7 +656,9 @@ const Dashboard = () => {
           </div>
         </div>
       </section>
+      ))}
 
+      {renderDashboardSection('project-health', (
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="card p-5">
           <div className="mb-4 flex items-center justify-between">
@@ -605,7 +695,9 @@ const Dashboard = () => {
           )}
         </ChartCard>
       </section>
+      ))}
 
+      {renderDashboardSection('recent-activity', (
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="card p-5">
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Recent activity</h2>
@@ -622,6 +714,7 @@ const Dashboard = () => {
           </div>
         </div>
       </section>
+      ))}
 
       {/* <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <div className="card p-5">
@@ -658,6 +751,106 @@ const Dashboard = () => {
         </div>
       </section> */}
     </div>
+  )
+}
+
+function DashboardSectionVisibilityPanel({
+  sections,
+  visibility,
+  visibleCount,
+  collapsed,
+  search,
+  onSearchChange,
+  onToggleCollapsed,
+  onToggleSection,
+  onSelectAll,
+  onClearAll,
+}) {
+  const filteredSections = sections.filter((section) => section.name.toLowerCase().includes(search.trim().toLowerCase()))
+
+  return (
+    <aside
+      className={`fixed bottom-4 right-3 z-30 transition-all duration-300 ease-out xl:bottom-auto xl:top-24 ${
+        collapsed ? 'w-12' : 'w-[min(calc(100vw-1.5rem),19rem)] xl:w-72'
+      }`}
+      aria-label="Dashboard section visibility controls"
+    >
+      <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95">
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className={`flex w-full items-center justify-center gap-2 p-3 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-900 ${
+            collapsed ? 'h-12' : 'border-b border-surface-border dark:border-gray-800'
+          }`}
+          aria-expanded={!collapsed}
+          title={collapsed ? 'Show dashboard sections' : 'Hide dashboard sections'}
+        >
+          {collapsed ? (
+            <SlidersHorizontal className="h-5 w-5 text-primary-600" />
+          ) : (
+            <>
+              <SlidersHorizontal className="h-4 w-4 text-primary-600" />
+              <span className="min-w-0 flex-1 text-left">Dashboard Sections</span>
+              <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs text-primary-700 dark:bg-primary-950 dark:text-primary-200">
+                {visibleCount}/{sections.length}
+              </span>
+              <ChevronRight className="h-4 w-4" />
+            </>
+          )}
+        </button>
+
+        {!collapsed ? (
+          <div className="space-y-3 p-3">
+            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
+              <Search className="h-4 w-4 text-gray-400" />
+              <input
+                value={search}
+                onChange={(event) => onSearchChange(event.target.value)}
+                placeholder="Find section"
+                className="min-w-0 flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-gray-100"
+                aria-label="Search dashboard sections"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <button type="button" onClick={onSelectAll} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-950">
+                Select All
+              </button>
+              <button type="button" onClick={onClearAll} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-900">
+                Clear All
+              </button>
+            </div>
+
+            <div className="max-h-[42vh] space-y-1 overflow-y-auto pr-1 xl:max-h-[62vh]">
+              {filteredSections.map((section) => {
+                const checked = visibility[section.id] !== false
+                return (
+                  <label
+                    key={section.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
+                  >
+                    <span className="relative inline-flex h-5 w-9 flex-none items-center">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => onToggleSection(section.id)}
+                        className="peer sr-only"
+                      />
+                      <span className="absolute inset-0 rounded-full bg-gray-200 transition peer-checked:bg-primary-600 dark:bg-gray-800" />
+                      <span className="absolute left-0.5 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{section.name}</span>
+                  </label>
+                )
+              })}
+              {!filteredSections.length ? (
+                <p className="px-2 py-5 text-center text-sm text-gray-500 dark:text-gray-400">No sections found.</p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </aside>
   )
 }
 

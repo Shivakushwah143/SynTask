@@ -350,11 +350,11 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/crm/contacts",
       icon: UserCheck,
     },
-    {
-      name: "CRM Activities",
-      href: "/crm/activities",
-      icon: CalendarClock,
-    },
+    // {
+    //   name: "CRM Activities",
+    //   href: "/crm/activities",
+    //   icon: CalendarClock,
+    // },
     {
       name: "CRM Calendar",
       href: "/crm/calendar",
