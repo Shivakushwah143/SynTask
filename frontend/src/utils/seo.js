@@ -14,7 +14,7 @@ const ROUTE_META = [
   { pattern: /^\/reports(\/.*)?$/, title: 'Reports | SynTask', description: 'Review operational reports and insights.' },
   { pattern: /^\/meetings(\/.*)?$/, title: 'Meetings | SynTask', description: 'Schedule and manage meetings.' },
   { pattern: /^\/crm(\/.*)?$/, title: 'CRM | SynTask', description: 'Manage CRM workspace, customer relationships, and future sales workflows.' },
-  { pattern: /^\/sales(\/.*)?$/, title: 'Sales | SynTask', description: 'Manage sales contacts, prospects, and pipeline.' },
+  { pattern: /^\/sales(\/.*)?$/, title: 'Sales | SynTask', description: 'Manage sales contacts, leads, and pipeline.' },
 ]
 
 const getOrigin = () => {

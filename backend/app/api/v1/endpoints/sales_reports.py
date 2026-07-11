@@ -10,7 +10,7 @@ import io
 
 from app.api.dependencies import get_current_user, require_module
 from app.models.user import User, UserRole
-from app.models.sales_prospect import SalesProspect, ProspectStatus, InterestLevel
+from app.crm.models import SalesProspect, ProspectStatus, InterestLevel
 from app.models.sales_contact import SalesContact
 from app.models.sales_product import SalesProduct
 from app.models.sales_category import SalesCategory
@@ -719,4 +719,3 @@ def _export_inventory_report(products):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=inventory_report.csv"}
     )
-

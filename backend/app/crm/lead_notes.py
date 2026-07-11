@@ -5,9 +5,9 @@ from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.sales_lead_note import SalesLeadNote
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.user import User, UserRole
 
 

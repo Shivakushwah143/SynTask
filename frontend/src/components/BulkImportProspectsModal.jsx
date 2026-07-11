@@ -7,7 +7,7 @@ import { Button, Modal } from './ui'
 
 const getId = (item) => item?.id || item?._id
 
-export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, stages, users }) {
+export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stages, users }) {
   const queryClient = useQueryClient()
   const [file, setFile] = useState(null)
   const [data, setData] = useState([])
@@ -48,7 +48,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
 
     if (/\.(csv|xlsx)$/i.test(file.name)) {
       setProcessing(true)
-      salesApi.previewBulkUploadProspects({
+      salesApi.previewBulkUploadLeads({
         file,
         strategy,
         target_user_id: targetUserId,
@@ -90,7 +90,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
       if (departmentId) {
         formData.append('target_department_id', departmentId)
       }
-      const result = await salesApi.bulkUploadProspects(formData)
+      const result = await salesApi.bulkUploadLeads(formData)
       const payload = result?.data || result || {}
       const successCount = payload.total_uploaded || payload.success_count || 0
       const importErrors = (payload.failed_rows || []).map(
@@ -99,7 +99,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
       const assignedCount = Object.values(payload.assigned_breakdown || {}).reduce((sum, count) => sum + Number(count || 0), 0)
 
       if (successCount > 0) {
-        toast.success(`${successCount} prospect${successCount !== 1 ? 's' : ''} created`)
+        toast.success(`${successCount} lead${successCount !== 1 ? 's' : ''} created`)
         queryClient.invalidateQueries('crm-pipeline-board')
         queryClient.invalidateQueries('crm-leads-entry')
         queryClient.invalidateQueries('crm-lead-duplicates')
@@ -120,7 +120,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
       if (importErrors.length > 0) {
         setErrors(importErrors)
         setStep('preview')
-        toast.error(`${importErrors.length} prospect${importErrors.length !== 1 ? 's' : ''} failed to import`)
+        toast.error(`${importErrors.length} lead${importErrors.length !== 1 ? 's' : ''} failed to import`)
       } else if (successCount === 0) {
         setFile(null)
         setData([])
@@ -130,7 +130,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
       }
     } catch (error) {
       console.error('Bulk import error:', error)
-      toast.error('Failed to import prospects')
+      toast.error('Failed to import leads')
     } finally {
       setLoading(false)
     }
@@ -158,7 +158,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
   }, [isOpen])
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Bulk Import Prospects" size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Bulk Import Leads" size="lg">
       {step === 'success' ? (
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
@@ -245,7 +245,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
             <code className="block overflow-x-auto rounded bg-white p-2 text-xs">
               First Name,Last Name,Country Code,Phone,Email,Company,Category,Stage,Owner,Interest Level,Estimated Close Date,Remark,Products
               <br />
-              John,Doe,+91,9999999999,john@example.com,ABC Corp,Residential,Lead,Alice Admin,High,2026-12-31,Good prospect,2BHK Apartment|Office Space
+              John,Doe,+91,9999999999,john@example.com,ABC Corp,Residential,Lead,Alice Admin,High,2026-12-31,Good lead,2BHK Apartment|Office Space
             </code>
           </div>
 
@@ -309,7 +309,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
             <div className="space-y-2">
               <p className="flex items-center gap-2 text-sm font-semibold text-green-900">
                 <CheckCircle className="h-4 w-4" />
-                {data.length} prospect{data.length !== 1 ? 's' : ''} ready to import
+                {data.length} lead{data.length !== 1 ? 's' : ''} ready to import
               </p>
               <div className="viewport-scroll-x max-h-64 overflow-y-auto rounded-lg border border-gray-200">
                 <table className="w-full text-xs">
@@ -355,7 +355,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
               disabled={data.length === 0 || errors.length > 0}
               loading={loading}
             >
-              Import {data.length} Prospect{data.length !== 1 ? 's' : ''}
+              Import {data.length} Lead{data.length !== 1 ? 's' : ''}
             </Button>
           </div>
         </div>
@@ -366,7 +366,7 @@ export default function BulkImportProspectsModal({ isOpen, onClose, onSuccess, s
           <div className="flex justify-center">
             <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 border-t-primary-600" />
           </div>
-          <p className="text-sm font-medium text-gray-900">Importing prospects...</p>
+          <p className="text-sm font-medium text-gray-900">Importing leads...</p>
           <p className="text-xs text-gray-500">This may take a moment</p>
         </div>
       )}

@@ -286,7 +286,7 @@ export const PipelineEmptyBoardState = memo(function PipelineEmptyBoardState({ o
     <CRMEmptyState
       icon={MoveRight}
       title="No leads in the pipeline"
-      description="Create prospects in Sales or clear the filters to see the board."
+      description="Create leads in Sales or clear the filters to see the board."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={onResetFilters}>

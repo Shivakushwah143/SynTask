@@ -287,7 +287,7 @@ export default function ClientWorkspacePage() {
     )
   } else if (activeTab === 'leads') {
     tabBody = (
-      <CRMSection title="Leads" description="CRM leads associated with this client.">
+      <CRMSection title="Leads" description="Leads associated with this client.">
         {leads.length ? (
           <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="overflow-x-auto">

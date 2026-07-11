@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from bson import ObjectId
 import logging
 
-from app.models.invoice import Invoice, InvoiceStatus
+from app.finance.models import Invoice, InvoiceStatus
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, get_current_company_admin_or_lead, check_company_access
 
@@ -261,4 +261,3 @@ async def update_tds(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update TDS: {str(e)}"
         )
-

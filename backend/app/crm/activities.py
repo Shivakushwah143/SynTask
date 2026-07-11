@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from fastapi import HTTPException, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.crm_company import CRMCompany
 from app.models.meeting import Meeting
@@ -14,7 +14,7 @@ from app.models.sales_contact import SalesContact
 from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_lead_note import SalesLeadNote
 from app.models.sales_pipeline_history import SalesPipelineHistory
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.task import Task
 from app.models.user import User, UserRole
 

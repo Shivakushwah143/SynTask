@@ -6,14 +6,14 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.knowledge.service import knowledge_service
-from app.models.client import Client
-from app.models.content_calendar import ContentCalendarItem, ContentItemPriority, ContentItemStatus, ContentItemType
+from app.crm.models import Client
+from app.marketing.models import ContentCalendarItem, ContentItemPriority, ContentItemStatus, ContentItemType
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.meeting import Meeting
-from app.models.project import Project
-from app.models.task import Task
+from app.projects.models import Project
+from app.tasks.models import Task
 from app.models.user import User, UserRole
 
 

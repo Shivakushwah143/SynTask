@@ -8,11 +8,11 @@ from fastapi import HTTPException, status
 from bson import ObjectId
 
 from app.crm.company_timeline import CRMCompanyTimelineService
-from app.models.client import Client
+from app.crm.models import Client
 from app.models.invoice import Invoice
 from app.models.meeting import Meeting
 from app.models.project import Project
-from app.models.sales_prospect import ProspectStatus, SalesProspect
+from app.crm.models import ProspectStatus, SalesProspect
 from app.models.task import Task
 from app.models.user import User, UserRole
 

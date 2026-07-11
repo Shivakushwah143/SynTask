@@ -7,9 +7,9 @@ import { crmApi } from '../../api/crm'
 import { Badge, Button, EmptyState, SkeletonCard, PageHeader } from '../../components/ui'
 import { formatDate, formatMoney } from '../phase4Utils'
 
-export default function ProspectDetail() {
+export default function LeadDetail() {
   const { id } = useParams()
-  const { data, isLoading, isError } = useQuery(['sales-prospect', id], () => salesApi.getProspect(id), { enabled: Boolean(id) })
+  const { data, isLoading, isError } = useQuery(['sales-prospect', id], () => salesApi.getLead(id), { enabled: Boolean(id) })
   const historyQuery = useQuery(['crm-pipeline-history', id], () => crmApi.getPipelineHistory(id), { enabled: Boolean(id) })
   const timelineQuery = useQuery(['crm-lead-timeline', id], () => crmApi.getLeadTimeline(id), { enabled: Boolean(id) })
 
@@ -17,10 +17,10 @@ export default function ProspectDetail() {
   const timeline = useMemo(() => timelineQuery.data?.timeline || timelineQuery.data?.data?.timeline || [], [timelineQuery.data])
 
   if (isLoading) return <div className="p-6"><SkeletonCard lines={8} /></div>
-  if (isError || !data) return <div className="p-6"><EmptyState icon={Briefcase} title="Prospect not found" /></div>
+  if (isError || !data) return <div className="p-6"><EmptyState icon={Briefcase} title="Lead not found" /></div>
   return (
     <div className="p-6">
-      <PageHeader title={data.prospect_name || `${data.first_name || ''} ${data.last_name || ''}`} description={data.company_name || 'Sales prospect'} actions={<Link to="/sales/prospects"><Button variant="secondary"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>} />
+      <PageHeader title={data.prospect_name || `${data.first_name || ''} ${data.last_name || ''}`} description={data.company_name || 'Lead'} actions={<Link to="/sales/prospects"><Button variant="secondary"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>} />
       <div className="grid gap-4 md:grid-cols-3">
         <Info label="Status" value={<Badge label={data.status || 'open'} colorKey={data.status || 'active'} />} />
         <Info label="Stage" value={data.current_stage} />

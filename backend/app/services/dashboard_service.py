@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List
 
-from app.models.sales_prospect import SalesProspect, ProspectStatus
+from app.crm.models import SalesProspect, ProspectStatus
 from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.services.task_service import TaskService

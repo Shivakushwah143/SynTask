@@ -8,7 +8,7 @@ import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, Modal, Skeleton, inputClassName } from '../../../components/ui'
-import BulkImportProspectsModal from '../../../components/BulkImportProspectsModal'
+import BulkImportLeadsModal from '../../../components/BulkImportProspectsModal'
 import { useAuthStore } from '../../../store/authStore'
 import { isEmployeeRole, normalizeRole } from '../../../utils/roles'
 import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, normalizeText } from '../pipeline/utils'
@@ -63,7 +63,7 @@ export default function CRMLeadsPage() {
       staleTime: 60 * 1000,
     }
   )
-  const duplicatesQuery = useQuery('crm-lead-duplicates', () => salesApi.getDuplicateProspects({}), {
+  const duplicatesQuery = useQuery('crm-lead-duplicates', () => salesApi.getDuplicateLeads({}), {
     staleTime: 60 * 1000,
     enabled: !isEmployee,
   })
@@ -152,7 +152,7 @@ export default function CRMLeadsPage() {
   })
 
   const createLeadMutation = useMutation(
-    (payload) => salesApi.createProspect(payload),
+    (payload) => salesApi.createLead(payload),
     {
       onSuccess: () => {
         toast.success('Lead created')
@@ -211,7 +211,7 @@ export default function CRMLeadsPage() {
   }
 
   const bulkMutation = useMutation(async (payload) => {
-    const updates = payload.lead_ids.map((leadId) => salesApi.updateProspectForm(leadId, payload.fields))
+    const updates = payload.lead_ids.map((leadId) => salesApi.updateLeadForm(leadId, payload.fields))
     return Promise.all(updates)
   }, {
     onSuccess: () => {
@@ -228,7 +228,7 @@ export default function CRMLeadsPage() {
   })
 
   const statusMutation = useMutation(
-    ({ leadId, customFields }) => salesApi.updateProspectForm(leadId, { custom_fields: JSON.stringify(customFields) }),
+    ({ leadId, customFields }) => salesApi.updateLeadForm(leadId, { custom_fields: JSON.stringify(customFields) }),
     {
       onSuccess: () => {
         queryClient.invalidateQueries('crm-leads-entry')
@@ -241,7 +241,7 @@ export default function CRMLeadsPage() {
   )
 
   const employeeStatusMutation = useMutation(
-    ({ leadId, customFields }) => salesApi.updateProspectForm(leadId, { custom_fields: JSON.stringify(customFields) }),
+    ({ leadId, customFields }) => salesApi.updateLeadForm(leadId, { custom_fields: JSON.stringify(customFields) }),
     {
       onSuccess: () => {
         queryClient.invalidateQueries(['crm-assigned-leads', currentUserId])
@@ -311,7 +311,7 @@ export default function CRMLeadsPage() {
 
       <CRMSection
         title="Lead entry points"
-        description="The CRM lead workspace lives at /crm/leads/:leadId. Start from the pipeline or related activity screens."
+        description="The lead workspace lives at /crm/leads/:leadId. Start from the pipeline or related activity screens."
         actions={<Badge label="Sales module" colorKey="draft" />}
       >
         <div className="flex flex-wrap items-center gap-2">
@@ -934,7 +934,7 @@ export default function CRMLeadsPage() {
         loading={mergeMutation.isLoading}
       />
 
-      <BulkImportProspectsModal
+      <BulkImportLeadsModal
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
         onSuccess={() => {

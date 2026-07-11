@@ -9,7 +9,7 @@ import { asArray } from '../phase4Utils'
 const COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed']
 
 export default function SalesReports() {
-  const prospects = useQuery('sales-report-prospects', () => salesApi.getProspects({ limit: 200 }))
+  const prospects = useQuery('sales-report-prospects', () => salesApi.getLeads({ limit: 200 }))
   const data = asArray(prospects.data, ['prospects'])
   const byStatus = Object.entries(data.reduce((acc, item) => {
     const status = item.status || 'open'
@@ -27,20 +27,20 @@ export default function SalesReports() {
       <PageHeader title="Sales Reports" description="Pipeline, conversion, and activity analytics." />
       {prospects.isLoading ? <div className="grid gap-6 xl:grid-cols-2">{[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={6} />)}</div> : data.length ? (
         <div className="grid gap-6 xl:grid-cols-2">
-          <ChartCard title="Prospects by status">
+          <ChartCard title="Leads by status">
             <ResponsiveContainer width="100%" height={280}><PieChart><Pie data={byStatus} dataKey="value" nameKey="name" label>{byStatus.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}</Pie><ChartTooltip cursor={false} /></PieChart></ResponsiveContainer>
           </ChartCard>
           <ChartCard title="Interest levels">
-            <ResponsiveContainer width="100%" height={280}><BarChart data={byInterest}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><ChartTooltip /><Bar dataKey="count" name="Prospects" fill="#2563eb" activeBar={{ stroke: '#1d4ed8', strokeWidth: 2, fillOpacity: 0.85 }} /></BarChart></ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={280}><BarChart data={byInterest}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><ChartTooltip /><Bar dataKey="count" name="Leads" fill="#2563eb" activeBar={{ stroke: '#1d4ed8', strokeWidth: 2, fillOpacity: 0.85 }} /></BarChart></ResponsiveContainer>
           </ChartCard>
           <ChartCard title="Conversion trend">
-            <ResponsiveContainer width="100%" height={280}><LineChart data={byStatus}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><ChartTooltip cursor={{ stroke: '#16a34a', strokeDasharray: '4 4', strokeOpacity: 0.45 }} /><Line dataKey="value" name="Prospects" stroke="#16a34a" strokeWidth={2} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }} /></LineChart></ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={280}><LineChart data={byStatus}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><ChartTooltip cursor={{ stroke: '#16a34a', strokeDasharray: '4 4', strokeOpacity: 0.45 }} /><Line dataKey="value" name="Leads" stroke="#16a34a" strokeWidth={2} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }} /></LineChart></ResponsiveContainer>
           </ChartCard>
           <ChartCard title="Pipeline volume">
-            <ResponsiveContainer width="100%" height={280}><BarChart data={byStatus}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><ChartTooltip /><Bar dataKey="value" name="Prospects" fill="#7c3aed" activeBar={{ stroke: '#6d28d9', strokeWidth: 2, fillOpacity: 0.85 }} /></BarChart></ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={280}><BarChart data={byStatus}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><ChartTooltip /><Bar dataKey="value" name="Leads" fill="#7c3aed" activeBar={{ stroke: '#6d28d9', strokeWidth: 2, fillOpacity: 0.85 }} /></BarChart></ResponsiveContainer>
           </ChartCard>
         </div>
-      ) : <EmptyState icon={BarChart3} title="No report data yet" description="Sales charts will appear when prospects are available." />}
+      ) : <EmptyState icon={BarChart3} title="No report data yet" description="Sales charts will appear when leads are available." />}
     </div>
   )
 }
