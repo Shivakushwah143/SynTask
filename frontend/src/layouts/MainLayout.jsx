@@ -4,7 +4,6 @@ import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
 import { GlobalSearch } from '../components/GlobalSearch'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
-import WorkflowStepNavigation from '../components/workflow/WorkflowStepNavigation'
 
 const BREADCRUMB_LABELS = {
   dashboard: 'Main Dashboard',
