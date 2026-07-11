@@ -1,6 +1,6 @@
 export function AppShell({ sidebar, header, children }) {
   return (
-    <div className="relative flex min-h-screen w-full max-w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(229,106,31,0.08),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.05),_transparent_24%),linear-gradient(180deg,rgba(248,242,232,1)_0%,rgba(239,230,216,1)_100%)] text-text-primary dark:bg-[radial-gradient(circle_at_top_left,_rgba(229,106,31,0.12),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.06),_transparent_24%),linear-gradient(180deg,rgba(15,13,11,1)_0%,rgba(18,16,14,1)_100%)] dark:text-gray-100">
+    <div className="relative flex min-h-screen w-full max-w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(229,106,31,0.08),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.05),_transparent_24%),linear-gradient(180deg,rgba(248,242,232,1)_0%,rgba(239,230,216,1)_100%)] text-text-primary dark:bg-[radial-gradient(circle_at_top_left,_rgba(229,106,31,0.13),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(212,171,79,0.07),_transparent_24%),linear-gradient(180deg,rgba(15,13,11,1)_0%,rgba(21,17,14,1)_52%,rgba(24,19,15,1)_100%)] dark:text-[var(--color-app-text)]">
       {sidebar}
       <div className="relative flex min-w-0 flex-1 flex-col">
         {header}

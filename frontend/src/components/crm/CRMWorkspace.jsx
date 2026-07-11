@@ -30,23 +30,23 @@ export function CRMPageTitle({ eyebrow = 'CRM', title, description, actions }) {
 
 export function CRMHeader({ breadcrumbs = [], title, description, actions }) {
   return (
-    <div className="rounded-3xl border border-emerald-100/80 bg-white/85 p-5 shadow-sm 
+    <div className="rounded-2xl border border-surface-border/80 bg-white/85 p-5 shadow-sm 
     
     
     
-    backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
+    backdrop-blur dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19_/_0.88)]">
       <nav aria-label="Breadcrumb" className="mb-4">
-        <ol className="flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <ol className="flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-[var(--color-app-text-muted)]">
           {breadcrumbs.map((crumb, index) => {
             const Icon = crumb.icon
             const isLast = index === breadcrumbs.length - 1
             return (
               <li key={`${crumb.label}-${crumb.href || index}`} className="flex items-center gap-2">
-                {index > 0 ? <ChevronRight className="h-4 w-4 text-gray-300 dark:text-gray-600" /> : null}
+                {index > 0 ? <ChevronRight className="h-4 w-4 text-gray-300 dark:text-[var(--color-app-text-muted)]" /> : null}
                 {crumb.href && !isLast ? (
                   <Link
                     to={crumb.href}
-                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 focus-visible:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 focus-visible:bg-gray-50 dark:text-[var(--color-app-text-muted)] dark:hover:bg-[var(--color-app-surface-muted)] dark:hover:text-[var(--color-app-text)]"
                   >
                     {Icon ? <Icon className="h-4 w-4" /> : null}
                     <span>{crumb.label}</span>
@@ -56,7 +56,7 @@ export function CRMHeader({ breadcrumbs = [], title, description, actions }) {
                     className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 font-medium ${
                       isLast
                         ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
-                        : 'text-gray-500 dark:text-gray-400'
+                        : 'text-gray-500 dark:text-[var(--color-app-text-muted)]'
                     }`}
                     aria-current={isLast ? 'page' : undefined}
                   >
@@ -84,7 +84,7 @@ export function CRMToolbar({
   actions,
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-100/80 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex flex-col gap-3 rounded-2xl border border-surface-border/80 bg-white/85 p-4 shadow-sm backdrop-blur dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19_/_0.88)] lg:flex-row lg:items-center lg:justify-between">
       <form
         className="flex min-w-0 flex-1 items-center gap-3"
         onSubmit={(event) => {
@@ -156,7 +156,7 @@ export function CRMContent({ className = '', children, aside }) {
 
 export function CRMSection({ title, description, actions, children, className = '' }) {
   return (
-    <section className={`rounded-3xl border border-emerald-100/80 bg-white/85 p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900/85 ${className}`}>
+    <section className={`rounded-2xl border border-primary-200/60 bg-[linear-gradient(135deg,rgba(255,250,244,0.96),rgba(248,242,232,0.9))] p-5 shadow-[0_14px_36px_rgba(63,49,37,0.07)] dark:border-[#5a4635] dark:bg-[linear-gradient(135deg,rgba(36,28,20,0.96),rgba(20,16,12,0.94))] dark:shadow-[0_18px_42px_rgba(0,0,0,0.24)] ${className}`}>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
@@ -182,7 +182,7 @@ export function CRMStatCard({ icon: Icon, label, value, helper, tone = 'blue' })
   }
 
   return (
-    <article className="rounded-2xl border border-emerald-100/80 bg-gradient-to-br from-white via-emerald-50/50 to-white p-4 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900">
+    <article className="rounded-2xl border border-surface-border/80 bg-gradient-to-br from-white via-primary-50/40 to-white p-4 shadow-sm dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface)] dark:via-[var(--color-app-surface-muted)] dark:to-[var(--color-app-surface)]">
       <div className={`inline-flex rounded-2xl border p-3 ${tones[tone] || tones.blue}`}>
         {Icon ? <Icon className="h-5 w-5" /> : null}
       </div>
@@ -197,9 +197,9 @@ export function CRMStatCard({ icon: Icon, label, value, helper, tone = 'blue' })
 
 export function CRMEmptyState({ title, description, action, icon: Icon }) {
   return (
-    <div className="rounded-3xl border border-dashed border-emerald-100 bg-emerald-50/40 p-8 text-center dark:border-gray-800 dark:bg-gray-900/70">
+    <div className="rounded-2xl border border-dashed border-surface-border bg-primary-50/30 p-8 text-center dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)]">
       {Icon ? (
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-primary-950/60 dark:text-primary-300">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 text-primary-700 dark:bg-primary-950/60 dark:text-primary-300">
           <Icon className="h-7 w-7" />
         </div>
       ) : null}
@@ -229,10 +229,10 @@ export function CRMWorkspace({
     <div className="space-y-6">
       <CRMHeader breadcrumbs={breadcrumbs} title={title} description={description} actions={actions} />
       {(toolbar || filters || navigation?.length) ? (
-        <section className="space-y-4 rounded-3xl border border-surface-border/80 bg-white/90 p-4 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/85">
+        <section className="space-y-4 rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm backdrop-blur dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19_/_0.88)]">
           {navigation?.length ? (
             <nav aria-label="CRM sections" className="overflow-x-auto">
-              <div className="flex min-w-max items-center gap-1 rounded-full bg-gray-50 p-1 dark:bg-gray-950">
+              <div className="flex min-w-max items-center gap-1 rounded-full bg-gray-50 p-1 dark:bg-[var(--color-app-surface-muted)]">
                 {navigation.map((item) => {
                   const isActive = activePath === item.path || activePath?.startsWith(`${item.path}/`)
                   return (
@@ -242,8 +242,8 @@ export function CRMWorkspace({
                       aria-current={isActive ? 'page' : undefined}
                       className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                         isActive
-                          ? 'bg-white text-primary-700 shadow-sm dark:bg-gray-800 dark:text-primary-200'
-                          : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                          ? 'bg-white text-primary-700 shadow-sm dark:bg-[var(--color-app-surface-subtle)] dark:text-primary-200'
+                          : 'text-gray-600 hover:text-gray-900 dark:text-[var(--color-app-text-secondary)] dark:hover:text-[var(--color-app-text)]'
                       }`}
                     >
                       <span>{item.label}</span>
