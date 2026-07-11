@@ -15,6 +15,13 @@ const BREADCRUMB_LABELS = {
   meetings: 'Meetings',
   notifications: 'Notifications',
   'crm': 'CRM',
+  hr: 'HR',
+  recruitment: 'Recruitment',
+  jobs: 'Jobs',
+  inbox: 'Inbox',
+  candidates: 'Candidates',
+  'resume-pool': 'Resume Pool',
+  interviews: 'Interviews',
   reports: 'Workspace Reports',
   settings: 'System Settings',
 }
@@ -39,8 +46,13 @@ const MainLayout = () => {
   const openSearch = () => setSearchOpen(true)
   const pathSegments = location.pathname.split('/').filter(Boolean)
   const isCrmPath = pathSegments[0] === 'crm'
+  const isHrPath = pathSegments[0] === 'hr'
   const breadcrumb = pathSegments
-    .map((segment, index) => (isCrmPath && index > 0 ? CRM_BREADCRUMB_LABELS[segment] : BREADCRUMB_LABELS[segment]) || segment)
+    .map((segment, index) => {
+      if (isCrmPath && index > 0) return CRM_BREADCRUMB_LABELS[segment] || BREADCRUMB_LABELS[segment] || segment
+      if (isHrPath && segment === 'reports') return 'Recruitment Reports'
+      return BREADCRUMB_LABELS[segment] || segment
+    })
     .join(' / ')
 
   useKeyboardShortcut('k', openSearch, { ctrlKey: true })
@@ -67,5 +79,3 @@ const MainLayout = () => {
 }
 
 export default MainLayout
-
-

@@ -75,6 +75,11 @@ from app.models.attendance import (
 from app.models.timeline import TimelineEvent
 from app.models.leave import LeaveRequest
 from app.models.capability import seed_default_capabilities
+from app.recruitment.models import (
+    Application, Candidate, CandidateNote, CandidateTimeline, Interview,
+    InterviewFeedback, Offer, RecruitmentAttachment, RecruitmentAudit,
+    RecruitmentImportJob, RecruitmentJob, RecruitmentOutbox, Resume,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +222,19 @@ async def init_db():
                 ScreenShareSession,
                 TimelineEvent,
                 LeaveRequest,
+                RecruitmentJob,
+                Candidate,
+                Application,
+                Resume,
+                Interview,
+                InterviewFeedback,
+                Offer,
+                CandidateNote,
+                RecruitmentAttachment,
+                RecruitmentImportJob,
+                CandidateTimeline,
+                RecruitmentOutbox,
+                RecruitmentAudit,
             ]
         )
 
