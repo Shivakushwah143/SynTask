@@ -44,3 +44,28 @@ export function buildProjectGraphSummary(projects) {
     return summary
   }, { totalTasks: 0, remainingTasks: 0 })
 }
+
+export function filterProjects(projects, { searchQuery = '', filters = {} } = {}) {
+  const query = searchQuery.trim().toLowerCase()
+  return projects.filter((project) => {
+    const matchesQuery = !query || [project.name, project.key, project.description, project.status, project.type]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query))
+    const matchesStatus = !filters.status || (project.status || '').toLowerCase() === filters.status
+    const matchesType = !filters.type || (project.type || '').toLowerCase() === filters.type
+    const matchesOwner = !filters.owner || project.assigned_to === filters.owner || project.lead_id === filters.owner
+    return matchesQuery && matchesStatus && matchesType && matchesOwner
+  })
+}
+
+export function getProjectGridPageSize(columns) {
+  const safeColumns = Number(columns) || 1
+  if (safeColumns >= 3) return 12
+  if (safeColumns === 2) return 10
+  return 6
+}
+
+export function getVisibleProjectCountForGrid({ columns, page = 1, total = 0 }) {
+  const pageSize = getProjectGridPageSize(columns)
+  return Math.min(Math.max(1, page) * pageSize, total)
+}

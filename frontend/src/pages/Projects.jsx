@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock3, Plus, Receipt, Search, SlidersHorizontal } from 'lucide-react'
+import { Clock3, Plus, Receipt, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { projectsApi } from '../api/projects'
@@ -9,9 +9,13 @@ import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
 import { hasCompanyAdminAccess } from '../utils/roles'
 import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
-import { buildProjectGraphRows, buildProjectGraphSummary } from './projectsData'
-
-const PROJECT_BATCH_SIZE = 10
+import {
+  buildProjectGraphRows,
+  buildProjectGraphSummary,
+  filterProjects,
+  getProjectGridPageSize,
+  getVisibleProjectCountForGrid,
+} from './projectsData'
 
 const PROJECT_WORKFLOW = {
   active: ['created', 'kickoff', 'execution', 'review', 'on_hold'],
@@ -31,10 +35,10 @@ export default function Projects() {
   const canCreateProjects = hasCompanyAdminAccess(user?.role)
   const [loading, setLoading] = useState(true)
   const [projects, setProjects] = useState([])
-  const [visibleProjectCount, setVisibleProjectCount] = useState(PROJECT_BATCH_SIZE)
+  const [projectPage, setProjectPage] = useState(1)
+  const projectGridColumns = useProjectGridColumns()
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState({ status: '', type: '', owner: '' })
-  const [showFilters, setShowFilters] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [assignableUsers, setAssignableUsers] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
@@ -78,8 +82,8 @@ export default function Projects() {
   }, [loadProjects])
 
   useEffect(() => {
-    if (showCreateModal) loadAssignableUsers()
-  }, [showCreateModal, loadAssignableUsers])
+    loadAssignableUsers()
+  }, [loadAssignableUsers])
 
   useEffect(() => {
     const projectId = sessionStorage.getItem('open_project_id')
@@ -90,18 +94,10 @@ export default function Projects() {
     }
   }, [projects])
 
-  const filteredProjects = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    return projects.filter((project) => {
-      const matchesQuery = !query || [project.name, project.key, project.description, project.status, project.type]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query))
-      const matchesStatus = !filters.status || (project.status || '').toLowerCase() === filters.status
-      const matchesType = !filters.type || (project.type || '').toLowerCase() === filters.type
-      const matchesOwner = !filters.owner || project.assigned_to === filters.owner || project.lead_id === filters.owner
-      return matchesQuery && matchesStatus && matchesType && matchesOwner
-    })
-  }, [filters.owner, filters.status, filters.type, projects, searchQuery])
+  const filteredProjects = useMemo(
+    () => filterProjects(projects, { searchQuery, filters }),
+    [filters, projects, searchQuery],
+  )
 
   const summary = useMemo(() => ({
     total: projects.length,
@@ -119,11 +115,16 @@ export default function Projects() {
         : 0,
   })), [filteredProjects])
 
+  const visibleProjectCount = useMemo(
+    () => getVisibleProjectCountForGrid({ columns: projectGridColumns, page: projectPage, total: projectCards.length }),
+    [projectCards.length, projectGridColumns, projectPage],
+  )
+  const projectPageSize = useMemo(() => getProjectGridPageSize(projectGridColumns), [projectGridColumns])
   const projectGraphRows = useMemo(() => buildProjectGraphRows(projectCards, visibleProjectCount), [projectCards, visibleProjectCount])
   const projectGraphSummary = useMemo(() => buildProjectGraphSummary(projectCards), [projectCards])
 
   useEffect(() => {
-    setVisibleProjectCount(PROJECT_BATCH_SIZE)
+    setProjectPage(1)
   }, [filters.owner, filters.status, filters.type, searchQuery])
 
   const openProject = async (project) => {
@@ -197,8 +198,8 @@ export default function Projects() {
         await loadProjects()
       }
       
-      // Reset visible count to show new project
-      setVisibleProjectCount(PROJECT_BATCH_SIZE)
+      // Reset visible page to show new project in the first complete grid.
+      setProjectPage(1)
       
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create project')
@@ -214,10 +215,6 @@ export default function Projects() {
       description="Project health, ownership, and progress."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setShowFilters((value) => !value)}>
-              <SlidersHorizontal className="h-4 w-4" />
-              Filters
-            </Button>
             {canCreateProjects ? (
               <Button size="sm" onClick={() => setShowCreateModal(true)}>
                 <Plus className="h-4 w-4" />
@@ -227,6 +224,35 @@ export default function Projects() {
           </div>
         )}
       />
+
+      <section className="card p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input className={`${inputClassName} pl-10`} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search projects by name, key, status, or description" />
+          </div>
+          <div id="project-filters" className="grid gap-3 md:grid-cols-3 lg:flex-1">
+            <select className={inputClassName} value={filters.status} onChange={(event) => setFilters((state) => ({ ...state, status: event.target.value }))}>
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="in_progress">In progress</option>
+              <option value="on_hold">On hold</option>
+              <option value="completed">Completed</option>
+            </select>
+            <select className={inputClassName} value={filters.type} onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}>
+              <option value="">All types</option>
+              <option value="software">Software</option>
+              <option value="marketing">Marketing</option>
+              <option value="business">Business</option>
+              <option value="operations">Operations</option>
+            </select>
+            <select className={inputClassName} value={filters.owner} onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}>
+              <option value="">All owners</option>
+              {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+            </select>
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-4 md:grid-cols-3">
         <MetricCard title="Total projects" value={summary.total} />
@@ -240,43 +266,13 @@ export default function Projects() {
         loading={loading}
         totalCount={projectCards.length}
         visibleCount={visibleProjectCount}
-        onViewMore={() => setVisibleProjectCount((count) => Math.min(count + PROJECT_BATCH_SIZE, projectCards.length))}
+        pageSize={projectPageSize}
+        onViewMore={() => setProjectPage((page) => page + 1)}
         onOpenProject={(project) => {
           const match = projectCards.find((item) => item.id === project.id)
           if (match) openProject(match)
         }}
       />
-
-      <section className="card p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input className={`${inputClassName} pl-10`} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search projects by name, key, status, or description" />
-          </div>
-          {showFilters ? (
-            <div className="grid gap-3 md:grid-cols-3 lg:flex-1">
-              <select className={inputClassName} value={filters.status} onChange={(event) => setFilters((state) => ({ ...state, status: event.target.value }))}>
-                <option value="">All statuses</option>
-                <option value="active">Active</option>
-                <option value="in_progress">In progress</option>
-                <option value="on_hold">On hold</option>
-                <option value="completed">Completed</option>
-              </select>
-              <select className={inputClassName} value={filters.type} onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}>
-                <option value="">All types</option>
-                <option value="software">Software</option>
-                <option value="marketing">Marketing</option>
-                <option value="business">Business</option>
-                <option value="operations">Operations</option>
-              </select>
-              <select className={inputClassName} value={filters.owner} onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}>
-                <option value="">All owners</option>
-                {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
-              </select>
-            </div>
-          ) : null}
-        </div>
-      </section>
 
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New project" size="xl">
         <form onSubmit={handleCreate} className="space-y-5">
@@ -364,7 +360,7 @@ export default function Projects() {
   )
 }
 
-function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, onViewMore, onOpenProject }) {
+function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
@@ -442,13 +438,33 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, o
           <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
             <span>Showing {rows.length} of {totalCount} projects</span>
             <Button variant="secondary" size="sm" onClick={onViewMore}>
-              View more
+              View {Math.min(pageSize, totalCount - visibleCount)} more
             </Button>
           </div>
         ) : null}
       </div>
     </section>
   )
+}
+
+function useProjectGridColumns() {
+  const getColumns = useCallback(() => {
+    if (typeof window === 'undefined') return 3
+    if (window.matchMedia('(min-width: 1280px)').matches) return 3
+    if (window.matchMedia('(min-width: 640px)').matches) return 2
+    return 1
+  }, [])
+  const [columns, setColumns] = useState(getColumns)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const updateColumns = () => setColumns(getColumns())
+    updateColumns()
+    window.addEventListener('resize', updateColumns)
+    return () => window.removeEventListener('resize', updateColumns)
+  }, [getColumns])
+
+  return columns
 }
 
 function ProgressRing({ value }) {
