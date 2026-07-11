@@ -31,6 +31,8 @@ const AIPrioritization = lazy(() => import('./pages/AIPrioritization'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Subscriptions = lazy(() => import('./pages/Subscriptions'))
 const ActivityLog = lazy(() => import('./pages/ActivityLog'))
+const Timeline = lazy(() => import('./pages/Timeline'))
+const Leaves = lazy(() => import('./pages/Leaves'))
 const Settings = lazy(() => import('./pages/Settings'))
 const MyTeam = lazy(() => import('./pages/MyTeam'))
 const NotFound = lazy(() => import('./pages/NotFound'))
@@ -210,6 +212,8 @@ function App() {
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
         <Route path="activity" element={withBoundary(<ActivityLog />)} />
+        <Route path="timeline" element={withBoundary(<Timeline />)} />
+        <Route path="leaves" element={withBoundary(<Leaves />)} />
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>

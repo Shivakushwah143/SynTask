@@ -198,6 +198,18 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
+      name: "Timeline",
+      href: "/timeline",
+      icon: CalendarClock,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
+      name: "Leaves",
+      href: "/leaves",
+      icon: CalendarCheck2,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
       name: "Workspace Reports",
       href: "/reports",
       icon: LineChart,
@@ -439,7 +451,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "communication",
       label: "Communication",
-      items: ["Notifications"]
+      items: ["Notifications", "Timeline", "Leaves"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },

@@ -16,10 +16,12 @@ from app.attendance_domain.models import (
     Attendance, AttendanceStatus, AttendanceSession, BreakLog,
     MonitoringSession, CameraSession, ScreenShareSession
 )
+from app.models.timeline import TimelineEventType, TimelineModule
 from app.api.dependencies import (
     get_current_user, get_current_company_admin_or_lead, get_current_company_admin
 )
 from app.core.security import decode_token_with_blacklist_check
+from app.services.timeline_service import create_timeline_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -348,6 +350,25 @@ async def delayed_logout_check(user_id: str, user: User, company_id: str):
         attendance.updated_at = now_utc
         await attendance.save()
 
+        await create_timeline_event(
+            user_id=user_id,
+            company_id=company_id,
+            event_type=TimelineEventType.ATTENDANCE_CHECK_OUT,
+            title="Attendance Check-Out",
+            description="Stopped work session",
+            related_module=TimelineModule.ATTENDANCE,
+            related_record_id=str(attendance.id),
+            actor_id=user_id,
+            timestamp=attendance.logout_time or now_utc,
+            metadata={
+                "date": today_str,
+                "total_working_seconds": attendance.total_working_hours,
+                "work_type": attendance.work_type,
+                "source": "disconnect_timeout",
+            },
+            idempotency_key=f"attendance:{attendance.id}:check_out",
+        )
+
         broadcast_msg = {
             "type": "status_changed",
             "employee_id": user_id,
@@ -465,6 +486,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                 camera_perm = normalize_camera_status(message.get("camera_permission", "Denied"))
                 screen_perm = normalize_screen_status(message.get("screen_share_permission", "Denied"))
                 now_utc = datetime.utcnow()
+                should_record_check_in = False
 
                 # Check for existing record
                 attendance = await Attendance.find_one(
@@ -487,6 +509,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                         camera_permission_status=camera_perm,
                         screen_sharing_status=screen_perm
                     )
+                    should_record_check_in = True
                 else:
                     previous_status = attendance.status
                     if previous_status == AttendanceStatus.WORKING:
@@ -504,8 +527,24 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     if not attendance.login_time:
                         attendance.login_time = now_utc
                         attendance.is_late = now_utc.hour >= LATE_CLOCK_IN_HOUR_UTC
+                        should_record_check_in = True
 
                 await attendance.save()
+
+                if should_record_check_in:
+                    await create_timeline_event(
+                        user_id=user_id_str,
+                        company_id=user.company_id,
+                        event_type=TimelineEventType.ATTENDANCE_CHECK_IN,
+                        title="Attendance Check-In",
+                        description="Started work session",
+                        related_module=TimelineModule.ATTENDANCE,
+                        related_record_id=str(attendance.id),
+                        actor_id=user_id_str,
+                        timestamp=attendance.login_time or now_utc,
+                        metadata={"date": today_str, "is_late": attendance.is_late},
+                        idempotency_key=f"attendance:{attendance.id}:check_in",
+                    )
 
                 # Start AttendanceSession
                 session = AttendanceSession(
@@ -660,6 +699,24 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     attendance.screen_sharing_status = "Denied"
                     attendance.updated_at = now_utc
                     await attendance.save()
+
+                    await create_timeline_event(
+                        user_id=user_id_str,
+                        company_id=user.company_id,
+                        event_type=TimelineEventType.ATTENDANCE_CHECK_OUT,
+                        title="Attendance Check-Out",
+                        description="Stopped work session",
+                        related_module=TimelineModule.ATTENDANCE,
+                        related_record_id=str(attendance.id),
+                        actor_id=user_id_str,
+                        timestamp=attendance.logout_time or now_utc,
+                        metadata={
+                            "date": today_str,
+                            "total_working_seconds": attendance.total_working_hours,
+                            "work_type": attendance.work_type,
+                        },
+                        idempotency_key=f"attendance:{attendance.id}:check_out",
+                    )
 
                     await manager.broadcast_monitoring_update(user, await build_status_message(user, attendance))
 
