@@ -246,8 +246,8 @@ const Tasks = () => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Tasks</h1>
-          <p className="text-gray-600 text-xs mt-0.5">Track work and priorities.</p>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-[var(--color-app-text)]">Tasks</h1>
+          <p className="text-gray-600 text-xs mt-0.5 dark:text-[var(--color-app-text-secondary)]">Track work and priorities.</p>
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle />
@@ -297,9 +297,9 @@ const Tasks = () => {
         </div>
 
         {showFilters && (
-          <div className="mt-4 grid grid-cols-2 gap-4 pt-4 border-t">
+          <div className="mt-4 grid grid-cols-1 gap-4 border-t border-surface-border pt-4 dark:border-[var(--color-app-border)] sm:grid-cols-2">
             <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Priority</label>
               <select
                 value={filters.priority}
                 onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
@@ -313,7 +313,7 @@ const Tasks = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assignee</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Assignee</label>
               <select
                 value={filters.assigned_to}
                 onChange={(e) => setFilters({ ...filters, assigned_to: e.target.value })}
@@ -329,7 +329,7 @@ const Tasks = () => {
               </div>
             {isCompanyAdmin && (
               <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Department</label>
                 <select
                   value={filters.department_id}
                   onChange={(e) => setFilters({ ...filters, department_id: e.target.value })}
@@ -355,16 +355,16 @@ const Tasks = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Title</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Priority</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Due Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-[var(--color-app-text-muted)]">Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-[var(--color-app-text-muted)]">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-[var(--color-app-text-muted)]">Priority</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-[var(--color-app-text-muted)]">Due Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {tasks.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="px-4 py-6 text-center text-sm text-gray-500">
+                    <td colSpan="4" className="px-4 py-6 text-center text-sm text-gray-500 dark:text-[var(--color-app-text-muted)]">
                       No tasks yet.
                     </td>
                   </tr>
@@ -373,12 +373,12 @@ const Tasks = () => {
                     <tr
                       key={task.id}
                       onClick={() => handleTaskClick(task)}
-                      className="cursor-pointer hover:bg-gray-50"
+                      className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-[var(--color-app-surface-muted)]"
                     >
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{task.title}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{task.status}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{priorities[task.priority]?.label || task.priority}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-[var(--color-app-text)]">{task.title}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">{task.status}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">{priorities[task.priority]?.label || task.priority}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">
                         {task.due_date ? format(new Date(task.due_date), 'MMM d') : '—'}
                       </td>
                     </tr>
@@ -395,7 +395,7 @@ const Tasks = () => {
             return (
               <div key={status.id} className="card">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-gray-900">{status.label}</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-[var(--color-app-text)]">{status.label}</h3>
                   <span className="badge badge-secondary text-xs">
                     {statusTasks.length}
                   </span>
@@ -408,10 +408,10 @@ const Tasks = () => {
                       <div
                         key={task.id}
                         onClick={() => handleTaskClick(task)}
-                        className="p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                        className="rounded-xl border border-gray-200 bg-white p-3 cursor-pointer transition-colors hover:border-primary-300 hover:bg-gray-50 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:hover:border-primary-700 dark:hover:bg-[var(--color-app-surface-muted)]"
                       >
                         <div className="flex items-start justify-between mb-2">
-                          <p className="font-medium text-gray-900 text-sm flex-1">
+                          <p className="font-medium text-gray-900 text-sm flex-1 dark:text-[var(--color-app-text)]">
                             {task.title}
                           </p>
                           <div className="dropdown relative">
@@ -420,15 +420,15 @@ const Tasks = () => {
                                 e.stopPropagation()
                                 // Handle menu
                               }}
-                              className="p-1 hover:bg-gray-100 rounded"
+                              className="rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-[var(--color-app-surface-subtle)]"
                             >
-                              <MoreVertical className="h-4 w-4 text-gray-500" />
+                              <MoreVertical className="h-4 w-4 text-gray-500 dark:text-[var(--color-app-text-muted)]" />
                             </button>
                           </div>
                         </div>
                         
                         {task.description && (
-                          <p className="text-xs text-gray-500 mb-2 line-clamp-2">
+                          <p className="text-xs text-gray-500 mb-2 line-clamp-2 dark:text-[var(--color-app-text-muted)]">
                             {task.description}
                           </p>
                         )}
@@ -438,7 +438,7 @@ const Tasks = () => {
                             {priorities[task.priority]?.label || task.priority}
                           </span>
                           {task.due_date && (
-                            <div className="flex items-center text-xs text-gray-500">
+                            <div className="flex items-center text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
                               <Calendar className="h-3 w-3 mr-1" />
                               {format(new Date(task.due_date), 'MMM d')}
                             </div>
@@ -446,7 +446,7 @@ const Tasks = () => {
                         </div>
                         
                         {task.assigned_to && (
-                          <div className="flex items-center mt-2 text-xs text-gray-500">
+                          <div className="flex items-center mt-2 text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
                             <User className="h-3 w-3 mr-1" />
                             {(() => {
                               const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
@@ -457,7 +457,7 @@ const Tasks = () => {
                           </div>
                         )}
                         {task.department && (
-                          <div className="mt-2 text-xs text-gray-500">
+                          <div className="mt-2 text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
                             Department: {task.department}
                           </div>
                         )}
@@ -473,12 +473,12 @@ const Tasks = () => {
 
       {/* Create Task Modal */}
       {canManageTasks && showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
-              <h2 className="text-xl font-bold mb-4">New task</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-surface-border bg-white p-6 shadow-modal dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
+              <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-[var(--color-app-text)]">New task</h2>
             <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Title
                 </label>
                 <input
@@ -490,7 +490,7 @@ const Tasks = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Details
                 </label>
                 <textarea
@@ -501,7 +501,7 @@ const Tasks = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Assignee
                 </label>
                 <select
@@ -517,10 +517,10 @@ const Tasks = () => {
                   ))}
                 </select>
                 {loadingUsers && (
-                  <p className="text-xs text-gray-500 mt-1">Loading users...</p>
+                  <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">Loading users...</p>
                 )}
                 {!loadingUsers && visibleAssignableUsers.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">
                     {userRole === ROLE.ADMIN 
                       ? 'No leads or employees available yet.'
                       : 'No employees available yet.'}
@@ -529,7 +529,7 @@ const Tasks = () => {
               </div>
               {isCompanyAdmin && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                     Department
                   </label>
                   <select
@@ -547,12 +547,12 @@ const Tasks = () => {
                     ))}
                   </select>
                   {loadingDepartments && (
-                    <p className="text-xs text-gray-500 mt-1">Loading departments...</p>
+                    <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">Loading departments...</p>
                   )}
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Priority
                 </label>
                 <select name="priority" className="input" defaultValue="medium">
@@ -563,7 +563,7 @@ const Tasks = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Due date
                 </label>
                 <NaturalDateInput
@@ -574,7 +574,7 @@ const Tasks = () => {
                 <input type="hidden" name="due_date" value={dueDateValue} required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Estimated hours
                 </label>
                 <input
@@ -617,13 +617,13 @@ const Tasks = () => {
 
 function TaskGraphPanel({ rows, summary, onOpenTask }) {
   return (
-    <section className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+    <section className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-[var(--color-app-border)]">
         <div className="flex items-center gap-1.5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Tasks</h2>
-          <span className="flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">?</span>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-[var(--color-app-text)]">Tasks</h2>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-[var(--color-app-border)] dark:text-[var(--color-app-text-muted)]">?</span>
         </div>
-        <div className="hidden flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400 sm:flex">
+        <div className="hidden flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-[var(--color-app-text-muted)] sm:flex">
           {Object.entries(TASK_GRAPH_PRIORITY_COLORS).map(([priority, color]) => (
             <span key={priority} className="inline-flex items-center gap-1">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
@@ -633,7 +633,7 @@ function TaskGraphPanel({ rows, summary, onOpenTask }) {
         </div>
       </div>
 
-      <div className="grid border-b border-gray-200 dark:border-gray-800 sm:grid-cols-3">
+      <div className="grid border-b border-gray-200 dark:border-[var(--color-app-border)] sm:grid-cols-3">
         <TaskGraphStat icon={ListTodo} label="Total tasks" value={summary.total} />
         <TaskGraphStat icon={Calendar} label="Active tasks" value={summary.active} muted />
         <TaskGraphStat icon={CheckCircle2} label="Completed" value={summary.completed} muted />
@@ -648,21 +648,21 @@ function TaskGraphPanel({ rows, summary, onOpenTask }) {
                 type="button"
                 onClick={() => onOpenTask(task)}
                 title={`${task.title}: ${task.statusLabel}, ${task.priorityLabel} priority, ${task.progress}% progress`}
-                className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-700 dark:hover:bg-gray-950"
+                className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)] dark:hover:border-primary-700 dark:hover:bg-[var(--color-app-surface-subtle)]"
               >
                 <div className="flex items-start gap-3">
                   <TaskProgressRing value={task.progress} color={task.priorityColor} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold leading-5 text-gray-900 dark:text-gray-100">{task.title}</p>
-                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">{task.assignee}</p>
+                    <p className="truncate text-sm font-semibold leading-5 text-gray-900 dark:text-[var(--color-app-text)]">{task.title}</p>
+                    <p className="truncate text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">{task.assignee}</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">{task.statusLabel}</span>
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-[var(--color-app-surface-subtle)] dark:text-[var(--color-app-text-muted)]">{task.statusLabel}</span>
                       <span className="rounded-full px-2 py-0.5 text-xs font-medium text-white" style={{ backgroundColor: task.priorityColor }}>{task.priorityLabel}</span>
                     </div>
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                  <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
                     <span>Status Progress</span>
                     <span>{task.progress}%</span>
                   </div>
@@ -681,11 +681,11 @@ function TaskGraphPanel({ rows, summary, onOpenTask }) {
 
 function TaskGraphStat({ icon: Icon, label, value, muted = false }) {
   return (
-    <div className={`flex items-center gap-2 px-4 py-3 ${muted ? 'border-t border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950/50 sm:border-l sm:border-t-0' : ''}`}>
-      <Icon className={`h-5 w-5 ${muted ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`} />
+    <div className={`flex items-center gap-2 px-4 py-3 ${muted ? 'border-t border-gray-200 bg-gray-50 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)] sm:border-l sm:border-t-0' : ''}`}>
+      <Icon className={`h-5 w-5 ${muted ? 'text-gray-500 dark:text-[var(--color-app-text-muted)]' : 'text-gray-900 dark:text-[var(--color-app-text)]'}`} />
       <div>
-        <p className={`text-lg font-semibold tabular-nums ${muted ? 'text-gray-600 dark:text-gray-300' : 'text-gray-900 dark:text-gray-100'}`}>{value}</p>
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
+        <p className={`text-lg font-semibold tabular-nums ${muted ? 'text-gray-600 dark:text-[var(--color-app-text-secondary)]' : 'text-gray-900 dark:text-[var(--color-app-text)]'}`}>{value}</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-[var(--color-app-text-muted)]">{label}</p>
       </div>
     </div>
   )
@@ -694,8 +694,8 @@ function TaskGraphStat({ icon: Icon, label, value, muted = false }) {
 function TaskProgressRing({ value, color }) {
   const bounded = Math.max(0, Math.min(100, value || 0))
   return (
-    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(${color} ${bounded * 3.6}deg, #eeeeee 0deg)` }}>
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full [--task-ring-rest:#eeeeee] dark:[--task-ring-rest:#44382c]" style={{ background: `conic-gradient(${color} ${bounded * 3.6}deg, var(--task-ring-rest) 0deg)` }}>
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-900 dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]">
         {bounded}%
       </div>
     </div>

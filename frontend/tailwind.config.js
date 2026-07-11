@@ -45,6 +45,7 @@ export default {
         },
       },
       colors: {
+        border: 'var(--color-app-border)',
         // Promage warm cream + charcoal theme tokens.
         primary: {
           50: '#fff4ec',
@@ -52,6 +53,7 @@ export default {
           200: '#ffc7a6',
           300: '#f8a26d',
           400: '#ee8240',
+          450: '#e9782f',
           500: '#e56a1f',
           600: '#d85a17',
           700: '#b94a15',

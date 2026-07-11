@@ -34,28 +34,28 @@ export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSear
   )
 
   return (
-    <header className="sticky top-0 z-30 min-w-0 border-b border-surface-border/80 bg-[rgba(248,242,232,0.92)] backdrop-blur-xl dark:border-gray-800/80 dark:bg-black/96">
+    <header className="sticky top-0 z-30 min-w-0 border-b border-surface-border/80 bg-[rgba(248,242,232,0.92)] backdrop-blur-xl dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19_/_0.94)]">
       <div className="flex h-16 min-w-0 items-center justify-between gap-3 px-3 sm:px-5 lg:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
           <button
             type="button"
             onClick={onMenuClick}
-            className="inline-flex rounded-full border border-surface-border bg-surface/95 p-2 text-text-secondary transition-colors hover:bg-surface-muted lg:hidden dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            className="inline-flex rounded-full border border-surface-border bg-surface/95 p-2 text-text-secondary transition-colors hover:bg-surface-muted lg:hidden dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)]"
             aria-label="Open navigation"
           >
             <Menu className="h-5 w-5" />
           </button>
           <div className="min-w-0 max-w-full flex-1 overflow-hidden">
-            <p className="truncate text-xs font-semibold uppercase tracking-[0.22em] text-text-muted dark:text-gray-400">SynTask</p>
-            <h1 className="truncate text-base font-semibold text-text-primary dark:text-gray-100">{title}</h1>
-            {subtitle ? <p className="hidden truncate text-sm text-text-secondary sm:block dark:text-gray-400">{subtitle}</p> : null}
-            {breadcrumb ? <p className="hidden truncate text-xs text-text-muted md:block dark:text-gray-500">{breadcrumb}</p> : null}
+            <p className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:text-[var(--color-app-text-muted)]">SynTask</p>
+            <h1 className="truncate text-base font-semibold text-text-primary dark:text-[var(--color-app-text)]">{title}</h1>
+            {subtitle ? <p className="hidden truncate text-sm text-text-secondary sm:block dark:text-[var(--color-app-text-secondary)]">{subtitle}</p> : null}
+            {breadcrumb ? <p className="hidden truncate text-xs text-text-muted md:block dark:text-[var(--color-app-text-muted)]">{breadcrumb}</p> : null}
           </div>
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
           {communicationLinks.length ? (
-            <nav className="flex items-center gap-1 rounded-full border border-surface-border/70 bg-surface/90 p-1 dark:border-gray-800 dark:bg-black/70" aria-label="Global communication">
+            <nav className="flex items-center gap-1 rounded-full border border-surface-border/70 bg-surface/90 p-1 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]" aria-label="Global communication">
               {communicationLinks.map((item) => {
                 const isActive = location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
                 return (
@@ -67,7 +67,7 @@ export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSear
                     className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm font-medium transition-colors xl:w-auto xl:gap-2 xl:px-3 ${
                       isActive
                         ? 'bg-primary-500 text-white shadow-none dark:bg-primary-500 dark:text-white'
-                        : 'text-text-secondary hover:bg-surface-muted hover:text-primary-600 dark:text-gray-300 dark:hover:bg-gray-950 dark:hover:text-primary-200'
+                        : 'text-text-secondary hover:bg-surface-muted hover:text-primary-600 dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)] dark:hover:text-primary-200'
                     }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -77,24 +77,24 @@ export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSear
               })}
             </nav>
           ) : null}
-          <Button variant="ghost" size="sm" onClick={onCommandOpen} className="hidden md:inline-flex rounded-full border border-surface-border bg-surface/95 text-text-primary hover:bg-surface-muted">
+          <Button variant="ghost" size="sm" onClick={onCommandOpen} className="hidden md:inline-flex rounded-full border border-surface-border bg-surface/95 text-text-primary hover:bg-surface-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]">
             <span className="inline-flex items-center gap-2">
               <Search className="h-4 w-4" />
               Command
             </span>
-            <kbd className="rounded-full border border-surface-border bg-surface-muted px-1.5 py-0.5 text-[10px] text-text-muted dark:border-gray-700 dark:bg-black dark:text-gray-400">Ctrl K</kbd>
+            <kbd className="rounded-full border border-surface-border bg-surface-muted px-1.5 py-0.5 text-[10px] text-text-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)] dark:text-[var(--color-app-text-muted)]">Ctrl K</kbd>
           </Button>
           <button
             type="button"
             onClick={onSearchOpen}
-            className="rounded-full border border-surface-border bg-surface/95 p-2 text-text-secondary transition-colors hover:bg-surface-muted md:hidden dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            className="rounded-full border border-surface-border bg-surface/95 p-2 text-text-secondary transition-colors hover:bg-surface-muted md:hidden dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)]"
             aria-label="Open global search"
           >
             <Search className="h-5 w-5" />
           </button>
           <ThemeToggle />
           <NotificationBell />
-          <Button variant="ghost" size="sm" onClick={onLogout} loading={logoutLoading} loadingText="Logging out" className="hidden sm:inline-flex rounded-full border border-surface-border bg-surface/95 text-text-primary hover:bg-surface-muted">
+          <Button variant="ghost" size="sm" onClick={onLogout} loading={logoutLoading} loadingText="Logging out" className="hidden sm:inline-flex rounded-full border border-surface-border bg-surface/95 text-text-primary hover:bg-surface-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]">
             Logout
           </Button>
         </div>

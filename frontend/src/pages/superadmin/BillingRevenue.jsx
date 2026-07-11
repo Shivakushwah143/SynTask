@@ -27,7 +27,7 @@ export default function BillingRevenue() {
             <Stat label="ARR" value={formatMoney(revenue.data?.arr || revenue.data?.annual_recurring_revenue)} />
             <Stat label="Collected" value={formatMoney(revenue.data?.total_collected || revenue.data?.total_revenue)} />
           </div>
-          {trend.length ? <section className="rounded-lg border border-gray-200 bg-white p-4"><h2 className="mb-4 font-semibold">Revenue trend</h2><div className="h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis /><ChartTooltip cursor={{ stroke: '#2563eb', strokeDasharray: '4 4', strokeOpacity: 0.45 }} valueFormatter={(value) => formatMoney(value)} /><Line dataKey="revenue" name="Revenue" stroke="#2563eb" strokeWidth={2} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }} /></LineChart></ResponsiveContainer></div></section> : null}
+          {trend.length ? <section className="rounded-2xl border border-surface-border bg-surface/95 p-4 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]"><h2 className="mb-4 font-semibold text-gray-900 dark:text-[var(--color-app-text)]">Revenue trend</h2><div className="h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" strokeOpacity={0.18} /><XAxis dataKey="month" tick={{ fill: '#a79b8b', fontSize: 11 }} /><YAxis tick={{ fill: '#a79b8b', fontSize: 11 }} /><ChartTooltip cursor={{ stroke: '#e56a1f', strokeDasharray: '4 4', strokeOpacity: 0.45 }} valueFormatter={(value) => formatMoney(value)} /><Line dataKey="revenue" name="Revenue" stroke="#e56a1f" strokeWidth={2} activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }} /></LineChart></ResponsiveContainer></div></section> : null}
           {rows.length ? <Table columns={columns} data={rows} /> : <EmptyState icon={CreditCard} title="No transactions found" />}
         </div>
       )}
@@ -36,5 +36,5 @@ export default function BillingRevenue() {
 }
 
 function Stat({ label, value }) {
-  return <div className="rounded-lg border border-gray-200 bg-white p-4"><p className="text-sm text-gray-500">{label}</p><p className="mt-1 text-2xl font-bold text-gray-900">{value}</p></div>
+  return <div className="rounded-2xl border border-surface-border bg-surface/95 p-4 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]"><p className="text-sm text-gray-500 dark:text-[var(--color-app-text-muted)]">{label}</p><p className="mt-1 text-2xl font-bold text-gray-900 dark:text-[var(--color-app-text)]">{value}</p></div>
 }

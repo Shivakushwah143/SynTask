@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { ArrowRight, CalendarDays, CheckSquare, ChevronRight, FolderKanban, Search, SlidersHorizontal, Sparkles, TrendingUp } from 'lucide-react'
@@ -275,7 +275,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="relative space-y-6 pr-0 xl:pr-16">
+    <div className="relative space-y-6 pb-24 pr-0 xl:pb-0 xl:pr-16">
       <PageHeader
         title="Dashboard"
         description="Command center for work, meetings, and AI briefings."
@@ -305,6 +305,7 @@ const Dashboard = () => {
         search={sectionSearch}
         onSearchChange={setSectionSearch}
         onToggleCollapsed={() => setSectionPanelCollapsed((collapsed) => !collapsed)}
+        onCollapse={() => setSectionPanelCollapsed(true)}
         onToggleSection={toggleDashboardSection}
         onSelectAll={() => setAllDashboardSections(true)}
         onClearAll={() => setAllDashboardSections(false)}
@@ -746,7 +747,7 @@ const Dashboard = () => {
   )
 }
 
-function DashboardSectionVisibilityPanel({
+export function DashboardSectionVisibilityPanel({
   sections,
   visibility,
   visibleCount,
@@ -754,25 +755,53 @@ function DashboardSectionVisibilityPanel({
   search,
   onSearchChange,
   onToggleCollapsed,
+  onCollapse,
   onToggleSection,
   onSelectAll,
   onClearAll,
 }) {
+  const panelRef = useRef(null)
   const filteredSections = sections.filter((section) => section.name.toLowerCase().includes(search.trim().toLowerCase()))
+
+  useEffect(() => {
+    if (collapsed) return undefined
+
+    const handlePointerDown = (event) => {
+      if (panelRef.current?.contains(event.target)) return
+      onCollapse?.()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [collapsed, onCollapse])
+
+  useEffect(() => {
+    if (collapsed) return undefined
+
+    const handleScroll = (event) => {
+      const scrollY = window.scrollY || document.documentElement.scrollTop || event.target?.scrollY || 0
+      if (scrollY > 24) onCollapse?.()
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [collapsed, onCollapse])
 
   return (
     <aside
+      ref={panelRef}
       className={`fixed bottom-4 right-3 z-30 transition-all duration-300 ease-out xl:bottom-auto xl:top-24 ${
         collapsed ? 'w-12' : 'w-[min(calc(100vw-1.5rem),19rem)] xl:w-72'
       }`}
       aria-label="Dashboard section visibility controls"
     >
-      <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-xl dark:border-gray-800 dark:bg-gray-950/95">
+      <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-xl dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19_/_0.96)]">
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className={`flex w-full items-center justify-center gap-2 p-3 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-900 ${
-            collapsed ? 'h-12' : 'border-b border-surface-border dark:border-gray-800'
+          aria-label={collapsed ? 'Show dashboard sections' : 'Hide dashboard sections'}
+          className={`flex w-full items-center justify-center gap-2 p-3 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 dark:text-[var(--color-app-text)] dark:hover:bg-[var(--color-app-surface-muted)] ${
+            collapsed ? 'h-12' : 'border-b border-surface-border dark:border-[var(--color-app-border)]'
           }`}
           aria-expanded={!collapsed}
           title={collapsed ? 'Show dashboard sections' : 'Hide dashboard sections'}
@@ -793,7 +822,7 @@ function DashboardSectionVisibilityPanel({
 
         {!collapsed ? (
           <div className="space-y-3 p-3">
-            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)]">
               <Search className="h-4 w-4 text-gray-400" />
               <input
                 value={search}
@@ -808,7 +837,7 @@ function DashboardSectionVisibilityPanel({
               <button type="button" onClick={onSelectAll} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-950">
                 Select All
               </button>
-              <button type="button" onClick={onClearAll} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-900">
+              <button type="button" onClick={onClearAll} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-500 transition hover:bg-gray-100 dark:text-[var(--color-app-text-muted)] dark:hover:bg-[var(--color-app-surface-muted)]">
                 Clear All
               </button>
             </div>
@@ -819,7 +848,7 @@ function DashboardSectionVisibilityPanel({
                 return (
                   <label
                     key={section.id}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900"
+                    className="flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)]"
                   >
                     <span className="relative inline-flex h-5 w-9 flex-none items-center">
                       <input
@@ -836,7 +865,7 @@ function DashboardSectionVisibilityPanel({
                 )
               })}
               {!filteredSections.length ? (
-                <p className="px-2 py-5 text-center text-sm text-gray-500 dark:text-gray-400">No sections found.</p>
+                <p className="px-2 py-5 text-center text-sm text-gray-500 dark:text-[var(--color-app-text-muted)]">No sections found.</p>
               ) : null}
             </div>
           </div>
