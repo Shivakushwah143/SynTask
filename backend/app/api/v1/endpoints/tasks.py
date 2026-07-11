@@ -17,6 +17,8 @@ from app.api.dependencies import (
     check_company_access,
 )
 from app.services.task_service import TaskService
+from app.models.timeline import TimelineEventType, TimelineModule
+from app.services.timeline_service import create_timeline_event
 from app.core.cache import cache_delete_pattern
 
 router = APIRouter()
@@ -371,13 +373,27 @@ async def create_task(
         epic_id=epic_id,
         sprint_id=sprint_id,
         story_points=story_points,
-        estimated_hours=estimated_hours_value,
+        estimated_hours=estimated_hours,
     )
 
     # --- Save the task. This is the only DB write that MUST succeed before
     # we respond. Everything else (email, notification, cache, event) is
     # non-critical and happens in the background AFTER the response is sent. ---
     await task.insert()
+
+    if task.assigned_to:
+        await create_timeline_event(
+            user_id=task.assigned_to,
+            company_id=task.company_id,
+            event_type=TimelineEventType.TASK_ASSIGNED,
+            title="Task Assigned",
+            description=task.title,
+            related_module=TimelineModule.TASK,
+            related_record_id=str(task.id),
+            actor_id=str(current_user.id),
+            metadata={"task_title": task.title, "project_id": task.project_id, "priority": task.priority.value},
+            idempotency_key=f"task:{task.id}:assigned:{task.assigned_to}",
+        )
 
     background_tasks.add_task(
         _send_task_side_effects, task, current_user, assignee, project
@@ -506,8 +522,42 @@ async def update_task_status(
             detail=f"Invalid status. Must be one of: {[s.value for s in TaskStatus]}"
         )
 
+    previous_status = task.status
+
     # Update status and trigger automation asynchronously when changed.
     task = await TaskService.update_status(task, task_status, str(current_user.id))
+
+    if previous_status != task.status:
+        if task.status == TaskStatus.IN_PROGRESS:
+            timeline_type = TimelineEventType.TASK_STARTED
+            title = "Task Started"
+        elif task.status == TaskStatus.COMPLETED:
+            timeline_type = TimelineEventType.TASK_COMPLETED
+            title = "Task Completed"
+        elif previous_status == TaskStatus.COMPLETED:
+            timeline_type = TimelineEventType.TASK_REOPENED
+            title = "Task Reopened"
+        else:
+            timeline_type = TimelineEventType.TASK_UPDATED
+            title = "Task Updated"
+
+        await create_timeline_event(
+            user_id=task.assigned_to or str(current_user.id),
+            company_id=task.company_id,
+            event_type=timeline_type,
+            title=title,
+            description=task.title,
+            related_module=TimelineModule.TASK,
+            related_record_id=str(task.id),
+            actor_id=str(current_user.id),
+            metadata={
+                "task_title": task.title,
+                "from_status": previous_status.value,
+                "to_status": task.status.value,
+                "project_id": task.project_id,
+            },
+            idempotency_key=f"task:{task.id}:status:{previous_status.value}:{task.status.value}:{int(task.updated_at.timestamp())}",
+        )
 
     await publish_event(
         build_domain_event(
@@ -751,6 +801,8 @@ async def update_task(
 
     check_company_access(current_user, task.company_id)
 
+    previous_assigned_to = task.assigned_to
+
     # Update fields if provided
     if title is not None:
         task.title = title
@@ -841,6 +893,33 @@ async def update_task(
 
     task.updated_at = datetime.utcnow()
     await task.save()
+
+    if task.assigned_to and task.assigned_to != previous_assigned_to:
+        await create_timeline_event(
+            user_id=task.assigned_to,
+            company_id=task.company_id,
+            event_type=TimelineEventType.TASK_ASSIGNED,
+            title="Task Assigned",
+            description=task.title,
+            related_module=TimelineModule.TASK,
+            related_record_id=str(task.id),
+            actor_id=str(current_user.id),
+            metadata={"task_title": task.title, "project_id": task.project_id, "priority": task.priority.value},
+            idempotency_key=f"task:{task.id}:assigned:{task.assigned_to}",
+        )
+
+    await create_timeline_event(
+        user_id=task.assigned_to or str(current_user.id),
+        company_id=task.company_id,
+        event_type=TimelineEventType.TASK_UPDATED,
+        title="Task Updated",
+        description=task.title,
+        related_module=TimelineModule.TASK,
+        related_record_id=str(task.id),
+        actor_id=str(current_user.id),
+        metadata={"task_title": task.title, "project_id": task.project_id},
+        idempotency_key=f"task:{task.id}:updated:{int(task.updated_at.timestamp())}",
+    )
 
     await publish_event(
         build_domain_event(

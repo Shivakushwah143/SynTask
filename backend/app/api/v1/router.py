@@ -13,7 +13,7 @@ from app.api.v1.endpoints import (
     auth, users, companies, tasks, notifications, dashboard, files, reports, 
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
-    sales, search, departments, attendance, notification_emails
+    sales, search, departments, attendance, notification_emails, timeline, leaves
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import creative
@@ -131,6 +131,8 @@ api_router.include_router(content_calendar.router, prefix="/content-calendar", t
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
+api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])
+api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"])
 api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"])
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 
