@@ -214,7 +214,7 @@ export default function Projects() {
       title="Projects"
       description="Project health, ownership, and progress."
         actions={(
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 pr-3 sm:pr-4 lg:pr-6">
             {canCreateProjects ? (
               <Button size="sm" onClick={() => setShowCreateModal(true)}>
                 <Plus className="h-4 w-4" />
