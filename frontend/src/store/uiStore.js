@@ -24,7 +24,7 @@ export const useUIStore = create((set, get) => ({
       onCancel = () => {},
     } = options
 
-    set((state) => ({
+    set(() => ({
       confirmDialog: {
         isOpen: true,
         title,
@@ -39,12 +39,12 @@ export const useUIStore = create((set, get) => ({
 
     // Return a promise for convenience
     return new Promise((resolve) => {
-      set((state) => ({
-        confirmDialog: {
-          ...state.confirmDialog,
-          onConfirm: () => {
-            onConfirm?.()
-            resolve(true)
+    set(() => ({
+      confirmDialog: {
+        ...get().confirmDialog,
+        onConfirm: () => {
+          onConfirm?.()
+          resolve(true)
             get().closeConfirm()
           },
           onCancel: () => {
@@ -58,9 +58,9 @@ export const useUIStore = create((set, get) => ({
   },
 
   closeConfirm: () => {
-    set((state) => ({
+    set(() => ({
       confirmDialog: {
-        ...state.confirmDialog,
+        ...get().confirmDialog,
         isOpen: false,
       },
     }))
@@ -92,7 +92,7 @@ export const useUIStore = create((set, get) => ({
       get().hideUndo()
     }, duration)
 
-    set((state) => ({
+    set(() => ({
       undoNotification: {
         isVisible: true,
         message,
@@ -108,9 +108,9 @@ export const useUIStore = create((set, get) => ({
       clearTimeout(prevTimeoutId)
     }
 
-    set((state) => ({
+    set(() => ({
       undoNotification: {
-        ...state.undoNotification,
+        ...get().undoNotification,
         isVisible: false,
         timeoutId: null,
       },

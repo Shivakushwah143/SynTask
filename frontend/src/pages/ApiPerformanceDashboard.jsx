@@ -28,11 +28,11 @@ const metricTotals = (metrics) => {
 }
 
 const ApiMetricRow = ({ metric }) => (
-  <tr className="border-b border-gray-200/70 last:border-b-0 dark:border-gray-800">
+  <tr className="border-b border-border/70 last:border-b-0 dark:border-border">
     <td className="px-4 py-3">
       <div className="max-w-[32rem]">
-        <div className="truncate font-medium text-gray-900 dark:text-gray-100">{metric.endpoint}</div>
-        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatTime(metric.startTime)}</div>
+        <div className="truncate font-medium text-text-primary dark:text-text-primary">{metric.endpoint}</div>
+        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">{formatTime(metric.startTime)}</div>
       </div>
     </td>
     <td className="px-4 py-3">
@@ -40,33 +40,33 @@ const ApiMetricRow = ({ metric }) => (
         {metric.method}
       </span>
     </td>
-    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatMs(metric.durationMs)}</td>
-    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{metric.status ?? '-'}</td>
-    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatBytes(metric.responseSizeBytes)}</td>
-    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{metric.duplicate ? 'Yes' : 'No'}</td>
+      <td className="px-4 py-3 text-sm text-text-secondary dark:text-text-secondary">{formatMs(metric.durationMs)}</td>
+      <td className="px-4 py-3 text-sm text-text-secondary dark:text-text-secondary">{metric.status ?? '-'}</td>
+      <td className="px-4 py-3 text-sm text-text-secondary dark:text-text-secondary">{formatBytes(metric.responseSizeBytes)}</td>
+    <td className="px-4 py-3 text-sm text-text-secondary dark:text-text-secondary">{metric.duplicate ? 'Yes' : 'No'}</td>
   </tr>
 )
 
 const SummaryCard = ({ title, value, hint, icon: Icon, tone = 'blue' }) => {
   const toneClasses = {
-    blue: 'from-blue-50 to-white text-blue-700 border-blue-200/80',
-    green: 'from-emerald-50 to-white text-emerald-700 border-emerald-200/80',
-    amber: 'from-amber-50 to-white text-amber-700 border-amber-200/80',
-    rose: 'from-rose-50 to-white text-rose-700 border-rose-200/80',
+    blue: 'from-sky-50 to-surface text-sky-700 border-sky-200/80 dark:from-sky-950/30 dark:to-black/70 dark:text-sky-300 dark:border-sky-900/50',
+    green: 'from-emerald-50 to-surface text-emerald-700 border-emerald-200/80 dark:from-emerald-950/30 dark:to-black/70 dark:text-emerald-300 dark:border-emerald-900/50',
+    amber: 'from-amber-50 to-surface text-amber-700 border-amber-200/80 dark:from-amber-950/30 dark:to-black/70 dark:text-amber-300 dark:border-amber-900/50',
+    rose: 'from-rose-50 to-surface text-rose-700 border-rose-200/80 dark:from-rose-950/30 dark:to-black/70 dark:text-rose-300 dark:border-rose-900/50',
   }
 
   return (
     <div className={`rounded-2xl border bg-gradient-to-br p-5 shadow-sm ${toneClasses[tone]}`}>
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500">{title}</div>
-          <div className="mt-2 text-3xl font-black tracking-tight text-gray-950 dark:text-gray-50">{value}</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-text-muted">{title}</div>
+          <div className="mt-2 text-3xl font-black tracking-tight text-text-primary dark:text-text-primary">{value}</div>
         </div>
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-surface shadow-sm dark:bg-black/60">
           <Icon className="h-5 w-5" />
         </div>
       </div>
-      <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">{hint}</div>
+      <div className="mt-4 text-sm text-text-secondary dark:text-text-secondary">{hint}</div>
     </div>
   )
 }
@@ -83,16 +83,16 @@ const ApiPerformanceDashboard = () => {
   const slowest = summaries.slice(0, 12)
 
   return (
-    <div className="min-h-full bg-gray-50 p-4 text-gray-900 dark:bg-gray-950 dark:text-gray-100 sm:p-6 lg:p-8">
+    <div className="min-h-full bg-surface-muted p-4 text-text-primary dark:bg-black dark:text-text-primary sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-4 rounded-3xl border border-border bg-surface p-6 shadow-sm dark:border-border dark:bg-black/95 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-primary-700 dark:border-primary-900/60 dark:bg-primary-950/40 dark:text-primary-300">
               <Gauge className="h-3.5 w-3.5" />
               API Performance
             </div>
             <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl">Live API performance dashboard</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-gray-600 dark:text-gray-400">
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-text-secondary dark:text-text-secondary">
               Tracks every Axios and wrapped fetch request in memory so you can spot slow endpoints, duplicate calls, and waterfall patterns during a session.
             </p>
           </div>
@@ -101,7 +101,7 @@ const ApiPerformanceDashboard = () => {
             <button
               type="button"
               onClick={() => clearApiPerformanceMetrics()}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-text-secondary transition hover:bg-surface-muted dark:border-border dark:bg-black/70 dark:text-text-secondary dark:hover:bg-white/5"
             >
               <RefreshCw className="h-4 w-4" />
               Clear metrics
@@ -141,17 +141,17 @@ const ApiPerformanceDashboard = () => {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="rounded-3xl border border-border bg-surface p-6 shadow-sm dark:border-border dark:bg-black/95">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold">Slowest endpoints</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Sorted by max response time first.</p>
+                <p className="text-sm text-text-muted dark:text-text-secondary">Sorted by max response time first.</p>
               </div>
             </div>
             <div className="viewport-scroll-x max-h-[520px] overflow-y-auto">
               <table className="w-full border-separate border-spacing-0">
-                <thead className="sticky top-0 bg-white dark:bg-gray-900">
-                  <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+                <thead className="sticky top-0 bg-surface dark:bg-black/95">
+                  <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">
                     <th className="px-3 py-3">Endpoint</th>
                     <th className="px-3 py-3">Method</th>
                     <th className="px-3 py-3">Calls</th>
@@ -163,29 +163,29 @@ const ApiPerformanceDashboard = () => {
                 <tbody>
                   {slowest.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-3 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                      <td colSpan={6} className="px-3 py-10 text-center text-sm text-text-muted dark:text-text-secondary">
                         No API metrics yet. Open a page or trigger an action to start collecting data.
                       </td>
                     </tr>
                   ) : (
                     slowest.map((summary) => (
-                      <tr key={`${summary.method}-${summary.endpoint}-${summary.source}`} className="border-b border-gray-200/70 last:border-b-0 dark:border-gray-800">
+                      <tr key={`${summary.method}-${summary.endpoint}-${summary.source}`} className="border-b border-border/70 last:border-b-0 dark:border-border">
                         <td className="px-3 py-4">
                           <div className="max-w-[24rem]">
-                            <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{summary.endpoint}</div>
-                            <div className="mt-1 text-xs uppercase tracking-[0.18em] text-gray-500">{summary.source}</div>
+                            <div className="truncate text-sm font-medium text-text-primary dark:text-text-primary">{summary.endpoint}</div>
+                            <div className="mt-1 text-xs uppercase tracking-[0.18em] text-text-muted">{summary.source}</div>
                           </div>
                         </td>
                         <td className="px-3 py-4 text-sm font-semibold">{summary.method}</td>
                         <td className="px-3 py-4 text-sm">{summary.callCount}</td>
                         <td className="px-3 py-4 text-sm">{formatMs(summary.averageMs)}</td>
-                        <td className="px-3 py-4 text-sm font-semibold text-gray-950 dark:text-gray-50">{formatMs(summary.maxMs)}</td>
+                        <td className="px-3 py-4 text-sm font-semibold text-text-primary dark:text-text-primary">{formatMs(summary.maxMs)}</td>
                         <td className="px-3 py-4 text-sm">
                           <span className={summary.failureCount > 0 ? 'text-rose-600 dark:text-rose-300' : 'text-emerald-600 dark:text-emerald-300'}>
                             {summary.failureCount}
                           </span>
-                          <span className="text-gray-400"> / </span>
-                          <span className={summary.duplicateCount > 0 ? 'text-amber-600 dark:text-amber-300' : 'text-gray-500'}>
+                          <span className="text-text-muted"> / </span>
+                          <span className={summary.duplicateCount > 0 ? 'text-amber-600 dark:text-amber-300' : 'text-text-muted'}>
                             {summary.duplicateCount}
                           </span>
                         </td>
@@ -197,22 +197,22 @@ const ApiPerformanceDashboard = () => {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="rounded-3xl border border-border bg-surface p-6 shadow-sm dark:border-border dark:bg-black/95">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold">Recent requests</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Most recent in-memory entries, newest first.</p>
+                <p className="text-sm text-text-muted dark:text-text-secondary">Most recent in-memory entries, newest first.</p>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              <div className="inline-flex items-center gap-2 rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-text-secondary dark:bg-black/70 dark:text-text-secondary">
                 <Copy className="h-3.5 w-3.5" />
                 {metrics.length} rows
               </div>
             </div>
 
-            <div className="viewport-scroll-x max-h-[520px] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-800">
+            <div className="viewport-scroll-x max-h-[520px] overflow-y-auto rounded-2xl border border-border dark:border-border">
               <table className="w-full border-separate border-spacing-0">
-                <thead className="sticky top-0 bg-white dark:bg-gray-900">
-                  <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+                <thead className="sticky top-0 bg-surface dark:bg-black/95">
+                  <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">
                     <th className="px-4 py-3">Endpoint</th>
                     <th className="px-4 py-3">Method</th>
                     <th className="px-4 py-3">Time</th>

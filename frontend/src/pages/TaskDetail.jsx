@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
   ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
@@ -51,52 +51,34 @@ const TaskDetail = () => {
   const [updatingField, setUpdatingField] = useState(null)
   const [composerOpen, setComposerOpen] = useState(false)
 
-  useEffect(() => {
-    if (taskId) {
-      loadTask()
-    }
-    // loadTask intentionally refreshes the whole task workspace when the route ID changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskId])
-
-  const loadTask = async () => {
+  const loadTask = useCallback(async () => {
     try {
       setLoading(true)
       const data = await tasksAPI.getTask(taskId)
       setTask(data)
       setTaskStatus(data.status)
+
       if (data.attachments) {
-        // Convert attachment URLs to full URLs if needed
         const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
         const BASE_URL = API_URL.replace('/api/v1', '') || ''
-        
-        const fullAttachments = data.attachments.map(url => {
-          // Already a full URL
+        const fullAttachments = data.attachments.map((url) => {
           if (url.startsWith('http://') || url.startsWith('https://')) {
             return url
           }
-          
-          // URL starts with /api/v1/files/
           if (url.startsWith('/api/v1/files/')) {
             return `${BASE_URL}${url}`
           }
-          
-          // URL starts with /files/
           if (url.startsWith('/files/')) {
             return `${BASE_URL}/api/v1${url}`
           }
-          
-          // Just a filename or relative path - extract filename
           const filename = url.split('/').pop().split('\\').pop()
           return `${BASE_URL}/api/v1/files/${filename}`
         })
-        
-        console.log('Original attachments:', data.attachments)
-        console.log('Converted attachments:', fullAttachments)
         setAttachments(fullAttachments)
       } else {
         setAttachments([])
       }
+
       setEditData({
         title: data.title,
         description: data.description || '',
@@ -109,17 +91,44 @@ const TaskDetail = () => {
         component_id: data.component_id || '',
         fix_version_id: data.fix_version_id || '',
       })
-      
+
       if (data.project_id) {
-        loadProjectInfo(data.project_id)
+        try {
+          const response = await projectsApi.getProject(data.project_id)
+          setProjectInfo(response.data)
+        } catch (error) {
+          console.error('Error loading project:', error)
+        }
       }
-      
-      await Promise.all([
-        loadComments(),
-        loadUsers(),
-        loadWatchers(),
-        loadChangelog(),
-      ])
+
+      try {
+        const commentsData = await tasksAPI.getComments(data.id)
+        setComments(commentsData.comments || [])
+      } catch (error) {
+        console.error('Error loading comments:', error)
+      }
+
+      try {
+        const usersData = await usersAPI.getAssignableUsers()
+        setUsers(usersData.users || [])
+      } catch (error) {
+        console.error('Error loading users:', error)
+      }
+
+      try {
+        const watchersResponse = await watchersApi.getWatchers(data.id)
+        setWatchers(watchersResponse.data.watchers || [])
+        setIsWatching(watchersResponse.data.watchers?.some(w => w.user_id === user.id) || false)
+      } catch (error) {
+        console.error('Error loading watchers:', error)
+      }
+
+      try {
+        const changelogResponse = await changelogApi.getChangelog(data.id)
+        setChangelog(changelogResponse.data.changelog || [])
+      } catch (error) {
+        console.error('Error loading changelog:', error)
+      }
     } catch (error) {
       console.error('Error loading task:', error)
       toast.error('Failed to load task')
@@ -127,25 +136,25 @@ const TaskDetail = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [navigate, taskId, user.id])
 
-  const loadProjectInfo = async (projId) => {
-    try {
-      const response = await projectsApi.getProject(projId)
-      setProjectInfo(response.data)
-    } catch (error) {
-      console.error('Error loading project:', error)
+  useEffect(() => {
+    if (taskId) {
+      loadTask()
     }
-  }
+  }, [taskId, loadTask])
 
-  const loadUsers = async () => {
-    try {
-      const data = await usersAPI.getAssignableUsers()
-      setUsers(data.users || [])
-    } catch (error) {
-      console.error('Error loading users:', error)
+  useEffect(() => {
+    const refreshCurrentTask = (event) => {
+      const relatedId = event?.detail?.relatedId
+      if (relatedId && String(relatedId) !== String(taskId)) return
+      if (taskId) {
+        loadTask()
+      }
     }
-  }
+    window.addEventListener('syntask:tasks-updated', refreshCurrentTask)
+    return () => window.removeEventListener('syntask:tasks-updated', refreshCurrentTask)
+  }, [taskId, loadTask])
 
   const loadWatchers = async () => {
     if (!task) return
@@ -155,16 +164,6 @@ const TaskDetail = () => {
       setIsWatching(response.data.watchers?.some(w => w.user_id === user.id) || false)
     } catch (error) {
       console.error('Error loading watchers:', error)
-    }
-  }
-
-  const loadChangelog = async () => {
-    if (!task) return
-    try {
-      const response = await changelogApi.getChangelog(task.id)
-      setChangelog(response.data.changelog || [])
-    } catch (error) {
-      console.error('Error loading changelog:', error)
     }
   }
 

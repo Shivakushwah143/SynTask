@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Search, Sparkles, Users } from 'lucide-react'
+import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Plus, Search, Sparkles, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -23,6 +23,23 @@ export default function CRMLeadsPage() {
   const [mergeGroup, setMergeGroup] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState({
+    first_name: '',
+    last_name: '',
+    country_code: '+91',
+    phone: '',
+    email: '',
+    company_name: '',
+    category_id: '',
+    product_ids: '',
+    current_stage: '',
+    assigned_to: '',
+    interest_level: 'medium',
+    estimated_close_date: '',
+    remark: '',
+    tag: '',
+  })
   const [selectedIds, setSelectedIds] = useState([])
   const [leadSearch, setLeadSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
@@ -30,6 +47,14 @@ export default function CRMLeadsPage() {
   const pipelineQuery = useQuery('crm-leads-entry', crmApi.getPipeline, {
     staleTime: 5 * 60 * 1000,
   })
+  const leadsQuery = useQuery(
+    ['crm-all-leads', userRole],
+    () => crmApi.getLeads({ skip: 0, limit: 200 }),
+    {
+      enabled: !isEmployee,
+      staleTime: 60 * 1000,
+    }
+  )
   const assignedLeadsQuery = useQuery(
     ['crm-assigned-leads', currentUserId],
     () => crmApi.getLeads({ assigned_to: currentUserId, limit: 200, skip: 0 }),
@@ -51,6 +76,11 @@ export default function CRMLeadsPage() {
   const stages = useMemo(() => (Array.isArray(board?.stages) ? board.stages : []), [board])
   const leadCount = useMemo(() => stages.reduce((sum, stage) => sum + (stage.leads?.length || 0), 0), [stages])
   const activeCount = useMemo(() => stages.reduce((sum, stage) => sum + (stage.leads || []).filter((lead) => !['won', 'lost', 'closed'].includes(String(lead?.status || '').toLowerCase())).length, 0), [stages])
+  const recentLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []).slice(0, 6), [stages])
+  const allAccountLeads = useMemo(() => {
+    const items = leadsQuery.data?.prospects || leadsQuery.data?.items || leadsQuery.data?.data?.prospects || leadsQuery.data?.data?.items || []
+    return Array.isArray(items) ? items : []
+  }, [leadsQuery.data])
   const duplicateGroups = useMemo(() => duplicatesQuery.data?.groups || duplicatesQuery.data?.data?.groups || [], [duplicatesQuery.data])
   const allLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []), [stages])
   const stageOptions = useMemo(() => stages.filter((stage) => (stage.leads || []).length).map((stage) => ({ value: stage.key, label: stage.name })), [stages])
@@ -91,6 +121,22 @@ export default function CRMLeadsPage() {
     if (Array.isArray(data?.items)) return data.items
     return []
   }, [usersQuery.data])
+  const categories = useMemo(() => (Array.isArray(categoriesQuery.data?.categories) ? categoriesQuery.data.categories : []), [categoriesQuery.data])
+  const products = useMemo(() => (Array.isArray(productsQuery.data?.products) ? productsQuery.data.products : []), [productsQuery.data])
+  const defaultStageId = stages[0]?.id || stages[0]?.name || ''
+  const defaultCategoryId = categories[0]?.id || categories[0]?._id || ''
+  const defaultProductIds = products[0]?.id || products[0]?._id || ''
+
+  useEffect(() => {
+    if (!createOpen) return
+    setCreateForm((state) => ({
+      ...state,
+      category_id: state.category_id || defaultCategoryId,
+      product_ids: state.product_ids || defaultProductIds,
+      current_stage: state.current_stage || defaultStageId,
+      assigned_to: state.assigned_to || assignableUsers[0]?.id || '',
+    }))
+  }, [assignableUsers, createOpen, defaultCategoryId, defaultProductIds, defaultStageId])
 
   const mergeMutation = useMutation((payload) => crmApi.mergeProspects(payload), {
     onSuccess: () => {
@@ -104,6 +150,39 @@ export default function CRMLeadsPage() {
       toast.error(error?.response?.data?.detail || 'Unable to merge leads')
     },
   })
+
+  const createLeadMutation = useMutation(
+    (payload) => salesApi.createProspect(payload),
+    {
+      onSuccess: () => {
+        toast.success('Lead created')
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('crm-pipeline-board')
+        queryClient.invalidateQueries('crm-lead-duplicates')
+        queryClient.invalidateQueries('sales-prospects')
+        setCreateOpen(false)
+        setCreateForm({
+          first_name: '',
+          last_name: '',
+          country_code: '+91',
+          phone: '',
+          email: '',
+          company_name: '',
+          category_id: defaultCategoryId,
+          product_ids: defaultProductIds,
+          current_stage: defaultStageId,
+          assigned_to: '',
+          interest_level: 'medium',
+          estimated_close_date: '',
+          remark: '',
+          tag: '',
+        })
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Unable to create lead')
+      },
+    }
+  )
 
   const exportLeads = () => {
     if (!allLeads.length) {
@@ -175,6 +254,20 @@ export default function CRMLeadsPage() {
     }
   )
 
+  const getEmployeeLeadFlags = (lead) => {
+    const custom = (() => {
+      if (typeof lead?.custom_fields === 'string') {
+        try { return JSON.parse(lead.custom_fields) || {} } catch { return {} }
+      }
+      return lead?.custom_fields || {}
+    })()
+    return {
+      custom,
+      meetingScheduled: Boolean(custom.meeting_scheduled),
+      deadEnd: Boolean(custom.dead_end),
+    }
+  }
+
   return (
     <CRMPage>
       <CRMPageTitle
@@ -185,8 +278,9 @@ export default function CRMLeadsPage() {
           <div className="flex flex-wrap items-center gap-2">
             {!isEmployee && (
               <>
-                <Button variant="primary" onClick={() => navigate('/sales/prospects?createProspect=true')}>
-                  New lead
+                <Button variant="secondary" onClick={() => setCreateOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Add Lead
                 </Button>
                 <Button variant="secondary" onClick={() => setImportOpen(true)}>
                   <Import className="h-4 w-4" />
@@ -214,6 +308,155 @@ export default function CRMLeadsPage() {
         <CRMStatCard icon={Sparkles} label="Active leads" value={String(activeCount)} helper="Open records in the current pipeline" tone="emerald" />
         <CRMStatCard icon={CalendarDays} label="Pipeline value" value={formatCurrency(totalPipelineValue, pipelineQuery.data?.meta?.currency || 'INR')} helper={`${stages.length} configured stages`} tone="amber" />
       </div>
+
+      <CRMSection
+        title="Lead entry points"
+        description="The CRM lead workspace lives at /crm/leads/:leadId. Start from the pipeline or related activity screens."
+        actions={<Badge label="Sales module" colorKey="draft" />}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>
+            Go to Pipeline
+          </Button>
+          <Button variant="secondary" onClick={() => navigate('/crm/activities')}>
+            View Activities
+          </Button>
+          <Button variant="secondary" onClick={() => navigate('/crm/companies')}>
+            Open Companies
+          </Button>
+        </div>
+      </CRMSection>
+
+      {!isEmployee && (
+        <Modal
+          isOpen={createOpen}
+          onClose={() => setCreateOpen(false)}
+          title="Add Lead"
+          size="lg"
+        >
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const payload = {
+                first_name: createForm.first_name.trim(),
+                last_name: createForm.last_name.trim(),
+                country_code: createForm.country_code.trim() || '+91',
+                phone: createForm.phone.trim(),
+                email: createForm.email.trim(),
+                company_name: createForm.company_name.trim(),
+                category_id: createForm.category_id || defaultCategoryId,
+                product_ids: createForm.product_ids || defaultProductIds,
+                current_stage: createForm.current_stage || defaultStageId,
+                assigned_to: createForm.assigned_to || (assignableUsers[0]?.id || ''),
+                interest_level: createForm.interest_level || 'medium',
+                estimated_close_date: createForm.estimated_close_date || new Date().toISOString().slice(0, 10),
+                remark: createForm.remark.trim(),
+                tag: createForm.tag.trim(),
+              }
+
+              if (!payload.first_name || !payload.last_name || !payload.phone) {
+                toast.error('First name, last name, and phone are required')
+                return
+              }
+              if (!payload.category_id || !payload.product_ids || !payload.current_stage || !payload.assigned_to) {
+                toast.error('Select category, product, stage, and owner')
+                return
+              }
+              createLeadMutation.mutate(payload)
+            }}
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">First name</span>
+                <input className={inputClassName} placeholder="First name" value={createForm.first_name} onChange={(e) => setCreateForm((state) => ({ ...state, first_name: e.target.value }))} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Last name</span>
+                <input className={inputClassName} placeholder="Last name" value={createForm.last_name} onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Country code</span>
+                <input className={inputClassName} placeholder="Country code" value={createForm.country_code} onChange={(e) => setCreateForm((state) => ({ ...state, country_code: e.target.value }))} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Phone</span>
+                <input className={inputClassName} placeholder="Phone" value={createForm.phone} onChange={(e) => setCreateForm((state) => ({ ...state, phone: e.target.value }))} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Email</span>
+                <input className={inputClassName} placeholder="Email" value={createForm.email} onChange={(e) => setCreateForm((state) => ({ ...state, email: e.target.value }))} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Company name</span>
+                <input className={inputClassName} placeholder="Company name" value={createForm.company_name} onChange={(e) => setCreateForm((state) => ({ ...state, company_name: e.target.value }))} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Select category</span>
+                <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
+                  <option value="">Select category</option>
+                  {categories.map((category) => (
+                    <option key={category.id || category._id} value={category.id || category._id}>{category.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Select product</span>
+                <select className={inputClassName} value={createForm.product_ids || defaultProductIds} onChange={(e) => setCreateForm((state) => ({ ...state, product_ids: e.target.value }))}>
+                  <option value="">Select product</option>
+                  {products.map((product) => (
+                    <option key={product.id || product._id} value={product.id || product._id}>{product.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Stage</span>
+                <select className={inputClassName} value={createForm.current_stage || defaultStageId} onChange={(e) => setCreateForm((state) => ({ ...state, current_stage: e.target.value }))}>
+                  <option value="">Select stage</option>
+                  {stages.map((stage) => (
+                    <option key={stage.id || stage.name} value={stage.id || stage.name}>{stage.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Owner</span>
+                <select className={inputClassName} value={createForm.assigned_to} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
+                  <option value="">Select owner</option>
+                  {assignableUsers.map((userOption) => (
+                    <option key={userOption.id || userOption._id} value={userOption.id || userOption._id}>
+                      {userOption.first_name} {userOption.last_name} {userOption.role ? `(${userOption.role})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Interest level</span>
+                <select className={inputClassName} value={createForm.interest_level} onChange={(e) => setCreateForm((state) => ({ ...state, interest_level: e.target.value }))}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-gray-600">Estimated close date</span>
+                <input className={inputClassName} type="date" value={createForm.estimated_close_date} onChange={(e) => setCreateForm((state) => ({ ...state, estimated_close_date: e.target.value }))} />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-xs font-medium text-gray-600">Tags</span>
+                <input className={inputClassName} placeholder="Tags, pipe-separated" value={createForm.tag} onChange={(e) => setCreateForm((state) => ({ ...state, tag: e.target.value }))} />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <span className="text-xs font-medium text-gray-600">Remark</span>
+                <textarea className={`${inputClassName} min-h-28`} placeholder="Remark" value={createForm.remark} onChange={(e) => setCreateForm((state) => ({ ...state, remark: e.target.value }))} />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button type="submit" loading={createLeadMutation.isLoading}>Save lead</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {isEmployee && (
         <CRMSection
@@ -526,6 +769,163 @@ export default function CRMLeadsPage() {
         )}
       </CRMSection>
 
+      <CRMSection
+        title={isEmployee ? 'Recent leads' : 'All account leads'}
+        description={isEmployee ? 'Recently visible leads from the live pipeline board.' : 'All leads in the account appear here with owner and employee status markers.'}
+      >
+        {!isEmployee ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <Badge label={`${allAccountLeads.length} leads`} colorKey="draft" />
+            <Button type="button" variant="secondary" onClick={() => leadsQuery.refetch()}>
+              Refresh leads
+            </Button>
+          </div>
+        ) : null}
+        {((!isEmployee && leadsQuery.isLoading) || (isEmployee && pipelineQuery.isLoading)) ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-3xl" />)}
+          </div>
+        ) : ((!isEmployee && leadsQuery.isError) || (isEmployee && pipelineQuery.isError)) ? (
+          <CRMEmptyState
+            icon={Filter}
+            title="Unable to load leads"
+            description={(isEmployee ? pipelineQuery.error?.response?.data?.detail : leadsQuery.error?.response?.data?.detail) || 'Try again from the pipeline screen.'}
+            action={<Button variant="secondary" onClick={() => (isEmployee ? pipelineQuery.refetch() : leadsQuery.refetch())}>Retry</Button>}
+          />
+        ) : !isEmployee ? (
+          allAccountLeads.length ? (
+            <div className="overflow-hidden rounded-3xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-950">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Lead</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Owner</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Stage</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Employee status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                  {allAccountLeads.map((lead) => {
+                    const leadId = lead.id || lead._id
+                    const { meetingScheduled, deadEnd } = getEmployeeLeadFlags(lead)
+                    return (
+                      <tr key={leadId} className="hover:bg-gray-50 dark:hover:bg-gray-950">
+                        <td className="px-4 py-3">
+                          <button type="button" onClick={() => navigate(`/crm/leads/${leadId}`)} className="text-left">
+                            <div className="font-medium text-gray-900 dark:text-gray-100">{lead.company_name || lead.prospect_name || 'Lead'}</div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{lead.email || lead.phone || '-'}</p>
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{lead.owner_name || lead.assigned_to_name || lead.assigned_to || 'Unassigned'}</td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{lead.current_stage || lead.stage || 'Unknown'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Badge label={meetingScheduled ? 'Meeting scheduled' : 'Meeting pending'} colorKey={meetingScheduled ? 'scheduled' : 'draft'} />
+                            <Badge label={deadEnd ? 'Dead end' : 'Open'} colorKey={deadEnd ? 'danger' : 'draft'} />
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <CRMEmptyState icon={Users} title="No leads yet" description="Leads will appear here once the account has records." action={<Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Open Pipeline</Button>} />
+          )
+        ) : recentLeads.length ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {recentLeads.map((lead) => (
+              <label key={lead.id || lead._id} className="rounded-3xl border border-surface-border/80 bg-white p-4 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800">
+                <div className="flex items-start justify-between gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(lead.id || lead._id)}
+                    onChange={(event) => {
+                      const id = lead.id || lead._id
+                      setSelectedIds((current) => event.target.checked ? [...current, id] : current.filter((value) => value !== id))
+                    }}
+                  />
+                  <button type="button" onClick={() => navigate(`/crm/leads/${lead.id || lead._id}`)} className="min-w-0 flex-1 text-left">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{lead.company_name || lead.prospect_name || 'Lead'}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{lead.owner_name || lead.assigned_to_name || lead.assigned_to || 'Unassigned'}</p>
+                  </button>
+                  <Badge label={lead.current_stage || lead.stage || 'Unknown'} colorKey="draft" />
+                </div>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <CRMEmptyState
+            icon={Users}
+            title="No leads yet"
+            description="Leads will appear here once the pipeline has records."
+            action={<Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Open Pipeline</Button>}
+          />
+        )}
+      </CRMSection>
+
+      {!isEmployee && (
+        <CRMSection
+          title="Employee lead status"
+          description="Quickly mark whether a meeting is scheduled or the lead is a dead end."
+        >
+          {recentLeads.length ? (
+            <div className="overflow-hidden rounded-3xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-950">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Lead</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Owner</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Meeting</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">Dead end</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                  {recentLeads.map((lead) => {
+                    const leadId = lead.id || lead._id
+                    const custom = lead.custom_fields || {}
+                    const meetingScheduled = Boolean(custom.meeting_scheduled)
+                    const deadEnd = Boolean(custom.dead_end)
+                    return (
+                      <tr key={leadId} className="hover:bg-gray-50 dark:hover:bg-gray-950">
+                        <td className="px-4 py-3">
+                          <button className="font-medium text-primary-700" type="button" onClick={() => navigate(`/crm/leads/${leadId}`)}>
+                            {lead.company_name || lead.prospect_name || 'Lead'}
+                          </button>
+                          <p className="text-xs text-gray-500">{lead.email || lead.phone || '-'}</p>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{lead.owner_name || lead.assigned_to_name || lead.assigned_to || 'Unassigned'}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            className={`rounded-full px-3 py-1 text-xs font-medium ${meetingScheduled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}
+                            onClick={() => statusMutation.mutate({ leadId, customFields: { ...custom, meeting_scheduled: !meetingScheduled, dead_end: deadEnd } })}
+                          >
+                            {meetingScheduled ? 'Scheduled' : 'Not scheduled'}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            className={`rounded-full px-3 py-1 text-xs font-medium ${deadEnd ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}
+                            onClick={() => statusMutation.mutate({ leadId, customFields: { ...custom, dead_end: !deadEnd, meeting_scheduled: meetingScheduled } })}
+                          >
+                            {deadEnd ? 'Dead end' : 'Open'}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <CRMEmptyState icon={Users} title="No leads yet" description="Leads will appear here once the pipeline has records." />
+          )}
+        </CRMSection>
+      )}
+
       <MergeModal
         group={mergeGroup}
         isOpen={Boolean(mergeGroup)}
@@ -620,7 +1020,7 @@ function MergeModal({ group, isOpen, onClose, onConfirm, loading }) {
   const [sourceId, setSourceId] = useState('')
   const [targetId, setTargetId] = useState('')
 
-  const leads = group?.leads || []
+  const leads = useMemo(() => group?.leads || [], [group?.leads])
 
   useEffect(() => {
     if (!isOpen || !leads.length) return

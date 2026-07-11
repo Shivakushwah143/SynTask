@@ -16,8 +16,12 @@ export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'notes', label: 'Notes' },
   { key: 'files', label: 'Files' },
-  { key: 'timeline', label: 'Timeline' },
+  { key: 'tasks', label: 'Tasks' },
+  { key: 'meetings', label: 'Meetings' },
+  { key: 'emails', label: 'Emails' },
+  { key: 'call_logs', label: 'Calls' },
   { key: 'proposal', label: 'Proposal' },
+  { key: 'ai', label: 'AI' },
 ]
 
 const leadTone = (value) => {
@@ -354,6 +358,21 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
         </div>
       </CRMSection>
 
+      <CRMSection title="Activity" description="Lead activity and meetings stay visible without duplicating records.">
+        <div className="grid gap-4 xl:grid-cols-2">
+          <LeadTimelineTab />
+          <LeadMeetingsTab />
+        </div>
+      </CRMSection>
+
+      <CRMSection title="Quick panels" description="Notes, emails, calls and tasks remain available in the workspace.">
+        <div className="grid gap-4 xl:grid-cols-2">
+          <LeadTasksTab />
+          <LeadEmailsTab />
+          <LeadCallLogsTab />
+          <LeadAITab />
+        </div>
+      </CRMSection>
     </div>
   )
 })

@@ -35,6 +35,62 @@ class BulkLeadMergeRequest(BaseModel):
     source_lead_ids: List[str]
 
 
+async def bulk_merge_prospects(payload: BulkLeadMergeRequest, current_user: User):
+    target = await SalesProspect.get(payload.target_lead_id)
+    if not target or target.deleted:
+        raise HTTPException(status_code=404, detail="Target prospect not found")
+
+    if current_user.role != UserRole.SUPER_ADMIN and target.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    total_requested = len(payload.source_lead_ids or [])
+    total_merged = 0
+    total_failed = 0
+    total_skipped = 0
+    errors = []
+
+    for source_id in payload.source_lead_ids or []:
+        if source_id == payload.target_lead_id:
+            total_skipped += 1
+            errors.append({"lead_id": source_id, "reason": "Cannot merge a prospect into itself"})
+            continue
+
+        source = await SalesProspect.get(source_id)
+        if not source or source.deleted:
+            total_failed += 1
+            errors.append({"lead_id": source_id, "reason": "Source prospect not found"})
+            continue
+
+        if current_user.role != UserRole.SUPER_ADMIN and source.company_id != current_user.company_id:
+            total_failed += 1
+            errors.append({"lead_id": source_id, "reason": "Access denied"})
+            continue
+
+        merged_tags = list({*(target.tag or []), *(source.tag or [])})
+        merged_products = list({*(target.product_ids or []), *(source.product_ids or [])})
+        target.tag = merged_tags
+        target.product_ids = merged_products
+        target.updated_at = datetime.utcnow()
+        await target.save()
+
+        source.deleted = True
+        source.updated_at = datetime.utcnow()
+        await source.save()
+
+        total_merged += 1
+
+    return {
+        "summary": {
+            "total_requested": total_requested,
+            "total_merged": total_merged,
+            "total_failed": total_failed,
+            "total_skipped": total_skipped,
+        },
+        "errors": errors,
+        "target_lead_id": payload.target_lead_id,
+    }
+
+
 def _normalize_lead_csv_header(header: str) -> str:
     normalized = (
         str(header or "")

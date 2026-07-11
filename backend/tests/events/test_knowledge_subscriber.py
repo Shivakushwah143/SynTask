@@ -101,6 +101,9 @@ async def test_knowledge_subscriber_routes_task_events_and_is_replay_safe(monkey
         return task if task_id == "task-1" else None
 
     monkeypatch.setattr("app.models.task.Task.get", fake_task_get)
+    async def fake_get_redis_health(force_refresh=False):
+        return True
+    monkeypatch.setattr(knowledge_subscriber, "get_redis_health", fake_get_redis_health)
     knowledge_subscriber.register_knowledge_subscribers()
 
     event = build_domain_event(

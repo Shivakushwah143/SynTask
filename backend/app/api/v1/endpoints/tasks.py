@@ -534,6 +534,7 @@ async def update_task_status(
     return {
         "id": str(task.id),
         "status": task.status.value,
+        "completed_at": task.completed_at,
         "message": "Task status updated successfully"
     }
 

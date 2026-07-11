@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { X, Users, Search, UserPlus, UserMinus, Shield, ShieldOff, Check } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { X, Search, UserPlus, UserMinus, Shield, ShieldOff } from 'lucide-react'
 import { chatAPI } from '../api/chat'
 import { useConfirmation } from '../hooks/useConfirmation'
 import toast from 'react-hot-toast'
@@ -56,22 +56,7 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
   }
 
   // Load group details if editing
-  useEffect(() => {
-    if (isOpen && mode === 'manage' && groupId) {
-      loadGroupDetails()
-    } else if (isOpen && mode === 'create') {
-      // Reset form for create mode
-      setGroupName('')
-      setSelectedUsers([])
-      setSearchQuery('')
-      setSearchResults([])
-      setGroupMembers([])
-      setGroupAdmins([])
-      setShowAddMembers(false)
-    }
-  }, [isOpen, mode, groupId])
-
-  const loadGroupDetails = async () => {
+  const loadGroupDetails = useCallback(async () => {
     try {
       setLoading(true)
       const data = await chatAPI.getGroupDetails(groupId)
@@ -84,9 +69,9 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
     } finally {
       setLoading(false)
     }
-  }
+  }, [groupId])
 
-  const searchUsers = async (query) => {
+  const searchUsers = useCallback(async (query) => {
     if (query.length < 1) {
       setSearchResults([])
       return
@@ -102,7 +87,22 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
     } catch (error) {
       console.error('Error searching users:', error)
     }
-  }
+  }, [groupMembers, selectedUsers])
+
+  useEffect(() => {
+    if (isOpen && mode === 'manage' && groupId) {
+      loadGroupDetails()
+    } else if (isOpen && mode === 'create') {
+      // Reset form for create mode
+      setGroupName('')
+      setSelectedUsers([])
+      setSearchQuery('')
+      setSearchResults([])
+      setGroupMembers([])
+      setGroupAdmins([])
+      setShowAddMembers(false)
+    }
+  }, [isOpen, mode, groupId, loadGroupDetails])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -114,7 +114,7 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [searchQuery, searchUsers])
 
   const handleAddUser = (user) => {
     if (!selectedUsers.find(u => u.id === user.id)) {

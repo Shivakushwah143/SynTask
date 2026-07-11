@@ -157,7 +157,7 @@ export default function BulkLeads() {
 
   return (
     <CRMPage className="p-6">
-      <div className="absolute inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(circle_at_top,_rgba(91,100,228,0.22),_transparent_58%),linear-gradient(180deg,#08142f_0%,#08142f_45%,#f4f7fb_45%,#f4f7fb_100%)]" />
+      <div className="absolute inset-x-0 top-0 -z-10 h-72 bg-[radial-gradient(circle_at_top,_rgba(229,106,31,0.18),_transparent_58%),linear-gradient(180deg,#1a1613_0%,#1a1613_45%,#f8f2e8_45%,#f8f2e8_100%)] dark:bg-[radial-gradient(circle_at_top,_rgba(229,106,31,0.14),_transparent_58%),linear-gradient(180deg,#0f0d0b_0%,#0f0d0b_45%,#161311_45%,#161311_100%)]" />
       <CRMPageTitle
         eyebrow="CRM Intake"
         title="Lead Intake"
@@ -201,22 +201,22 @@ export default function BulkLeads() {
           >
             <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
               <div className="space-y-4">
-                <div className="rounded-3xl border border-dashed border-primary-200 bg-gradient-to-br from-primary-50 via-white to-sky-50 p-6 shadow-sm">
+                <div className="rounded-3xl border border-dashed border-primary-200 bg-gradient-to-br from-primary-50 via-surface to-surface-muted p-6 shadow-sm dark:from-primary-950/20 dark:via-black/80 dark:to-black/70">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">1. Upload file</p>
-                      <p className="mt-1 text-sm text-gray-600">
+                      <p className="text-sm font-semibold text-text-primary">1. Upload file</p>
+                      <p className="mt-1 text-sm text-text-secondary">
                         Required: <code>email</code>. Suggested: <code>name</code>, <code>phone</code>, <code>company</code>, <code>source</code>, <code>status</code>, <code>remark</code>.
                       </p>
                     </div>
-                    <div className="rounded-2xl bg-white px-3 py-2 text-xs font-medium text-primary-700 shadow-sm ring-1 ring-primary-100">
+                    <div className="rounded-2xl bg-surface px-3 py-2 text-xs font-medium text-primary-700 shadow-sm ring-1 ring-primary-100">
                       CSV / XLSX
                     </div>
                   </div>
-                  <label className="mt-6 flex cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-primary-200 bg-white/70 px-6 py-12 text-center">
+                  <label className="mt-6 flex cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-primary-200 bg-surface/90 px-6 py-12 text-center dark:bg-black/60">
                     <FileSpreadsheet className="h-10 w-10 text-primary-500" />
-                    <p className="mt-3 text-sm font-semibold text-gray-900">Drag & drop or click to choose</p>
-                    <p className="mt-1 text-xs text-gray-500">Import lead rows and stage them for preview.</p>
+                    <p className="mt-3 text-sm font-semibold text-text-primary">Drag & drop or click to choose</p>
+                    <p className="mt-1 text-xs text-text-secondary">Import lead rows and stage them for preview.</p>
                     <input
                       type="file"
                       accept=".csv,.xlsx"
@@ -232,11 +232,11 @@ export default function BulkLeads() {
                   </div>
                 ) : null}
 
-                <div className="overflow-hidden rounded-3xl border border-surface-border/80 bg-white shadow-sm">
-                  <div className="border-b border-surface-border/80 px-5 py-4">
+                <div className="overflow-hidden rounded-3xl border border-border/80 bg-surface/95 shadow-sm dark:bg-black/85">
+                  <div className="border-b border-border/80 px-5 py-4">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      <h3 className="text-sm font-semibold text-gray-900">2. Validate and route</h3>
+                      <h3 className="text-sm font-semibold text-text-primary">2. Validate and route</h3>
                     </div>
                   </div>
                   <div className="grid gap-4 p-5 md:grid-cols-2">
@@ -267,7 +267,7 @@ export default function BulkLeads() {
                       </select>
                     </FormField>
                     <FormField label="Queue mode">
-                      <div className="flex h-10 items-center rounded-xl border border-surface-border/80 bg-gray-50 px-3 text-sm text-gray-600">
+                      <div className="flex h-10 items-center rounded-xl border border-surface-border/80 bg-surface-muted px-3 text-sm text-text-secondary">
                         {departmentId ? 'Department routing' : strategy === 'manual' ? 'Manual assignment' : 'Auto assignment'}
                       </div>
                     </FormField>
@@ -276,28 +276,28 @@ export default function BulkLeads() {
               </div>
 
               <div className="space-y-4">
-                <div className="rounded-3xl border border-surface-border/80 bg-white p-5 shadow-sm">
+                <div className="rounded-3xl border border-border/80 bg-surface/95 p-5 shadow-sm dark:bg-black/85">
                   <div className="flex items-center gap-2">
                     <Filter className="h-4 w-4 text-primary-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">Validation checks</h3>
+                    <h3 className="text-sm font-semibold text-text-primary">Validation checks</h3>
                   </div>
-                  <ul className="mt-3 space-y-2 text-sm text-gray-600">
+                  <ul className="mt-3 space-y-2 text-sm text-text-secondary">
                     <li>Required fields are checked before preview.</li>
                     <li>Duplicate emails are flagged during import.</li>
                     <li>Valid rows continue even when some rows fail.</li>
                     <li>Import history is saved for retry and audit.</li>
                   </ul>
                 </div>
-                <div className="rounded-3xl border border-surface-border/80 bg-white p-5 shadow-sm">
+                <div className="rounded-3xl border border-border/80 bg-surface/95 p-5 shadow-sm dark:bg-black/85">
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-primary-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">Routing status</h3>
+                    <h3 className="text-sm font-semibold text-text-primary">Routing status</h3>
                   </div>
-                  <p className="mt-2 text-sm text-gray-600">
+                  <p className="mt-2 text-sm text-text-secondary">
                     {assignableUsers.length ? `${assignableUsers.length} employees are available for assignment.` : 'No assignable employees found yet.'}
                   </p>
                   {departmentId ? (
-                    <p className="mt-3 text-sm text-gray-600">
+                    <p className="mt-3 text-sm text-text-secondary">
                       Department selected: <span className="font-semibold">{departments.find((department) => getId(department) === departmentId)?.name || 'selected department'}</span>.
                     </p>
                   ) : null}
@@ -315,23 +315,23 @@ export default function BulkLeads() {
           <CRMSection
             title="Preview"
             description="Inspect the top parsed rows before confirming the upload."
-            actions={<span className="text-xs text-gray-500">{hasPreview ? `${previewCount} rows loaded` : 'No file loaded'}</span>}
+            actions={<span className="text-xs text-text-muted">{hasPreview ? `${previewCount} rows loaded` : 'No file loaded'}</span>}
           >
             {hasPreview ? (
-              <div className="overflow-x-auto rounded-2xl border border-surface-border/80">
+              <div className="overflow-x-auto rounded-2xl border border-border/80">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-950">
+                  <thead className="bg-surface-muted dark:bg-black/80">
                     <tr>
                       {SAMPLE_HEADERS.map((header) => (
-                        <th key={header} className="px-4 py-3 text-left font-medium text-gray-600 dark:text-gray-300">{header}</th>
+                        <th key={header} className="px-4 py-3 text-left font-medium text-text-secondary dark:text-text-secondary">{header}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-800 dark:bg-gray-900">
+                  <tbody className="divide-y divide-border bg-surface dark:divide-border dark:bg-black/80">
                     {previewRows.map((row, index) => (
-                      <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-950">
+                      <tr key={index} className="hover:bg-surface-muted dark:hover:bg-white/5">
                         {SAMPLE_HEADERS.map((header) => (
-                          <td key={header} className="px-4 py-3 text-gray-700 dark:text-gray-200">{row?.[header] || '-'}</td>
+                          <td key={header} className="px-4 py-3 text-text-secondary dark:text-text-secondary">{row?.[header] || '-'}</td>
                         ))}
                       </tr>
                     ))}
@@ -351,14 +351,14 @@ export default function BulkLeads() {
         <div className="space-y-6">
           <CRMSection title="Import workflow" description="The intake path mirrors the final CRM flow.">
             <div className="space-y-4">
-              <div className="rounded-3xl border border-surface-border/80 bg-white p-5 shadow-sm">
+              <div className="rounded-3xl border border-border/80 bg-surface p-5 shadow-sm dark:bg-black/85">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary-600" />
-                  <h3 className="text-sm font-semibold text-gray-900">Flow</h3>
+                  <h3 className="text-sm font-semibold text-text-primary">Flow</h3>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2 text-xs">
                   {['Import / Manual Create', 'Validation', 'Duplicate Detection', 'Assignment Engine', 'Sales Queue'].map((item, index) => (
-                    <span key={item} className="inline-flex items-center gap-2 rounded-full bg-gray-50 px-3 py-1 text-gray-700 ring-1 ring-gray-200">
+                    <span key={item} className="inline-flex items-center gap-2 rounded-full bg-surface-muted px-3 py-1 text-text-secondary ring-1 ring-border">
                       <span className="font-semibold text-primary-600">{index + 1}</span>
                       {item}
                     </span>
@@ -366,24 +366,24 @@ export default function BulkLeads() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-surface-border/80 bg-white p-5 shadow-sm">
+              <div className="rounded-3xl border border-border/80 bg-surface p-5 shadow-sm dark:bg-black/85">
                 <div className="flex items-center gap-2">
                   <ArrowRight className="h-4 w-4 text-primary-600" />
-                  <h3 className="text-sm font-semibold text-gray-900">Next actions</h3>
+                  <h3 className="text-sm font-semibold text-text-primary">Next actions</h3>
                 </div>
-                <ul className="mt-3 space-y-2 text-sm text-gray-600">
+                <ul className="mt-3 space-y-2 text-sm text-text-secondary">
                   <li>Preview the rows.</li>
                   <li>Choose the assignment mode.</li>
                   <li>Confirm import.</li>
                 </ul>
               </div>
 
-              <div className="rounded-3xl border border-surface-border/80 bg-white p-5 shadow-sm">
+              <div className="rounded-3xl border border-border/80 bg-surface p-5 shadow-sm dark:bg-black/85">
                 <div className="flex items-center gap-2">
                   <Upload className="h-4 w-4 text-primary-600" />
-                  <h3 className="text-sm font-semibold text-gray-900">Sample file</h3>
+                  <h3 className="text-sm font-semibold text-text-primary">Sample file</h3>
                 </div>
-                <p className="mt-2 text-sm text-gray-600">Use the sample CSV first to verify upload, preview, and auto-assignment.</p>
+                <p className="mt-2 text-sm text-text-secondary">Use the sample CSV first to verify upload, preview, and auto-assignment.</p>
                 <Button className="mt-4 w-full" variant="secondary" onClick={loadSampleData}>
                   Load sample data
                 </Button>
@@ -395,7 +395,7 @@ export default function BulkLeads() {
 
       <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} title="Confirm bulk upload" size="lg">
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-text-secondary">
             You are about to upload {previewRows.length || 'the selected'} lead rows using{' '}
             <span className="font-semibold">{strategy}</span> assignment.
             {departmentId ? ' Department-based splitting is enabled.' : ''}
@@ -421,9 +421,9 @@ export default function BulkLeads() {
             <CRMStatCard icon={ListChecks} label="Warnings" value={String(importResult?.warnings?.length || 0)} helper="Rows needing review" tone="slate" />
           </div>
 
-          <div className="rounded-2xl border border-surface-border/80 bg-gray-50 p-4">
-            <p className="text-sm font-semibold text-gray-900">Assignment strategy</p>
-            <p className="mt-1 text-sm text-gray-600">
+          <div className="rounded-2xl border border-border/80 bg-surface-muted p-4 dark:bg-black/70">
+            <p className="text-sm font-semibold text-text-primary">Assignment strategy</p>
+            <p className="mt-1 text-sm text-text-secondary">
               {importResult?.strategy === 'manual'
                 ? 'Manual assignment was used for the imported leads.'
                 : importResult?.strategy === 'department routing'

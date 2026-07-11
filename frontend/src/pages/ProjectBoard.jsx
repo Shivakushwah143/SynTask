@@ -111,6 +111,16 @@ export default function ProjectBoard() {
     if (activeTab === 'pages') loadPages()
   }, [activeTab, loadBoardData, loadPages, loadSummaryData])
 
+  useEffect(() => {
+    const refreshBoard = () => {
+      if (activeTab === 'board') {
+        loadBoardData()
+      }
+    }
+    window.addEventListener('syntask:tasks-updated', refreshBoard)
+    return () => window.removeEventListener('syntask:tasks-updated', refreshBoard)
+  }, [activeTab, loadBoardData])
+
   const filteredBoard = useMemo(() => {
     if (!boardData?.tasks_by_status) return {}
     const query = searchQuery.trim().toLowerCase()

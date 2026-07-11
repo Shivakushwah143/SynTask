@@ -2,10 +2,10 @@ import { useRef, useState } from 'react'
 import { LoadingSpinner } from './LoadingSpinner'
 
 const VARIANTS = {
-  primary: 'bg-primary-600 hover:bg-primary-700 text-white shadow-sm',
-  secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-100',
-  danger: 'bg-red-600 hover:bg-red-700 text-white shadow-sm',
-  ghost: 'hover:bg-gray-100 text-gray-700 dark:hover:bg-gray-800 dark:text-gray-200',
+  primary: 'bg-primary-500 text-white shadow-none hover:bg-primary-600',
+  secondary: 'border border-surface-border bg-surface text-text-primary hover:bg-surface-muted dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800',
+  danger: 'bg-red-600 text-white shadow-none hover:bg-red-700',
+  ghost: 'border border-transparent text-text-secondary hover:bg-surface-muted dark:text-gray-200 dark:hover:bg-gray-800',
 }
 
 const SIZES = {
@@ -48,7 +48,7 @@ export function Button({
 
   return (
     <button
-      className={`relative inline-grid items-center justify-center rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-gray-950 ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
+      className={`relative inline-grid items-center justify-center rounded-full font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/35 focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-black ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
       disabled={disabled || isLoading}
       aria-busy={isLoading || undefined}
       onClick={onClick ? handleClick : undefined}

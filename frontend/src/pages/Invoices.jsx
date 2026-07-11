@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { FileText, Plus, Trash2, X, Search, Eye, Send, Mail } from 'lucide-react'
 import { invoicesAPI } from '../api/invoices'
 import { clientsAPI } from '../api/clients'
@@ -43,12 +43,7 @@ const Invoices = () => {
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
 
-  useEffect(() => {
-    loadInvoices()
-    loadClients()
-  }, [])
-
-  const loadInvoices = async () => {
+  const loadInvoices = useCallback(async () => {
     try {
       setLoading(true)
       const params = {}
@@ -63,16 +58,21 @@ const Invoices = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [invoiceTypeFilter, statusFilter])
 
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
     try {
       const data = await clientsAPI.listClients({})
       setClients(data.clients || [])
     } catch (error) {
       console.error('Error loading clients:', error)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadInvoices()
+    loadClients()
+  }, [loadInvoices, loadClients])
 
   const handleClientSelect = async (clientId) => {
     if (!clientId) {
@@ -150,6 +150,8 @@ const Invoices = () => {
     }
   }
 
+  const totals = calculateTotals()
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!formData.client_id) {
@@ -164,8 +166,6 @@ const Invoices = () => {
 
     try {
       setSubmitting(true)
-      const totals = calculateTotals()
-      
       const invoiceData = {
         invoice_type: formData.invoice_type,
         include_tax: formData.include_tax,
@@ -190,7 +190,7 @@ const Invoices = () => {
       toast.success('Invoice created successfully')
       setShowCreateModal(false)
       resetForm()
-      loadInvoices()
+      await loadInvoices()
     } catch (error) {
       console.error('Error creating invoice:', error)
       toast.error(error.response?.data?.detail || 'Failed to create invoice')
@@ -229,7 +229,7 @@ const Invoices = () => {
     try {
       await invoicesAPI.sendInvoiceEmail(invoiceId)
       toast.success('Invoice email sent successfully')
-      loadInvoices()
+      await loadInvoices()
     } catch (error) {
       console.error('Error sending invoice email:', error)
       toast.error(error.response?.data?.detail || 'Failed to send invoice email')
@@ -256,7 +256,7 @@ const Invoices = () => {
         },
         duration: 3000,
       })
-      loadInvoices()
+      await loadInvoices()
     } catch (error) {
       console.error('Error deleting invoice:', error)
       toast.error('Failed to delete invoice')

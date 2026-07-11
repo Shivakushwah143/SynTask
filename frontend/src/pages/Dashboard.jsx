@@ -50,8 +50,6 @@ const Dashboard = () => {
   const [attendanceToday, setAttendanceToday] = useState(null)
   const [attendanceStats, setAttendanceStats] = useState(null)
   const [metrics, setMetrics] = useState(null)
-  const [recent, setRecent] = useState(null)
-  const [activity, setActivity] = useState([])
   const [revenueMode, setRevenueMode] = useState('Accrual')
 
   useEffect(() => {
@@ -65,10 +63,8 @@ const Dashboard = () => {
           meetingsApi.list({ limit: 6 }),
           projectsApi.getProjects({ limit: 8 }),
         ])
-        const [metricsData, recentData, activityData] = await Promise.all([
+        const [metricsData] = await Promise.all([
           dashboardAPI.getMetrics().catch(() => null),
-          dashboardAPI.getRecent().catch(() => null),
-          dashboardAPI.getActivity().catch(() => null),
         ])
         const dashboardRole = normalizeRole(statsData?.role || user?.role)
 
@@ -80,8 +76,6 @@ const Dashboard = () => {
         if (!active) return
         setStats(statsData || { role: dashboardRole || 'employee' })
         setMetrics(metricsData)
-        setRecent(recentData)
-        setActivity(activityData?.activity || [])
         setRecentTasks(tasksData.tasks || [])
         setRecentTickets(ticketsData.tickets || [])
         setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
@@ -116,7 +110,7 @@ const Dashboard = () => {
     return () => {
       active = false
     }
-  }, [])
+  }, [user?.role])
 
   const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d').toUpperCase(), [])
 
@@ -150,10 +144,8 @@ const Dashboard = () => {
 
   const role = normalizeRole(stats?.role || user?.role)
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
-  const taskSource = role === ROLE.EMPLOYEE ? recentTickets : recentTasks
+  const taskSource = recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
-  const dueTodayCount = metrics?.tasks_due_today ?? 0
-
   // ---- Chart datasets (replace the old static / zero-filled placeholders) ----
 
   // Pipeline funnel -> donut with legend + percentages, styled like "Top Expenses"
@@ -282,27 +274,27 @@ const Dashboard = () => {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="card p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Today</p>
-          <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-gray-100">{todayLabel}</p>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Quick access to work, meetings, and AI guidance.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Today</p>
+          <p className="mt-3 text-2xl font-semibold text-text-primary dark:text-text-primary">{todayLabel}</p>
+          <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Quick access to work, meetings, and AI guidance.</p>
         </div>
         <div className="card p-5">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">High-priority tasks</p>
+            <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">High-priority tasks</p>
             <Sparkles className="h-4 w-4 text-primary-600" />
           </div>
-          <p className="mt-3 text-3xl font-semibold text-gray-900 dark:text-gray-100">{priorityTasks.length}</p>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Critical and high-priority work in progress.</p>
+          <p className="mt-3 text-3xl font-semibold text-text-primary dark:text-text-primary">{priorityTasks.length}</p>
+          <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Critical and high-priority work in progress.</p>
         </div>
         <div className="card p-5">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Attendance focus</p>
+            <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Attendance focus</p>
             <TrendingUp className="h-4 w-4 text-primary-600" />
           </div>
-          <p className="mt-3 text-3xl font-semibold text-gray-900 dark:text-gray-100">
+          <p className="mt-3 text-3xl font-semibold text-text-primary dark:text-text-primary">
             {role === ROLE.EMPLOYEE ? (attendanceToday?.status || 'Pending') : (attendanceStats?.present_today ?? 0)}
           </p>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">
             {role === ROLE.EMPLOYEE ? 'Your latest attendance status.' : 'People present today.'}
           </p>
         </div>
@@ -338,8 +330,8 @@ const Dashboard = () => {
         </section>
       ) : (
         <section className="card p-5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Role-based view</h2>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Sales charts are hidden for this role. Operational widgets remain available below.</p>
+          <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Role-based view</h2>
+          <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Sales charts are hidden for this role. Operational widgets remain available below.</p>
         </section>
       )}
 
@@ -375,7 +367,7 @@ const Dashboard = () => {
           </>
         ) : (
           <ChartCard title="Monthly Performance">
-            <p className="text-sm text-gray-500 dark:text-gray-400">This chart is available to sales-oriented roles only.</p>
+            <p className="text-sm text-text-secondary dark:text-text-secondary">This chart is available to sales-oriented roles only.</p>
           </ChartCard>
         )}
       </section>
@@ -383,33 +375,33 @@ const Dashboard = () => {
       {/* Employee Attendance Widget */}
       {role === ROLE.EMPLOYEE && attendanceToday ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 bg-emerald-50/20 dark:bg-emerald-950/10 p-4 rounded-2xl border border-emerald-500/20">
-          <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 shadow-sm">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance Status</p>
+          <div className="card p-4 bg-surface dark:bg-black/85 border border-border shadow-sm">
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Attendance Status</p>
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-base font-bold text-gray-800 dark:text-gray-250">{attendanceToday.status}</span>
+              <span className="text-base font-bold text-text-primary dark:text-text-primary">{attendanceToday.status}</span>
               <Badge label={attendanceToday.status} colorKey={attendanceToday.status} />
             </div>
           </div>
-          <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 shadow-sm">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Working Hours Today</p>
-            <p className="mt-2 text-2xl font-bold font-mono text-gray-800 dark:text-gray-250">
+          <div className="card p-4 bg-surface dark:bg-black/85 border border-border shadow-sm">
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Working Hours Today</p>
+            <p className="mt-2 text-2xl font-bold font-mono text-text-primary dark:text-text-primary">
               {formatDuration(attendanceToday.total_working_hours)}
             </p>
           </div>
-          <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 shadow-sm">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Camera Status</p>
+          <div className="card p-4 bg-surface dark:bg-black/85 border border-border shadow-sm">
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Camera Status</p>
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Permission</span>
+              <span className="text-sm font-medium text-text-secondary dark:text-text-secondary">Permission</span>
               <Badge
                 label={attendanceToday.camera_permission_status || 'Denied'}
                 colorKey={attendanceToday.camera_permission_status === 'Connected' || attendanceToday.camera_permission_status === 'Granted' ? 'completed' : 'rejected'}
               />
             </div>
           </div>
-          <div className="card p-4 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 shadow-sm">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Screen Share</p>
+          <div className="card p-4 bg-surface dark:bg-black/85 border border-border shadow-sm">
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Screen Share</p>
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+              <span className="text-sm font-medium text-text-secondary dark:text-text-secondary">Status</span>
               <Badge
                 label={attendanceToday.screen_sharing_status || 'Denied'}
                 colorKey={attendanceToday.screen_sharing_status === 'Sharing' || attendanceToday.screen_sharing_status === 'Granted' ? 'completed' : 'rejected'}
@@ -449,10 +441,10 @@ const Dashboard = () => {
                     onClick={() => navigate('/live-monitor')}
                     title={`${label}: ${value}`}
                     aria-label={`${label}: ${value}`}
-                    className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-primary-300 hover:bg-primary-50/50 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-primary-700 dark:hover:bg-primary-950/30"
+                    className="rounded-xl border border-border bg-surface-muted p-4 text-left transition hover:border-primary-300 hover:bg-primary-50/50 dark:border-border dark:bg-black/80 dark:hover:border-primary-700 dark:hover:bg-primary-950/30"
                   >
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</p>
-                    <p className="mt-3 text-3xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">{label}</p>
+                    <p className="mt-3 text-3xl font-semibold text-text-primary dark:text-text-primary">{value}</p>
                   </button>
                 ))}
               </div>
@@ -496,9 +488,9 @@ const Dashboard = () => {
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="flex h-72 items-center justify-center text-sm text-gray-400">No dated tasks in the next week</div>
-            )}
-            <div className="mt-4 flex flex-wrap gap-3 border-t border-gray-100 pt-4 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+            <div className="flex h-72 items-center justify-center text-sm text-text-muted">No dated tasks in the next week</div>
+          )}
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-border pt-4 text-xs text-text-muted dark:border-border dark:text-text-secondary">
               {Object.entries(TASK_PRIORITY_COLORS).map(([priority, color]) => (
                 <span key={priority} className="inline-flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
@@ -510,8 +502,8 @@ const Dashboard = () => {
           <div className="card p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Today&apos;s work</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">High-signal items that need attention now.</p>
+              <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Today&apos;s work</h2>
+              <p className="text-sm text-text-muted dark:text-text-secondary">High-signal items that need attention now.</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => navigate(role === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}>
               View all
@@ -524,11 +516,11 @@ const Dashboard = () => {
                 key={item.id}
                 type="button"
                 onClick={() => navigate(role === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}
-                className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800"
+                className="flex w-full items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:bg-surface-muted dark:border-border dark:bg-black/80 dark:hover:bg-white/5"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{item.title}</p>
-                  <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                  <p className="truncate text-sm font-medium text-text-primary dark:text-text-primary">{item.title}</p>
+                  <p className="truncate text-xs text-text-muted dark:text-text-secondary">
                     {role === ROLE.EMPLOYEE ? `Created ${item.created_at ? format(new Date(item.created_at), 'MMM d') : 'recently'}` : item.due_date ? `Due ${format(new Date(item.due_date), 'MMM d')}` : 'No due date'}
                   </p>
                 </div>
@@ -547,8 +539,8 @@ const Dashboard = () => {
         <div className="card p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Upcoming meetings</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Scheduled coordination and client calls.</p>
+              <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Upcoming meetings</h2>
+              <p className="text-sm text-text-muted dark:text-text-secondary">Scheduled coordination and client calls.</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => navigate('/meetings')}>
               Open
@@ -557,9 +549,9 @@ const Dashboard = () => {
           </div>
           <div className="space-y-2">
             {upcomingMeetings.length ? upcomingMeetings.map((meeting) => (
-              <div key={meeting.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{meeting.title}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <div key={meeting.id} className="rounded-xl border border-border bg-surface px-4 py-3 dark:border-border dark:bg-black/80">
+                <p className="text-sm font-medium text-text-primary dark:text-text-primary">{meeting.title}</p>
+                <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">
                   {meeting.meeting_date ? format(new Date(meeting.meeting_date), 'MMM d, h:mm a') : 'Date not set'}
                 </p>
                 {meeting.status ? <div className="mt-2"><Badge label={meeting.status} colorKey={meeting.status} /></div> : null}
@@ -573,8 +565,8 @@ const Dashboard = () => {
         <div className="card p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Project health</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Current projects in the workspace.</p>
+              <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Project health</h2>
+              <p className="text-sm text-text-muted dark:text-text-secondary">Current projects in the workspace.</p>
             </div>
             {hasCompanyAdminAccess(role) ? (
               <Button variant="secondary" size="sm" onClick={handleExport} loading={exporting}>
@@ -601,20 +593,20 @@ const Dashboard = () => {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="flex h-72 items-center justify-center text-sm text-gray-400">No projects to chart yet</div>
+            <div className="flex h-72 items-center justify-center text-sm text-text-muted">No projects to chart yet</div>
           )}
         </ChartCard>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="card p-5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Recent activity</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Latest changes across your workspace.</p>
+          <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Recent activity</h2>
+          <p className="mt-1 text-sm text-text-muted dark:text-text-secondary">Latest changes across your workspace.</p>
           <div className="mt-4 space-y-3">
             {(role === ROLE.EMPLOYEE ? recentTickets : recentTasks).slice(0, 5).map((item) => (
-              <div key={item.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.title}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <div key={item.id} className="rounded-xl border border-border bg-surface px-4 py-3 dark:border-border dark:bg-black/80">
+                <p className="text-sm font-medium text-text-primary dark:text-text-primary">{item.title}</p>
+                <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">
                   {item.updated_at ? format(new Date(item.updated_at), 'MMM d, h:mm a') : item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}
                 </p>
               </div>

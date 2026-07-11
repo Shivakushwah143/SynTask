@@ -100,10 +100,13 @@ const Clients = () => {
     }
   }, [])
 
+  const { isAuthenticated } = useAuthStore()
+
   useEffect(() => {
+    if (!isAuthenticated) return
     loadClients()
     loadLeads()
-  }, [loadClients, loadLeads])
+  }, [isAuthenticated, loadClients, loadLeads])
 
   const handleCreateClient = async (e) => {
     e.preventDefault()
@@ -294,8 +297,7 @@ const Clients = () => {
         start_date: '',
         delivery_date: '',
       })
-      
-      // Reload client details
+      await loadClients()
       await handleViewClient(selectedClient)
     } catch (error) {
       console.error('Error creating project:', error)
@@ -403,7 +405,8 @@ const Clients = () => {
       setShowDocumentModal(false)
       setDocumentFile(null)
       setDocumentName('')
-      handleViewClient(selectedClient)
+      await loadClients()
+      await handleViewClient(selectedClient)
     } catch (error) {
       console.error('Error uploading document:', error)
       toast.error('Failed to upload document')

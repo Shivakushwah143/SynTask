@@ -145,6 +145,18 @@ const Tasks = () => {
     return () => clearTimeout(timer)
   }, [fetchTasks])
 
+  useEffect(() => {
+    const handleTasksUpdated = () => {
+      fetchTasks()
+    }
+    window.addEventListener('syntask:tasks-updated', handleTasksUpdated)
+    const interval = setInterval(handleTasksUpdated, 30000)
+    return () => {
+      window.removeEventListener('syntask:tasks-updated', handleTasksUpdated)
+      clearInterval(interval)
+    }
+  }, [fetchTasks])
+
   // Get tasks by status
   const getTasksByStatus = (status) => {
     return tasks.filter(task => task.status === status)
@@ -686,15 +698,6 @@ function TaskProgressRing({ value, color }) {
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xs font-semibold text-gray-900 dark:bg-gray-900 dark:text-gray-100">
         {bounded}%
       </div>
-    </div>
-  )
-}
-
-function TaskStatusBar({ value, color }) {
-  const bounded = Math.max(0, Math.min(100, value || 0))
-  return (
-    <div className="h-2.5 overflow-hidden rounded-sm bg-gray-100 dark:bg-gray-800">
-      <div className="h-full rounded-sm" style={{ width: `${bounded}%`, backgroundColor: color }} />
     </div>
   )
 }

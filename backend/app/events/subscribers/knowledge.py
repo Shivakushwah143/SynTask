@@ -1,13 +1,39 @@
 from __future__ import annotations
 
+import logging
+
 from app.events.contracts import DomainEvent
 from app.events.registry import event_registry
+from app.core.config import settings
+from app.core.redis_client import get_redis_health
 from app.knowledge.service import KnowledgeIngestionService
+
+logger = logging.getLogger(__name__)
 
 knowledge_service = KnowledgeIngestionService()
 
 
 async def _handle_event(event: DomainEvent) -> None:
+    if settings.DISABLE_EVENT_PROCESSING:
+        logger.info(
+            "event_processing_disabled",
+            extra={"event_id": event.event_id, "event_name": event.event_name, "company_id": event.company_id},
+        )
+        return
+
+    if not await get_redis_health():
+        logger.warning(
+            "knowledge_event_skipped_redis_unavailable",
+            extra={
+                "event_id": event.event_id,
+                "event_name": event.event_name,
+                "company_id": event.company_id,
+                "aggregate_type": event.aggregate_type,
+                "aggregate_id": event.aggregate_id,
+            },
+        )
+        return
+
     if event.event_name.startswith("Project"):
         from app.models.project import Project
 
