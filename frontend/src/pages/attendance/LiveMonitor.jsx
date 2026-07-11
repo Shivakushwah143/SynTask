@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import {
-  Users, Video, Monitor, AlertCircle, RefreshCw,
+  Video, Monitor, AlertCircle, RefreshCw,
   Search, SlidersHorizontal, User, Clock, TrendingUp, AlertTriangle
 } from 'lucide-react'
 import { PageHeader, Button, Badge } from '../../components/ui'
@@ -213,7 +213,7 @@ const LiveMonitor = () => {
   })
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
+    <div className="space-y-6 h-full flex flex-col bg-surface-muted text-text-primary dark:bg-black dark:text-text-primary">
       <PageHeader
         title="Live Monitoring Dashboard"
         description="Monitor active workspaces, status changes, and live camera or screen captures."
@@ -222,9 +222,9 @@ const LiveMonitor = () => {
             <span className={`inline-flex items-center text-xs font-medium px-2 py-1 rounded-full ${
               isWsConnected
                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                : 'bg-surface-muted text-text-muted dark:bg-black/70 dark:text-text-secondary'
             }`}>
-              <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${isWsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+              <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${isWsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-text-muted'}`} />
               {isWsConnected ? 'Live' : 'Reconnecting…'}
             </span>
             <Button variant="secondary" size="sm" onClick={loadEmployees}>
@@ -237,22 +237,22 @@ const LiveMonitor = () => {
 
       <div className="grid gap-6 lg:grid-cols-3 flex-1 min-h-[500px]">
         {/* SIDEBAR: Employee Directory */}
-        <div className="lg:col-span-1 card p-4 bg-white dark:bg-gray-900 border border-surface-border/80 dark:border-gray-800 shadow-sm flex flex-col overflow-hidden h-[640px]">
+        <div className="lg:col-span-1 card p-4 bg-surface dark:bg-black/90 border border-border shadow-sm flex flex-col overflow-hidden h-[640px]">
           <div className="space-y-3 mb-4">
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-muted" />
               <input
                 type="text"
                 placeholder="Search employees..."
-                className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-gray-800 dark:text-gray-200"
+                className="w-full pl-9 pr-4 py-2 text-sm bg-surface-muted dark:bg-black/70 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-text-primary dark:text-text-primary"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
               />
             </div>
             <div className="flex items-center space-x-2">
-              <SlidersHorizontal className="h-4 w-4 text-gray-400 shrink-0" />
+              <SlidersHorizontal className="h-4 w-4 text-text-muted shrink-0" />
               <select
-                className="text-xs bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-1.5 text-gray-600 dark:text-gray-400 focus:outline-none"
+                className="text-xs bg-surface-muted dark:bg-black/70 border border-border rounded-lg p-1.5 text-text-secondary dark:text-text-secondary focus:outline-none"
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
               >
@@ -266,9 +266,9 @@ const LiveMonitor = () => {
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1">
             {loading ? (
-              <div className="py-8 text-center text-gray-400">Loading roster...</div>
+              <div className="py-8 text-center text-text-muted">Loading roster...</div>
             ) : filteredEmployees.length === 0 ? (
-              <div className="py-8 text-center text-gray-400">No employees match filters.</div>
+              <div className="py-8 text-center text-text-muted">No employees match filters.</div>
             ) : (
               filteredEmployees.map(emp => {
                 const isSelected = selectedEmp?.employee_id === emp.employee_id
@@ -279,17 +279,17 @@ const LiveMonitor = () => {
                     className={`w-full text-left p-3 rounded-xl border transition-all ${
                       isSelected
                         ? 'border-primary-500 bg-primary-50/50 dark:bg-primary-950/20'
-                        : 'border-gray-100 hover:border-gray-200 dark:border-gray-850 dark:hover:bg-gray-850 bg-white dark:bg-gray-900'
+                        : 'border-border hover:border-border dark:border-border dark:hover:bg-white/5 bg-surface dark:bg-black/80'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <p className="font-semibold text-sm text-gray-800 dark:text-gray-200 truncate mr-2">
+                      <p className="font-semibold text-sm text-text-primary dark:text-text-primary truncate mr-2">
                         {emp.employee_name}
                       </p>
                       <Badge label={emp.status} colorKey={emp.status} />
                     </div>
                     <div className="flex items-center space-x-2 mb-1.5">
-                      <p className="text-xs text-gray-450 truncate">{emp.department} • {emp.role.replace('_', ' ')}</p>
+                      <p className="text-xs text-text-muted truncate">{emp.department} • {emp.role.replace('_', ' ')}</p>
                       {emp.is_late && (
                         <span className="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400 shrink-0">
                           <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> Late
@@ -297,13 +297,13 @@ const LiveMonitor = () => {
                       )}
                     </div>
                     {emp.login_time && (
-                      <p className="text-[10px] text-gray-400 mb-1 flex items-center">
+                      <p className="text-[10px] text-text-muted mb-1 flex items-center">
                         <Clock className="h-2.5 w-2.5 mr-1" />
                         {format(parseISO(emp.login_time), 'hh:mm a')}
                       </p>
                     )}
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] text-gray-400 font-mono">
+                      <p className="text-[11px] text-text-muted font-mono">
                         {formatTime(emp.total_working_hours)}
                       </p>
                       {emp.status !== 'Offline' && emp.work_type && (
@@ -322,17 +322,17 @@ const LiveMonitor = () => {
           {selectedEmp ? (
             <div className="flex-1 flex flex-col">
               {/* Selected Employee Header */}
-              <div className="card p-4 bg-white dark:bg-gray-900 border border-surface-border/80 dark:border-gray-800 shadow-sm flex items-center justify-between mb-4 rounded-2xl">
+              <div className="card p-4 bg-surface dark:bg-black/90 border border-border shadow-sm flex items-center justify-between mb-4 rounded-2xl">
                 <div className="flex items-center space-x-3">
-                  <div className="h-10 w-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600">
+                  <div className="h-10 w-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 dark:text-primary-300">
                     <User className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-800 dark:text-gray-100 leading-tight">
+                    <h3 className="font-bold text-text-primary dark:text-text-primary leading-tight">
                       {selectedEmp.employee_name}
                     </h3>
                     <div className="flex items-center space-x-2 mt-0.5">
-                      <p className="text-xs text-gray-450">{selectedEmp.email}</p>
+                      <p className="text-xs text-text-muted">{selectedEmp.email}</p>
                       {selectedEmp.is_late && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
                           <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> Late
@@ -357,22 +357,22 @@ const LiveMonitor = () => {
 
               {/* Working time summary */}
               <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="card p-3 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-center rounded-xl">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase">Working</p>
-                  <p className="text-lg font-black font-mono text-gray-800 dark:text-gray-200">
+                <div className="card p-3 bg-surface dark:bg-black/80 border border-border text-center rounded-xl">
+                  <p className="text-[10px] font-semibold text-text-muted uppercase">Working</p>
+                  <p className="text-lg font-black font-mono text-text-primary dark:text-text-primary">
                     {formatTime(selectedEmp.total_working_hours)}
                   </p>
                 </div>
-                <div className="card p-3 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-center rounded-xl">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase">Break</p>
-                  <p className="text-lg font-black font-mono text-gray-500 dark:text-gray-400">
+                <div className="card p-3 bg-surface dark:bg-black/80 border border-border text-center rounded-xl">
+                  <p className="text-[10px] font-semibold text-text-muted uppercase">Break</p>
+                  <p className="text-lg font-black font-mono text-text-secondary dark:text-text-secondary">
                     {formatTime(selectedEmp.break_duration)}
                   </p>
                 </div>
-                <div className="card p-3 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-center rounded-xl">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase">Overtime</p>
+                <div className="card p-3 bg-surface dark:bg-black/80 border border-border text-center rounded-xl">
+                  <p className="text-[10px] font-semibold text-text-muted uppercase">Overtime</p>
                   <p className={`text-lg font-black font-mono ${
-                    (selectedEmp.overtime_seconds || 0) > 0 ? 'text-amber-600' : 'text-gray-300 dark:text-gray-700'
+                    (selectedEmp.overtime_seconds || 0) > 0 ? 'text-amber-600 dark:text-amber-300' : 'text-text-muted dark:text-gray-600'
                   }`}>
                     +{formatTime(selectedEmp.overtime_seconds || 0)}
                   </p>
@@ -382,8 +382,8 @@ const LiveMonitor = () => {
               {/* Viewfinders Grid */}
               <div className="grid gap-5 md:grid-cols-2 flex-1">
                 {/* Camera Feed */}
-                <div className="card bg-slate-950 border border-slate-900 text-white rounded-2xl overflow-hidden flex flex-col h-[420px] shadow-lg">
-                  <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
+                <div className="card bg-black border border-border text-white rounded-2xl overflow-hidden flex flex-col h-[420px] shadow-lg">
+                  <div className="p-3 bg-black/90 border-b border-border flex items-center justify-between shrink-0">
                     <span className="text-[11px] font-bold uppercase tracking-wider flex items-center">
                       <Video className="mr-2 h-4 w-4 text-emerald-400 animate-pulse" />
                       Camera Feed
@@ -399,7 +399,7 @@ const LiveMonitor = () => {
                       />
                     ) : (
                       <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
-                        <Video className="h-12 w-12 mb-3 stroke-1" />
+                        <Video className="h-12 w-12 mb-3 stroke-1 text-text-muted" />
                         <p className="text-sm">
                           {selectedEmp.status === 'Working'
                             ? 'Awaiting first frame packet…'
@@ -411,8 +411,8 @@ const LiveMonitor = () => {
                 </div>
 
                 {/* Screen Feed */}
-                <div className="card bg-slate-950 border border-slate-900 text-white rounded-2xl overflow-hidden flex flex-col h-[420px] shadow-lg">
-                  <div className="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
+                <div className="card bg-black border border-border text-white rounded-2xl overflow-hidden flex flex-col h-[420px] shadow-lg">
+                  <div className="p-3 bg-black/90 border-b border-border flex items-center justify-between shrink-0">
                     <span className="text-[11px] font-bold uppercase tracking-wider flex items-center">
                       <Monitor className="mr-2 h-4 w-4 text-sky-400" />
                       Screen Feed
@@ -428,7 +428,7 @@ const LiveMonitor = () => {
                       />
                     ) : (
                       <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
-                        <Monitor className="h-12 w-12 mb-3 stroke-1" />
+                        <Monitor className="h-12 w-12 mb-3 stroke-1 text-text-muted" />
                         <p className="text-sm">
                           {selectedEmp.status === 'Working'
                             ? 'Awaiting first screen packet…'
@@ -441,9 +441,9 @@ const LiveMonitor = () => {
               </div>
             </div>
           ) : (
-            <div className="flex-1 border border-dashed border-gray-200 dark:border-gray-800 rounded-2xl flex flex-col items-center justify-center p-8 text-center text-gray-400 bg-white/50 dark:bg-gray-900/50">
-              <AlertCircle className="h-12 w-12 mb-3 text-gray-300" />
-              <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">No Employee Selected</h3>
+            <div className="flex-1 border border-dashed border-border rounded-2xl flex flex-col items-center justify-center p-8 text-center text-text-muted bg-surface/50 dark:bg-black/50">
+              <AlertCircle className="h-12 w-12 mb-3 text-text-muted" />
+              <h3 className="font-semibold text-text-primary dark:text-text-primary mb-1">No Employee Selected</h3>
               <p className="text-sm max-w-xs">Select an employee from the directory panel to view their live streams and timing details.</p>
             </div>
           )}

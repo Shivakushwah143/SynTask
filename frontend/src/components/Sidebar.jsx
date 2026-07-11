@@ -43,11 +43,11 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
-import { Badge } from "./ui";
-
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
 const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
+const WIDTH_KEY = "syntask-sidebar-width";
+const WIDTH_OPTIONS = [240, 280, 320];
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
@@ -86,6 +86,14 @@ const Sidebar = ({ isOpen, onClose }) => {
       return false;
     }
   });
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try {
+      const stored = Number(localStorage.getItem(WIDTH_KEY));
+      return WIDTH_OPTIONS.includes(stored) ? stored : WIDTH_OPTIONS[1];
+    } catch {
+      return WIDTH_OPTIONS[1];
+    }
+  });
 
   useEffect(() => {
     try {
@@ -118,6 +126,14 @@ const Sidebar = ({ isOpen, onClose }) => {
       // ignore storage write failures
     }
   }, [openGroups]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(WIDTH_KEY, String(sidebarWidth));
+    } catch {
+      // ignore storage write failures
+    }
+  }, [sidebarWidth]);
 
   const navigation = [
     {
@@ -323,6 +339,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     ))
   };
   const favoriteItems = filteredNavigation.filter((item) => favorites.includes(item.href));
+  const widthIndex = WIDTH_OPTIONS.indexOf(sidebarWidth);
+  const prevWidth = WIDTH_OPTIONS[Math.max(0, widthIndex - 1)];
+  const nextWidth = WIDTH_OPTIONS[Math.min(WIDTH_OPTIONS.length - 1, widthIndex + 1)];
 
   const crmNavigation = [
     {
@@ -430,7 +449,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       {/* Mobile Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/55 z-40 lg:hidden"
           onClick={onClose}
           role="presentation"
         />
@@ -440,18 +459,19 @@ const Sidebar = ({ isOpen, onClose }) => {
       <div
         className={`
           fixed lg:static inset-y-0 left-0 z-50
-          w-64 ${collapsed ? "lg:w-[76px]" : "lg:w-52"}
+          w-64 lg:w-[var(--sidebar-width)]
           transform transition-all duration-300 ease-in-out
           ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
         `}
+        style={{ '--sidebar-width': `${collapsed ? 76 : sidebarWidth}px` }}
       >
-        <div className="relative flex h-full flex-col overflow-visible border-r border-surface-border/80 bg-gradient-to-b from-white via-white to-purple-50/50 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-gray-800 dark:from-gray-950 dark:via-gray-950 dark:to-gray-900">
+        <div className="relative flex h-full flex-col overflow-visible border-r border-black/10 bg-[linear-gradient(180deg,rgba(10,10,10,1)_0%,rgba(18,16,14,1)_100%)] text-[#f1e9dc] shadow-[0_22px_50px_rgba(0,0,0,0.18)] dark:border-black/40">
           {/* Desktop collapse toggle */}
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="absolute -right-3.5 top-[22px] z-10 hidden h-8 w-8 items-center justify-center rounded-full border border-surface-border bg-white text-gray-600 shadow-md transition-all hover:scale-105 hover:border-purple-400 hover:text-purple-600 lg:flex dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-purple-500 dark:hover:text-purple-300"
+            className="absolute -right-3.5 top-[22px] z-10 hidden h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-[#fffaf3] text-[#7a6f61] shadow-none transition-all hover:scale-105 hover:border-primary-500 hover:text-primary-600 lg:flex dark:border-gray-700 dark:bg-black dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
           >
             {collapsed ? (
               <ChevronRight className="h-4 w-4" />
@@ -461,9 +481,9 @@ const Sidebar = ({ isOpen, onClose }) => {
           </button>
 
           {/* Logo */}
-          <div className={`flex h-18 items-center border-b border-surface-border/80 px-4 dark:border-gray-800 ${collapsed ? "lg:justify-center lg:px-0" : "justify-between"}`}>
+          <div className={`flex h-18 items-center border-b border-white/10 px-4 ${collapsed ? "lg:justify-center lg:px-0" : "justify-between"}`}>
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-purple-700 text-white shadow-[0_10px_30px_rgba(124,58,237,0.28)]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fffaf4] text-primary-600 shadow-none dark:bg-black">
                 <img
                   src="/logo.svg"
                   alt="SynTask Logo"
@@ -474,35 +494,53 @@ const Sidebar = ({ isOpen, onClose }) => {
                 />
               </div>
               <div className={collapsed ? "lg:hidden" : ""}>
-                <h1 className="text-base font-bold tracking-tight text-gray-900 dark:text-gray-100">
+                <h1 className="text-base font-bold tracking-tight text-[#fffaf4]">
                   SynTask
                 </h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Workspace OS</p>
+                <p className="text-xs text-[#cfc2b2]">Workspace OS</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 lg:hidden dark:text-gray-300 dark:hover:bg-gray-800"
-              aria-label="Close navigation"
-            >
-              <X className="h-5 w-5 text-gray-600 dark:text-gray-300" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setSidebarWidth(prevWidth)}
+                className="hidden rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d9cdbc] transition-colors hover:bg-white/10 lg:inline-flex dark:bg-black/40"
+                aria-label="Decrease sidebar width"
+              >
+                -
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarWidth(nextWidth)}
+                className="hidden rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d9cdbc] transition-colors hover:bg-white/10 lg:inline-flex dark:bg-black/40"
+                aria-label="Increase sidebar width"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-full p-2 text-[#d9cdbc] transition-colors hover:bg-white/10 lg:hidden"
+                aria-label="Close navigation"
+              >
+                <X className="h-5 w-5 text-[#d9cdbc]" />
+              </button>
+            </div>
           </div>
 
           {/* Navigation */}
           <nav className={`flex-1 space-y-4 px-3 py-4 ${collapsed ? "overflow-visible" : "overflow-y-auto"}`}>
             {favoriteItems.length ? (
-              <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-2 shadow-sm dark:border-purple-950/40 dark:bg-purple-950/20">
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-2 shadow-none dark:bg-black/30">
                 <button
                   type="button"
                   onClick={() => setFavoritesOpen((open) => !open)}
                   aria-expanded={favoritesOpen}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-500 transition-colors hover:bg-white/70 hover:text-purple-700 dark:text-gray-400 dark:hover:bg-gray-900/70 dark:hover:text-purple-200 ${collapsed ? "lg:hidden" : ""}`}
+                  className={`flex w-full items-center justify-between rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-[#cfc2b2] transition-colors hover:bg-white/10 hover:text-[#fffaf4] ${collapsed ? "lg:hidden" : ""}`}
                 >
                   <span>Favorites</span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-200">
+                    <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] text-primary-600 shadow-none dark:bg-primary-500 dark:text-white">
                       {favoriteItems.length}
                     </span>
                     <ChevronDown className={`h-3.5 w-3.5 transition-transform ${favoritesOpen ? '' : '-rotate-90'}`} />
@@ -514,9 +552,9 @@ const Sidebar = ({ isOpen, onClose }) => {
                       key={item.name}
                       to={item.href}
                       onClick={onClose}
-                      className="flex items-center rounded-xl px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
+                      className="flex items-center rounded-full px-3 py-2 text-sm font-medium text-[#f1e9dc] transition-colors hover:bg-white/10 hover:text-white"
                     >
-                    <Star className="mr-2 h-4 w-4 text-purple-500" />
+                    <Star className="mr-2 h-4 w-4 text-primary-400" />
                       <span className={collapsed ? "lg:hidden" : ""}>{item.name}</span>
                     </Link>
                   ))}
@@ -552,7 +590,7 @@ const Sidebar = ({ isOpen, onClose }) => {
           </nav>
 
           {/* User Info */}
-          <div className="border-t border-surface-border/80 p-4 dark:border-gray-800">
+          <div className="border-t border-white/10 p-4">
             <Link
               to="/settings"
               title={
@@ -560,7 +598,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   ? `${user?.first_name || ""} ${user?.last_name || ""}`.trim()
                   : undefined
               }
-              className={`group relative flex items-center rounded-2xl border border-transparent bg-white/70 p-3 transition-all hover:border-purple-100 hover:bg-white cursor-pointer dark:bg-gray-900/60 dark:hover:border-gray-700 dark:hover:bg-gray-900 ${
+              className={`group relative flex items-center rounded-3xl border border-white/10 bg-white/[0.06] p-3 transition-all hover:border-white/20 hover:bg-white/[0.12] cursor-pointer ${
                 collapsed ? "lg:justify-center" : ""
               }`}
               onClick={onClose}
@@ -576,7 +614,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                         : `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${user.avatar}`
                     }
                     alt={user?.first_name}
-                    className="h-10 w-10 rounded-full object-cover border border-gray-200 shadow-sm dark:border-gray-700"
+                    className="h-10 w-10 rounded-full object-cover border border-white/10 shadow-none"
                     onError={(e) => {
                       // Fallback to initials if image fails to load
                       e.target.style.display = "none";
@@ -585,8 +623,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                     }}
                   />
                 ) : null}
-                <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-100 to-purple-200 shadow-sm ${user?.avatar ? "hidden" : ""}`}>
-                  <span className="text-sm font-semibold text-purple-600">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4eb] shadow-none ${user?.avatar ? "hidden" : ""} dark:bg-black`}>
+                  <span className="text-sm font-semibold text-primary-600">
                     {user?.first_name?.[0]}
                     {user?.last_name?.[0]}
                   </span>
@@ -595,10 +633,10 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div
                 className={`ml-3 flex-1 min-w-0 ${collapsed ? "lg:hidden" : ""}`}
               >
-                <p className="text-sm font-medium text-gray-700 truncate dark:text-gray-100">
+                <p className="text-sm font-medium text-[#fffaf4] truncate">
                   {user?.first_name} {user?.last_name}
                 </p>
-                <p className="text-xs text-gray-500 capitalize truncate dark:text-gray-400">
+                <p className="text-xs text-[#cfc2b2] capitalize truncate">
                   {getRoleLabel(user?.role)}
                 </p>
               </div>
@@ -615,14 +653,6 @@ const Sidebar = ({ isOpen, onClose }) => {
 
 export default Sidebar;
 
-function SectionLabel({ label, collapsed }) {
-  return (
-    <div className={`px-3 pt-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 ${collapsed ? 'lg:hidden' : ''}`}>
-      {label}
-    </div>
-  )
-}
-
 function SidebarNavGroup({
   group,
   location,
@@ -636,16 +666,16 @@ function SidebarNavGroup({
   const isGroupActive = group.items.some((item) => isNavItemActive(item, location))
 
   return (
-    <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-2 shadow-sm dark:border-purple-950/40 dark:bg-purple-950/20">
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-2 shadow-none dark:bg-black/30">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={isOpen}
-        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] transition-colors hover:bg-white/70 hover:text-purple-700 dark:hover:bg-gray-900/70 dark:hover:text-purple-200 ${collapsed ? "lg:hidden" : ""} ${isGroupActive ? "text-purple-700 dark:text-purple-200" : "text-gray-500 dark:text-gray-400"}`}
+        className={`flex w-full items-center justify-between rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] transition-colors hover:bg-white/10 hover:text-white ${collapsed ? "lg:hidden" : ""} ${isGroupActive ? "text-[#fffaf4]" : "text-[#cfc2b2]"}`}
       >
         <span>{group.label}</span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] text-purple-600 shadow-sm dark:bg-gray-900 dark:text-purple-200">
+          <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] text-primary-600 shadow-none dark:bg-primary-500 dark:text-white">
             {group.items.length}
           </span>
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
@@ -693,8 +723,8 @@ function SidebarNavItem({
           collapsed ? "lg:justify-center lg:px-0" : nested ? "ml-1" : ""
         } ${
           isActive
-            ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-[0_10px_24px_rgba(124,58,237,0.22)]"
-            : "text-gray-700 hover:bg-white hover:text-purple-700 dark:text-gray-300 dark:hover:bg-gray-900 dark:hover:text-purple-200"
+            ? "bg-primary-500 text-white shadow-none"
+            : "text-[#e8dccd] hover:bg-white/10 hover:text-white"
         }`}
       >
         <item.icon className={`h-5 w-5 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-white" : ""}`} />
@@ -706,10 +736,10 @@ function SidebarNavItem({
         <button
           type="button"
           onClick={() => onToggleFavorite(item.href)}
-          className={`hidden rounded-xl p-1.5 text-gray-400 transition hover:bg-white hover:text-purple-500 dark:hover:bg-gray-900 ${collapsed ? 'lg:hidden' : 'lg:inline-flex'}`}
+          className={`hidden rounded-full p-1.5 text-[#a99f92] transition hover:bg-white/10 hover:text-primary-300 ${collapsed ? 'lg:hidden' : 'lg:inline-flex'}`}
           aria-label={favorites.includes(item.href) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
         >
-          <Star className={`h-4 w-4 ${favorites.includes(item.href) ? 'fill-purple-500 text-purple-500' : ''}`} />
+          <Star className={`h-4 w-4 ${favorites.includes(item.href) ? 'fill-primary-400 text-primary-400' : ''}`} />
         </button>
       ) : null}
     </div>
@@ -737,13 +767,13 @@ function SidebarTooltip({ label }) {
         -translate-y-1/2
         whitespace-nowrap
         rounded-xl
-        bg-gray-900
+        bg-[#1a1613]
         px-3
         py-1.5
         text-xs
-        text-white
+        text-[#fffaf4]
         opacity-0
-        shadow-lg
+        shadow-none
         invisible
         transition-all
         duration-200

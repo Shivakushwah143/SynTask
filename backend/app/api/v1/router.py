@@ -1,8 +1,13 @@
 """
 Main API Router - v1
 """
+from datetime import datetime
+
 from fastapi import APIRouter
 from app.core.config import settings
+from app.core.redis_client import get_redis_health
+from app.worker.celery_app import is_celery_enabled
+from app.core.database import get_database
 
 from app.api.v1.endpoints import (
     auth, users, companies, tasks, notifications, dashboard, files, reports, 
@@ -38,6 +43,43 @@ async def debug_backend():
         "project_id": "user_provided",
         "message": "Create project saves your project_id in DB. If you see this, the new backend is live.",
     }
+
+
+@api_router.get("/health", tags=["Health"])
+async def health_check():
+    status = {
+        "status": "healthy",
+        "version": settings.VERSION,
+        "environment": settings.ENVIRONMENT,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    checks = {"mongodb": {"ok": True}, "redis": {"ok": False}, "celery": {"ok": False}}
+    try:
+        db = get_database()
+        await db.command("ping")
+        checks["mongodb"] = {"ok": True}
+    except Exception as exc:
+        checks["mongodb"] = {"ok": False, "error": str(exc)}
+        status["status"] = "degraded"
+
+    try:
+        redis_ok = await get_redis_health(force_refresh=True)
+        checks["redis"] = {"ok": redis_ok, "disabled": settings.DISABLE_REDIS}
+        if not redis_ok:
+            status["status"] = "degraded"
+    except Exception as exc:
+        checks["redis"] = {"ok": False, "error": str(exc), "disabled": settings.DISABLE_REDIS}
+        status["status"] = "degraded"
+
+    checks["celery"] = {
+        "ok": is_celery_enabled(),
+        "disabled": settings.DISABLE_CELERY,
+        "always_eager": settings.CELERY_ALWAYS_EAGER or settings.DISABLE_CELERY,
+    }
+
+    status["checks"] = checks
+    return status
 
 
 # Include all endpoint routers

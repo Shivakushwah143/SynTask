@@ -67,7 +67,7 @@ class PipelineStage(str, Enum):
 
 
 ALLOWED_TRANSITIONS: Dict[PipelineStage, set[PipelineStage]] = {
-    PipelineStage.NEW: {PipelineStage.CONTACTED, PipelineStage.LOST},
+    PipelineStage.NEW: {PipelineStage.CONTACTED, PipelineStage.QUALIFIED, PipelineStage.LOST},
     PipelineStage.CONTACTED: {PipelineStage.QUALIFIED, PipelineStage.LOST},
     PipelineStage.QUALIFIED: {PipelineStage.DISCOVERY, PipelineStage.LOST},
     PipelineStage.DISCOVERY: {PipelineStage.PROPOSAL, PipelineStage.LOST},
@@ -137,21 +137,43 @@ def _build_stage_catalog() -> List[Dict[str, Any]]:
     return catalog
 
 
+async def _load_stage_documents(current_user: User) -> List[Dict[str, Any]]:
+    # Legacy seam retained for tests and callers that monkeypatch stage loading.
+    return _build_stage_catalog()
+
+
 def _build_stage_index(stage_catalog: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     stage_index: Dict[str, Dict[str, Any]] = {}
     for stage in stage_catalog:
-        normalized_name = _normalize_stage_value(stage["name"])
+        stage_name = stage["name"] if isinstance(stage, dict) else getattr(stage, "name", None)
+        stage_key = stage["key"] if isinstance(stage, dict) and "key" in stage else getattr(stage, "key", _slugify_stage_name(stage_name or ""))
+        aliases = stage.get("aliases", []) if isinstance(stage, dict) else getattr(stage, "aliases", []) or []
+        normalized_name = _normalize_stage_value(stage_name)
         stage_index[normalized_name] = stage
-        stage_index[_normalize_stage_value(stage["key"])] = stage
+        stage_index[_normalize_stage_value(stage_key)] = stage
         if normalized_name in {"lead", "new"}:
             stage_index["lead"] = stage
             stage_index["new"] = stage
-        for alias in stage.get("aliases", []) or []:
+        for alias in aliases:
             stage_index[_normalize_stage_value(alias)] = stage
         for alias, canonical in DEFAULT_STAGE_LOOKUP.items():
-            if canonical == stage["name"]:
+            if canonical == stage_name:
                 stage_index[_normalize_stage_value(alias)] = stage
     return stage_index
+
+
+def _stage_name(stage: Any) -> str:
+    return stage["name"] if isinstance(stage, dict) else getattr(stage, "name", "")
+
+
+def _stage_order(stage: Any) -> int:
+    return stage["order"] if isinstance(stage, dict) else int(getattr(stage, "order", 0))
+
+
+def _stage_meta_value(stage: Any, key: str, default: Any = None) -> Any:
+    if isinstance(stage, dict):
+        return stage.get(key, default)
+    return getattr(stage, key, default)
 
 
 def _resolve_stage_name(value: Optional[str], stage_index: Dict[str, Dict[str, Any]]) -> Optional[str]:
@@ -160,7 +182,7 @@ def _resolve_stage_name(value: Optional[str], stage_index: Dict[str, Dict[str, A
         return None
     stage = stage_index.get(normalized)
     if stage:
-        return stage["name"]
+        return _stage_name(stage)
     canonical = DEFAULT_STAGE_LOOKUP.get(normalized)
     if canonical and canonical in {item["name"] for item in stage_index.values()}:
         return canonical
@@ -274,7 +296,7 @@ class CRMPipelineService:
     @staticmethod
     async def load_pipeline(current_user: User) -> Dict[str, Any]:
         company_id = _user_company_id(current_user)
-        stage_catalog = _build_stage_catalog()
+        stage_catalog = await _load_stage_documents(current_user)
         stage_index = _build_stage_index(stage_catalog)
 
         query: Dict[str, Any] = {
@@ -318,7 +340,19 @@ class CRMPipelineService:
             company_map = {str(company.id): company.name for company in companies}
 
         stage_lookup: Dict[str, Dict[str, Any]] = {
-            stage["name"]: {**stage, "lead_count": 0} for stage in stage_catalog
+            _stage_name(stage): {
+                "id": stage["id"] if isinstance(stage, dict) else getattr(stage, "id", None),
+                "name": _stage_name(stage),
+                "key": stage["key"] if isinstance(stage, dict) and "key" in stage else getattr(stage, "key", _slugify_stage_name(_stage_name(stage))),
+                "order": _stage_order(stage),
+                "is_default": stage["is_default"] if isinstance(stage, dict) and "is_default" in stage else bool(getattr(stage, "is_default", False)),
+                "description": stage["description"] if isinstance(stage, dict) and "description" in stage else getattr(stage, "description", None),
+                "category": stage["category"] if isinstance(stage, dict) and "category" in stage else getattr(stage, "category", None),
+                "is_terminal": stage["is_terminal"] if isinstance(stage, dict) and "is_terminal" in stage else bool(getattr(stage, "is_terminal", False)),
+                "source": stage["source"] if isinstance(stage, dict) and "source" in stage else getattr(stage, "source", "fixed"),
+                "lead_count": 0,
+            }
+            for stage in stage_catalog
         }
         leads_by_stage: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
@@ -372,7 +406,7 @@ class CRMPipelineService:
         if not _can_write_pipeline(current_user, prospect):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to update this lead")
 
-        stage_catalog = _build_stage_catalog()
+        stage_catalog = await _load_stage_documents(current_user)
         stage_index = _build_stage_index(stage_catalog)
         resolved_stage = _resolve_stage_name(target_stage, stage_index)
         if not resolved_stage:
@@ -414,7 +448,7 @@ class CRMPipelineService:
 
         await prospect.save()
 
-        stage_catalog_map = {stage["name"]: stage for stage in stage_catalog}
+        stage_catalog_map = {_stage_name(stage): stage for stage in stage_catalog}
         resolved_stage_meta = stage_catalog_map.get(resolved_stage, {})
 
         history = SalesPipelineHistory.model_construct(
@@ -434,11 +468,11 @@ class CRMPipelineService:
                 "company_id": company_id,
                 "days_in_previous_stage": days_in_previous_stage,
                 "stage_metadata": {
-                    "name": resolved_stage_meta.get("name", resolved_stage),
-                    "key": resolved_stage_meta.get("key"),
-                    "order": resolved_stage_meta.get("order"),
-                    "category": resolved_stage_meta.get("category"),
-                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                    "name": _stage_meta_value(resolved_stage_meta, "name", resolved_stage),
+                    "key": _stage_meta_value(resolved_stage_meta, "key"),
+                    "order": _stage_meta_value(resolved_stage_meta, "order"),
+                    "category": _stage_meta_value(resolved_stage_meta, "category"),
+                    "is_terminal": _stage_meta_value(resolved_stage_meta, "is_terminal", False),
                 },
             },
             transitioned_at=now,
@@ -462,11 +496,11 @@ class CRMPipelineService:
                 "status": prospect.status.value,
                 "updated_at": now.isoformat(),
                 "stage_metadata": {
-                    "name": resolved_stage_meta.get("name", resolved_stage),
-                    "key": resolved_stage_meta.get("key"),
-                    "order": resolved_stage_meta.get("order"),
-                    "category": resolved_stage_meta.get("category"),
-                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                    "name": _stage_meta_value(resolved_stage_meta, "name", resolved_stage),
+                    "key": _stage_meta_value(resolved_stage_meta, "key"),
+                    "order": _stage_meta_value(resolved_stage_meta, "order"),
+                    "category": _stage_meta_value(resolved_stage_meta, "category"),
+                    "is_terminal": _stage_meta_value(resolved_stage_meta, "is_terminal", False),
                 },
             },
             metadata={
@@ -531,7 +565,7 @@ class CRMPipelineService:
         if prospect.status != ProspectStatus.LOST:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lead is not lost")
 
-        stage_catalog = _build_stage_catalog()
+        stage_catalog = await _load_stage_documents(current_user)
         stage_index = _build_stage_index(stage_catalog)
         reopened_stage = _resolve_stage_name("New", stage_index) or "New"
         previous_stage = _resolve_stage_name(prospect.current_stage, stage_index) or prospect.current_stage or "Lost"
@@ -550,7 +584,7 @@ class CRMPipelineService:
         prospect.updated_at = now
         await prospect.save()
 
-        stage_catalog_map = {stage["name"]: stage for stage in stage_catalog}
+        stage_catalog_map = {_stage_name(stage): stage for stage in stage_catalog}
         resolved_stage_meta = stage_catalog_map.get(reopened_stage, {})
 
         history = SalesPipelineHistory.model_construct(
@@ -571,11 +605,11 @@ class CRMPipelineService:
                 "days_in_previous_stage": days_in_previous_stage,
                 "reopened_from": "lost",
                 "stage_metadata": {
-                    "name": resolved_stage_meta.get("name", reopened_stage),
-                    "key": resolved_stage_meta.get("key"),
-                    "order": resolved_stage_meta.get("order"),
-                    "category": resolved_stage_meta.get("category"),
-                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                    "name": _stage_meta_value(resolved_stage_meta, "name", reopened_stage),
+                    "key": _stage_meta_value(resolved_stage_meta, "key"),
+                    "order": _stage_meta_value(resolved_stage_meta, "order"),
+                    "category": _stage_meta_value(resolved_stage_meta, "category"),
+                    "is_terminal": _stage_meta_value(resolved_stage_meta, "is_terminal", False),
                 },
             },
             transitioned_at=now,
@@ -600,11 +634,11 @@ class CRMPipelineService:
                 "updated_at": now.isoformat(),
                 "reopened_from": "lost",
                 "stage_metadata": {
-                    "name": resolved_stage_meta.get("name", reopened_stage),
-                    "key": resolved_stage_meta.get("key"),
-                    "order": resolved_stage_meta.get("order"),
-                    "category": resolved_stage_meta.get("category"),
-                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                    "name": _stage_meta_value(resolved_stage_meta, "name", reopened_stage),
+                    "key": _stage_meta_value(resolved_stage_meta, "key"),
+                    "order": _stage_meta_value(resolved_stage_meta, "order"),
+                    "category": _stage_meta_value(resolved_stage_meta, "category"),
+                    "is_terminal": _stage_meta_value(resolved_stage_meta, "is_terminal", False),
                 },
             },
             metadata={

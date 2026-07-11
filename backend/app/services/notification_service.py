@@ -164,6 +164,10 @@ class EmailService:
         )
 
 
+# Backward-compatible alias retained for existing tests and callers.
+BrevoEmailProvider = EmailService
+
+
 class WhatsAppNoopProvider:
     async def send_message(
         self,
@@ -187,8 +191,9 @@ class NotificationService:
         self,
         *,
         email_service: Optional[EmailService] = None,
+        email_provider: Optional[EmailService] = None,
     ) -> None:
-        self.email_service = email_service or EmailService()
+        self.email_service = email_service or email_provider or EmailService()
         self.whatsapp_provider = WhatsAppNoopProvider()
 
     @staticmethod

@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { format } from 'date-fns'
 import { Clock3, Plus, Receipt, Search, SlidersHorizontal } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
-import { useConfirmation } from '../hooks/useConfirmation'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
@@ -30,7 +28,6 @@ const PROJECT_WORKFLOW = {
 export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { confirm } = useConfirmation()
   const canCreateProjects = hasCompanyAdminAccess(user?.role)
   const [loading, setLoading] = useState(true)
   const [projects, setProjects] = useState([])
@@ -48,7 +45,6 @@ export default function Projects() {
   const [versions, setVersions] = useState([])
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [deletingId, setDeletingId] = useState(null)
   const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
   const [formErrors, setFormErrors] = useState({})
 
@@ -56,10 +52,13 @@ export default function Projects() {
     try {
       setLoading(true)
       const response = await projectsApi.getProjects()
-      setProjects(response.data.projects || [])
+      const projectsData = response.data.projects || []
+      setProjects(projectsData)
+      return projectsData
     } catch (error) {
       toast.error('Failed to load projects')
       setProjects([])
+      return []
     } finally {
       setLoading(false)
     }
@@ -180,47 +179,33 @@ export default function Projects() {
       payload.project_id = payload.project_id.trim() || payload.key.trim()
       if (payload.start_date) payload.start_date = new Date(payload.start_date).toISOString()
       if (payload.delivery_date) payload.delivery_date = new Date(payload.delivery_date).toISOString()
-      await projectsApi.createProject(payload)
+      
+      const response = await projectsApi.createProject(payload)
       toast.success('Project created successfully')
-      setShowCreateModal(false)
+      
+      // Reset form
       setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
-      await loadProjects()
+      
+      // Close modal first
+      setShowCreateModal(false)
+      
+      // Immediately add the new project to the list if we have the data
+      if (response.data && response.data.project) {
+        setProjects(prevProjects => [response.data.project, ...prevProjects])
+      } else {
+        // If we don't have the project data in the response, refresh the list
+        await loadProjects()
+      }
+      
+      // Reset visible count to show new project
+      setVisibleProjectCount(PROJECT_BATCH_SIZE)
+      
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create project')
     } finally {
       setSubmitting(false)
     }
   }
-
-  const handleDelete = async (id) => {
-    if (deletingId) return
-    const confirmed = await confirm({
-      title: 'Delete Project',
-      message: 'Are you sure you want to delete this project?',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-      isDangerous: true,
-    })
-    if (!confirmed) return
-    try {
-      setDeletingId(id)
-      await projectsApi.deleteProject(id)
-      toast.success('Project deleted successfully')
-      await loadProjects()
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to delete project')
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
-  const projectTableColumns = [
-    { key: 'name', header: 'Project' },
-    { key: 'status', header: 'Status', render: (row) => <Badge label={row.statusLabel || 'active'} colorKey={row.status || 'active'} /> },
-    { key: 'progress', header: 'Progress', render: (row) => <ProgressBar value={row.progress || 0} /> },
-    { key: 'task_count', header: 'Tasks' },
-    { key: 'delivery_date', header: 'Delivery', render: (row) => (row.delivery_date ? format(new Date(row.delivery_date), 'MMM d, yyyy') : '—') },
-  ]
 
   return (
     <div className="space-y-6">
@@ -366,14 +351,15 @@ export default function Projects() {
       <ProjectDetailsPanel
         isOpen={showDetails}
         project={selectedProject}
-        loading={loadingDetails}
-        details={projectDetails}
-        tasks={projectTasks}
-        components={components}
-        versions={versions}
-        onClose={() => setShowDetails(false)}
-        onOpenBoard={(project) => navigate(`/projects/${project.id}/board`)}
-      />
+      loading={loadingDetails}
+      details={projectDetails}
+      tasks={projectTasks}
+      components={components}
+      versions={versions}
+      onClose={() => setShowDetails(false)}
+      onOpenBoard={(project) => navigate(`/projects/${project.id}/board`)}
+      onChangeStatus={handleProjectStatusChange}
+    />
     </div>
   )
 }
@@ -497,21 +483,7 @@ function MetricCard({ title, value }) {
   )
 }
 
-function ProgressBar({ value = 0 }) {
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-        <span>Progress</span>
-        <span>{value}%</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-        <div className="h-full rounded-full bg-primary-600" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
-      </div>
-    </div>
-  )
-}
-
-function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, components, versions, onClose, onOpenBoard }) {
+function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, components, versions, onClose, onOpenBoard, onChangeStatus }) {
   if (!isOpen || !project) return null
   return (
     <div className="fixed inset-0 z-50 bg-black/50">
@@ -554,7 +526,7 @@ function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, compone
                         key={nextStatus}
                         size="sm"
                         variant={nextStatus === 'completed' ? 'primary' : 'secondary'}
-                        onClick={() => handleProjectStatusChange(project, nextStatus)}
+                        onClick={() => onChangeStatus?.(project, nextStatus)}
                       >
                         {nextStatus.replace(/_/g, ' ')}
                       </Button>

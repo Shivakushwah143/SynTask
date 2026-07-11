@@ -18,5 +18,11 @@ module.exports = {
     ],
     'react/prop-types': 'off',
   },
+  overrides: [
+    {
+      files: ['server.js', 'ecosystem.config.js'],
+      env: { node: true, browser: false },
+    },
+  ],
 }
 

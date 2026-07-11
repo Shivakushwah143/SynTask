@@ -20,7 +20,7 @@ function computeWorkType(totalSeconds) {
 }
 
 export const useMonitoringSocket = () => {
-  const { token, user } = useAuthStore()
+  const { token } = useAuthStore()
 
   const [isConnected, setIsConnected] = useState(false)
   const [status, setStatus] = useState('Offline')
@@ -295,7 +295,7 @@ export const useMonitoringSocket = () => {
       setCameraStream(null)
       setScreenStream(null)
     }
-  }, [token]) // intentionally minimal deps — handlers access fresh values via refs
+  }, [token, connectSocket, syncWithServer, startTimerTick])
 
   // ─── Workflow Triggers ────────────────────────────────────────────────────
   useEffect(() => {

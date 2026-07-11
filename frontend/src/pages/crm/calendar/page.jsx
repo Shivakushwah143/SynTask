@@ -43,21 +43,6 @@ const parseCalendarTimestamp = (value) => {
   return isValid(date) ? date : null
 }
 
-const normalizeErrorMessage = (value) => {
-  if (!value) return 'An error occurred'
-  if (typeof value === 'string') return value
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => normalizeErrorMessage(item?.msg || item?.message || item?.detail || item))
-      .filter(Boolean)
-      .join(', ')
-  }
-  if (typeof value === 'object') {
-    return normalizeErrorMessage(value.detail || value.msg || value.message || value.errors || value.input)
-  }
-  return String(value)
-}
-
 const readCollection = (data, keys) => {
   if (Array.isArray(data)) return data
   if (!data || typeof data !== 'object') return []

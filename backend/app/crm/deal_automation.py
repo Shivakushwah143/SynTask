@@ -276,7 +276,10 @@ async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optiona
 
 async def _resolve_owner(current_user: User, lead: SalesProspect) -> Optional[str]:
     if lead.assigned_to:
-        assignee = await User.get(lead.assigned_to)
+        try:
+            assignee = await User.get(lead.assigned_to)
+        except Exception:
+            assignee = None
         if assignee and assignee.company_id == lead.company_id and assignee.role in [UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE, UserRole.ADMIN]:
             return str(assignee.id)
     return str(getattr(current_user, "id", "")) or None

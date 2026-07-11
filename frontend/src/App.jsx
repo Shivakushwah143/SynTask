@@ -4,7 +4,6 @@ import Loader from './components/Loader'
 import { useUIStore } from './store/uiStore'
 import { useAuthStore } from './store/authStore'
 import { useTheme } from './hooks/useTheme'
-import { PageLoader } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import ConfirmDialog from './components/ConfirmDialog'
 import UndoBar from './components/UndoBar'
@@ -132,20 +131,15 @@ const ModuleGuard = ({ module, children }) => {
   return <Navigate to="/dashboard" replace />
 }
 
-const withBoundary = (component) => (
-  <ErrorBoundary>
-    {component}
-  </ErrorBoundary>
-);
-
 function App() {
   useTheme()
   const location = useLocation()
-
   const withBoundary = (element) => <ErrorBoundary key={location.pathname}>{element}</ErrorBoundary>
-
   const setLoading = useUIStore?.getState?.().setLoading
 
+  useEffect(() => {
+    useAuthStore.getState().initializeAuth()
+  }, [])
 
   useEffect(() => {
     applySeoMeta(getSeoMeta(location.pathname))

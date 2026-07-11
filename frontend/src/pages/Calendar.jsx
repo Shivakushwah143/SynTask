@@ -376,7 +376,7 @@ function nextStatus(status) {
 
 function Field({ label, value }) {
   return (
-    <div className="rounded-2xl border border-surface-border/80 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+    <div className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 dark:border-gray-800 dark:bg-black">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{label}</p>
       <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{value || '-'}</p>
     </div>
@@ -385,7 +385,7 @@ function Field({ label, value }) {
 
 function DeliverableRow({ label, value, tone }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-surface-border/80 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+    <div className="flex items-center justify-between rounded-2xl border border-surface-border/80 bg-surface/95 px-4 py-3 dark:border-gray-800 dark:bg-black">
       <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
       <Badge label={String(value)} colorKey={tone} />
     </div>
@@ -398,7 +398,7 @@ function ContentCard({ item, compact = false, onOpen }) {
     <button
       type="button"
       onClick={() => onOpen(item)}
-      className={`w-full rounded-3xl border border-surface-border/80 bg-white ${paddingClass} text-left shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800`}
+      className={`w-full rounded-3xl border border-surface-border/80 bg-surface/95 ${paddingClass} text-left shadow-sm transition-colors hover:bg-surface-muted dark:border-gray-800 dark:bg-black dark:hover:bg-gray-800`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -418,7 +418,7 @@ function ContentCard({ item, compact = false, onOpen }) {
 function MonthCalendar({ days, items, selected, setSelected, month, onOpen }) {
   return (
     <div>
-      <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 text-xs font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400">
+      <div className="grid grid-cols-7 border-b border-surface-border bg-surface-muted text-xs font-semibold uppercase text-text-muted dark:border-gray-800 dark:bg-black dark:text-gray-400">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="p-3 text-center">{day}</div>)}
       </div>
       <div className="grid grid-cols-7">
@@ -431,7 +431,7 @@ function MonthCalendar({ days, items, selected, setSelected, month, onOpen }) {
               key={day.toISOString()}
               type="button"
               onClick={() => setSelected(day)}
-              className={`min-h-28 border-b border-r border-gray-200 p-2 text-left transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800 ${selectedDay ? 'bg-primary-50 ring-2 ring-inset ring-primary-500 dark:bg-primary-950/40' : ''} ${outsideMonth ? 'bg-gray-50/60 text-gray-400 dark:bg-gray-950/60 dark:text-gray-600' : 'text-gray-900 dark:text-gray-100'}`}
+              className={`min-h-28 border-b border-r border-surface-border p-2 text-left transition-colors hover:bg-surface-muted dark:border-gray-800 dark:hover:bg-gray-800 ${selectedDay ? 'bg-primary-50 ring-2 ring-inset ring-primary-500 dark:bg-primary-950/40' : ''} ${outsideMonth ? 'bg-surface-muted/70 text-text-muted dark:bg-black/60 dark:text-gray-600' : 'text-text-primary dark:text-gray-100'}`}
             >
               <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full text-sm font-medium">{format(day, 'd')}</span>
               <div className="mt-2 space-y-1">
@@ -457,7 +457,7 @@ function BoardView({ items, onOpen }) {
       {columns.map((status) => {
         const columnItems = items.filter((item) => item.status === status)
         return (
-          <section key={status} className="rounded-3xl border border-surface-border/80 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <section key={status} className="rounded-3xl border border-surface-border/80 bg-surface/95 p-4 dark:border-gray-800 dark:bg-black">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{status.replace(/_/g, ' ')}</h3>
               <Badge label={String(columnItems.length)} colorKey="draft" />
@@ -485,7 +485,7 @@ function TimelineView({ groups, onOpen }) {
     <div className="space-y-4">
       {groups.length ? groups.map((group) => (
         <div key={group.date} className="space-y-3">
-          <div className="sticky top-0 rounded-2xl bg-slate-50 px-4 py-2 text-sm font-semibold text-gray-700 dark:bg-gray-950 dark:text-gray-200">
+          <div className="sticky top-0 rounded-2xl bg-surface-muted px-4 py-2 text-sm font-semibold text-text-secondary dark:bg-black dark:text-gray-200">
             {format(parseISO(group.date), 'EEEE, MMM d')}
           </div>
           {group.items.map((item) => <ContentCard key={item.id} item={item} onOpen={onOpen} />)}
@@ -503,7 +503,7 @@ function AgendaView({ items, selected, onSelect, onOpen }) {
         const date = parseAnyDate(item.publish_date || item.due_date || item.shoot_date)
         const active = isSameDay(date, selected)
         return (
-          <button key={item.id} type="button" onClick={() => { onSelect(date); onOpen(item) }} className={`flex w-full items-start justify-between gap-3 rounded-3xl border border-surface-border/80 bg-white p-4 text-left shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800 ${active ? 'bg-primary-50/60 dark:bg-primary-950/30' : ''}`}>
+          <button key={item.id} type="button" onClick={() => { onSelect(date); onOpen(item) }} className={`flex w-full items-start justify-between gap-3 rounded-3xl border border-surface-border/80 bg-surface/95 p-4 text-left shadow-sm transition-colors hover:bg-surface-muted dark:border-gray-800 dark:bg-black dark:hover:bg-gray-800 ${active ? 'bg-primary-50/60 dark:bg-primary-950/30' : ''}`}>
             <div>
               <p className="font-medium text-gray-900 dark:text-gray-100">{item.title}</p>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatDateTime(date)}</p>

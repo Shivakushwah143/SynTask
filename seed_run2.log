@@ -1,0 +1,49 @@
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:140: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  now = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:222: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  now = datetime.utcnow()
+(trapped) error reading bcrypt version
+Traceback (most recent call last):
+  File "C:\Users\house\AppData\Local\Programs\Python\Python312\Lib\site-packages\passlib\handlers\bcrypt.py", line 620, in _load_backend_mixin
+    version = _bcrypt.__about__.__version__
+              ^^^^^^^^^^^^^^^^^
+AttributeError: module 'bcrypt' has no attribute '__about__'
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:198: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  now = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:1038: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  company.updated_at = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:260: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  now = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:297: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  category.updated_at = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:317: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  product.updated_at = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:387: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  project.updated_at = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:351: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  client.updated_at = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:750: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  task.updated_at = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:504: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  lead.updated_at = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:523: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  created_at = datetime.utcnow() - timedelta(days=note_idx + (global_index % 4))
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:574: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  file_record.updated_at = datetime.utcnow()
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:606: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  transition_time = datetime.utcnow() - timedelta(days=(idx + 1) + company_index)
+C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py:666: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  due = datetime.utcnow() + timedelta(days=idx + 1)
+Traceback (most recent call last):
+  File "C:\Users\house\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\house\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py", line 1094, in main
+    tasks = await upsert_tasks(str(company.id), admin, manager, lead_user, employees, projects, company_index)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\house\Desktop\syntask\SynTask\backend\scripts\seed_full_demo.py", line 751, in upsert_tasks
+    await task.save()
+  File "C:\Users\house\AppData\Local\Programs\Python\Python312\Lib\site-packages\beanie\odm\actions.py", line 237, in wrapper

@@ -344,7 +344,7 @@ const Attendance = () => {
               <div className="flex items-center space-x-3">
                 <TrendingUp className="h-6 w-6 text-amber-600 dark:text-amber-400" />
                 <div>
-                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">You're in Overtime!</p>
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">You&apos;re in Overtime!</p>
                   <p className="text-xs text-amber-600 dark:text-amber-400">Extra time beyond 8 hours standard shift.</p>
                 </div>
               </div>

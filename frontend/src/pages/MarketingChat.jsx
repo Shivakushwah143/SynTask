@@ -12,10 +12,7 @@ import {
   Ticket,
   User,
   BarChart3,
-  TrendingUp,
   DollarSign,
-  Calendar,
-  Mail,
   HelpCircle,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
