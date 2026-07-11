@@ -11,7 +11,7 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-from app.models.client import Client, ClientStatus
+from app.crm.models import Client, ClientStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.crm.client_workspace import ClientWorkspaceService

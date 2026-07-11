@@ -1,21 +1,23 @@
 import { ArrowDown, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { BUSINESS_WORKFLOW_STEPS } from '../../config/businessWorkflow'
+import { useAuthStore } from '../../store/authStore'
+import { isSuperAdminRole, normalizeRole } from '../../utils/roles'
+import { canAccessOwner } from '../../config/domainOwnership'
 
-const defaultSteps = [
-  { label: 'Login', href: '/login', tone: 'bg-black text-white dark:bg-black' },
-  { label: 'Lead Import', href: '/crm/leads', tone: 'bg-primary-600 text-white' },
-  { label: 'Lead Assignment', href: '/crm/pipeline', tone: 'bg-primary-700 text-white' },
-  { label: 'Sales Pipeline', href: '/sales/pipeline', tone: 'bg-emerald-600 text-white' },
-  { label: 'Won / Lost', href: '/sales/prospects', tone: 'bg-amber-600 text-white' },
-  { label: 'Client', href: '/clients', tone: 'bg-orange-600 text-white' },
-  { label: 'Project', href: '/projects', tone: 'bg-sky-700 text-white' },
-  { label: 'Tasks', href: '/tasks', tone: 'bg-teal-600 text-white' },
-  { label: 'Delivery', href: '/projects', tone: 'bg-rose-600 text-white' },
-  { label: 'Reporting', href: '/reports', tone: 'bg-stone-700 text-white' },
-  { label: 'Renewal', href: '/crm/reports', tone: 'bg-amber-700 text-white' },
-]
+const tones = ['bg-primary-600', 'bg-primary-700', 'bg-emerald-600', 'bg-sky-700', 'bg-amber-600', 'bg-orange-600', 'bg-rose-600', 'bg-teal-600', 'bg-stone-700']
+const defaultSteps = BUSINESS_WORKFLOW_STEPS.map((step, index) => ({
+  ...step,
+  tone: `${tones[index % tones.length]} text-white`,
+}))
 
 export default function WorkflowJourney({ title = 'End-to-end workflow', description, steps = defaultSteps, className = '' }) {
+  const { user } = useAuthStore()
+  const role = normalizeRole(user?.role)
+  const visibleSteps = steps.filter((step) => (
+    (!step.roles || step.roles.includes(role) || isSuperAdminRole(role))
+    && canAccessOwner(step, user, isSuperAdminRole(role))
+  ))
   return (
     <section className={`rounded-3xl border border-surface-border bg-surface/95 p-6 shadow-sm dark:border-border dark:bg-black ${className}`}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -31,7 +33,7 @@ export default function WorkflowJourney({ title = 'End-to-end workflow', descrip
       </div>
 
       <div className="mt-6 grid gap-3">
-        {steps.map((step, index) => (
+        {visibleSteps.map((step, index) => (
           <div key={step.label} className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link
               to={step.href}
@@ -40,7 +42,7 @@ export default function WorkflowJourney({ title = 'End-to-end workflow', descrip
               <span className="truncate">{step.label}</span>
               <ArrowRight className="h-4 w-4 flex-shrink-0" />
             </Link>
-            {index < steps.length - 1 ? (
+            {index < visibleSteps.length - 1 ? (
               <div className="hidden items-center justify-center text-text-muted sm:flex">
                 <ArrowRight className="h-4 w-4 rotate-90" />
               </div>

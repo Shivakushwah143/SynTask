@@ -67,3 +67,17 @@ export const salesApi = {
   getProducts: () => api.get('/sales/products/'),
   createProduct: (data) => api.post('/sales/products/', Array.isArray(data) ? data : [data]),
 }
+
+// Canonical Lead methods use legacy endpoints to preserve API behavior.
+salesApi.getLeads = salesApi.getProspects
+salesApi.getLead = salesApi.getProspect
+salesApi.createLead = salesApi.createProspect
+salesApi.bulkUploadLeads = salesApi.bulkUploadProspects
+salesApi.previewBulkUploadLeads = salesApi.previewBulkUploadProspects
+salesApi.updateLead = salesApi.updateProspect
+salesApi.updateLeadForm = salesApi.updateProspectForm
+salesApi.getDuplicateLeads = salesApi.getDuplicateProspects
+salesApi.mergeLeads = salesApi.mergeProspects
+salesApi.getLeadReport = salesApi.getProspectReport
+
+// Temporary compatibility aliases above retain Prospect-named consumers.

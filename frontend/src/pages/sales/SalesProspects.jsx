@@ -20,13 +20,13 @@ const normalizeLeadCsvHeader = (header = '') => {
   return normalized
 }
 
-export default function SalesProspects() {
+export default function SalesLeads() {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
-  const { data, isLoading, isError } = useQuery(['sales-prospects', search], () => salesApi.getProspects({ search, limit: 50 }))
+  const { data, isLoading, isError } = useQuery(['sales-prospects', search], () => salesApi.getLeads({ search, limit: 50 }))
   const prospects = asArray(data, ['prospects', 'items'])
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export default function SalesProspects() {
   }, [searchParams, setSearchParams])
 
   const columns = [
-    { key: 'prospect_name', header: 'Prospect', render: (row) => <Link className="font-medium text-primary-700" to={`/sales/prospects/${getId(row)}`}>{row.prospect_name || `${row.first_name || ''} ${row.last_name || ''}`}</Link> },
+    { key: 'prospect_name', header: 'Lead', render: (row) => <Link className="font-medium text-primary-700" to={`/sales/prospects/${getId(row)}`}>{row.prospect_name || `${row.first_name || ''} ${row.last_name || ''}`}</Link> },
     { key: 'email', header: 'Email', render: (row) => row.email || '-' },
     { key: 'company_name', header: 'Company', render: (row) => row.company_name || '-' },
     { key: 'interest_level', header: 'Interest', render: (row) => row.interest_level ? <Badge label={row.interest_level} colorKey={row.interest_level} /> : '-' },
@@ -51,21 +51,21 @@ export default function SalesProspects() {
   return (
     <div className="p-6">
       <PageHeader
-        title="Prospects"
-        description={`${prospects.length} active prospects`}
+        title="Leads"
+        description={`${prospects.length} active leads`}
         actions={
           <>
             <Button variant="secondary" onClick={() => setUploadOpen(true)}>Bulk Upload Leads</Button>
-            <Button onClick={() => setOpen(true)}>Add Prospect</Button>
+            <Button onClick={() => setOpen(true)}>Add Lead</Button>
           </>
         }
       />
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input className={`${inputClassName} pl-10`} placeholder="Search prospects..." value={search} onChange={(event) => setSearch(event.target.value)} />
+        <input className={`${inputClassName} pl-10`} placeholder="Search leads..." value={search} onChange={(event) => setSearch(event.target.value)} />
       </div>
-      {isLoading ? <SkeletonTable rows={6} cols={7} /> : isError ? <EmptyState icon={Briefcase} title="Could not load prospects" /> : prospects.length ? <Table columns={columns} data={prospects} /> : <EmptyState icon={Briefcase} title="No prospects yet" description="Create prospects to fill your pipeline." action={<Button onClick={() => setOpen(true)}>Add Prospect</Button>} />}
-      <ProspectModal isOpen={open} onClose={() => setOpen(false)} onDone={() => { setOpen(false); queryClient.invalidateQueries('sales-prospects') }} />
+      {isLoading ? <SkeletonTable rows={6} cols={7} /> : isError ? <EmptyState icon={Briefcase} title="Could not load leads" /> : prospects.length ? <Table columns={columns} data={prospects} /> : <EmptyState icon={Briefcase} title="No leads yet" description="Create leads to fill your pipeline." action={<Button onClick={() => setOpen(true)}>Add Lead</Button>} />}
+      <LeadModal isOpen={open} onClose={() => setOpen(false)} onDone={() => { setOpen(false); queryClient.invalidateQueries('sales-prospects') }} />
       <BulkUploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} onDone={() => { setUploadOpen(false); queryClient.invalidateQueries('sales-prospects') }} />
     </div>
   )
@@ -84,7 +84,7 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
   const { data: usersData } = useQuery('assignable-users-for-bulk-upload', () => usersAPI.getAssignableUsers(), { enabled: isOpen })
   const users = asArray(usersData, ['users'])
 
-  const mutation = useMutation((formData) => salesApi.bulkUploadProspects(formData), {
+  const mutation = useMutation((formData) => salesApi.bulkUploadLeads(formData), {
     onSuccess: (result) => {
       console.group('[Bulk Lead Upload] Success')
       console.log('Server response:', result)
@@ -343,7 +343,7 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
   )
 }
 
-function ProspectModal({ isOpen, onClose, onDone }) {
+function LeadModal({ isOpen, onClose, onDone }) {
   const [errors, setErrors] = useState({})
   const [form, setForm] = useState({
     first_name: '',
@@ -371,9 +371,9 @@ function ProspectModal({ isOpen, onClose, onDone }) {
   const products = asArray(productsData, ['products'])
   const users = asArray(usersData, ['users'])
 
-  const mutation = useMutation((payload) => salesApi.createProspect(payload), {
+  const mutation = useMutation((payload) => salesApi.createLead(payload), {
     onSuccess: () => {
-      toast.success('Prospect created')
+      toast.success('Lead created')
       onDone()
     },
   })
@@ -411,13 +411,13 @@ function ProspectModal({ isOpen, onClose, onDone }) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Add prospect"
+      title="Add lead"
       description="Capture the basic lead details first, then assign ownership and products."
       size="lg"
       footer={(
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button loading={mutation.isLoading} onClick={submit}>Save prospect</Button>
+          <Button loading={mutation.isLoading} onClick={submit}>Save lead</Button>
         </div>
       )}
     >
@@ -448,7 +448,7 @@ function ProspectModal({ isOpen, onClose, onDone }) {
 
         <section className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-950/50">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Products</h3>
-          <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Select at least one product to qualify the prospect.</p>
+          <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Select at least one product to qualify the lead.</p>
           <div className="mt-4 grid max-h-40 gap-2 overflow-y-auto rounded-xl border border-gray-200/80 bg-white p-3 sm:grid-cols-2 dark:border-gray-800 dark:bg-gray-900">
             {products.length ? products.map((product) => (
               <label key={getId(product)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">

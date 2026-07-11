@@ -116,7 +116,7 @@ export default function CRMDashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <CRMStatCard
               icon={Users}
-              label="Prospects"
+              label="Leads"
               value={stats.prospect_count ?? 0}
               helper="Live count from the sales domain."
               tone="blue"
@@ -125,7 +125,7 @@ export default function CRMDashboardPage() {
               icon={TrendingUp}
               label="Pipeline Value"
               value={formatCurrency(stats.pipeline_value ?? 0, currency)}
-              helper="Active prospect value only."
+              helper="Active lead value only."
               tone="emerald"
             />
             <CRMStatCard
@@ -270,7 +270,7 @@ export default function CRMDashboardPage() {
             <CRMEmptyState
               icon={TrendingUp}
               title="No pipeline activity yet"
-              description="Add prospects to populate the CRM pipeline summary."
+              description="Add leads to populate the CRM pipeline summary."
             />
           )}
         </CRMSection>

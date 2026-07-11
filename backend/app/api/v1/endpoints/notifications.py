@@ -4,7 +4,7 @@ Notification Endpoints
 from fastapi import APIRouter, HTTPException, status, Depends
 from datetime import datetime
 
-from app.models.notification import Notification
+from app.notification_center.models import Notification
 from app.models.user import User
 from app.api.dependencies import get_current_user
 
@@ -117,4 +117,3 @@ async def delete_notification(
     await notification.delete()
     
     return {"message": "Notification deleted successfully"}
-

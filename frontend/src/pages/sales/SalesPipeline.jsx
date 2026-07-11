@@ -24,7 +24,7 @@ export default function SalesPipeline() {
   const [ownerFilter, setOwnerFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
 
-  const prospectsQuery = useQuery(['sales-queue-prospects', search, stageFilter, ownerFilter, priorityFilter], () => salesApi.getProspects({ limit: 200 }), {
+  const prospectsQuery = useQuery(['sales-queue-prospects', search, stageFilter, ownerFilter, priorityFilter], () => salesApi.getLeads({ limit: 200 }), {
     staleTime: 60 * 1000,
   })
   const stagesQuery = useQuery('sales-queue-stages', salesApi.getStages, { staleTime: 5 * 60 * 1000 })
@@ -75,7 +75,7 @@ export default function SalesPipeline() {
       const customFields = typeof prospect.custom_fields === 'string'
         ? (() => { try { return JSON.parse(prospect.custom_fields) || {} } catch { return {} } })()
         : (prospect.custom_fields || {})
-      return salesApi.updateProspectForm(getId(prospect), {
+      return salesApi.updateLeadForm(getId(prospect), {
         custom_fields: JSON.stringify({ ...customFields, meeting_scheduled: true, meeting_scheduled_at: new Date().toISOString() }),
       })
     },
@@ -224,8 +224,8 @@ export default function SalesPipeline() {
           <EmptyState
             icon={Filter}
             title="No leads in queue"
-            description="Clear filters or create a new prospect to populate the queue."
-            action={<Link className="inline-flex rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700" to="/sales/prospects?createProspect=true">Create prospect</Link>}
+            description="Clear filters or create a new lead to populate the queue."
+            action={<Link className="inline-flex rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700" to="/sales/prospects?createProspect=true">Create lead</Link>}
           />
         )}
       </div>
@@ -237,7 +237,7 @@ export default function SalesPipeline() {
         </span>
         <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1">
           <MoveRight className="h-3.5 w-3.5" />
-          Keeps existing prospect records and stage history
+          Keeps existing lead records and stage history
         </span>
       </div>
     </div>

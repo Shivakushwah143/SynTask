@@ -42,6 +42,8 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
+import { BUSINESS_WORKFLOW_STEPS } from "../config/businessWorkflow";
+import { canAccessOwner } from "../config/domainOwnership";
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
 const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
@@ -202,7 +204,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
-      name: "Lead Directory",
+      name: "Leads",
       href: "/leads",
       icon: Contact,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
@@ -354,7 +356,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       icon: Gauge,
     },
     {
-      name: "CRM Leads",
+      name: "Leads",
       href: "/crm/leads",
       icon: UserRoundSearch,
     },
@@ -391,7 +393,27 @@ const Sidebar = ({ isOpen, onClose }) => {
   ];
 
   const filteredCrmNavigation = crmNavigation
-    .filter((item) => item && (item.roles ? item.roles.includes(userRole) : true));
+    .filter((item) => item && !['/crm/pipeline', '/crm/leads'].includes(item.href) && (item.roles ? item.roles.includes(userRole) : true));
+
+  const workflowIcons = {
+    lead: UserRoundSearch,
+    qualification: GitBranch,
+    'follow-up': CalendarClock,
+    meeting: CalendarRange,
+    proposal: FileCheck2,
+    negotiation: HeartHandshake,
+    won: UserCheck,
+    client: Briefcase,
+    project: FolderKanban,
+    tasks: ClipboardList,
+    execution: TimerReset,
+    invoice: Receipt,
+    payment: DollarSign,
+    reports: LineChart,
+  };
+  const workflowNavigation = BUSINESS_WORKFLOW_STEPS
+    .filter((step) => (!step.roles || step.roles.includes(userRole)) && canAccessOwner(step, user, isSuperAdminRole(userRole)))
+    .map((step) => ({ ...step, name: step.label, icon: workflowIcons[step.key] }));
 
   const itemByName = filteredNavigation.reduce((acc, item) => {
     acc[item.name] = item;
@@ -402,9 +424,14 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const navigationGroups = [
     {
+      key: "business-workflow",
+      label: "Business Workflow",
+      items: workflowNavigation,
+    },
+    {
       key: "workspace",
-      label: "Workspace",
-      items: ["Projects", "Service Requests", "Workspace Calendar", "Timesheet", "Workspace Reports", "My Team", "Workflows"]
+      label: "Workspace Tools",
+      items: ["Service Requests", "Workspace Calendar", "Timesheet", "My Team", "Workflows"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -417,7 +444,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     },
     {
       key: "crm",
-      label: "CRM",
+      label: "CRM Tools",
       items: filteredCrmNavigation,
     },
     {
@@ -429,8 +456,8 @@ const Sidebar = ({ isOpen, onClose }) => {
     },
     {
       key: "finance",
-      label: "Finance",
-      items: ["Clients", "Invoices", "Ledger", "Agreements", "Subscriptions"]
+      label: "Finance Tools",
+      items: ["Agreements", "Subscriptions"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -746,10 +773,17 @@ function SidebarNavItem({
 }
 
 function isNavItemActive(item, location) {
+  const [itemPath, itemSearch = ''] = item.href.split('?')
+  if (itemSearch) {
+    const expected = new URLSearchParams(itemSearch)
+    const actual = new URLSearchParams(location.search)
+    return location.pathname === itemPath && [...expected].every(([key, value]) => actual.get(key) === value)
+  }
+  if (item.key === 'qualification' && new URLSearchParams(location.search).has('stage')) return false
   return (
-    location.pathname === item.href ||
+    location.pathname === itemPath ||
     (item.match && location.pathname.startsWith(item.match)) ||
-    location.pathname.startsWith(`${item.href}/`)
+    location.pathname.startsWith(`${itemPath}/`)
   )
 }
 

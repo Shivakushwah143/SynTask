@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import Loader from './components/Loader'
 import { useUIStore } from './store/uiStore'
 import { useAuthStore } from './store/authStore'
@@ -69,6 +69,7 @@ const BulkLeads = lazy(() => import('./pages/BulkLeads'))
 const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
 const SalesSettings = lazy(() => import('./pages/sales/SalesSettings'))
 const CRMPipelinePage = lazy(() => import('./pages/crm/pipeline/page'))
+const CRMDashboardPage = lazy(() => import('./pages/crm/dashboard/page'))
 const CRMLeadWorkspacePage = lazy(() => import('./pages/crm/leads/workspace'))
 const CRMCompaniesPage = lazy(() => import('./pages/crm/companies/page'))
 const CRMCompanyWorkspacePage = lazy(() => import('./pages/crm/companies/workspace'))
@@ -131,6 +132,11 @@ const ModuleGuard = ({ module, children }) => {
   return <Navigate to="/dashboard" replace />
 }
 
+const LegacySalesLeadRedirect = () => {
+  const { id } = useParams()
+  return <Navigate to={`/crm/leads/${id}`} replace />
+}
+
 function App() {
   useTheme()
   const location = useLocation()
@@ -167,6 +173,8 @@ function App() {
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={withBoundary(<Dashboard />)} />
+          <Route path="workflow" element={withBoundary(<Dashboard />)} />
+          <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
           <Route path="tasks" element={withBoundary(<Tasks />)} />
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
@@ -206,7 +214,7 @@ function App() {
         <Route path="settings" element={withBoundary(<Settings />)} />
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
             <Route index element={<Navigate to="pipeline" replace />} />
-            <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
+            <Route path="dashboard" element={withBoundary(<CRMDashboardPage />)} />
             <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
             <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
             <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />
@@ -225,7 +233,7 @@ function App() {
           <Route path="contacts" element={withBoundary(<SalesContacts />)} />
           <Route path="contacts/:id" element={withBoundary(<ContactDetail />)} />
           <Route path="prospects" element={<Navigate to="/crm/leads" replace />} />
-          <Route path="prospects/:id" element={<Navigate to="/crm/leads" replace />} />
+          <Route path="prospects/:id" element={<LegacySalesLeadRedirect />} />
           <Route path="queue" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="pipeline" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="reports" element={withBoundary(<SalesReports />)} />

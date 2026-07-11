@@ -8,13 +8,13 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.crm.deal_automation import handle_won_deal_automation
 from app.crm.lost_workflow import handle_lost_workflow
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.crm_deal import CRMDeal
-from app.models.sales_prospect import ProspectStatus, SalesProspect
+from app.crm.models import ProspectStatus, SalesProspect
 from app.models.crm_company import CRMCompany
 from app.models.user import User, UserRole
 

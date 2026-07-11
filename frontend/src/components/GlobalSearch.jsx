@@ -65,7 +65,7 @@ export function GlobalSearch({ isOpen, onClose }) {
       task: `/tasks/${result.id}`,
       project: `/projects/${result.id}/board`,
       ticket: `/tickets/${result.id}`,
-      client: `/clients/${result.id}`,
+      client: `/clients/${result.id}/workspace`,
       crm: '/crm/pipeline',
     }
     navigate(paths[result.type] || '/dashboard')

@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
 import { GlobalSearch } from '../components/GlobalSearch'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
+import WorkflowStepNavigation from '../components/workflow/WorkflowStepNavigation'
 
 const BREADCRUMB_LABELS = {
   dashboard: 'Main Dashboard',
@@ -22,7 +23,7 @@ const BREADCRUMB_LABELS = {
 const CRM_BREADCRUMB_LABELS = {
   pipeline: 'CRM Pipeline',
   dashboard: 'CRM Dashboard',
-  leads: 'CRM Leads',
+  leads: 'Leads',
   companies: 'CRM Companies',
   contacts: 'CRM Contacts',
   // activities: 'CRM Activities',
@@ -67,7 +68,5 @@ const MainLayout = () => {
 }
 
 export default MainLayout
-
-
 
 
