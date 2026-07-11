@@ -52,7 +52,7 @@ const MainLayout = () => {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content */}
-      <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 w-full flex-1 flex-col pl-6 overflow-hidden">
         {/* Header */}
         <Header title="Main Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
 
