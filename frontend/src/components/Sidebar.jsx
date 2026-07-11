@@ -39,6 +39,7 @@ import {
   UserCog,
   UserRoundSearch,
   X,
+  CalendarClock,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
