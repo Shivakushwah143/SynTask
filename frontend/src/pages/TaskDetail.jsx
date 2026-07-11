@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
-  ArrowLeft, Trash2, Paperclip, Eye, History,
+  ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
   Zap, Sparkles
 } from 'lucide-react'
@@ -14,6 +14,7 @@ import { watchersApi } from '../api/watchers'
 import { changelogApi } from '../api/changelog'
 import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
+import { EmailComposer } from '../components/EmailComposer'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -48,75 +49,86 @@ const TaskDetail = () => {
   const [deleting, setDeleting] = useState(false)
   const [updatingWatch, setUpdatingWatch] = useState(false)
   const [updatingField, setUpdatingField] = useState(null)
+  const [composerOpen, setComposerOpen] = useState(false)
 
-  useEffect(() => {
-    if (taskId) {
-      loadTask()
-    }
-    // loadTask intentionally refreshes the whole task workspace when the route ID changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskId])
-
-  const loadTask = async () => {
+  const loadTask = useCallback(async () => {
     try {
       setLoading(true)
       const data = await tasksAPI.getTask(taskId)
       setTask(data)
       setTaskStatus(data.status)
+
       if (data.attachments) {
-        // Convert attachment URLs to full URLs if needed
         const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
         const BASE_URL = API_URL.replace('/api/v1', '') || ''
-        
-        const fullAttachments = data.attachments.map(url => {
-          // Already a full URL
+        const fullAttachments = data.attachments.map((url) => {
           if (url.startsWith('http://') || url.startsWith('https://')) {
             return url
           }
-          
-          // URL starts with /api/v1/files/
           if (url.startsWith('/api/v1/files/')) {
             return `${BASE_URL}${url}`
           }
-          
-          // URL starts with /files/
           if (url.startsWith('/files/')) {
             return `${BASE_URL}/api/v1${url}`
           }
-          
-          // Just a filename or relative path - extract filename
           const filename = url.split('/').pop().split('\\').pop()
           return `${BASE_URL}/api/v1/files/${filename}`
         })
-        
-        console.log('Original attachments:', data.attachments)
-        console.log('Converted attachments:', fullAttachments)
         setAttachments(fullAttachments)
       } else {
         setAttachments([])
       }
+
       setEditData({
         title: data.title,
         description: data.description || '',
         priority: data.priority,
         assigned_to: data.assigned_to || '',
         due_date: data.due_date ? format(new Date(data.due_date), "yyyy-MM-dd'T'HH:mm") : '',
+        estimated_hours: data.estimated_hours ?? '',
         tags: data.tags ? data.tags.join(', ') : '',
         issue_type_id: data.issue_type_id || '',
         component_id: data.component_id || '',
         fix_version_id: data.fix_version_id || '',
       })
-      
+
       if (data.project_id) {
-        loadProjectInfo(data.project_id)
+        try {
+          const response = await projectsApi.getProject(data.project_id)
+          setProjectInfo(response.data)
+        } catch (error) {
+          console.error('Error loading project:', error)
+        }
       }
-      
-      await Promise.all([
-        loadComments(),
-        loadUsers(),
-        loadWatchers(),
-        loadChangelog(),
-      ])
+
+      try {
+        const commentsData = await tasksAPI.getComments(data.id)
+        setComments(commentsData.comments || [])
+      } catch (error) {
+        console.error('Error loading comments:', error)
+      }
+
+      try {
+        const usersData = await usersAPI.getAssignableUsers()
+        setUsers(usersData.users || [])
+      } catch (error) {
+        console.error('Error loading users:', error)
+      }
+
+      try {
+        const watchersResponse = await watchersApi.getWatchers(data.id)
+        setWatchers(watchersResponse.data.watchers || [])
+        setIsWatching(watchersResponse.data.watchers?.some(w => w.user_id === user.id) || false)
+      } catch (error) {
+        console.error('Error loading watchers:', error)
+      }
+
+      try {
+        const changelogResponse = await changelogApi.getChangelog(data.id)
+        setChangelog(changelogResponse.data.changelog || [])
+      } catch (error) {
+        console.error('Error loading changelog:', error)
+      }
     } catch (error) {
       console.error('Error loading task:', error)
       toast.error('Failed to load task')
@@ -124,25 +136,25 @@ const TaskDetail = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [navigate, taskId, user.id])
 
-  const loadProjectInfo = async (projId) => {
-    try {
-      const response = await projectsApi.getProject(projId)
-      setProjectInfo(response.data)
-    } catch (error) {
-      console.error('Error loading project:', error)
+  useEffect(() => {
+    if (taskId) {
+      loadTask()
     }
-  }
+  }, [taskId, loadTask])
 
-  const loadUsers = async () => {
-    try {
-      const data = await usersAPI.getAssignableUsers()
-      setUsers(data.users || [])
-    } catch (error) {
-      console.error('Error loading users:', error)
+  useEffect(() => {
+    const refreshCurrentTask = (event) => {
+      const relatedId = event?.detail?.relatedId
+      if (relatedId && String(relatedId) !== String(taskId)) return
+      if (taskId) {
+        loadTask()
+      }
     }
-  }
+    window.addEventListener('syntask:tasks-updated', refreshCurrentTask)
+    return () => window.removeEventListener('syntask:tasks-updated', refreshCurrentTask)
+  }, [taskId, loadTask])
 
   const loadWatchers = async () => {
     if (!task) return
@@ -152,16 +164,6 @@ const TaskDetail = () => {
       setIsWatching(response.data.watchers?.some(w => w.user_id === user.id) || false)
     } catch (error) {
       console.error('Error loading watchers:', error)
-    }
-  }
-
-  const loadChangelog = async () => {
-    if (!task) return
-    try {
-      const response = await changelogApi.getChangelog(task.id)
-      setChangelog(response.data.changelog || [])
-    } catch (error) {
-      console.error('Error loading changelog:', error)
     }
   }
 
@@ -372,6 +374,7 @@ const TaskDetail = () => {
   }
 
   return (
+    <>
     <div className="h-full flex flex-col bg-white -m-6" style={{ minHeight: 'calc(100vh - 96px)' }}>
       {/* Top Header */}
       <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between bg-white">
@@ -398,6 +401,13 @@ const TaskDetail = () => {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setComposerOpen(true)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <Mail className="inline-block h-4 w-4 mr-1" />
+            Send Email
+          </button>
           <button className="p-2 hover:bg-gray-100 rounded">
             <Lock className="h-5 w-5 text-gray-600" />
           </button>
@@ -481,6 +491,33 @@ const TaskDetail = () => {
               </div>
             )}
           </div>
+
+          {isEditing && (
+            <div className="mb-6 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Due date</label>
+                <input
+                  type="datetime-local"
+                  value={editData.due_date || ''}
+                  onChange={(e) => setEditData({ ...editData, due_date: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  onBlur={handleSaveEdit}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Estimated hours</label>
+                <input
+                  type="number"
+                  min="0.25"
+                  step="0.25"
+                  value={editData.estimated_hours}
+                  onChange={(e) => setEditData({ ...editData, estimated_hours: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  onBlur={handleSaveEdit}
+                />
+              </div>
+            </div>
+          )}
 
           {/* AI Task Breakdown */}
           <div className="mb-6 rounded-2xl border border-primary-200 bg-primary-50/60 p-4 dark:border-primary-900/40 dark:bg-primary-950/20">
@@ -977,6 +1014,20 @@ const TaskDetail = () => {
         </div>
       </div>
     </div>
+      <EmailComposer
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        initialData={{
+          to: task?.assigned_to ? [{ email: users.find((item) => String(item.id) === String(task.assigned_to))?.email || '', name: users.find((item) => String(item.id) === String(task.assigned_to))?.first_name || '' }] : [],
+          subject: task?.title ? `Task update: ${task.title}` : 'Task update',
+          html: '<p>Hello,</p><p></p>',
+          text: 'Hello,',
+          related_entity_type: 'task',
+          related_entity_id: task?.id || '',
+          related_module: 'tasks',
+        }}
+      />
+    </>
   )
 }
 

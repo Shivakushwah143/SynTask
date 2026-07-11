@@ -62,6 +62,7 @@ const Attendance = () => {
     pauseWork,
     resumeWork,
     syncWithServer,
+    restoreStreams,
   } = useMonitoringSocket()
 
   const cameraVideoRef = useRef(null)
@@ -178,6 +179,17 @@ const Attendance = () => {
 
             {/* Action Buttons */}
             <div className="space-y-2">
+              {status === 'Working' && (!cameraStream || !screenStream) && (
+                <Button
+                  variant="secondary" size="lg"
+                  className="w-full flex justify-center py-2.5 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-800 bg-primary-50 dark:bg-primary-950/20"
+                  onClick={restoreStreams}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Restore Media Streams
+                </Button>
+              )}
+
               {status === 'Offline' && (
                 <Button
                   variant="primary" size="lg"
@@ -332,7 +344,7 @@ const Attendance = () => {
               <div className="flex items-center space-x-3">
                 <TrendingUp className="h-6 w-6 text-amber-600 dark:text-amber-400" />
                 <div>
-                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">You're in Overtime!</p>
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">You&apos;re in Overtime!</p>
                   <p className="text-xs text-amber-600 dark:text-amber-400">Extra time beyond 8 hours standard shift.</p>
                 </div>
               </div>

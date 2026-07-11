@@ -83,6 +83,7 @@ export default function Reports() {
           </ChartCard>
         </div>
       )}
+
     </div>
   )
 }

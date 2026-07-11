@@ -58,7 +58,7 @@ const AttendanceSummaryBlock = ({ summary }) => {
       <div className="px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50 dark:bg-gray-950">
         <div className="flex items-center space-x-2">
           <BarChart2 className="h-4.5 w-4.5 text-primary-500" />
-          <h2 className="text-sm font-bold text-gray-800 dark:text-gray-200">Today's Attendance Summary</h2>
+          <h2 className="text-sm font-bold text-gray-800 dark:text-gray-200">Today&apos;s Attendance Summary</h2>
         </div>
         <div className="flex items-center space-x-2">
           {summary.is_late && (

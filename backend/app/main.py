@@ -19,6 +19,18 @@ logger = logging.getLogger(__name__)
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
+
+def compute_work_type(total_seconds: float) -> dict:
+    """Compute work type and overtime similar to attendance endpoint."""
+    STANDARD_WORK_SECONDS = 8 * 3600
+    if total_seconds >= STANDARD_WORK_SECONDS + 60:
+        overtime = total_seconds - STANDARD_WORK_SECONDS
+        return {"work_type": "Overtime", "overtime_seconds": overtime, "regular_seconds": STANDARD_WORK_SECONDS}
+    elif total_seconds >= STANDARD_WORK_SECONDS - 60:
+        return {"work_type": "Full Time", "overtime_seconds": 0, "regular_seconds": total_seconds}
+    else:
+        return {"work_type": "Under Time", "overtime_seconds": 0, "regular_seconds": total_seconds}
+
 from app.core.redis_client import close_redis, get_redis
 from app.api.v1.router import api_router
 from app.events.subscribers.knowledge import register_knowledge_subscribers
@@ -67,8 +79,8 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],  # Keep development and API client compatibility broad
-    expose_headers=["*"],  # Surface response metadata to browser clients
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+    expose_headers=["Content-Type", "Authorization"],
     max_age=600,
 )
 
@@ -154,6 +166,36 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+async def rebuild_all_ancestors():
+    """Startup self-healing routine to fix missing hierarchy ancestors on existing users"""
+    from app.models.user import User
+    try:
+        users = await User.find_all().to_list()
+        user_dict = {str(u.id): u for u in users}
+        for u in users:
+            # Heal reports_to using lead_id if legacy field is set
+            if not u.reports_to and getattr(u, "lead_id", None):
+                u.reports_to = u.lead_id
+            
+            ancestors = []
+            curr = u
+            visited = set()
+            while curr.reports_to and curr.reports_to in user_dict:
+                parent_id = curr.reports_to
+                if parent_id in visited:
+                    break
+                visited.add(parent_id)
+                ancestors.insert(0, parent_id)
+                curr = user_dict[parent_id]
+            
+            if u.ancestors != ancestors:
+                u.ancestors = ancestors
+                await u.save()
+                logger.info(f"Self-healed hierarchy for {u.email}: reports_to={u.reports_to}, ancestors={ancestors}")
+    except Exception as e:
+        logger.error(f"Failed to rebuild hierarchy ancestors: {str(e)}")
+
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
@@ -166,8 +208,28 @@ async def startup_event():
 
     await init_db()
     logger.info("Database initialized successfully")
+    await rebuild_all_ancestors()
     register_knowledge_subscribers()
     logger.info("Knowledge subscribers registered")
+    # Cleanup lingering manager Working sessions on server start to prevent auto-start after restart
+    from datetime import datetime
+    from app.models.user import User, UserRole
+    from app.models.attendance import Attendance, AttendanceStatus
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    async for att in Attendance.find({"date": today_str, "status": AttendanceStatus.WORKING.value}):
+        user = await User.get(str(att.employee_id))
+        if user and user.role == UserRole.MANAGER:
+            # Transition to offline state
+            att.status = AttendanceStatus.OFFLINE
+            now = datetime.utcnow()
+            att.logout_time = now
+            att.monitoring_end_time = now
+            # Compute work type based on accumulated hours
+            wt = compute_work_type(att.total_working_hours)
+            att.work_type = wt["work_type"]
+            att.overtime_seconds = wt["overtime_seconds"]
+            await att.save()
+            logger.info(f"Manager {user.email} attendance reset to Offline on startup.")
     if SEMANTIC_AVAILABLE:
         register_semantic_subscribers()
         logger.info("Semantic subscribers registered")

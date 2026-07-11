@@ -6,9 +6,9 @@ from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, UploadFile, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.sales_lead_file import SalesLeadFile
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.user import User, UserRole
 from app.services.file_service import FileService
 

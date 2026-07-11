@@ -6,11 +6,12 @@ import { salesApi } from '../../api/sales'
 import { Button, EmptyState, PageHeader, SkeletonCard } from '../../components/ui'
 import { ChartTooltip } from '../../components/charts/ChartTooltip'
 import { asArray, formatMoney, sumBy } from '../phase4Utils'
+import { WorkflowGuide } from '../../components/workflow/WorkflowGuide'
 
 export default function SalesDashboard() {
   const overview = useQuery('sales-overview', salesApi.getOverview)
   const contacts = useQuery('sales-dashboard-contacts', () => salesApi.getContacts({ limit: 100 }))
-  const prospects = useQuery('sales-dashboard-prospects', () => salesApi.getProspects({ limit: 100 }))
+  const prospects = useQuery('sales-dashboard-prospects', () => salesApi.getLeads({ limit: 100 }))
 
   const contactList = asArray(contacts.data, ['contacts'])
   const prospectList = asArray(prospects.data, ['prospects'])
@@ -29,7 +30,20 @@ export default function SalesDashboard() {
       <PageHeader
         title="Sales Dashboard"
         description="Pipeline, contact, and revenue snapshot."
-        actions={<Button as={Link} onClick={undefined}><Link to="/sales/prospects">Open Prospects</Link></Button>}
+        actions={<Button as={Link} onClick={undefined}><Link to="/crm/leads">Open Leads</Link></Button>}
+      />
+      <WorkflowGuide
+        className="mb-6"
+        title="Move the next lead forward"
+        description="This view is the sales control surface. It should point directly to the next lead, the next contact, or the next stage update."
+        nextStep="Open leads, then move the current lead to the next stage."
+        primaryAction={{ label: 'Open Leads', href: '/crm/leads' }}
+        secondaryAction={{ label: 'Open Contacts', href: '/sales/contacts' }}
+        bullets={[
+          { label: 'Where am I?', value: 'The sales workspace overview.' },
+          { label: 'What next?', value: 'Pick the lead that needs a stage change.' },
+          { label: 'After this?', value: 'Check the pipeline or follow up on contacts.' },
+        ]}
       />
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -39,12 +53,12 @@ export default function SalesDashboard() {
         <>
           <div className="grid gap-4 md:grid-cols-4">
             <Stat icon={Users} label="Contacts" value={contactList.length} />
-            <Stat icon={Briefcase} label="Prospects" value={prospectList.length} />
+            <Stat icon={Briefcase} label="Leads" value={prospectList.length} />
             <Stat icon={IndianRupee} label="Pipeline Value" value={formatMoney(pipelineValue)} />
             <Stat icon={TrendingUp} label="Won" value={prospectList.filter((p) => p.status === 'won').length} />
           </div>
           <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">Prospects by stage</h2>
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Leads by stage</h2>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={stageRows}>
@@ -52,14 +66,14 @@ export default function SalesDashboard() {
                   <XAxis dataKey="stage" />
                   <YAxis allowDecimals={false} />
                   <ChartTooltip />
-                  <Bar dataKey="count" name="Prospects" fill="#2563eb" radius={[4, 4, 0, 0]} activeBar={{ stroke: '#1d4ed8', strokeWidth: 2, fillOpacity: 0.85 }} />
+                  <Bar dataKey="count" name="Leads" fill="#2563eb" radius={[4, 4, 0, 0]} activeBar={{ stroke: '#1d4ed8', strokeWidth: 2, fillOpacity: 0.85 }} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
         </>
       ) : (
-        <EmptyState icon={TrendingUp} title="No sales activity yet" description="Add contacts and prospects to start tracking the pipeline." />
+        <EmptyState icon={TrendingUp} title="No sales activity yet" description="Add contacts and leads to start tracking the pipeline." />
       )}
     </div>
   )

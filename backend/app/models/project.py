@@ -19,9 +19,14 @@ class ProjectType(str, Enum):
 
 class ProjectStatus(str, Enum):
     ACTIVE = "active"
+    CREATED = "created"
+    KICKOFF = "kickoff"
+    EXECUTION = "execution"
+    REVIEW = "review"
+    COMPLETED = "completed"
+    REPORTING = "reporting"
     ARCHIVED = "archived"
     ON_HOLD = "on_hold"
-    COMPLETED = "completed"
 
 
 class Project(Document):
@@ -35,6 +40,7 @@ class Project(Document):
     project_id: Optional[Indexed(str)] = None  # Logical ID from frontend (e.g. PROJ-001). Required on create; unique per company. Tasks reference this, not _id.
     description: Optional[str] = None
     company_id: Indexed(str)
+    client_id: Optional[str] = None  # Linked client workspace record, if any
     
     # Project Details
     type: ProjectType = ProjectType.SOFTWARE
@@ -92,6 +98,7 @@ class Project(Document):
             "team_member_ids",
             IndexModel([("company_id", ASCENDING), ("key", ASCENDING)], unique=True),
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING)], unique=True, sparse=True),
+            IndexModel([("company_id", ASCENDING), ("client_id", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("lead_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),

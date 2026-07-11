@@ -10,14 +10,14 @@ from fastapi import HTTPException, status
 from app.crm.lead_files import CRMLeadFilesService
 from app.crm.lead_notes import CRMLeadNotesService
 from app.crm.lead_timeline import CRMLeadTimelineService
-from app.models.client import Client
+from app.crm.models import Client
 from app.models.crm_activity import CRMActivity, CRMActivityStatus, CRMActivityType
 from app.models.crm_company import CRMCompany
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal
 from app.models.meeting import Meeting
 from app.models.sales_contact import SalesContact
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.task import Task
 from app.models.user import User, UserRole
 

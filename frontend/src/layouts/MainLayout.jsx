@@ -4,24 +4,32 @@ import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
 import { GlobalSearch } from '../components/GlobalSearch'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
+import WorkflowStepNavigation from '../components/workflow/WorkflowStepNavigation'
 
 const BREADCRUMB_LABELS = {
-  dashboard: 'Dashboard',
+  dashboard: 'Main Dashboard',
   tasks: 'Tasks',
-  tickets: 'Requests',
+  tickets: 'Service Requests',
   chat: 'Chat',
   projects: 'Projects',
-  calendar: 'Calendar',
+  calendar: 'Workspace Calendar',
   meetings: 'Meetings',
   notifications: 'Notifications',
   'crm': 'CRM',
-  pipeline: 'Pipeline',
+  reports: 'Workspace Reports',
+  settings: 'System Settings',
+}
+
+const CRM_BREADCRUMB_LABELS = {
+  pipeline: 'CRM Pipeline',
+  dashboard: 'CRM Dashboard',
   leads: 'Leads',
-  companies: 'Companies',
-  contacts: 'Contacts',
-  activities: 'Activities',
-  reports: 'Reports',
-  settings: 'Settings',
+  companies: 'CRM Companies',
+  contacts: 'CRM Contacts',
+  // activities: 'CRM Activities',
+  calendar: 'CRM Calendar',
+  reports: 'CRM Reports',
+  settings: 'CRM Configuration',
 }
 
 const MainLayout = () => {
@@ -31,12 +39,11 @@ const MainLayout = () => {
   const isChatPage = location.pathname === '/chat'
   const isDashboardPage = location.pathname === '/dashboard' || location.pathname === '/'
   const openSearch = () => setSearchOpen(true)
-  const breadcrumbParts = location.pathname
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => BREADCRUMB_LABELS[segment] || segment)
-  const breadcrumb = breadcrumbParts.join(' / ')
-  const pageTitle = breadcrumbParts[breadcrumbParts.length - 1] || 'Dashboard'
+  const pathSegments = location.pathname.split('/').filter(Boolean)
+  const isCrmPath = pathSegments[0] === 'crm'
+  const breadcrumb = pathSegments
+    .map((segment, index) => (isCrmPath && index > 0 ? CRM_BREADCRUMB_LABELS[segment] : BREADCRUMB_LABELS[segment]) || segment)
+    .join(' / ')
 
   useKeyboardShortcut('k', openSearch, { ctrlKey: true })
   useKeyboardShortcut('k', openSearch, { metaKey: true })
@@ -47,12 +54,12 @@ const MainLayout = () => {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content */}
-      <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 w-full flex-1 flex-col  overflow-hidden">
         {/* Header */}
-        <Header title={pageTitle} subtitle="Workspace overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} showAiFullscreenAction={isDashboardPage} />
+        <Header title="Main Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
 
         {/* Page Content */}
-        <main className={`min-w-0 flex-1 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
+        <main className={`min-w-0 flex-1 px-4 pl-2 md:pl-6 py-4 md:py-6 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
           <Outlet />
         </main>
       </div>
@@ -62,3 +69,5 @@ const MainLayout = () => {
 }
 
 export default MainLayout
+
+

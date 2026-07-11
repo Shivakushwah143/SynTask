@@ -1,59 +1,93 @@
-import { useEffect, useState } from 'react'
-import { Maximize2, Menu, Minimize2, Search } from 'lucide-react'
+import { Link, useLocation } from 'react-router-dom'
+import { Menu, MessageCircle, Search, Video } from 'lucide-react'
 import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
 import { Button } from '../ui'
+import { useAuthStore } from '../../store/authStore'
+import { ROLE, isSuperAdminRole, normalizeRole } from '../../utils/roles'
 
-export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onLogout, logoutLoading = false, showAiFullscreenAction = false }) {
-  const [isFullscreen, setIsFullscreen] = useState(false)
+const GLOBAL_COMMUNICATION_LINKS = [
+  {
+    name: 'Chat',
+    href: '/chat',
+    icon: MessageCircle,
+    roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    module: 'task',
+  },
+  {
+    name: 'Meetings',
+    href: '/meetings',
+    icon: Video,
+    roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    module: 'task',
+  },
+]
 
-  useEffect(() => {
-    const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement))
-    syncFullscreen()
-    document.addEventListener('fullscreenchange', syncFullscreen)
-    return () => document.removeEventListener('fullscreenchange', syncFullscreen)
-  }, [])
-
-  const fullscreenLabel = isFullscreen
-    ? 'Exit AI briefing fullscreen. Shortcut: Esc'
-    : 'Open AI briefing fullscreen. Shortcut: click this button, Esc exits fullscreen'
+export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onLogout, logoutLoading = false }) {
+  const location = useLocation()
+  const { user } = useAuthStore()
+  const userRole = normalizeRole(user?.role)
+  const hasModule = (module) =>
+    !module || user?.modules?.includes(module) || isSuperAdminRole(userRole)
+  const communicationLinks = GLOBAL_COMMUNICATION_LINKS.filter(
+    (item) => item.roles.includes(userRole) && hasModule(item.module),
+  )
 
   return (
-    <header className="sticky top-0 z-30 min-w-0 border-b border-surface-border/80 bg-white/90 backdrop-blur-xl dark:border-gray-800/80 dark:bg-gray-950/85">
-      <div className="flex h-16 min-w-0 items-center justify-between gap-2 px-3 sm:gap-4 sm:px-5 lg:px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
+    <header className="sticky top-0 z-30 min-w-0 border-b border-primary-200/70 bg-[rgba(252,250,244,0.98)] shadow-[0_8px_24px_rgba(63,49,37,0.08)] backdrop-blur-xl dark:border-[#5a4635] dark:bg-[rgb(36_28_20_/_0.96)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.35)]">
+      <div className="flex h-16 min-w-0 items-center justify-between gap-3 px-3 sm:px-5 lg:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
           <button
             type="button"
             onClick={onMenuClick}
-            className="inline-flex shrink-0 rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 lg:hidden dark:text-gray-300 dark:hover:bg-gray-800"
+            className="inline-flex rounded-full border border-surface-border bg-surface/95 p-2 text-text-secondary transition-colors hover:bg-surface-muted lg:hidden dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)]"
             aria-label="Open navigation"
           >
             <Menu className="h-5 w-5" />
           </button>
-
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <div className="flex min-w-0 items-center gap-2">
-              <h1 className="min-w-0 truncate text-sm font-semibold leading-5 text-gray-900 sm:text-base dark:text-gray-100">{title}</h1>
-              {breadcrumb && breadcrumb !== title ? (
-                <span className="hidden min-w-0 truncate text-xs text-gray-400 md:inline dark:text-gray-500">/ {breadcrumb}</span>
-              ) : null}
-            </div>
-            {subtitle ? <p className="hidden truncate text-xs leading-4 text-gray-500 sm:block dark:text-gray-400">{subtitle}</p> : null}
+          <div className="min-w-0 max-w-full flex-1 overflow-hidden">
+            <p className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:text-[var(--color-app-text-muted)]">SynTask</p>
+            <h1 className="truncate text-base font-semibold text-text-primary dark:text-[var(--color-app-text)]">{title}</h1>
+            {subtitle ? <p className="hidden truncate text-sm text-text-secondary sm:block dark:text-[var(--color-app-text-secondary)]">{subtitle}</p> : null}
+            {breadcrumb ? <p className="hidden truncate text-xs text-text-muted md:block dark:text-[var(--color-app-text-muted)]">{breadcrumb}</p> : null}
           </div>
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-          <Button variant="ghost" size="sm" onClick={onCommandOpen} className="hidden md:inline-flex">
+          {communicationLinks.length ? (
+            <nav className="flex items-center gap-1 rounded-full border border-surface-border/70 bg-surface/90 p-1 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]" aria-label="Global communication">
+              {communicationLinks.map((item) => {
+                const isActive = location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    aria-current={isActive ? 'page' : undefined}
+                    title={item.name}
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm font-medium transition-colors xl:w-auto xl:gap-2 xl:px-3 ${
+                      isActive
+                        ? 'bg-primary-500 text-white shadow-none dark:bg-primary-500 dark:text-white'
+                        : 'text-text-secondary hover:bg-surface-muted hover:text-primary-600 dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)] dark:hover:text-primary-200'
+                    }`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span className="hidden xl:inline">{item.name}</span>
+                  </Link>
+                )
+              })}
+            </nav>
+          ) : null}
+          <Button variant="ghost" size="sm" onClick={onCommandOpen} className="hidden md:inline-flex rounded-full border border-surface-border bg-surface/95 text-text-primary hover:bg-surface-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]">
             <span className="inline-flex items-center gap-2">
               <Search className="h-4 w-4" />
               Command
             </span>
-            <kbd className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">Ctrl K</kbd>
+            <kbd className="rounded-full border border-surface-border bg-surface-muted px-1.5 py-0.5 text-[10px] text-text-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)] dark:text-[var(--color-app-text-muted)]">Ctrl K</kbd>
           </Button>
           <button
             type="button"
             onClick={onSearchOpen}
-            className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 md:hidden dark:text-gray-300 dark:hover:bg-gray-800"
+            className="rounded-full border border-surface-border bg-surface/95 p-2 text-text-secondary transition-colors hover:bg-surface-muted md:hidden dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)]"
             aria-label="Open global search"
           >
             <Search className="h-5 w-5" />
@@ -71,7 +105,7 @@ export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSear
             </button>
           ) : null}
           <NotificationBell />
-          <Button variant="ghost" size="sm" onClick={onLogout} loading={logoutLoading} loadingText="Logging out" className="hidden sm:inline-flex">
+          <Button variant="ghost" size="sm" onClick={onLogout} loading={logoutLoading} loadingText="Logging out" className="hidden sm:inline-flex rounded-full border border-surface-border bg-surface/95 text-text-primary hover:bg-surface-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]">
             Logout
           </Button>
         </div>

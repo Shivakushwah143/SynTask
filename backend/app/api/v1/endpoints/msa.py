@@ -12,8 +12,8 @@ import secrets
 
 logger = logging.getLogger(__name__)
 
-from app.models.msa import MSA, MSAStatus
-from app.models.client import Client
+from app.finance.models import MSA, MSAStatus
+from app.crm.models import Client
 from app.models.company import Company
 from app.models.user import User
 from app.api.dependencies import (
@@ -991,4 +991,3 @@ async def client_sign_msa(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to sign MSA: {str(e)}"
         )
-

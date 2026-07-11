@@ -10,34 +10,25 @@ import {
   FileText,
   MessageCircle,
   Sparkles,
-  Wand2,
-
   Ticket,
-  
-  
   Users,
   X,
   Zap,
   TrendingUp,
   Activity,
   Target,
-  Cpu,
   Radar,
-  Shield,
-  Network,
-  Scan,
-  Binary,
-  Globe,
-  Menu,
   Keyboard,
   Eye,
-  Type,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
-import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
+import { ROLE, normalizeRole } from '../utils/roles'
 import * as d3 from 'd3'
+import { buildBriefingChartData } from './aiBriefingData'
 
 // ===== CONSTANTS & CONFIGURATIONS =====
 const STATUS_TONE = {
@@ -104,8 +95,6 @@ const buildBriefing = ({ user, stats, recentTasks, recentTickets }) => {
   const name = user?.first_name || 'there'
   const metrics = calculateMetrics(recentTasks)
   const activeTickets = filterActive(recentTickets)
-  const hasAdminAccess = hasCompanyAdminAccess(role)
-
   // Role-based configuration
   const roleConfigs = {
     [ROLE.ADMIN]: () => {
@@ -319,16 +308,6 @@ const buildSuggestions = ({ stats, recentTasks, recentTickets }) => {
   return suggestions.slice(0, 4)
 }
 
-const commandItems = [
-  { label: 'Prioritize My Day', icon: Sparkles, path: '/ai-prioritization', action: 'prioritize' },
-  { label: 'Creative Review', icon: Wand2, path: '/creative-director' },
-  { label: 'Break Down Tasks', icon: CheckSquare, path: '/ai-hub#breakdown' },
-  { label: 'Generate Daily Report', icon: FileText, action: 'report' },
-  { label: 'Analyze Team Risks', icon: Users, path: '/reports' },
-  { label: 'Review Tickets', icon: Ticket, path: '/tickets' },
-  { label: 'Ask AI', icon: MessageCircle, path: '/ai-assistant' },
-]
-
 // Particle Effect Component
 const ParticleEffect = ({ isActive, onComplete }) => {
   useEffect(() => {
@@ -397,23 +376,8 @@ const ParticleEffect = ({ isActive, onComplete }) => {
 }
 
 // Loading Skeleton Component
-const ShimmerSkeleton = ({ className }) => (
-  <div className={`relative overflow-hidden ${className}`}>
-    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
-    <style jsx>{`
-      @keyframes shimmer {
-        0% { transform: translateX(-100%); }
-        100% { transform: translateX(100%); }
-      }
-      .animate-shimmer {
-        animation: shimmer 2s infinite;
-      }
-    `}</style>
-  </div>
-)
-
 // Accessibility Menu Component
-const AccessibilityMenu = ({ onFontSizeChange, onContrastToggle, isHighContrast, onClose }) => {
+const AccessibilityMenu = ({ onFontSizeChange, onContrastToggle, isHighContrast }) => {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -475,7 +439,7 @@ const AccessibilityMenu = ({ onFontSizeChange, onContrastToggle, isHighContrast,
 }
 
 // Keyboard Shortcuts Guide Component
-const KeyboardShortcutsGuide = ({ onClose }) => {
+const KeyboardShortcutsGuide = () => {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -573,22 +537,6 @@ const DataVisualization = ({ data, type = 'bar' }) => {
       .domain([0, d3.max(data, d => d.value) * 1.1])
       .range([height - margin.top - margin.bottom, 0])
 
-    const gradient = svg.append('defs')
-      .append('linearGradient')
-      .attr('id', 'chart-gradient')
-      .attr('x1', '0%')
-      .attr('y1', '0%')
-      .attr('x2', '0%')
-      .attr('y2', '100%')
-    
-    gradient.append('stop')
-      .attr('offset', '0%')
-      .attr('style', 'stop-color: #3b82f6; stop-opacity: 0.8')
-    
-    gradient.append('stop')
-      .attr('offset', '100%')
-      .attr('style', 'stop-color: #8b5cf6; stop-opacity: 0.3')
-
     const bars = svg.selectAll('.bar')
       .data(data)
       .enter()
@@ -599,11 +547,11 @@ const DataVisualization = ({ data, type = 'bar' }) => {
       .attr('height', 0)
       .attr('width', x.bandwidth())
       .attr('rx', 4)
-      .attr('fill', 'url(#chart-gradient)')
+      .attr('fill', d => d.color || '#4285F4')
 
     bars
       .attr('tabindex', 0)
-      .attr('aria-label', d => `${d.label}: ${d.value}`)
+      .attr('aria-label', d => `${d.label}: ${d.value}${d.priority ? `, ${d.priority} priority` : ''}`)
       .on('pointerenter pointermove pointerdown', function (event, point) {
         d3.select(this).attr('stroke', '#fff').attr('stroke-width', 2).style('filter', 'brightness(1.12)')
         showTooltip(event, point)
@@ -679,12 +627,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
   )
   
   const chartData = useMemo(() => {
-    const statusCounts = {}
-    recentTasks.forEach(task => {
-      const status = task.status || 'unknown'
-      statusCounts[status] = (statusCounts[status] || 0) + 1
-    })
-    return Object.entries(statusCounts).map(([label, value]) => ({ label, value }))
+    return buildBriefingChartData(recentTasks)
   }, [recentTasks])
 
   const hasCriticalEvent = useMemo(
@@ -847,7 +790,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
     },
   }
 
-  const itemVariants = {
+  const itemVariants = useMemo(() => ({
     hidden: { opacity: 0, y: 20 },
     visible: {
       opacity: 1,
@@ -858,11 +801,11 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
         damping: 24,
       },
     },
-  }
+  }), [])
 
   // Render utility
   const renderMetrics = useCallback(() => (
-    briefing.metrics.map((metric, index) => (
+    briefing.metrics.map((metric) => (
       <motion.div
         key={metric.label}
         variants={itemVariants}
@@ -912,7 +855,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
   ), [suggestions, navigate])
 
   const renderCommandButtons = useCallback(() => (
-    COMMAND_ITEMS.map((item, index) => {
+    COMMAND_ITEMS.map((item) => {
       const Icon = item.icon
       return (
         <motion.button
@@ -972,7 +915,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
           <div className="absolute h-[2px] w-full bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent animate-[scan_3s_linear_infinite] top-0" />
         </div>
 
-        <style jsx>{`
+        <style>{`
           @keyframes scan {
             0% { top: 0; opacity: 1; }
             100% { top: 100%; opacity: 0; }
@@ -1097,8 +1040,8 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
 
                 <div className="grid gap-6 p-6 lg:grid-cols-[0.95fr_1.05fr] sm:p-7">
                   <div className="space-y-5">
-                    <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                      {briefing.metrics.map((metric, index) => (
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                    {briefing.metrics.map((metric, index) => (
                         <motion.div
                           key={metric.label}
                           className="group/metric relative overflow-hidden rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-300 hover:shadow-md dark:border-cyan-500/20 dark:bg-slate-800/40 dark:backdrop-blur-sm dark:hover:border-cyan-400/40 dark:hover:bg-slate-800/60 dark:hover:shadow-[0_0_30px_rgba(6,182,212,0.05)]"

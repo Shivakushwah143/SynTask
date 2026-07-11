@@ -121,6 +121,7 @@ async def list_projects(
             "description": project.description,
             "type": project.type.value,
             "status": project.status.value,
+            "client_id": project.client_id,
             "lead_id": project.lead_id,
             "assigned_to": project.assigned_to,
             "assigned_to_name": assigned_to_name,
@@ -150,5 +151,4 @@ async def list_projects(
     if cache_key:
         await cache_set(cache_key, data, ttl=180)
     return data
-
 

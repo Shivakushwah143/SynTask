@@ -18,6 +18,8 @@ let refreshPromise = null
 // Request interceptor - check storage for token
 axiosInstance.interceptors.request.use(
   (config) => {
+    config.headers = config.headers || {}
+
     // First try to get token from state, then from storage
     let token = useAuthStore.getState().token
     if (!token) {
@@ -25,12 +27,20 @@ axiosInstance.interceptors.request.use(
     }
     
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+      if (typeof config.headers.set === 'function') {
+        config.headers.set('Authorization', `Bearer ${token}`)
+      } else {
+        config.headers.Authorization = `Bearer ${token}`
+      }
     }
     
     // If FormData, let axios set Content-Type automatically
     if (config.data instanceof FormData) {
-      delete config.headers['Content-Type']
+      if (typeof config.headers.delete === 'function') {
+        config.headers.delete('Content-Type')
+      } else {
+        delete config.headers['Content-Type']
+      }
     }
     
     return config
@@ -134,7 +144,12 @@ axiosInstance.interceptors.response.use(
             refreshToken,
           )
 
-          originalRequest.headers.Authorization = `Bearer ${access_token}`
+          originalRequest.headers = originalRequest.headers || {}
+          if (typeof originalRequest.headers.set === 'function') {
+            originalRequest.headers.set('Authorization', `Bearer ${access_token}`)
+          } else {
+            originalRequest.headers.Authorization = `Bearer ${access_token}`
+          }
           return axiosInstance(originalRequest)
         }
       } catch (refreshError) {

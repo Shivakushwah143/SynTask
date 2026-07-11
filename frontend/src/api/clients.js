@@ -3,11 +3,7 @@ import api from './axios'
 export const clientsAPI = {
   // Create client
   createClient: async (formData) => {
-    const response = await api.post('/clients', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
+    const response = await api.post('/clients', formData)
     return response.data
   },
 
@@ -23,13 +19,15 @@ export const clientsAPI = {
     return response.data
   },
 
+  // Get client workspace
+  getWorkspace: async (clientId) => {
+    const response = await api.get(`/clients/${clientId}/workspace`)
+    return response.data
+  },
+
   // Update client
   updateClient: async (clientId, formData) => {
-    const response = await api.put(`/clients/${clientId}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
+    const response = await api.put(`/clients/${clientId}`, formData)
     return response.data
   },
 
@@ -47,11 +45,7 @@ export const clientsAPI = {
     if (startDate) formData.append('start_date', startDate)
     if (deliveryDate) formData.append('delivery_date', deliveryDate)
     
-    const response = await api.post(`/clients/${clientId}/projects`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
+    const response = await api.post(`/clients/${clientId}/projects`, formData)
     return response.data
   },
 
@@ -67,11 +61,7 @@ export const clientsAPI = {
     formData.append('file', file)
     if (documentName) formData.append('document_name', documentName)
     
-    const response = await api.post(`/clients/${clientId}/documents`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
+    const response = await api.post(`/clients/${clientId}/documents`, formData)
     return response.data
   },
 
@@ -81,4 +71,3 @@ export const clientsAPI = {
     return response.data
   },
 }
-

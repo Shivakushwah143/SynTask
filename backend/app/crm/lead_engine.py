@@ -12,17 +12,19 @@ from xml.etree import ElementTree as ET
 
 from fastapi import HTTPException, UploadFile, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_company import CRMCompany
 from app.models.sales_contact import SalesContact
 from app.models.sales_masters import SalesStage
+from app.models.sales_import_job import SalesImportJob
+from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
-from app.models.sales_prospect import InterestLevel, ProspectStatus, SalesProspect
+from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
 from app.models.user import User, UserRole, UserStatus
 
 
 CSV_EMAIL_ALIASES = {"email_address", "email_id", "e_mail"}
-DEFAULT_ASSIGNMENT_STRATEGIES = {"round-robin", "evenly", "manual"}
+DEFAULT_ASSIGNMENT_STRATEGIES = {"round-robin", "evenly", "least-loaded", "manual"}
 DEFAULT_SOURCE_LABELS = {
     "manual": "manual",
     "csv": "csv_import",
@@ -372,22 +374,36 @@ class DuplicateResolver:
 
 class AssignmentEngine:
     @staticmethod
-    async def load_assignable_users(current_user: User) -> list[User]:
+    async def load_assignable_users(current_user: User, *, department_id: Optional[str] = None) -> list[User]:
         if not current_user.company_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
+        query: Dict[str, Any] = {
+            "company_id": current_user.company_id,
+            "status": UserStatus.ACTIVE,
+            "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+        }
+        if department_id:
+            query["$or"] = [
+                {"department_id": department_id},
+                {"department": department_id},
+            ]
         users = await User.find(
-            {
-                "company_id": current_user.company_id,
-                "status": UserStatus.ACTIVE,
-                "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
-            }
+            query
         ).to_list()
         if not users:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No assignable users found in your company")
         return users
 
     @staticmethod
-    def choose_assignee(strategy: str, assignable_users: Sequence[User], *, index: int = 0, target_user_id: Optional[str] = None, assignment_counts: Optional[Dict[str, int]] = None) -> str:
+    def choose_assignee(
+        strategy: str,
+        assignable_users: Sequence[User],
+        *,
+        index: int = 0,
+        target_user_id: Optional[str] = None,
+        assignment_counts: Optional[Dict[str, int]] = None,
+        current_user: Optional[User] = None,
+    ) -> str:
         if strategy not in DEFAULT_ASSIGNMENT_STRATEGIES:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid strategy")
         user_ids = [str(user.id) for user in assignable_users]
@@ -400,7 +416,19 @@ class AssignmentEngine:
         if strategy == "round-robin":
             return user_ids[index % len(user_ids)]
         assignment_counts = assignment_counts or {user_id: 0 for user_id in user_ids}
+        if strategy == "least-loaded":
+            return min(user_ids, key=lambda user_id: (assignment_counts.get(user_id, 0), user_ids.index(user_id)))
+        # evenly
         return min(user_ids, key=lambda user_id: (assignment_counts.get(user_id, 0), user_ids.index(user_id)))
+
+    @staticmethod
+    def allow_manager_override(current_user: User, target_user_id: Optional[str], assignable_users: Sequence[User]) -> bool:
+        if not target_user_id or current_user.role != UserRole.MANAGER:
+            return False
+        if str(current_user.id) == target_user_id:
+            return True
+        valid_ids = {str(user.id) for user in assignable_users}
+        return target_user_id in valid_ids
 
 
 class LeadEventPublisher:
@@ -472,15 +500,24 @@ class LeadEngine:
         if contact_id:
             normalized["contact_id"] = contact_id
         assigned_to = normalized.get("assigned_to")
+        department_id = normalized.get("department_id") or getattr(current_user, "department_id", None)
         if assigned_to:
-            assignable_users = await AssignmentEngine.load_assignable_users(current_user)
+            assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
             normalized["assigned_to"] = AssignmentEngine.choose_assignee(
                 "manual",
                 assignable_users,
                 target_user_id=str(assigned_to),
             )
         else:
-            normalized["assigned_to"] = str(getattr(current_user, "id", ""))
+            assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
+            if current_user.role == UserRole.MANAGER and str(current_user.id) in {str(user.id) for user in assignable_users}:
+                normalized["assigned_to"] = str(getattr(current_user, "id", ""))
+            else:
+                normalized["assigned_to"] = AssignmentEngine.choose_assignee(
+                    "least-loaded",
+                    assignable_users,
+                    assignment_counts={str(user.id): 0 for user in assignable_users},
+                )
 
         prospect = SalesProspect(
             first_name=normalized["first_name"],
@@ -496,7 +533,7 @@ class LeadEngine:
             estimated_close_date=_parse_datetime(normalized.get("estimated_close_date")),
             assigned_to=str(normalized.get("assigned_to")),
             assigned_by=str(normalized.get("assigned_by")),
-            current_stage=normalized.get("current_stage") or "new",
+            current_stage="new",
             due_date=_parse_datetime(normalized.get("due_date"), normalized.get("due_time")),
             due_time=normalized.get("due_time"),
             remark=normalized.get("remark"),
@@ -570,6 +607,7 @@ class LeadEngine:
             "stage_entered_at": prospect.stage_entered_at,
             "stage_last_changed_at": prospect.stage_last_changed_at,
             "days_in_stage": prospect.days_in_stage,
+            "department_id": getattr(prospect, "department_id", None),
         }
 
     @staticmethod
@@ -606,9 +644,24 @@ class LeadEngine:
         if "estimated_close_date" in payload:
             prospect.estimated_close_date = _parse_datetime(payload.get("estimated_close_date"))
         if "assigned_to" in payload:
-            prospect.assigned_to = payload.get("assigned_to") or prospect.assigned_to
-        if "current_stage" in payload:
-            prospect.current_stage = _normalize_text(payload.get("current_stage")) or prospect.current_stage
+            target_assignee = payload.get("assigned_to") or prospect.assigned_to
+            if target_assignee:
+                department_id = getattr(prospect, "department_id", None) or getattr(current_user, "department_id", None)
+                assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
+                if str(target_assignee) in {str(user.id) for user in assignable_users}:
+                    previous_assignee = prospect.assigned_to
+                    prospect.assigned_to = str(target_assignee)
+                    if previous_assignee != prospect.assigned_to:
+                        await OwnershipTransfer(
+                            company_id=str(prospect.company_id),
+                            entity_type="lead",
+                            entity_id=str(prospect.id),
+                            from_user_id=str(previous_assignee) if previous_assignee else None,
+                            to_user_id=str(prospect.assigned_to),
+                            reason="manual_reassignment",
+                            transferred_by=str(current_user.id),
+                            notes="Manual reassignment from lead update",
+                        ).insert()
         if "due_date" in payload:
             prospect.due_date = _parse_datetime(payload.get("due_date"), payload.get("due_time"))
         if "due_time" in payload:
@@ -639,14 +692,6 @@ class LeadEngine:
             prospect.tag = list(payload.get("tag") or [])
         if "greeting_preference" in payload:
             prospect.greeting_preference = _normalize_text(payload.get("greeting_preference")) or None
-        if "status" in payload:
-            prospect.status = ProspectStatus(_normalize_text(payload.get("status")).lower())
-            if prospect.status in [ProspectStatus.WON, ProspectStatus.LOST]:
-                prospect.closed_date = now
-                prospect.closed_by = str(current_user.id)
-            else:
-                prospect.closed_date = None
-                prospect.closed_by = None
         if "reason_for_lost" in payload:
             prospect.reason_for_lost = _normalize_text(payload.get("reason_for_lost")) or None
         if "won_amount" in payload:
@@ -663,6 +708,7 @@ class LeadEngine:
         *,
         strategy: str,
         target_user_id: Optional[str] = None,
+        target_department_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not current_user.company_id and current_user.role != UserRole.SUPER_ADMIN:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
@@ -683,7 +729,7 @@ class LeadEngine:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must include either 'name' or 'first_name' column")
 
         source_label = DEFAULT_SOURCE_LABELS.get("xlsx" if file_name.lower().endswith(".xlsx") else "csv", "csv_import")
-        assignable_users = await AssignmentEngine.load_assignable_users(current_user)
+        assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=target_department_id)
         if strategy == "manual":
             if not target_user_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")
@@ -803,6 +849,85 @@ class LeadEngine:
             assigned_breakdown=dict(assignment_counts),
             warnings=skipped_rows[:50],
         ).__dict__
+
+    @staticmethod
+    async def preview_import(
+        current_user: User,
+        file: UploadFile,
+        *,
+        strategy: str,
+        target_user_id: Optional[str] = None,
+        target_department_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if not current_user.company_id and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
+        file_name = file.filename or "upload.csv"
+        if not file_name.lower().endswith((".csv", ".xlsx")) and file.content_type not in {
+            "text/csv",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV and XLSX files are supported")
+
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded")
+
+        headers, rows = _parse_tabular_upload(file_name, content)
+        normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
+        preview_rows = []
+        failed_rows = []
+        for idx, row in enumerate(rows, start=2):
+            row_norm = {_normalize_lead_csv_header(key): (value or "").strip() for key, value in row.items() if key is not None}
+            email = (row_norm.get("email") or "").lower()
+            if not email:
+                failed_rows.append({"row": idx, "error": "Missing email"})
+                continue
+            if not any(h in normalized_headers for h in ["name", "first_name"]):
+                failed_rows.append({"row": idx, "error": "Missing name"})
+                continue
+            preview_rows.append(
+                {
+                    "row": idx,
+                    "first_name": row_norm.get("first_name") or row_norm.get("name") or "",
+                    "last_name": row_norm.get("last_name") or "",
+                    "email": email,
+                    "phone": row_norm.get("phone") or "",
+                    "company_name": row_norm.get("company") or row_norm.get("company_name") or "",
+                    "current_stage": row_norm.get("stage") or row_norm.get("current_stage") or "new",
+                    "assigned_to": target_user_id if strategy == "manual" else None,
+                    "status": row_norm.get("status") or ProspectStatus.ACTIVE.value,
+                }
+            )
+
+        job = SalesImportJob(
+            company_id=current_user.company_id,
+            created_by=str(current_user.id),
+            filename=file_name,
+            strategy=strategy,
+            target_user_id=target_user_id,
+            target_department_id=target_department_id,
+            status="previewed",
+            total_rows=len(rows),
+            skipped_rows=len(failed_rows),
+            failed_rows=failed_rows,
+            preview_rows=preview_rows[:100],
+            source_payload={"headers": headers},
+        )
+        await job.insert()
+        return {
+            "job_id": str(job.id),
+            "total_rows": len(rows),
+            "preview_rows": preview_rows[:100],
+            "failed_rows": failed_rows[:100],
+        }
+
+    @staticmethod
+    async def retry_import_job(current_user: User, job_id: str) -> Dict[str, Any]:
+        job = await SalesImportJob.get(job_id)
+        if not job or job.company_id != current_user.company_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import job not found")
+        _ = dict(job.source_payload or {})
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Retry requires the original uploaded file; use preview to re-upload the file.")
 
     @staticmethod
     async def move_stage(current_user: User, lead_id: str, target_stage: str, reason: Optional[str] = None) -> Dict[str, Any]:

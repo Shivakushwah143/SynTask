@@ -6,6 +6,6 @@ shared orchestration. Existing legacy endpoints can continue moving behind
 service functions incrementally.
 """
 
-from app.services.notification_service import NotificationService, BrevoEmailProvider, DeliveryResult
+from app.services.notification_service import NotificationService, DeliveryResult
 
-__all__ = ["NotificationService", "BrevoEmailProvider", "DeliveryResult"]
+__all__ = ["NotificationService", "DeliveryResult"]

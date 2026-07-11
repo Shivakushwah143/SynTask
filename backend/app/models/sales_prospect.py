@@ -1,5 +1,6 @@
-"""
-Sales Prospect Model - Manages sales prospects/pipeline
+"""Lead model.
+
+Legacy storage and import names remain for API and database compatibility.
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -23,7 +24,7 @@ class ProspectStatus(str, Enum):
 
 
 class SalesProspect(Document):
-    """Sales Prospect - Linked to contact, products, stages"""
+    """Lead linked to contacts, products, and pipeline stages."""
 
     # Basic Fields (from Contact or new)
     first_name: str
@@ -103,3 +104,9 @@ class SalesProspect(Document):
     def unique_key(self) -> str:
         """Unique identifier: country_code + phone"""
         return f"{self.country_code}:{self.phone}"
+
+
+# Compatibility aliases: old names remain until persisted and API contracts
+# can migrate without breaking existing clients.
+Lead = SalesProspect
+LeadStatus = ProspectStatus

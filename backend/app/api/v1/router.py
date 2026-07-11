@@ -1,14 +1,19 @@
 """
 Main API Router - v1
 """
+from datetime import datetime
+
 from fastapi import APIRouter
 from app.core.config import settings
+from app.core.redis_client import get_redis_health
+from app.worker.celery_app import is_celery_enabled
+from app.core.database import get_database
 
 from app.api.v1.endpoints import (
     auth, users, companies, tasks, notifications, dashboard, files, reports, 
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
-    sales, search, departments, attendance
+    sales, search, departments, attendance, notification_emails
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import creative
@@ -40,6 +45,43 @@ async def debug_backend():
     }
 
 
+@api_router.get("/health", tags=["Health"])
+async def health_check():
+    status = {
+        "status": "healthy",
+        "version": settings.VERSION,
+        "environment": settings.ENVIRONMENT,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    checks = {"mongodb": {"ok": True}, "redis": {"ok": False}, "celery": {"ok": False}}
+    try:
+        db = get_database()
+        await db.command("ping")
+        checks["mongodb"] = {"ok": True}
+    except Exception as exc:
+        checks["mongodb"] = {"ok": False, "error": str(exc)}
+        status["status"] = "degraded"
+
+    try:
+        redis_ok = await get_redis_health(force_refresh=True)
+        checks["redis"] = {"ok": redis_ok, "disabled": settings.DISABLE_REDIS}
+        if not redis_ok:
+            status["status"] = "degraded"
+    except Exception as exc:
+        checks["redis"] = {"ok": False, "error": str(exc), "disabled": settings.DISABLE_REDIS}
+        status["status"] = "degraded"
+
+    checks["celery"] = {
+        "ok": is_celery_enabled(),
+        "disabled": settings.DISABLE_CELERY,
+        "always_eager": settings.CELERY_ALWAYS_EAGER or settings.DISABLE_CELERY,
+    }
+
+    status["checks"] = checks
+    return status
+
+
 # Include all endpoint routers
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(auth_2fa.router, prefix="/auth/2fa", tags=["2FA"])
@@ -54,6 +96,7 @@ api_router.include_router(
     dependencies=[Depends(require_module("task"))]
 )
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+api_router.include_router(notification_emails.router, prefix="/notifications", tags=["Notification Email"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 api_router.include_router(files.router, prefix="/files", tags=["Files"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
@@ -106,7 +149,7 @@ api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CR
 api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)
 api_router.include_router(sales_products.router, prefix="/sales/products", tags=["Sales Products"], dependencies=sales_module_dependency)
 api_router.include_router(sales_contacts.router, prefix="/sales/contacts", tags=["Sales Contacts"], dependencies=sales_module_dependency)
-api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Sales Prospects"], dependencies=sales_module_dependency)
+api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Leads"], dependencies=sales_module_dependency)
 api_router.include_router(sales_masters.router, prefix="/sales/masters", tags=["Sales Masters"], dependencies=sales_module_dependency)
 api_router.include_router(sales_reports.router, prefix="/sales/reports", tags=["Sales Reports"], dependencies=sales_module_dependency)
 

@@ -7,6 +7,7 @@ import { crmApi } from '../../../api/crm'
 import { meetingsApi } from '../../../api/meetings'
 import { CRMEmptyState, CRMPage, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Skeleton } from '../../../components/ui'
+import { WorkflowGuide } from '../../../components/workflow/WorkflowGuide'
 
 const formatCurrency = (value, currency = 'INR') => {
   const numericValue = Number(value || 0)
@@ -61,8 +62,6 @@ export default function CRMDashboardPage() {
     return !Number.isNaN(timestamp.getTime()) && isSameDay(timestamp, today)
   })
 
-  const recentActivity = activities.slice(0, 5)
-
   const upcomingMeetings = meetings
     .filter((meeting) => {
       if (!meeting?.meeting_date) return false
@@ -77,6 +76,18 @@ export default function CRMDashboardPage() {
 
   return (
     <CRMPage>
+      <WorkflowGuide
+        title="Open the next sales action"
+        description="This CRM dashboard is the control point for the next lead, the next meeting, and the next piece of revenue."
+        nextStep="Review the pipeline, then open the lead or activity that needs attention."
+        primaryAction={{ label: 'View Pipeline', href: '/crm/pipeline' }}
+        secondaryAction={{ label: 'Open Leads', href: '/crm/leads' }}
+        bullets={[
+          { label: 'Where am I?', value: 'CRM dashboard and pipeline overview.' },
+          { label: 'What next?', value: 'Pick the lead or deal that needs movement.' },
+          { label: 'After this?', value: 'Jump into the lead workspace or CRM reports.' },
+        ]}
+      />
       <CRMSection
         title="Overview"
         description="Sales-derived signal for the CRM workspace foundation."
@@ -105,7 +116,7 @@ export default function CRMDashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <CRMStatCard
               icon={Users}
-              label="Prospects"
+              label="Leads"
               value={stats.prospect_count ?? 0}
               helper="Live count from the sales domain."
               tone="blue"
@@ -114,7 +125,7 @@ export default function CRMDashboardPage() {
               icon={TrendingUp}
               label="Pipeline Value"
               value={formatCurrency(stats.pipeline_value ?? 0, currency)}
-              helper="Active prospect value only."
+              helper="Active lead value only."
               tone="emerald"
             />
             <CRMStatCard
@@ -259,7 +270,7 @@ export default function CRMDashboardPage() {
             <CRMEmptyState
               icon={TrendingUp}
               title="No pipeline activity yet"
-              description="Add prospects to populate the CRM pipeline summary."
+              description="Add leads to populate the CRM pipeline summary."
             />
           )}
         </CRMSection>
@@ -286,8 +297,8 @@ export default function CRMDashboardPage() {
         </CRMSection>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <CRMSection title="Today's Activities" description="Current-day activity from the existing activity timeline.">
+      <div className="grid gap-6 xl:grid-cols-2">
+        <CRMSection title="Today's Activities" description="Current-day activity from the shared timeline.">
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((item) => (
@@ -360,41 +371,6 @@ export default function CRMDashboardPage() {
               icon={CalendarDays}
               title="No upcoming meetings"
               description="Use the existing meetings module to schedule the next client touchpoint."
-            />
-          )}
-        </CRMSection>
-
-        <CRMSection title="Recent Activity" description="Latest updates from the shared activity stream.">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((item) => (
-                <div key={item} className="rounded-2xl border border-surface-border/80 p-4">
-                  <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="mt-2 h-4 w-1/3" />
-                </div>
-              ))}
-            </div>
-          ) : recentActivity.length ? (
-            <div className="space-y-3">
-              {recentActivity.map((activity) => (
-                <article
-                  key={`recent-${activity.entity_type}-${activity.id}`}
-                  className="rounded-2xl border border-surface-border/80 p-4 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/60"
-                >
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {activity.title}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {activity.entity_type} | {formatDateTime(activity.timestamp)}
-                  </p>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <CRMEmptyState
-              icon={Clock3}
-              title="No recent activity"
-              description="The activity stream is connected, but there is no new data to show yet."
             />
           )}
         </CRMSection>

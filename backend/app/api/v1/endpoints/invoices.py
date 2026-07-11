@@ -8,8 +8,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import logging
 
-from app.models.invoice import Invoice, InvoiceType, InvoiceStatus
-from app.models.client import Client
+from app.finance.models import Invoice, InvoiceType, InvoiceStatus
+from app.crm.models import Client
 from app.models.company import Company
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, get_current_company_admin_or_lead, check_company_access

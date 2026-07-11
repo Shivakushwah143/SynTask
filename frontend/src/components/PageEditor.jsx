@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Save, X } from 'lucide-react'
 import { projectsApi } from '../api/projects'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'

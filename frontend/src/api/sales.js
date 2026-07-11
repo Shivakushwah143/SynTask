@@ -1,4 +1,5 @@
 import api from './axios'
+import { crmApi } from './crm'
 
 const toFormData = (data) => {
   const formData = new FormData()
@@ -29,14 +30,23 @@ export const salesApi = {
     if (payload?.file) formData.append('file', payload.file)
     if (payload?.strategy) formData.append('strategy', payload.strategy)
     if (payload?.target_user_id) formData.append('target_user_id', payload.target_user_id)
+    if (payload?.target_department_id) formData.append('target_department_id', payload.target_department_id)
     return api.post('/sales/prospects/bulk-upload', formData)
   },
+  previewBulkUploadProspects: (payload) => {
+    const formData = new FormData()
+    if (payload?.file) formData.append('file', payload.file)
+    if (payload?.strategy) formData.append('strategy', payload.strategy)
+    if (payload?.target_user_id) formData.append('target_user_id', payload.target_user_id)
+    if (payload?.target_department_id) formData.append('target_department_id', payload.target_department_id)
+    return api.post('/sales/prospects/bulk-upload/preview', formData)
+  },
+  getImportHistory: () => api.get('/sales/prospects/imports'),
+  retryImportJob: (id) => api.post(`/sales/prospects/imports/${id}/retry`),
   updateProspect: (id, data) => api.put(`/sales/prospects/${id}`, data),
   updateProspectForm: (id, data) => api.put(`/sales/prospects/${id}`, toFormData(data)),
   updateStage: (id, stageId) => {
-    const formData = new FormData()
-    formData.append('current_stage', stageId)
-    return api.put(`/sales/prospects/${id}`, formData)
+    return crmApi.updatePipelineStage(id, { stage: stageId })
   },
   getDuplicateProspects: (params) => api.get('/sales/prospects/duplicates', { params }),
   mergeProspects: (payload) => api.post('/sales/prospects/merge', payload),
@@ -57,3 +67,17 @@ export const salesApi = {
   getProducts: () => api.get('/sales/products/'),
   createProduct: (data) => api.post('/sales/products/', Array.isArray(data) ? data : [data]),
 }
+
+// Canonical Lead methods use legacy endpoints to preserve API behavior.
+salesApi.getLeads = salesApi.getProspects
+salesApi.getLead = salesApi.getProspect
+salesApi.createLead = salesApi.createProspect
+salesApi.bulkUploadLeads = salesApi.bulkUploadProspects
+salesApi.previewBulkUploadLeads = salesApi.previewBulkUploadProspects
+salesApi.updateLead = salesApi.updateProspect
+salesApi.updateLeadForm = salesApi.updateProspectForm
+salesApi.getDuplicateLeads = salesApi.getDuplicateProspects
+salesApi.mergeLeads = salesApi.mergeProspects
+salesApi.getLeadReport = salesApi.getProspectReport
+
+// Temporary compatibility aliases above retain Prospect-named consumers.

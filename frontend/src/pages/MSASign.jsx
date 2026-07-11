@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { CheckCircle, X, FileText } from 'lucide-react'
 import { msaAPI } from '../api/msa'
@@ -15,11 +15,7 @@ const MSASign = () => {
   const [clientName, setClientName] = useState('')
   const [signing, setSigning] = useState(false)
 
-  useEffect(() => {
-    loadMSA()
-  }, [token])
-
-  const loadMSA = async () => {
+  const loadMSA = useCallback(async () => {
     try {
       setLoading(true)
       const data = await msaAPI.getMSAByToken(token)
@@ -34,7 +30,11 @@ const MSASign = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [navigate, token])
+
+  useEffect(() => {
+    loadMSA()
+  }, [loadMSA])
 
   const handleSign = async (signatureImage) => {
     if (!msa || signing) return

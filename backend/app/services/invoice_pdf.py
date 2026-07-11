@@ -18,9 +18,9 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from app.models.invoice import Invoice, InvoiceType
+from app.finance.models import Invoice, InvoiceType
 from app.models.company import Company
-from app.models.client import Client
+from app.crm.models import Client
 
 
 def _format_date(value: Optional[datetime]) -> str:

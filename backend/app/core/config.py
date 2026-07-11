@@ -107,10 +107,19 @@ class Settings(BaseSettings):
     # Redis (for caching and Celery)
     REDIS_URL: str = Field(..., description="Redis URL for token blacklist and rate limiting.")
     ENABLE_TOKEN_REVOCATION: bool = True
-    
+    REDIS_CONNECT_TIMEOUT_SECONDS: float = 2.0
+    REDIS_OPERATION_TIMEOUT_SECONDS: float = 2.0
+    REDIS_HEALTH_CACHE_SECONDS: int = 30
+    REDIS_RETRY_ATTEMPTS: int = 3
+    REDIS_RETRY_BASE_DELAY_SECONDS: float = 0.2
+    DISABLE_REDIS: bool = False
+
     # Celery (Background tasks)
     CELERY_BROKER_URL: Optional[str] = None
     CELERY_RESULT_BACKEND: Optional[str] = None
+    DISABLE_CELERY: bool = False
+    CELERY_ALWAYS_EAGER: bool = False
+    DISABLE_EVENT_PROCESSING: bool = False
     
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20

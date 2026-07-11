@@ -87,29 +87,29 @@ export default function AIPrioritization() {
               <EmptyState icon={Bot} title="No strategy yet" description="Generate a strategy view to see ranked recommendations." action={<Button onClick={handleGenerate} loading={loading}>Generate strategy</Button>} />
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
-                  <thead className="bg-gray-50 dark:bg-gray-950/40">
+                <table className="min-w-full divide-y divide-border dark:divide-border">
+                  <thead className="bg-surface-muted dark:bg-black/55">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Opportunity</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Score</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Reason</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Action</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Opportunity</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Score</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Reason</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                  <tbody className="divide-y divide-border dark:divide-border">
                     {priorities.map((item) => (
                       <tr key={item.task_id} className="align-top">
                         <td className="px-4 py-4">
-                          <div className="font-semibold text-gray-900 dark:text-gray-100">{item.title}</div>
-                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <div className="font-semibold text-text-primary dark:text-text-primary">{item.title}</div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-text-muted dark:text-text-secondary">
                             <Badge label={item.priority} colorKey={item.priority} />
                             <span>{String(item.status || '').replaceAll('_', ' ')}</span>
                             {item.department ? <span>{item.department}</span> : null}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-sm font-bold text-gray-900 dark:text-gray-100">{item.score}</td>
-                        <td className="px-4 py-4 text-sm text-gray-600 dark:text-gray-300">{item.reason}</td>
-                        <td className="px-4 py-4 text-sm text-gray-600 dark:text-gray-300">{item.recommended_action}</td>
+                        <td className="px-4 py-4 text-sm font-bold text-text-primary dark:text-text-primary">{item.score}</td>
+                        <td className="px-4 py-4 text-sm text-text-secondary dark:text-text-secondary">{item.reason}</td>
+                        <td className="px-4 py-4 text-sm text-text-secondary dark:text-text-secondary">{item.recommended_action}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -124,11 +124,11 @@ export default function AIPrioritization() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {breakdown.map((block) => (
-                  <div key={`${block.time_block}-${block.task_id || block.focus}`} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
+                  <div key={`${block.time_block}-${block.task_id || block.focus}`} className="rounded-2xl border border-border bg-surface-muted p-4 dark:border-border dark:bg-black/55">
                     <div className="text-xs font-semibold uppercase tracking-[0.22em] text-primary-600">{block.time_block}</div>
-                    <div className="mt-2 text-base font-semibold text-gray-900 dark:text-gray-100">{block.focus}</div>
-                    <div className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{block.rationale}</div>
-                    {block.task_title ? <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">Task: {block.task_title}</div> : null}
+                    <div className="mt-2 text-base font-semibold text-text-primary dark:text-text-primary">{block.focus}</div>
+                    <div className="mt-1 text-sm leading-6 text-text-secondary dark:text-text-secondary">{block.rationale}</div>
+                    {block.task_title ? <div className="mt-3 text-xs text-text-muted dark:text-text-secondary">Task: {block.task_title}</div> : null}
                   </div>
                 ))}
               </div>
@@ -141,11 +141,11 @@ export default function AIPrioritization() {
             {result?.risks?.length ? (
               <div className="space-y-3">
                 {result.risks.map((risk, index) => (
-                  <div key={`${risk.title || 'risk'}-${index}`} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+                  <div key={`${risk.title || 'risk'}-${index}`} className="rounded-2xl border border-border p-4 dark:border-border">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-semibold text-gray-900 dark:text-gray-100">{risk.title || 'Risk'}</div>
-                        <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{risk.description || risk.reason}</p>
+                        <div className="font-semibold text-text-primary dark:text-text-primary">{risk.title || 'Risk'}</div>
+                        <p className="mt-1 text-sm leading-6 text-text-secondary dark:text-text-secondary">{risk.description || risk.reason}</p>
                       </div>
                       <Badge label={risk.severity || 'medium'} colorKey={risk.severity === 'high' ? 'warning' : 'scheduled'} />
                     </div>
@@ -168,15 +168,15 @@ export default function AIPrioritization() {
             ) : (
               <div className="space-y-3">
                 {logs.map((log) => (
-                  <div key={log.id} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+                  <div key={log.id} className="rounded-2xl border border-border p-4 dark:border-border">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-semibold text-gray-900 dark:text-gray-100">{log.feature}</div>
-                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{log.created_at ? format(new Date(log.created_at), 'MMM d, HH:mm:ss') : '-'}</div>
+                        <div className="font-semibold text-text-primary dark:text-text-primary">{log.feature}</div>
+                        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">{log.created_at ? format(new Date(log.created_at), 'MMM d, HH:mm:ss') : '-'}</div>
                       </div>
                       <Badge label={log.status} colorKey={log.status === 'success' ? 'active' : 'pending'} />
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-text-muted dark:text-text-secondary">
                       <div>Provider: {log.provider || '-'}</div>
                       <div>Latency: {log.latency_ms ? `${log.latency_ms} ms` : '-'}</div>
                       <div>Fallback: {log.fallback_used ? 'Yes' : 'No'}</div>
@@ -201,8 +201,8 @@ function Panel({ title, icon: Icon, description, children }) {
           <Icon className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>
+          <h2 className="text-lg font-semibold text-text-primary dark:text-text-primary">{title}</h2>
+          <p className="mt-1 text-sm text-text-muted dark:text-text-secondary">{description}</p>
         </div>
       </div>
       <div className="mt-5">{children}</div>
@@ -213,9 +213,9 @@ function Panel({ title, icon: Icon, description, children }) {
 function StatCard({ label, value, detail }) {
   return (
     <div className="card p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{detail}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-text-primary dark:text-text-primary">{value}</p>
+      <p className="mt-1 text-sm text-text-muted dark:text-text-secondary">{detail}</p>
     </div>
   )
 }

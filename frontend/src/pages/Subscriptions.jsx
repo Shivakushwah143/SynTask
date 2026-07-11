@@ -1,25 +1,17 @@
-import { useState, useEffect } from 'react'
-import { CreditCard, CheckCircle, XCircle, Calendar, DollarSign } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { CheckCircle } from 'lucide-react'
 import { companiesAPI } from '../api/companies'
 import { useAuthStore } from '../store/authStore'
-import toast from 'react-hot-toast'
 
 const Subscriptions = () => {
   const { user } = useAuthStore()
   const [subscription, setSubscription] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (user?.company_id) {
-      fetchSubscription()
-    }
-  }, [user])
-
-  const fetchSubscription = async () => {
+  const fetchSubscription = useCallback(async () => {
     try {
       setLoading(true)
-      const company = await companiesAPI.getCompany(user.company_id)
-      // Subscription data would be in company object
+      await companiesAPI.getCompany(user.company_id)
       setSubscription({
         plan: 'Professional',
         status: 'active',
@@ -33,7 +25,13 @@ const Subscriptions = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user?.company_id])
+
+  useEffect(() => {
+    if (user?.company_id) {
+      fetchSubscription()
+    }
+  }, [user?.company_id, fetchSubscription])
 
   if (loading) {
     return <div className="flex items-center justify-center h-64">Loading...</div>

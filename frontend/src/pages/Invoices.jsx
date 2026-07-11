@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
-import { CreditCard, Database, Download, FileText, Plus, Trash2, X, Search, Eye, Send } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { FileText, Plus, Trash2, X, Search, Eye, Send, Mail } from 'lucide-react'
 import { invoicesAPI } from '../api/invoices'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
+import { EmailComposer } from '../components/EmailComposer'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -20,6 +21,7 @@ const Invoices = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [composerOpen, setComposerOpen] = useState(false)
   
   const [formData, setFormData] = useState({
     invoice_type: 'proforma',
@@ -43,12 +45,7 @@ const Invoices = () => {
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
 
-  useEffect(() => {
-    loadInvoices()
-    loadClients()
-  }, [])
-
-  const loadInvoices = async () => {
+  const loadInvoices = useCallback(async () => {
     try {
       setLoading(true)
       const params = {}
@@ -63,16 +60,21 @@ const Invoices = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [invoiceTypeFilter, statusFilter])
 
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
     try {
       const data = await clientsAPI.listClients({})
       setClients(data.clients || [])
     } catch (error) {
       console.error('Error loading clients:', error)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadInvoices()
+    loadClients()
+  }, [loadInvoices, loadClients])
 
   const handleClientSelect = async (clientId) => {
     if (!clientId) {
@@ -150,6 +152,8 @@ const Invoices = () => {
     }
   }
 
+  const totals = calculateTotals()
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!formData.client_id) {
@@ -188,7 +192,7 @@ const Invoices = () => {
       toast.success('Invoice created successfully')
       setShowCreateModal(false)
       resetForm()
-      loadInvoices()
+      await loadInvoices()
     } catch (error) {
       console.error('Error creating invoice:', error)
       toast.error(error.response?.data?.detail || 'Failed to create invoice')
@@ -298,7 +302,7 @@ const Invoices = () => {
     try {
       await invoicesAPI.sendInvoiceEmail(invoiceId)
       toast.success('Invoice email sent successfully')
-      loadInvoices()
+      await loadInvoices()
     } catch (error) {
       console.error('Error sending invoice email:', error)
       toast.error(error.response?.data?.detail || 'Failed to send invoice email')
@@ -325,7 +329,7 @@ const Invoices = () => {
         },
         duration: 3000,
       })
-      loadInvoices()
+      await loadInvoices()
     } catch (error) {
       console.error('Error deleting invoice:', error)
       toast.error('Failed to delete invoice')
@@ -365,14 +369,13 @@ const Invoices = () => {
           <p className="text-gray-600 text-xs mt-0.5">Generate and manage invoices for your clients</p>
         </div>
         {(isCompanyAdmin || isLead) && (
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleSeedDemoInvoices}
-              disabled={seeding}
-              className="btn btn-secondary flex items-center space-x-2"
+              onClick={() => setComposerOpen(true)}
+              className="btn btn-primary flex items-center space-x-2"
             >
-              <Database className="h-4 w-4" />
-              <span>{seeding ? 'Seeding...' : 'Seed Demo'}</span>
+              <Mail className="h-4 w-4" />
+              <span>Send Email</span>
             </button>
             <button
               onClick={() => {
@@ -980,6 +983,20 @@ const Invoices = () => {
           </div>
         </div>
       )}
+
+      <EmailComposer
+        isOpen={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        initialData={{
+          to: selectedInvoice?.client_email ? [{ email: selectedInvoice.client_email, name: selectedInvoice.client_name || '' }] : [],
+          subject: selectedInvoice ? `Invoice ${selectedInvoice.invoice_number}` : 'Invoice follow-up',
+          html: '<p>Hello,</p><p></p>',
+          text: 'Hello,',
+          related_entity_type: 'invoice',
+          related_entity_id: selectedInvoice?.id || '',
+          related_module: 'billing',
+        }}
+      />
     </div>
   )
 }

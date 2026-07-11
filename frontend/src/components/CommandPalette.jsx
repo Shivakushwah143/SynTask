@@ -5,10 +5,11 @@ import { useDebounce } from '../hooks/useDebounce'
 import { Skeleton } from './ui'
 
 const COMMANDS = [
-  { id: 'dashboard', label: 'Open Dashboard', description: 'Return to the overview', href: '/dashboard', icon: Sparkles },
+  { id: 'workflow', label: 'Open Business Workflow', description: 'Continue the Lead-to-Reports lifecycle', href: '/workflow', icon: Sparkles },
+  { id: 'dashboard', label: 'Open Main Dashboard', description: 'Return to the workspace overview', href: '/dashboard', icon: Sparkles },
   { id: 'projects', label: 'Open Projects', description: 'View project workspace', href: '/projects', icon: FolderKanban },
   { id: 'tasks', label: 'Open Tasks', description: 'Review task list', href: '/tasks', icon: CheckSquare },
-  { id: 'calendar', label: 'Open Calendar', description: 'Check schedule', href: '/calendar', icon: CalendarDays },
+  { id: 'calendar', label: 'Open Workspace Calendar', description: 'Check workspace schedule', href: '/calendar', icon: CalendarDays },
   { id: 'meetings', label: 'Open Meetings', description: 'Review meeting cadence', href: '/meetings', icon: MessageSquareText },
 ]
 
@@ -69,23 +70,23 @@ export function CommandPalette({ isOpen, onClose }) {
   return (
     <div className="fixed inset-0 z-[80] flex items-start justify-center px-4 pt-24" role="dialog" aria-modal="true" aria-label="Command palette">
       <button type="button" className="absolute inset-0 cursor-default bg-black/50 backdrop-blur-[2px]" aria-label="Close command palette" onClick={onClose} />
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-surface-border bg-white shadow-modal dark:border-gray-800 dark:bg-gray-900">
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-surface-border bg-surface/95 shadow-modal dark:border-gray-700 dark:bg-black">
         <div className="flex items-center gap-3 border-b border-surface-border px-4 py-4 dark:border-gray-800">
-          <Search className="h-5 w-5 flex-none text-gray-400" />
+          <Search className="h-5 w-5 flex-none text-text-muted" />
           <input
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="min-w-0 flex-1 bg-transparent text-base text-gray-900 outline-none placeholder:text-gray-400 dark:text-gray-100 dark:placeholder:text-gray-500"
+            className="min-w-0 flex-1 bg-transparent text-base text-text-primary outline-none placeholder:text-text-muted dark:text-gray-100 dark:placeholder:text-gray-500"
             placeholder="Search commands..."
             aria-label="Command search"
           />
           {query ? (
-            <button type="button" onClick={() => setQuery('')} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800" aria-label="Clear command search">
+            <button type="button" onClick={() => setQuery('')} className="rounded-xl p-2 text-text-muted hover:bg-surface-muted dark:text-gray-400 dark:hover:bg-gray-800" aria-label="Clear command search">
               <X className="h-4 w-4" />
             </button>
           ) : (
-            <kbd className="hidden rounded border border-gray-200 px-2 py-1 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400 sm:inline-flex">ESC</kbd>
+            <kbd className="hidden rounded border border-surface-border px-2 py-1 text-xs text-text-muted dark:border-gray-700 dark:text-gray-400 sm:inline-flex">ESC</kbd>
           )}
         </div>
         <div className="max-h-[28rem] overflow-y-auto p-2">
@@ -95,7 +96,7 @@ export function CommandPalette({ isOpen, onClose }) {
             </div>
           ) : null}
           {!loading && results.length === 0 ? (
-            <div className="px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            <div className="px-6 py-10 text-center text-sm text-text-secondary dark:text-gray-400">
               No commands found.
             </div>
           ) : null}
@@ -106,14 +107,14 @@ export function CommandPalette({ isOpen, onClose }) {
                 key={command.id}
                 type="button"
                 onClick={() => selectCommand(command)}
-                className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-gray-50 focus:bg-gray-50 dark:hover:bg-gray-800 dark:focus:bg-gray-800"
+                className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-surface-muted focus:bg-surface-muted dark:hover:bg-gray-800 dark:focus:bg-gray-800"
               >
-                <span className="rounded-2xl bg-gray-100 p-2 dark:bg-gray-800">
-                  <Icon className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                <span className="rounded-2xl bg-surface-muted p-2 dark:bg-gray-800">
+                  <Icon className="h-4 w-4 text-text-secondary dark:text-gray-300" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">{command.label}</span>
-                  <span className="block text-xs text-gray-500 dark:text-gray-400">{command.description}</span>
+                  <span className="block text-sm font-medium text-text-primary dark:text-gray-100">{command.label}</span>
+                  <span className="block text-xs text-text-secondary dark:text-gray-400">{command.description}</span>
                 </span>
               </button>
             )
