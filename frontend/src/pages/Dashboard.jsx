@@ -59,6 +59,11 @@ const readStoredSectionOrder = () => {
   }
 }
 
+const getDefaultSectionPanelCollapsed = () => {
+  if (typeof window === 'undefined') return true
+  return !window.matchMedia('(min-width: 1280px)').matches
+}
+
 const normalizeSectionOrder = (sections, storedOrder) => {
   const sectionIds = sections.map((section) => section.id)
   const validStoredIds = storedOrder.filter((id) => sectionIds.includes(id))
@@ -82,7 +87,7 @@ const Dashboard = () => {
   const [revenueMode, setRevenueMode] = useState('Accrual')
   const [sectionVisibility, setSectionVisibility] = useState(readStoredSectionVisibility)
   const [sectionOrder, setSectionOrder] = useState(readStoredSectionOrder)
-  const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(false)
+  const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
   const [sectionSearch, setSectionSearch] = useState('')
 
   useEffect(() => {

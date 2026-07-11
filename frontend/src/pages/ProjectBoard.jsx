@@ -8,6 +8,7 @@ import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { useAuthStore } from '../store/authStore'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
@@ -19,6 +20,21 @@ const DEFAULT_STATUSES = [
   { id: 'in_review', label: 'In Review' },
   { id: 'completed', label: 'Completed' },
 ]
+
+const STATUS_COLORS = {
+  todo: '#7C6FE0',
+  in_progress: '#FF8A4C',
+  in_review: '#F59E0B',
+  completed: '#2FB47C',
+  done: '#2FB47C',
+}
+
+const TASK_PRIORITY_STYLES = {
+  critical: 'border-rose-200 bg-rose-50/75 hover:border-rose-300 dark:border-rose-700/55 dark:bg-[rgb(45_24_24_/_0.96)] dark:hover:border-rose-500/75',
+  high: 'border-orange-200 bg-orange-50/75 hover:border-orange-300 dark:border-orange-700/55 dark:bg-[rgb(45_30_20_/_0.96)] dark:hover:border-orange-500/75',
+  medium: 'border-amber-200 bg-amber-50/70 hover:border-amber-300 dark:border-amber-700/55 dark:bg-[rgb(42_34_20_/_0.96)] dark:hover:border-amber-500/75',
+  low: 'border-emerald-200 bg-emerald-50/70 hover:border-emerald-300 dark:border-emerald-700/55 dark:bg-[rgb(22_38_30_/_0.96)] dark:hover:border-emerald-500/75',
+}
 
 export default function ProjectBoard() {
   const { projectId } = useParams()
@@ -217,11 +233,17 @@ export default function ProjectBoard() {
     }
   }
   const projectOwner = projectRecord.lead_name || projectRecord.owner_name || projectRecord.assigned_to_name || projectRecord.created_by_name || 'Unassigned'
+  const statusChartData = statuses.map((status) => ({
+    id: status.id,
+    name: status.label || status.id.replace(/_/g, ' '),
+    value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === status.id).length,
+    color: STATUS_COLORS[status.id] || '#4285F4',
+  })).filter((item) => item.value > 0)
   const overviewCards = [
-    { title: 'Tasks', value: allProjectTasks.length },
-    { title: 'Complete', value: completedTasks },
-    { title: 'In progress', value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === 'in_progress').length },
-    { title: 'Completion', value: `${projectRecord.statistics?.completion_percentage ?? completionPercentage}%` },
+    { title: 'Tasks', value: allProjectTasks.length, color: '#4285F4', helper: 'Total scope' },
+    { title: 'Complete', value: completedTasks, color: '#2FB47C', helper: 'Closed work' },
+    { title: 'In progress', value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === 'in_progress').length, color: '#FF8A4C', helper: 'Active now' },
+    { title: 'Completion', value: `${projectRecord.statistics?.completion_percentage ?? completionPercentage}%`, color: '#7C6FE0', helper: 'Delivery health' },
   ]
 
   return (
@@ -249,25 +271,51 @@ export default function ProjectBoard() {
         )}
       />
 
-      <section className="card overflow-hidden">
-        <div className="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+      <section className="overflow-hidden rounded-2xl border border-primary-200/60 bg-[linear-gradient(135deg,rgba(255,250,244,0.98),rgba(248,242,232,0.92))] shadow-[0_18px_45px_rgba(63,49,37,0.08)] dark:border-[#5a4635] dark:bg-[linear-gradient(135deg,rgba(36,28,20,0.98),rgba(20,16,12,0.96))] dark:shadow-[0_20px_50px_rgba(0,0,0,0.28)]">
+        <div className="grid gap-0 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]">
           <div className="p-5">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Project overview</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Project detail</p>
               <Badge label={projectStatus.replace(/_/g, ' ')} colorKey={projectStatus} />
               {projectRecord.type ? <Badge label={projectRecord.type} colorKey="scheduled" /> : null}
             </div>
-            <p className="mt-3 max-w-4xl text-sm leading-6 text-text-secondary dark:text-text-secondary">{projectDescription}</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-3 grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px]">
+              <div className="min-w-0">
+                <h2 className="text-xl font-semibold text-text-primary dark:text-text-primary">Delivery overview</h2>
+                <p className="mt-2 max-w-4xl text-sm leading-6 text-text-secondary dark:text-text-secondary">{projectDescription}</p>
+                <div className="mt-4">
+                  <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                    <span>Completion</span>
+                    <span>{projectRecord.statistics?.completion_percentage ?? completionPercentage}%</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-white/70 dark:bg-black/55">
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,#2FB47C,#FF8A4C,#7C6FE0)] transition-all duration-300"
+                      style={{ width: `${Math.max(0, Math.min(100, projectRecord.statistics?.completion_percentage ?? completionPercentage))}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+              <ProjectStatusDonut data={statusChartData} completion={projectRecord.statistics?.completion_percentage ?? completionPercentage} />
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {overviewCards.map((card) => (
-                <div key={card.title} className="rounded-xl border border-border bg-surface-muted px-4 py-3 dark:border-border dark:bg-black/60">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{card.title}</p>
-                  <p className="mt-2 text-xl font-semibold tabular-nums text-text-primary dark:text-text-primary">{card.value}</p>
+                <div key={card.title} className="rounded-xl border border-white/70 bg-white/75 px-4 py-3 shadow-sm dark:border-white/10 dark:bg-black/35">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{card.title}</p>
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: card.color }} />
+                  </div>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums text-text-primary dark:text-text-primary">{card.value}</p>
+                  <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">{card.helper}</p>
                 </div>
               ))}
             </div>
           </div>
-          <aside className="border-t border-border bg-surface-muted/70 p-5 dark:border-border dark:bg-black/40 lg:border-l lg:border-t-0">
+          <aside className="border-t border-primary-200/60 bg-white/40 p-5 dark:border-[#5a4635] dark:bg-black/25 xl:border-l xl:border-t-0">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-text-primary dark:text-text-primary">Project signals</h3>
+              <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">Owner, delivery, and build context.</p>
+            </div>
             <div className="grid gap-3 text-sm text-text-secondary dark:text-text-secondary">
               <ProjectOverviewLine label="Owner" value={projectOwner} />
               <ProjectOverviewLine label="Start" value={formatProjectDate(projectRecord.start_date)} />
@@ -373,10 +421,13 @@ export default function ProjectBoard() {
           >
             {statuses.map((status) => {
               const tasks = filteredBoard[status.id] || []
+              const statusColor = STATUS_COLORS[status.id] || '#4285F4'
               return (
-                <section key={status.id} className="card flex min-h-0 flex-col p-4">
+                <section key={status.id} className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-primary-200/50 bg-[linear-gradient(180deg,rgba(255,250,244,0.96),rgba(255,255,255,0.86))] shadow-[0_14px_34px_rgba(63,49,37,0.06)] dark:border-[#4a3b2e] dark:bg-[linear-gradient(180deg,rgba(36,28,20,0.96),rgba(16,13,10,0.92))] dark:shadow-[0_18px_42px_rgba(0,0,0,0.22)]">
+                  <div className="h-1.5 w-full" style={{ backgroundColor: statusColor }} />
+                  <div className="flex min-h-0 flex-1 flex-col p-4">
                   <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
+                    <div className="min-w-0">
                       <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{status.label || status.id}</h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400">{tasks.length} tasks</p>
                     </div>
@@ -384,12 +435,13 @@ export default function ProjectBoard() {
                   </div>
                   <div className="space-y-3 overflow-y-auto">
                     {tasks.length ? tasks.map((task) => (
-                      <article key={task.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
+                      <article key={task.id} className={`rounded-2xl border p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md dark:shadow-[0_12px_28px_rgba(0,0,0,0.22)] ${TASK_PRIORITY_STYLES[(task.priority || 'medium').toLowerCase()] || TASK_PRIORITY_STYLES.medium}`}>
+                        <div className="mb-3 h-1 rounded-full shadow-[0_0_14px_rgba(255,138,76,0.24)]" style={{ backgroundColor: statusColor }} />
                         <button type="button" onClick={() => navigate(`/tasks/${task.id}`)} className="w-full text-left">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{task.title}</p>
-                              <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">{task.description || 'No description.'}</p>
+                              <p className="text-sm font-semibold text-gray-900 dark:text-[#fff7ed]">{task.title}</p>
+                              <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-[#d8cbbb]">{task.description || 'No description.'}</p>
                             </div>
                             <Badge label={task.priority || 'medium'} colorKey={task.priority || 'medium'} />
                           </div>
@@ -411,6 +463,7 @@ export default function ProjectBoard() {
                     )) : (
                       <EmptyState title="No tasks in this column" description="Move work here or create a new task." action={canManageColumns ? <Button size="sm" onClick={() => { setSelectedStatus(status.id); setShowCreateModal(true) }}><Plus className="h-4 w-4" /> Add task</Button> : null} />
                     )}
+                  </div>
                   </div>
                 </section>
               )
@@ -493,18 +546,54 @@ export default function ProjectBoard() {
 
 function BoardMetric({ title, value }) {
   return (
-    <div className="card p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{title}</p>
-      <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+    <div className="card p-4 transition-colors hover:border-primary-300 dark:hover:border-primary-700">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">{title}</p>
+      <p className="mt-2 text-3xl font-semibold tabular-nums text-text-primary dark:text-text-primary">{value}</p>
     </div>
   )
 }
 
 function ProjectOverviewLine({ label, value }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface px-3 py-2 dark:border-border dark:bg-black/50">
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-white/70 bg-white/70 px-3 py-2 dark:border-white/10 dark:bg-black/35">
       <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{label}</span>
       <span className="min-w-0 truncate text-right font-medium text-text-primary dark:text-text-primary">{value}</span>
+    </div>
+  )
+}
+
+function ProjectStatusDonut({ data, completion }) {
+  const hasData = data.length > 0
+  return (
+    <div className="rounded-2xl border border-white/70 bg-white/65 p-3 shadow-sm dark:border-white/10 dark:bg-black/30">
+      <div className="relative h-40">
+        {hasData ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={data} dataKey="value" nameKey="name" innerRadius={48} outerRadius={68} paddingAngle={3} stroke="none">
+                {data.map((entry) => <Cell key={entry.id} fill={entry.color} />)}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center rounded-full border border-dashed border-border text-xs text-text-muted">No tasks</div>
+        )}
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-semibold tabular-nums text-text-primary dark:text-text-primary">{completion}%</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Done</span>
+        </div>
+      </div>
+      <div className="mt-2 grid gap-1.5">
+        {(hasData ? data : [{ id: 'empty', name: 'No tasks', value: 0, color: '#9ca3af' }]).slice(0, 4).map((item) => (
+          <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
+            <span className="inline-flex min-w-0 items-center gap-2 text-text-secondary dark:text-text-secondary">
+              <span className="h-2 w-2 flex-none rounded-full" style={{ backgroundColor: item.color }} />
+              <span className="truncate capitalize">{item.name}</span>
+            </span>
+            <span className="font-semibold tabular-nums text-text-primary dark:text-text-primary">{item.value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
