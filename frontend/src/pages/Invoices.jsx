@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, Plus, Trash2, X, Search, Eye, Send } from 'lucide-react'
+import { CreditCard, Database, Download, FileText, Plus, Trash2, X, Search, Eye, Send } from 'lucide-react'
 import { invoicesAPI } from '../api/invoices'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -37,6 +37,8 @@ const Invoices = () => {
   
   const [clientDetails, setClientDetails] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const [seeding, setSeeding] = useState(false)
+  const [recordingPayment, setRecordingPayment] = useState(false)
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
@@ -162,8 +164,6 @@ const Invoices = () => {
 
     try {
       setSubmitting(true)
-      const totals = calculateTotals()
-      
       const invoiceData = {
         invoice_type: formData.invoice_type,
         include_tax: formData.include_tax,
@@ -223,6 +223,77 @@ const Invoices = () => {
     }
   }
 
+  const handleDownloadInvoice = async (invoice) => {
+    try {
+      const response = await invoicesAPI.downloadInvoicePdf(invoice.id)
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${invoice.invoice_number || 'invoice'}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      toast.success('Invoice PDF downloaded')
+    } catch (error) {
+      console.error('Error downloading invoice PDF:', error)
+      toast.error(error.response?.data?.detail || 'Failed to download invoice PDF')
+    }
+  }
+
+  const handleSeedDemoInvoices = async () => {
+    try {
+      setSeeding(true)
+      const result = await invoicesAPI.seedDemoInvoices()
+      toast.success(result.message || 'Demo invoices are ready')
+      await loadClients()
+      await loadInvoices()
+    } catch (error) {
+      console.error('Error seeding demo invoices:', error)
+      toast.error(error.response?.data?.detail || 'Failed to seed demo invoices')
+    } finally {
+      setSeeding(false)
+    }
+  }
+
+  const handleRecordFullPayment = async (invoice) => {
+    const outstandingAmount = Number(invoice.outstanding_amount ?? invoice.total_amount ?? 0)
+    if (outstandingAmount <= 0) {
+      toast.success('Invoice is already fully paid')
+      return
+    }
+
+    try {
+      setRecordingPayment(true)
+      const result = await invoicesAPI.recordPayment(invoice.id, {
+        amount: outstandingAmount,
+        payment_date: format(new Date(), 'yyyy-MM-dd'),
+        payment_method: 'local_test_payment',
+        reference_number: `LOCAL-${Date.now()}`,
+        notes: 'Local test payment recorded before Razorpay go-live',
+      })
+      setSelectedInvoice(result.invoice)
+      toast.success('Payment recorded and invoice updated')
+      await loadInvoices()
+    } catch (error) {
+      console.error('Error recording payment:', error)
+      toast.error(error.response?.data?.detail || 'Failed to record payment')
+    } finally {
+      setRecordingPayment(false)
+    }
+  }
+
+  const handleCreateRazorpayOrder = async (invoice) => {
+    try {
+      const result = await invoicesAPI.createRazorpayOrder(invoice.id)
+      toast.success(`Razorpay order ready: ${result.order_id}`)
+    } catch (error) {
+      console.error('Error creating Razorpay invoice order:', error)
+      toast.error(error.response?.data?.detail || 'Razorpay invoice payments are disabled or not configured')
+    }
+  }
+
   const handleSendEmail = async (invoiceId) => {
     try {
       await invoicesAPI.sendInvoiceEmail(invoiceId)
@@ -261,6 +332,8 @@ const Invoices = () => {
     }
   }
 
+  const totals = calculateTotals()
+
   const filteredInvoices = invoices.filter(invoice => {
     const matchesSearch = !searchQuery || 
       invoice.invoice_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -292,16 +365,26 @@ const Invoices = () => {
           <p className="text-gray-600 text-xs mt-0.5">Generate and manage invoices for your clients</p>
         </div>
         {(isCompanyAdmin || isLead) && (
-          <button
-            onClick={() => {
-              resetForm()
-              setShowCreateModal(true)
-            }}
-            className="btn btn-primary flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Create Invoice</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleSeedDemoInvoices}
+              disabled={seeding}
+              className="btn btn-secondary flex items-center space-x-2"
+            >
+              <Database className="h-4 w-4" />
+              <span>{seeding ? 'Seeding...' : 'Seed Demo'}</span>
+            </button>
+            <button
+              onClick={() => {
+                resetForm()
+                setShowCreateModal(true)
+              }}
+              className="btn btn-primary flex items-center space-x-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Create Invoice</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -424,6 +507,13 @@ const Invoices = () => {
                         title="View"
                       >
                         <Eye className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDownloadInvoice(invoice)}
+                        className="p-1 text-gray-600 hover:text-primary-600"
+                        title="Download PDF"
+                      >
+                        <Download className="h-4 w-4" />
                       </button>
                       {!invoice.email_sent && invoice.status === 'draft' && (
                         <button
@@ -818,12 +908,60 @@ const Invoices = () => {
                         <span>Total:</span>
                         <span>₹{selectedInvoice.total_amount?.toLocaleString()}</span>
                       </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-600">Received:</span>
+                        <span className="font-semibold">INR {selectedInvoice.total_received?.toLocaleString() || "0"}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-600">Outstanding:</span>
+                        <span className="font-semibold">INR {selectedInvoice.outstanding_amount?.toLocaleString() || "0"}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
+                {selectedInvoice.payments?.length > 0 && (
+                  <div className="border-t pt-4">
+                    <h3 className="text-xs font-semibold text-gray-700 mb-2">Payments</h3>
+                    <div className="space-y-2">
+                      {selectedInvoice.payments.map((payment, index) => (
+                        <div key={index} className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                          <span>{payment.payment_method || 'Payment'} {payment.reference_number ? '- ' + payment.reference_number : ''}</span>
+                          <span className="font-semibold">INR {Number(payment.amount || 0).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Actions */}
-                <div className="border-t pt-4 flex items-center justify-end space-x-3">
+                <div className="border-t pt-4 flex flex-wrap items-center justify-end gap-3">
+                  <button
+                    onClick={() => handleDownloadInvoice(selectedInvoice)}
+                    className="btn btn-secondary flex items-center space-x-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>Download PDF</span>
+                  </button>
+                  {(isCompanyAdmin || isLead) && Number(selectedInvoice.outstanding_amount ?? selectedInvoice.total_amount ?? 0) > 0 && (
+                    <button
+                      onClick={() => handleRecordFullPayment(selectedInvoice)}
+                      disabled={recordingPayment}
+                      className="btn btn-secondary flex items-center space-x-2"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      <span>{recordingPayment ? 'Recording...' : 'Record Full Payment'}</span>
+                    </button>
+                  )}
+                  {(isCompanyAdmin || isLead) && Number(selectedInvoice.outstanding_amount ?? selectedInvoice.total_amount ?? 0) > 0 && (
+                    <button
+                      onClick={() => handleCreateRazorpayOrder(selectedInvoice)}
+                      className="btn btn-secondary flex items-center space-x-2"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      <span>Razorpay Order</span>
+                    </button>
+                  )}
                   {!selectedInvoice.email_sent && selectedInvoice.status === 'draft' && (
                     <button
                       onClick={() => {

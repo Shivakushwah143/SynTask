@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     # Payment Gateway - Razorpay
     RAZORPAY_KEY_ID: Optional[str] = None
     RAZORPAY_KEY_SECRET: Optional[str] = None
+    RAZORPAY_INVOICE_PAYMENTS_ENABLED: bool = False
     
     # Zoom Integration
     ZOOM_API_KEY: Optional[str] = None

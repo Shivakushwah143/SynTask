@@ -29,12 +29,14 @@ const MainLayout = () => {
   const [searchOpen, setSearchOpen] = useState(false)
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
+  const isDashboardPage = location.pathname === '/dashboard' || location.pathname === '/'
   const openSearch = () => setSearchOpen(true)
-  const breadcrumb = location.pathname
+  const breadcrumbParts = location.pathname
     .split('/')
     .filter(Boolean)
     .map((segment) => BREADCRUMB_LABELS[segment] || segment)
-    .join(' / ')
+  const breadcrumb = breadcrumbParts.join(' / ')
+  const pageTitle = breadcrumbParts[breadcrumbParts.length - 1] || 'Dashboard'
 
   useKeyboardShortcut('k', openSearch, { ctrlKey: true })
   useKeyboardShortcut('k', openSearch, { metaKey: true })
@@ -47,7 +49,7 @@ const MainLayout = () => {
       {/* Main Content */}
       <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <Header title="Dashboard" subtitle="Workspace overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
+        <Header title={pageTitle} subtitle="Workspace overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} showAiFullscreenAction={isDashboardPage} />
 
         {/* Page Content */}
         <main className={`min-w-0 flex-1 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
@@ -60,8 +62,3 @@ const MainLayout = () => {
 }
 
 export default MainLayout
-
-
-
-
-
