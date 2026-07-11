@@ -45,6 +45,7 @@ import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
 import { BUSINESS_WORKFLOW_STEPS } from "../config/businessWorkflow";
 import { canAccessOwner } from "../config/domainOwnership";
+import { HR_MODULES, HR_ROLES } from "../config/hrModules";
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
 const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
@@ -246,6 +247,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
+      name: "HR",
+      href: "/hr",
+      match: "/hr",
+      icon: UserCog,
+      roles: HR_ROLES,
+    },
+    {
       name: "Bulk Lead Import",
       href: "/bulk-leads",
       icon: Megaphone,
@@ -396,6 +404,10 @@ const Sidebar = ({ isOpen, onClose }) => {
   const filteredCrmNavigation = crmNavigation
     .filter((item) => item && !['/crm/pipeline', '/crm/leads'].includes(item.href) && (item.roles ? item.roles.includes(userRole) : true));
 
+  const hrNavigation = HR_MODULES
+    .filter((module) => module.roles.includes(userRole) && (hasModule(module.module) || module.key === "recruitment"))
+    .flatMap((module) => module.navigation.map((item) => ({ ...item, match: item.href === module.basePath ? module.basePath : undefined })));
+
   const workflowIcons = {
     lead: UserRoundSearch,
     qualification: GitBranch,
@@ -447,6 +459,11 @@ const Sidebar = ({ isOpen, onClose }) => {
       key: "crm",
       label: "CRM Tools",
       items: filteredCrmNavigation,
+    },
+    {
+      key: "hr",
+      label: "HR Department",
+      items: hrNavigation,
     },
     {
       key: "ai-marketing",

@@ -30,6 +30,7 @@ from app.api.v1.endpoints import sales_categories, sales_products, sales_contact
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing
 from fastapi import Depends
 from app.api.dependencies import require_module
+from app.recruitment.routes import careers_router, router as recruitment_router
 
 api_router = APIRouter()
 
@@ -130,6 +131,8 @@ api_router.include_router(content_calendar.router, prefix="/content-calendar", t
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
+api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"])
+api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"])
 api_router.include_router(creative.router, prefix="/creative", tags=["Creative Director"])

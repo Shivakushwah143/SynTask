@@ -73,6 +73,11 @@ from app.models.attendance import (
     MonitoringSession, CameraSession, ScreenShareSession
 )
 from app.models.capability import seed_default_capabilities
+from app.recruitment.models import (
+    Application, Candidate, CandidateNote, CandidateTimeline, Interview,
+    InterviewFeedback, Offer, RecruitmentAttachment, RecruitmentAudit,
+    RecruitmentImportJob, RecruitmentJob, RecruitmentOutbox, Resume,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +218,19 @@ async def init_db():
                 MonitoringSession,
                 CameraSession,
                 ScreenShareSession,
+                RecruitmentJob,
+                Candidate,
+                Application,
+                Resume,
+                Interview,
+                InterviewFeedback,
+                Offer,
+                CandidateNote,
+                RecruitmentAttachment,
+                RecruitmentImportJob,
+                CandidateTimeline,
+                RecruitmentOutbox,
+                RecruitmentAudit,
             ]
         )
 

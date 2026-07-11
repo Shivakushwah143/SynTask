@@ -1,0 +1,2 @@
+"""Tenant-scoped recruitment domain."""
+
