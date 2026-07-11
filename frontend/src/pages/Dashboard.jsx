@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowRight, CalendarDays, CheckSquare, ChevronRight, FolderKanban, Search, SlidersHorizontal, Sparkles, TrendingUp } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUp, CalendarDays, CheckSquare, ChevronRight, FolderKanban, GripVertical, Search, SlidersHorizontal, Sparkles, TrendingUp } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -37,6 +37,7 @@ import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthDat
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const PROJECT_STATUS_COLORS = { active: '#4285F4', planning: '#7C6FE0', completed: '#2FB47C', on_hold: '#FFB020' }
 const DASHBOARD_SECTION_VISIBILITY_KEY = 'syntask-dashboard-section-visibility'
+const DASHBOARD_SECTION_ORDER_KEY = 'syntask-dashboard-section-order'
 
 const readStoredSectionVisibility = () => {
   if (typeof window === 'undefined') return {}
@@ -46,6 +47,28 @@ const readStoredSectionVisibility = () => {
   } catch {
     return {}
   }
+}
+
+const readStoredSectionOrder = () => {
+  if (typeof window === 'undefined') return []
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(DASHBOARD_SECTION_ORDER_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+  } catch {
+    return []
+  }
+}
+
+const getDefaultSectionPanelCollapsed = () => {
+  if (typeof window === 'undefined') return true
+  return !window.matchMedia('(min-width: 1280px)').matches
+}
+
+const normalizeSectionOrder = (sections, storedOrder) => {
+  const sectionIds = sections.map((section) => section.id)
+  const validStoredIds = storedOrder.filter((id) => sectionIds.includes(id))
+  const missingIds = sectionIds.filter((id) => !validStoredIds.includes(id))
+  return [...validStoredIds, ...missingIds]
 }
 
 const Dashboard = () => {
@@ -63,7 +86,8 @@ const Dashboard = () => {
   const [metrics, setMetrics] = useState(null)
   const [revenueMode, setRevenueMode] = useState('Accrual')
   const [sectionVisibility, setSectionVisibility] = useState(readStoredSectionVisibility)
-  const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(false)
+  const [sectionOrder, setSectionOrder] = useState(readStoredSectionOrder)
+  const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
   const [sectionSearch, setSectionSearch] = useState('')
 
   useEffect(() => {
@@ -133,6 +157,14 @@ const Dashboard = () => {
       // Ignore storage failures, such as private browsing restrictions.
     }
   }, [sectionVisibility])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DASHBOARD_SECTION_ORDER_KEY, JSON.stringify(sectionOrder))
+    } catch {
+      // Ignore storage failures, such as private browsing restrictions.
+    }
+  }, [sectionOrder])
 
   const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d').toUpperCase(), [])
 
@@ -218,6 +250,18 @@ const Dashboard = () => {
 
   const taskDuePriorityData = buildTaskDuePriorityData(recentTasks)
   const projectHealthChartData = buildProjectHealthData(projects)
+  const reportMetricCards = [
+    { label: 'Active Tasks', value: recentTasks.length, route: '/tasks' },
+    { label: 'Projects', value: projects.length, route: '/projects' },
+    { label: 'Meetings', value: upcomingMeetings.length, route: '/meetings' },
+    { label: role === ROLE.EMPLOYEE ? 'Requests' : 'Priority Items', value: role === ROLE.EMPLOYEE ? recentTickets.length : priorityTasks.length, route: role === ROLE.EMPLOYEE ? '/tickets' : '/tasks' },
+  ]
+  const reportGraphData = [
+    { name: 'Tasks', value: recentTasks.length, route: '/tasks' },
+    { name: 'Projects', value: projects.length, route: '/projects' },
+    { name: 'Meetings', value: upcomingMeetings.length, route: '/meetings' },
+    { name: 'High Priority', value: priorityTasks.length, route: '/tasks' },
+  ]
 
   const navigateFromChart = (entry, fallback) => {
     const route = entry?.payload?.route || entry?.route || fallback
@@ -244,6 +288,7 @@ const Dashboard = () => {
     { id: 'snapshot-cards', name: 'Snapshot Cards' },
     { id: 'sales-pipeline', name: 'Revenue & Pipeline' },
     { id: 'sales-performance', name: 'Sales Performance' },
+    { id: 'reports', name: 'Reports' },
     { id: 'employee-attendance', name: 'My Attendance', available: role === ROLE.EMPLOYEE && Boolean(attendanceToday) },
     { id: 'workplace-attendance', name: 'Workplace Attendance', available: role !== ROLE.EMPLOYEE && Boolean(attendanceStats) },
     { id: 'ai-briefing', name: 'AI Briefing Center' },
@@ -252,9 +297,39 @@ const Dashboard = () => {
     { id: 'recent-activity', name: 'Recent Activity' },
   ].filter((section) => section.available !== false)
 
+  const orderedDashboardSections = normalizeSectionOrder(dashboardSections, sectionOrder)
+    .map((id) => dashboardSections.find((section) => section.id === id))
+    .filter(Boolean)
   const visibleSectionCount = dashboardSections.filter((section) => sectionVisibility[section.id] !== false).length
+  const getSectionOrder = (sectionId) => {
+    const index = orderedDashboardSections.findIndex((section) => section.id === sectionId)
+    return index === -1 ? 100 : index + 10
+  }
   const toggleDashboardSection = (sectionId) => {
     setSectionVisibility((current) => ({ ...current, [sectionId]: current[sectionId] === false }))
+  }
+  const moveDashboardSection = (sectionId, targetId) => {
+    if (!sectionId || !targetId || sectionId === targetId) return
+    setSectionOrder((current) => {
+      const next = normalizeSectionOrder(dashboardSections, current)
+      const fromIndex = next.indexOf(sectionId)
+      const toIndex = next.indexOf(targetId)
+      if (fromIndex === -1 || toIndex === -1) return next
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, moved)
+      return next
+    })
+  }
+  const nudgeDashboardSection = (sectionId, direction) => {
+    setSectionOrder((current) => {
+      const next = normalizeSectionOrder(dashboardSections, current)
+      const index = next.indexOf(sectionId)
+      const targetIndex = index + direction
+      if (index === -1 || targetIndex < 0 || targetIndex >= next.length) return next
+      const [moved] = next.splice(index, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
   }
   const setAllDashboardSections = (visible) => {
     setSectionVisibility((current) => {
@@ -268,14 +343,14 @@ const Dashboard = () => {
   const renderDashboardSection = (sectionId, content) => {
     if (sectionVisibility[sectionId] === false) return null
     return (
-      <div key={sectionId} className="transition-all duration-300 ease-out">
+      <div key={sectionId} style={{ order: getSectionOrder(sectionId) }} className="transition-all duration-300 ease-out">
         {content}
       </div>
     )
   }
 
   return (
-    <div className="relative space-y-6 pb-24 pr-0 xl:pb-0 xl:pr-16">
+    <div className="relative flex flex-col gap-6 pb-24 pr-0 xl:pb-0 xl:pr-16">
       <PageHeader
         title="Dashboard"
         description="Command center for work, meetings, and AI briefings."
@@ -298,7 +373,7 @@ const Dashboard = () => {
       />
 
       <DashboardSectionVisibilityPanel
-        sections={dashboardSections}
+        sections={orderedDashboardSections}
         visibility={sectionVisibility}
         visibleCount={visibleSectionCount}
         collapsed={sectionPanelCollapsed}
@@ -307,6 +382,8 @@ const Dashboard = () => {
         onToggleCollapsed={() => setSectionPanelCollapsed((collapsed) => !collapsed)}
         onCollapse={() => setSectionPanelCollapsed(true)}
         onToggleSection={toggleDashboardSection}
+        onMoveSection={moveDashboardSection}
+        onNudgeSection={nudgeDashboardSection}
         onSelectAll={() => setAllDashboardSections(true)}
         onClearAll={() => setAllDashboardSections(false)}
       />
@@ -451,6 +528,54 @@ const Dashboard = () => {
             <p className="text-sm text-text-secondary dark:text-text-secondary">This chart is available to sales-oriented roles only.</p>
           </ChartCard>
         )}
+      </section>
+      ))}
+
+      {renderDashboardSection('reports', (
+      <section className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {reportMetricCards.map((metric) => (
+            <button
+              key={metric.label}
+              type="button"
+              onClick={() => navigate(metric.route)}
+              className="card p-5 text-left transition hover:border-primary-300 hover:bg-primary-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/35 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
+              aria-label={`Open ${metric.label} report`}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">{metric.label}</p>
+              <p className="mt-3 text-3xl font-semibold text-text-primary dark:text-text-primary">{metric.value}</p>
+              <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Open detailed report</p>
+            </button>
+          ))}
+        </div>
+        <section className="grid gap-6 xl:grid-cols-2">
+          <ChartCard title="Report Metrics" period="Current View">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={reportGraphData} barCategoryGap="32%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/reports')}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <ChartTooltip />
+                  <Bar dataKey="value" name="Items" fill="#FF8A4C" radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+          <ChartCard title="Report Trend" period="Current View">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={reportGraphData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/reports')}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                  <ChartTooltip />
+                  <Line type="monotone" dataKey="value" name="Items" stroke="#2FB47C" strokeWidth={3} dot={{ r: 5, fill: '#2FB47C', cursor: 'pointer' }} activeDot={{ r: 7 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+        </section>
       </section>
       ))}
 
@@ -757,10 +882,13 @@ export function DashboardSectionVisibilityPanel({
   onToggleCollapsed,
   onCollapse,
   onToggleSection,
+  onMoveSection,
+  onNudgeSection,
   onSelectAll,
   onClearAll,
 }) {
   const panelRef = useRef(null)
+  const [draggingId, setDraggingId] = useState(null)
   const filteredSections = sections.filter((section) => section.name.toLowerCase().includes(search.trim().toLowerCase()))
 
   useEffect(() => {
@@ -838,30 +966,72 @@ export function DashboardSectionVisibilityPanel({
                 Select All
               </button>
               <button type="button" onClick={onClearAll} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-500 transition hover:bg-gray-100 dark:text-[var(--color-app-text-muted)] dark:hover:bg-[var(--color-app-surface-muted)]">
-                Clear All
+                Deselect All
               </button>
             </div>
 
             <div className="max-h-[42vh] space-y-1 overflow-y-auto pr-1 xl:max-h-[62vh]">
-              {filteredSections.map((section) => {
+              {filteredSections.map((section, index) => {
                 const checked = visibility[section.id] !== false
                 return (
-                  <label
+                  <div
                     key={section.id}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)]"
+                    draggable
+                    onDragStart={(event) => {
+                      setDraggingId(section.id)
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData('text/plain', section.id)
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault()
+                      event.dataTransfer.dropEffect = 'move'
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault()
+                      const sourceId = event.dataTransfer.getData('text/plain') || draggingId
+                      onMoveSection?.(sourceId, section.id)
+                      setDraggingId(null)
+                    }}
+                    onDragEnd={() => setDraggingId(null)}
+                    className={`flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-gray-700 transition hover:bg-gray-50 dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)] ${
+                      draggingId === section.id ? 'bg-primary-50/80 ring-1 ring-primary-200 dark:bg-primary-950/30 dark:ring-primary-800' : ''
+                    }`}
                   >
-                    <span className="relative inline-flex h-5 w-9 flex-none items-center">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => onToggleSection(section.id)}
-                        className="peer sr-only"
-                      />
-                      <span className="absolute inset-0 rounded-full bg-gray-200 transition peer-checked:bg-primary-600 dark:bg-gray-800" />
-                      <span className="absolute left-0.5 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">{section.name}</span>
-                  </label>
+                    <GripVertical className="h-4 w-4 flex-none cursor-grab text-gray-400 active:cursor-grabbing dark:text-[var(--color-app-text-muted)]" aria-hidden="true" />
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                      <span className="relative inline-flex h-5 w-9 flex-none items-center">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => onToggleSection(section.id)}
+                          className="peer sr-only"
+                        />
+                        <span className="absolute inset-0 rounded-full bg-gray-200 transition peer-checked:bg-primary-600 dark:bg-gray-800" />
+                        <span className="absolute left-0.5 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{section.name}</span>
+                    </label>
+                    <div className="flex flex-none items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onNudgeSection?.(section.id, -1)}
+                        disabled={index === 0}
+                        className="rounded-md p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-[var(--color-app-surface-muted)] dark:hover:text-[var(--color-app-text)]"
+                        aria-label={`Move ${section.name} up`}
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onNudgeSection?.(section.id, 1)}
+                        disabled={index === filteredSections.length - 1}
+                        className="rounded-md p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-[var(--color-app-surface-muted)] dark:hover:text-[var(--color-app-text)]"
+                        aria-label={`Move ${section.name} down`}
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 )
               })}
               {!filteredSections.length ? (

@@ -46,7 +46,7 @@ export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSear
             <Menu className="h-5 w-5" />
           </button>
           <div className="min-w-0 max-w-full flex-1 overflow-hidden">
-            <p className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:text-[var(--color-app-text-muted)]">SynTask</p>
+            {/* <p className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:text-[var(--color-app-text-muted)]">SynTask</p> */}
             <h1 className="truncate text-base font-semibold text-text-primary dark:text-[var(--color-app-text)]">{title}</h1>
             {subtitle ? <p className="hidden truncate text-sm text-text-secondary sm:block dark:text-[var(--color-app-text-secondary)]">{subtitle}</p> : null}
             {breadcrumb ? <p className="hidden truncate text-xs text-text-muted md:block dark:text-[var(--color-app-text-muted)]">{breadcrumb}</p> : null}

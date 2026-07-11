@@ -156,7 +156,7 @@ export function CRMContent({ className = '', children, aside }) {
 
 export function CRMSection({ title, description, actions, children, className = '' }) {
   return (
-    <section className={`rounded-2xl border border-surface-border/80 bg-white/85 p-5 shadow-sm dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19_/_0.88)] ${className}`}>
+    <section className={`rounded-2xl border border-primary-200/60 bg-[linear-gradient(135deg,rgba(255,250,244,0.96),rgba(248,242,232,0.9))] p-5 shadow-[0_14px_36px_rgba(63,49,37,0.07)] dark:border-[#5a4635] dark:bg-[linear-gradient(135deg,rgba(36,28,20,0.96),rgba(20,16,12,0.94))] dark:shadow-[0_18px_42px_rgba(0,0,0,0.24)] ${className}`}>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
