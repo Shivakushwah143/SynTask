@@ -2,10 +2,10 @@ import { useRef, useState } from 'react'
 import { LoadingSpinner } from './LoadingSpinner'
 
 const VARIANTS = {
-  primary: 'bg-primary-500 text-white shadow-none hover:bg-primary-600',
-  secondary: 'border border-surface-border bg-surface text-text-primary hover:bg-surface-muted dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800',
-  danger: 'bg-red-600 text-white shadow-none hover:bg-red-700',
-  ghost: 'border border-transparent text-text-secondary hover:bg-surface-muted dark:text-gray-200 dark:hover:bg-gray-800',
+  primary: 'bg-primary-500 text-white shadow-none hover:bg-primary-600 active:bg-primary-700',
+  secondary: 'border border-surface-border bg-surface text-text-primary hover:bg-surface-muted active:bg-surface-subtle dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)] dark:hover:bg-[var(--color-app-surface-muted)]',
+  danger: 'bg-red-600 text-white shadow-none hover:bg-red-700 active:bg-red-800 dark:bg-red-600 dark:hover:bg-red-500',
+  ghost: 'border border-transparent text-text-secondary hover:bg-surface-muted hover:text-text-primary active:bg-surface-subtle dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-muted)] dark:hover:text-[var(--color-app-text)]',
 }
 
 const SIZES = {
@@ -48,7 +48,7 @@ export function Button({
 
   return (
     <button
-      className={`relative inline-grid items-center justify-center rounded-full font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/35 focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-black ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
+      className={`relative inline-grid min-h-10 items-center justify-center rounded-full font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500/35 focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-[var(--color-app-bg-solid)] ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
       disabled={disabled || isLoading}
       aria-busy={isLoading || undefined}
       onClick={onClick ? handleClick : undefined}

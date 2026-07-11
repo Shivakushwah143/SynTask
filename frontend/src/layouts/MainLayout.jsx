@@ -26,7 +26,7 @@ const CRM_BREADCRUMB_LABELS = {
   leads: 'Leads',
   companies: 'CRM Companies',
   contacts: 'CRM Contacts',
-  activities: 'CRM Activities',
+  // activities: 'CRM Activities',
   calendar: 'CRM Calendar',
   reports: 'CRM Reports',
   settings: 'CRM Configuration',
@@ -53,13 +53,12 @@ const MainLayout = () => {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content */}
-      <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 w-full flex-1 flex-col  overflow-hidden">
         {/* Header */}
         <Header title="Main Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
 
         {/* Page Content */}
-        <main className={`min-w-0 flex-1 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
-          <WorkflowStepNavigation />
+        <main className={`min-w-0 flex-1 px-4 pl-2 md:pl-6 py-4 md:py-6 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
           <Outlet />
         </main>
       </div>
