@@ -12,7 +12,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from app.core.config import settings
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.ai_log import AIInteractionLog
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.notification import Notification, NotificationType

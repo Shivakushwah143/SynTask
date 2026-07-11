@@ -46,7 +46,7 @@ export default function BulkLeads() {
   const failedCount = importResult?.skipped_rows ?? 0
   const nextAction = assignedCount > 0
     ? { label: 'View Assigned Leads', href: '/crm/leads' }
-    : { label: 'Open Sales Pipeline', href: '/sales/pipeline' }
+    : { label: 'Open Qualification', href: '/crm/pipeline' }
 
   const handleFile = (selected) => {
     setFileError('')
@@ -121,7 +121,7 @@ export default function BulkLeads() {
       if (departmentId) formData.append('target_department_id', departmentId)
       if (strategy === 'manual') formData.append('target_user_id', targetUserId)
 
-      const result = await salesApi.bulkUploadProspects(formData)
+      const result = await salesApi.bulkUploadLeads(formData)
       const uploaded = result?.total_uploaded ?? result?.data?.total_uploaded ?? 0
       const skipped = result?.skipped_rows ?? result?.data?.skipped_rows ?? 0
       const payload = result?.data || result || {}
@@ -161,7 +161,7 @@ export default function BulkLeads() {
       <CRMPageTitle
         eyebrow="CRM Intake"
         title="Lead Intake"
-        description="Import prospects, validate entries, inspect duplicates, and route leads into the assignment flow."
+        description="Import leads, validate entries, inspect duplicates, and route them into the assignment flow."
         actions={(
           <>
             <Button variant="secondary" onClick={downloadSample}>

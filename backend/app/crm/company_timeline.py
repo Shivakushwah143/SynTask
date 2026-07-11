@@ -12,7 +12,7 @@ from app.models.crm_activity import CRMActivity
 from app.models.sales_contact import SalesContact
 from app.models.sales_lead_file import SalesLeadFile
 from app.models.sales_lead_note import SalesLeadNote
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.task import Task
 from app.models.user import User, UserRole

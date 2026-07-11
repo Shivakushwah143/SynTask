@@ -12,14 +12,14 @@ from xml.etree import ElementTree as ET
 
 from fastapi import HTTPException, UploadFile, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_company import CRMCompany
 from app.models.sales_contact import SalesContact
 from app.models.sales_masters import SalesStage
 from app.models.sales_import_job import SalesImportJob
 from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
-from app.models.sales_prospect import InterestLevel, ProspectStatus, SalesProspect
+from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
 from app.models.user import User, UserRole, UserStatus
 
 

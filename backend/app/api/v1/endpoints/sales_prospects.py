@@ -13,7 +13,7 @@ from app.api.dependencies import get_current_company_admin_or_lead, get_current_
 from app.models.user import User, UserRole, UserStatus
 from app.models.department import Department
 from app.models.crm_company import CRMCompany
-from app.models.sales_prospect import SalesProspect, InterestLevel, ProspectStatus
+from app.crm.models import SalesProspect, InterestLevel, ProspectStatus
 from app.models.sales_contact import SalesContact
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct

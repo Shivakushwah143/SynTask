@@ -3,16 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.capability import get_capabilities_for_role
 from app.models.department import Department
-from app.models.client import Client, ClientStatus
+from app.crm.models import Client, ClientStatus
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.crm_deal import CRMDeal
 from app.models.meeting import Meeting, MeetingStatus
 from app.models.project import Project, ProjectStatus, ProjectType
 from app.models.ownership_transfer import OwnershipTransfer
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User, UserRole, UserStatus
 

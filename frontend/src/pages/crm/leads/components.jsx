@@ -64,7 +64,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   return (
     <CRMPage>
       <CRMPageTitle
-        eyebrow="CRM Lead"
+        eyebrow="Lead"
         title={title}
         description={description}
         actions={(
@@ -278,7 +278,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     onError: (error) => toast.error(error?.response?.data?.detail || 'Stage update failed'),
   })
 
-  const saveMutation = useMutation((payload) => salesApi.updateProspectForm(lead?.id, payload), {
+  const saveMutation = useMutation((payload) => salesApi.updateLeadForm(lead?.id, payload), {
     onSuccess: () => toast.success('Lead updated'),
     onError: (error) => toast.error(error?.response?.data?.detail || 'Update failed'),
   })
@@ -406,7 +406,7 @@ export const LeadAccessDeniedState = memo(function LeadAccessDeniedState({ onBac
       <EmptyState
         icon={Lock}
         title="Access denied"
-        description="You do not have access to this CRM lead workspace. Ask an administrator to enable the sales module for your account."
+        description="You do not have access to this lead workspace. Ask an administrator to enable the sales module for your account."
         action={(
           <Button type="button" variant="primary" onClick={onBack}>
             Back to pipeline

@@ -12,7 +12,7 @@ from app.api.dependencies import get_current_user
 from app.crm.application import build_crm_dashboard
 from app.crm.lead_timeline import CRMLeadTimelineService
 from app.api.v1.endpoints.sales_prospects import _get_company_prospects, _lead_identity_score, _serialize_prospect_identity
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.user import User, UserRole
 
 router = APIRouter()

@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.notification import Notification, NotificationType
-from app.models.sales_prospect import ProspectStatus, SalesProspect
+from app.crm.models import ProspectStatus, SalesProspect
 from app.models.user import User, UserRole
 
 

@@ -27,7 +27,7 @@ export default function CRMLeadWorkspacePage() {
 
   const leadQuery = useQuery(
     [WORKSPACE_QUERY_KEY, leadId],
-    () => salesApi.getProspect(leadId),
+    () => salesApi.getLead(leadId),
     {
       enabled: Boolean(leadId),
       retry: false,

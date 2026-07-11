@@ -149,7 +149,7 @@ api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CR
 api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)
 api_router.include_router(sales_products.router, prefix="/sales/products", tags=["Sales Products"], dependencies=sales_module_dependency)
 api_router.include_router(sales_contacts.router, prefix="/sales/contacts", tags=["Sales Contacts"], dependencies=sales_module_dependency)
-api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Sales Prospects"], dependencies=sales_module_dependency)
+api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Leads"], dependencies=sales_module_dependency)
 api_router.include_router(sales_masters.router, prefix="/sales/masters", tags=["Sales Masters"], dependencies=sales_module_dependency)
 api_router.include_router(sales_reports.router, prefix="/sales/reports", tags=["Sales Reports"], dependencies=sales_module_dependency)
 

@@ -12,7 +12,7 @@ import logging
 from typing import List, Optional, Dict, Set
 
 from app.models.user import User, UserRole, UserStatus, Lead, Manager
-from app.models.attendance import (
+from app.attendance_domain.models import (
     Attendance, AttendanceStatus, AttendanceSession, BreakLog,
     MonitoringSession, CameraSession, ScreenShareSession
 )
