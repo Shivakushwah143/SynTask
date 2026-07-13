@@ -7,6 +7,7 @@ import {
   Briefcase,
   CalendarCheck2,
   CalendarDays,
+  CalendarClock,
   CalendarRange,
   ChevronDown,
   ChevronLeft,
