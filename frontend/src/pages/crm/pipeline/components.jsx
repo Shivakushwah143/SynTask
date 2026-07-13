@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -322,10 +322,12 @@ export const PipelineBoard = memo(function PipelineBoard({
   currency = 'INR',
   activeLeadId = null,
   onMoveLeadToStage,
+  getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
   onResetFilters,
   visibleLeads = [],
+  hasActiveFilters = false,
 }) {
   const hasStages = stages.length > 0
   const totalLeads = stages.reduce((sum, stage) => sum + (stage.leads?.length || 0), 0)
@@ -334,12 +336,12 @@ export const PipelineBoard = memo(function PipelineBoard({
     return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
   }
 
-  if (totalLeads === 0) {
-    return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
+  if (hasActiveFilters && visibleLeads.length === 0) {
+    return <PipelineSearchEmptyState onResetFilters={onResetFilters} />
   }
 
-  if (visibleLeads.length === 0) {
-    return <PipelineSearchEmptyState onResetFilters={onResetFilters} />
+  if (totalLeads === 0) {
+    return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
   }
 
   return (
@@ -355,6 +357,7 @@ export const PipelineBoard = memo(function PipelineBoard({
               currency={currency}
               activeLeadId={activeLeadId}
               onMoveLeadToStage={onMoveLeadToStage}
+              getAllowedStageKeys={getAllowedStageKeys}
               onCopyLeadId={onCopyLeadId}
               onLeadSelect={onLeadSelect}
             />
@@ -372,11 +375,13 @@ export const PipelineColumn = memo(function PipelineColumn({
   currency = 'INR',
   activeLeadId = null,
   onMoveLeadToStage,
+  getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
 }) {
   const leads = stage.leads || []
   const isActive = leads.some((lead) => (lead.id || lead._id) === activeLeadId)
+  const allowedStageKeys = useMemo(() => new Set(getAllowedStageKeys?.(stage) || []), [getAllowedStageKeys, stage])
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: stage.key })
   return (
     <section
@@ -418,6 +423,7 @@ export const PipelineColumn = memo(function PipelineColumn({
                 stages={stages}
                 currency={currency}
                 onMoveLeadToStage={onMoveLeadToStage}
+                allowedStageKeys={allowedStageKeys}
                 onCopyLeadId={onCopyLeadId}
                 onLeadSelect={onLeadSelect}
               />
@@ -435,6 +441,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   stages = [],
   currency = 'INR',
   onMoveLeadToStage,
+  allowedStageKeys = new Set(),
   onCopyLeadId,
   onLeadSelect,
 }) {
@@ -445,13 +452,16 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   const contactLabel = getLeadContactLabel(lead)
   const sortableId = lead.id || lead._id
   const [menuOpen, setMenuOpen] = useState(false)
+  const actionButtonRef = useRef(null)
+  const [menuPosition, setMenuPosition] = useState(null)
   const stageActions = useMemo(() => {
-    const currentStageKey = getStageKey(stage)
     const wantedActions = [
       { label: 'Follow Up Call', stageNames: ['Follow Up Call', 'Contacted'] },
       { label: 'Schedule a Meeting', stageNames: ['Schedule a Meeting', 'Discovery Scheduled'] },
       { label: 'Send Proposal', stageNames: ['Send Proposal', 'Proposal Sent'] },
       { label: 'Negotiation', stageNames: ['Negotiation'] },
+      { label: 'Won', stageNames: ['Won'] },
+      { label: 'Lost', stageNames: ['Lost'] },
     ]
     const stageLookup = new Map()
     ;(stages || []).forEach((candidate) => {
@@ -460,18 +470,45 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
       stageLookup.set(canonicalName, { key, label: candidate?.name || candidate?.label || candidate?.title || 'Stage' })
       stageLookup.set(String(key).toLowerCase(), { key, label: candidate?.name || candidate?.label || candidate?.title || 'Stage' })
     })
-    return wantedActions
+    const preferredActions = wantedActions
       .map((action) => {
         for (const candidateName of action.stageNames) {
           const found = stageLookup.get(candidateName.toLowerCase())
-          if (found && found.key !== currentStageKey) {
+          if (found && allowedStageKeys.has(found.key)) {
             return { key: found.key, label: action.label }
           }
         }
         return null
       })
       .filter(Boolean)
-  }, [stage, stages])
+    const preferredKeys = new Set(preferredActions.map((action) => action.key))
+    const fallbackActions = (stages || [])
+      .filter((candidate) => allowedStageKeys.has(candidate.key) && !preferredKeys.has(candidate.key))
+      .map((candidate) => ({ key: candidate.key, label: candidate.name || candidate.label || candidate.title || 'Stage' }))
+    return [...preferredActions, ...fallbackActions]
+  }, [allowedStageKeys, stages])
+  const previousStage = useMemo(() => stages.find((candidate) => candidate.key === stage.previousStageKey), [stage.previousStageKey, stages])
+  const nextStage = useMemo(() => stages.find((candidate) => candidate.key === stage.nextStageKey), [stage.nextStageKey, stages])
+  const canMovePrevious = previousStage ? allowedStageKeys.has(previousStage.key) : false
+  const canMoveNext = nextStage ? allowedStageKeys.has(nextStage.key) : false
+
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const updatePosition = () => {
+      const rect = actionButtonRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const width = 224
+      const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12)
+      setMenuPosition({ top: rect.bottom + 8, left, width })
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [menuOpen])
   const {
     attributes,
     listeners,
@@ -551,7 +588,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
       ) : null}
 
       <div className="mt-4 flex items-center justify-between gap-2">
-        <div className="relative">
+        <div className="relative" ref={actionButtonRef}>
           <Button
             type="button"
             variant="ghost"
@@ -564,7 +601,10 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
             <ChevronDown className="h-3.5 w-3.5" />
           </Button>
           {menuOpen ? (
-            <div className="absolute left-0 z-30 mt-2 w-56 overflow-hidden rounded-2xl border border-surface-border/80 bg-surface/95 p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900">
+            <div
+              className="fixed z-50 overflow-hidden rounded-2xl border border-surface-border/80 bg-surface/95 p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900"
+              style={menuPosition || { width: 224 }}
+            >
               <ActionItem
                 label="Copy lead ID"
                 onClick={() => {
@@ -584,18 +624,18 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
               ))}
               <ActionItem
                 label="Move to previous stage"
-                disabled={!stage.previousStageKey}
+                disabled={!canMovePrevious}
                 onClick={() => {
-                  if (!stage.previousStageKey) return
+                  if (!canMovePrevious) return
                   onMoveLeadToStage?.(lead, stage.previousStageKey)
                   setMenuOpen(false)
                 }}
               />
               <ActionItem
                 label="Move to next stage"
-                disabled={!stage.nextStageKey}
+                disabled={!canMoveNext}
                 onClick={() => {
-                  if (!stage.nextStageKey) return
+                  if (!canMoveNext) return
                   onMoveLeadToStage?.(lead, stage.nextStageKey)
                   setMenuOpen(false)
                 }}

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_current_user
@@ -35,8 +35,11 @@ class LostNurtureRequest(BaseModel):
 
 
 @router.get("")
-async def get_pipeline(current_user: User = Depends(get_current_user)):
-    return await CRMPipelineService.load_pipeline(current_user)
+async def get_pipeline(
+    limit: int = Query(500, ge=1, le=1000),
+    current_user: User = Depends(get_current_user),
+):
+    return await CRMPipelineService.load_pipeline(current_user, limit=limit)
 
 
 @router.patch("/{lead_id}/stage")

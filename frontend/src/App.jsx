@@ -190,8 +190,8 @@ function App() {
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={withBoundary(<Dashboard />)} />
-          <Route path="workflow" element={withBoundary(<Dashboard />)} />
-          <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
+          <Route path="workflow" element={<Navigate to="/crm/pipeline" replace />} />
+          <Route path="leads" element={<Navigate to="/crm/leads" replace />} />
           <Route path="tasks" element={withBoundary(<Tasks />)} />
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
@@ -209,8 +209,12 @@ function App() {
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
           <Route path="calendar" element={withBoundary(<Calendar />)} />
+          <Route path="content-calendar" element={withBoundary(<Calendar />)} />
+          <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />
+          <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
+          <Route path="attendance/reports" element={<Navigate to="/attendance-reports" replace />} />
           <Route path="live-monitor" element={withBoundary(<LiveMonitor />)} />
           <Route path="attendance-reports" element={withBoundary(<AttendanceReports />)} />
 
@@ -256,6 +260,7 @@ function App() {
             <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
             <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
+            <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
             <Route path="settings" element={withBoundary(<CRMSettingsPage />)} />
           </Route>
       </Route>
@@ -290,7 +295,7 @@ function App() {
       </Routes>
       <ConfirmDialog />
       <UndoBar />
-      {import.meta.env.DEV && <Agentation />}
+      {import.meta.env.DEV && import.meta.env.VITE_ENABLE_AGENTATION === 'true' && <Agentation />}
     </Suspense>
   )
 }

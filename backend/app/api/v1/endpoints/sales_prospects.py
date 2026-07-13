@@ -352,6 +352,96 @@ async def list_prospects(
     }
 
 
+@router.get("/duplicates")
+async def get_duplicate_prospects(search: Optional[str] = None, current_user: User = Depends(get_current_user)):
+    prospects = await _get_company_prospects(current_user)
+    groups_by_key: dict[str, list[dict]] = {}
+    for prospect in prospects:
+        email, phone, name = _lead_identity_score(prospect)
+        if search:
+            query = search.strip().lower()
+            if query not in email and query not in phone and query not in name:
+                continue
+        for key in [f"email:{email}" if email else "", f"phone:{phone}" if phone else "", f"name:{name}" if name else ""]:
+            if key:
+                groups_by_key.setdefault(key, []).append(_serialize_prospect_identity(prospect))
+
+    groups = [
+        {"match_key": key, "prospects": items, "leads": items}
+        for key, items in groups_by_key.items()
+        if len(items) > 1
+    ]
+    return {"total_groups": len(groups), "groups": groups}
+
+
+@router.get("/imports")
+async def list_import_history(current_user: User = Depends(get_current_user)):
+    query = {"company_id": current_user.company_id}
+    jobs = await SalesImportJob.find(query).sort(-SalesImportJob.created_at).limit(50).to_list()
+    return {
+        "items": [
+            {
+                "id": str(job.id),
+                "filename": job.filename,
+                "strategy": job.strategy,
+                "status": job.status,
+                "total_rows": job.total_rows,
+                "total_uploaded": job.total_uploaded,
+                "skipped_rows": job.skipped_rows,
+                "failed_rows": job.failed_rows,
+                "created_at": job.created_at,
+                "completed_at": job.completed_at,
+            }
+            for job in jobs
+        ]
+    }
+
+
+@router.get("/search/contact")
+async def search_contact_for_prospect(
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
+    name: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Search existing contact to convert to prospect."""
+    query = {"deleted": False}
+    if current_user.role != UserRole.SUPER_ADMIN:
+        query["company_id"] = current_user.company_id
+
+    if phone:
+        query["phone"] = phone
+    if email:
+        query["email"] = email.lower()
+    if name:
+        parts = name.split()
+        if len(parts) >= 2:
+            query["first_name"] = {"$regex": parts[0], "$options": "i"}
+            query["last_name"] = {"$regex": parts[1], "$options": "i"}
+        else:
+            query["$or"] = [
+                {"first_name": {"$regex": name, "$options": "i"}},
+                {"last_name": {"$regex": name, "$options": "i"}},
+            ]
+
+    contacts = await SalesContact.find(query).limit(10).to_list()
+    return {
+        "contacts": [
+            {
+                "id": str(c.id),
+                "first_name": c.first_name,
+                "last_name": c.last_name,
+                "full_name": c.full_name(),
+                "phone": c.phone,
+                "country_code": c.country_code,
+                "email": c.email,
+                "company_name": c.company_name,
+            }
+            for c in contacts
+        ]
+    }
+
+
 @router.get("/{prospect_id}")
 async def get_prospect(
     prospect_id: str,
@@ -518,6 +608,18 @@ async def update_prospect(
     return {"message": result["message"]}
 
 
+@router.post("/merge")
+async def merge_prospects(payload: BulkLeadMergeRequest | LeadMergeRequest, current_user: User = Depends(get_current_user)):
+    if isinstance(payload, LeadMergeRequest):
+        merge_payload = BulkLeadMergeRequest(
+            target_lead_id=payload.target_lead_id,
+            source_lead_ids=[payload.source_lead_id],
+        )
+    else:
+        merge_payload = payload
+    return await bulk_merge_prospects(merge_payload, current_user)
+
+
 @router.post("/bulk-upload", dependencies=[Depends(require_capability("import_leads")), Depends(require_module("sales"))])
 async def bulk_upload_prospects(
     strategy: str = Form(...),
@@ -553,74 +655,6 @@ async def preview_bulk_upload_prospects(
     )
 
 
-@router.get("/imports")
-async def list_import_history(current_user: User = Depends(get_current_user)):
-    query = {"company_id": current_user.company_id}
-    jobs = await SalesImportJob.find(query).sort(-SalesImportJob.created_at).limit(50).to_list()
-    return {
-        "items": [
-            {
-                "id": str(job.id),
-                "filename": job.filename,
-                "strategy": job.strategy,
-                "status": job.status,
-                "total_rows": job.total_rows,
-                "total_uploaded": job.total_uploaded,
-                "skipped_rows": job.skipped_rows,
-                "failed_rows": job.failed_rows,
-                "created_at": job.created_at,
-                "completed_at": job.completed_at,
-            }
-            for job in jobs
-        ]
-    }
-
-
 @router.post("/imports/{job_id}/retry")
 async def retry_import_job(job_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
     return await LeadEngine.retry_import_job(current_user, job_id)
-
-
-@router.get("/search/contact")
-async def search_contact_for_prospect(
-    phone: Optional[str] = None,
-    email: Optional[str] = None,
-    name: Optional[str] = None,
-    current_user: User = Depends(get_current_user)
-):
-    """Search existing contact to convert to prospect"""
-    query = {"deleted": False}
-    if current_user.role != UserRole.SUPER_ADMIN:
-        query["company_id"] = current_user.company_id
-    
-    if phone:
-        query["phone"] = phone
-    if email:
-        query["email"] = email.lower()
-    if name:
-        parts = name.split()
-        if len(parts) >= 2:
-            query["first_name"] = {"$regex": parts[0], "$options": "i"}
-            query["last_name"] = {"$regex": parts[1], "$options": "i"}
-        else:
-            query["$or"] = [
-                {"first_name": {"$regex": name, "$options": "i"}},
-                {"last_name": {"$regex": name, "$options": "i"}},
-            ]
-    
-    contacts = await SalesContact.find(query).limit(10).to_list()
-    return {
-        "contacts": [
-            {
-                "id": str(c.id),
-                "first_name": c.first_name,
-                "last_name": c.last_name,
-                "full_name": c.full_name(),
-                "phone": c.phone,
-                "country_code": c.country_code,
-                "email": c.email,
-                "company_name": c.company_name,
-            }
-            for c in contacts
-        ]
-    }

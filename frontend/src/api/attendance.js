@@ -9,8 +9,9 @@ export const attendanceAPI = {
 
   // Fetch enriched attendance summary for Timesheet page
   getTimesheetSummary: async (date = null) => {
-    const params = date ? `?date_filter=${date}` : ''
-    const response = await api.get(`/attendance/timesheet-summary${params}`)
+    const response = await api.get('/attendance/timesheet-summary', {
+      params: date ? { date_filter: date } : {},
+    })
     return response.data
   },
 

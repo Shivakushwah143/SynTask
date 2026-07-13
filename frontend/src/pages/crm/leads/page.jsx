@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
+<<<<<<< HEAD
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Plus, Search, Sparkles, Users } from 'lucide-react'
+=======
 import { useNavigate } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Plus, Search, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
+>>>>>>> 58e94b3954491d1c231e25872ffc2e68ac57afff
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -16,9 +21,22 @@ import { useAuthStore } from '../../../store/authStore'
 import { isEmployeeRole, normalizeRole } from '../../../utils/roles'
 import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, normalizeText } from '../pipeline/utils'
 
+const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
+const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
+const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
+const getResponseItems = (data, key) => {
+  const direct = data?.[key]
+  const nested = data?.data?.[key]
+  if (Array.isArray(direct)) return direct
+  if (Array.isArray(nested)) return nested
+  if (Array.isArray(data)) return data
+  return []
+}
+
 export default function CRMLeadsPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)
   const isEmployee = isEmployeeRole(userRole)
@@ -47,6 +65,17 @@ export default function CRMLeadsPage() {
   const [leadSearch, setLeadSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
+
+  useEffect(() => {
+    if (searchParams.get('import') !== '1') return
+    setImportOpen(true)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('import')
+      return next
+    }, { replace: true })
+  }, [searchParams, setSearchParams])
+
   const pipelineQuery = useQuery('crm-leads-entry', crmApi.getPipeline, {
     staleTime: 5 * 60 * 1000,
   })
@@ -125,6 +154,14 @@ export default function CRMLeadsPage() {
     if (Array.isArray(data?.items)) return data.items
     return []
   }, [usersQuery.data])
+<<<<<<< HEAD
+  const categories = useMemo(() => getResponseItems(categoriesQuery.data, 'categories'), [categoriesQuery.data])
+  const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
+  const defaultStageId = getStageValue(stages[0])
+  const defaultCategoryId = getOptionId(categories[0])
+  const defaultProductIds = getOptionId(products[0])
+  const defaultOwnerId = getUserId(assignableUsers[0]) || currentUserId
+=======
   const categories = useMemo(() => getSalesCollection(categoriesQuery.data, 'categories'), [categoriesQuery.data])
   const products = useMemo(() => getSalesCollection(productsQuery.data, 'products'), [productsQuery.data])
   const userNameById = useMemo(() => {
@@ -139,6 +176,7 @@ export default function CRMLeadsPage() {
   const defaultStageId = stages[0]?.id || stages[0]?.name || ''
   const defaultCategoryId = categories[0]?.id || categories[0]?._id || ''
   const defaultProductIds = products[0]?.id || products[0]?._id || ''
+>>>>>>> 58e94b3954491d1c231e25872ffc2e68ac57afff
 
   useEffect(() => {
     if (!createOpen) return
@@ -147,9 +185,9 @@ export default function CRMLeadsPage() {
       category_id: state.category_id || defaultCategoryId,
       product_ids: state.product_ids || defaultProductIds,
       current_stage: state.current_stage || defaultStageId,
-      assigned_to: state.assigned_to || assignableUsers[0]?.id || '',
+      assigned_to: state.assigned_to || defaultOwnerId,
     }))
-  }, [assignableUsers, createOpen, defaultCategoryId, defaultProductIds, defaultStageId])
+  }, [createOpen, defaultCategoryId, defaultOwnerId, defaultProductIds, defaultStageId])
 
   const mergeMutation = useMutation((payload) => crmApi.mergeProspects(payload), {
     onSuccess: () => {
@@ -432,7 +470,7 @@ export default function CRMLeadsPage() {
                 category_id: createForm.category_id || defaultCategoryId,
                 product_ids: createForm.product_ids || defaultProductIds,
                 current_stage: createForm.current_stage || defaultStageId,
-                assigned_to: createForm.assigned_to || (assignableUsers[0]?.id || ''),
+                assigned_to: createForm.assigned_to || defaultOwnerId,
                 interest_level: createForm.interest_level || 'medium',
                 estimated_close_date: createForm.estimated_close_date || new Date().toISOString().slice(0, 10),
                 remark: createForm.remark.trim(),
@@ -443,8 +481,14 @@ export default function CRMLeadsPage() {
                 toast.error('First name, last name, and phone are required')
                 return
               }
-              if (!payload.category_id || !payload.product_ids || !payload.current_stage || !payload.assigned_to) {
-                toast.error('Select category, product, stage, and owner')
+              const missingFields = [
+                !payload.category_id && 'category',
+                !payload.product_ids && 'product',
+                !payload.current_stage && 'stage',
+                !payload.assigned_to && 'owner',
+              ].filter(Boolean)
+              if (missingFields.length) {
+                toast.error(`Missing ${missingFields.join(', ')}. Check CRM settings.`)
                 return
               }
               createLeadMutation.mutate(payload)
@@ -480,7 +524,7 @@ export default function CRMLeadsPage() {
                 <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
                   <option value="">Select category</option>
                   {categories.map((category) => (
-                    <option key={category.id || category._id} value={category.id || category._id}>{category.name}</option>
+                    <option key={getOptionId(category)} value={getOptionId(category)}>{category.name}</option>
                   ))}
                 </select>
               </label>
@@ -489,7 +533,7 @@ export default function CRMLeadsPage() {
                 <select className={inputClassName} value={createForm.product_ids || defaultProductIds} onChange={(e) => setCreateForm((state) => ({ ...state, product_ids: e.target.value }))}>
                   <option value="">Select product</option>
                   {products.map((product) => (
-                    <option key={product.id || product._id} value={product.id || product._id}>{product.name}</option>
+                    <option key={getOptionId(product)} value={getOptionId(product)}>{product.name}</option>
                   ))}
                 </select>
               </label>
@@ -498,19 +542,22 @@ export default function CRMLeadsPage() {
                 <select className={inputClassName} value={createForm.current_stage || defaultStageId} onChange={(e) => setCreateForm((state) => ({ ...state, current_stage: e.target.value }))}>
                   <option value="">Select stage</option>
                   {stages.map((stage) => (
-                    <option key={stage.id || stage.name} value={stage.id || stage.name}>{stage.name}</option>
+                    <option key={getStageValue(stage)} value={getStageValue(stage)}>{stage.name}</option>
                   ))}
                 </select>
               </label>
               <label className="space-y-1">
                 <span className="text-xs font-medium text-gray-600">Owner</span>
-                <select className={inputClassName} value={createForm.assigned_to} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
+                <select className={inputClassName} value={createForm.assigned_to || defaultOwnerId} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
                   <option value="">Select owner</option>
                   {assignableUsers.map((userOption) => (
-                    <option key={userOption.id || userOption._id} value={userOption.id || userOption._id}>
+                    <option key={getUserId(userOption)} value={getUserId(userOption)}>
                       {userOption.first_name} {userOption.last_name} {userOption.role ? `(${userOption.role})` : ''}
                     </option>
                   ))}
+                  {!assignableUsers.length && defaultOwnerId ? (
+                    <option value={defaultOwnerId}>{user?.first_name} {user?.last_name} ({user?.role || 'owner'})</option>
+                  ) : null}
                 </select>
               </label>
               <label className="space-y-1">
