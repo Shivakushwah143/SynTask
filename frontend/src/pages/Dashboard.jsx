@@ -86,6 +86,9 @@ const Dashboard = () => {
   const [eodToday, setEodToday] = useState(null)
   const [attendanceStats, setAttendanceStats] = useState(null)
   const [metrics, setMetrics] = useState(null)
+  const [taskHealth, setTaskHealth] = useState(null)
+  const [taskExtensions, setTaskExtensions] = useState(null)
+  const [teamCompletion, setTeamCompletion] = useState(null)
   const [revenueMode, setRevenueMode] = useState('Accrual')
   const [sectionVisibility, setSectionVisibility] = useState(readStoredSectionVisibility)
   const [sectionOrder, setSectionOrder] = useState(readStoredSectionOrder)
@@ -107,6 +110,11 @@ const Dashboard = () => {
           dashboardAPI.getMetrics().catch(() => null),
         ])
         const dashboardRole = normalizeRole(statsData?.role || user?.role)
+        const [healthData, extensionData, teamData] = await Promise.all([
+          dashboardRole === ROLE.EMPLOYEE ? tasksAPI.getMyTaskHealth().catch(() => null) : tasksAPI.getTaskHealthSummary().catch(() => null),
+          tasksAPI.getExtensionRequestSummary().catch(() => null),
+          dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null),
+        ])
 
         let ticketsData = { tickets: [] }
         if (dashboardRole === ROLE.EMPLOYEE) {
@@ -120,6 +128,9 @@ const Dashboard = () => {
         setRecentTickets(ticketsData.tickets || [])
         setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
         setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
+        setTaskHealth(healthData)
+        setTaskExtensions(extensionData)
+        setTeamCompletion(teamData)
 
         if (dashboardRole === ROLE.EMPLOYEE) {
           try {
@@ -267,6 +278,12 @@ const Dashboard = () => {
     { name: 'High Priority', value: priorityTasks.length, route: '/tasks' },
   ]
   const eodStatusLabel = eodToday?.status === 'submitted' ? 'Submitted' : eodToday?.status === 'leave' ? 'Leave' : 'Not Submitted'
+  const healthSummary = role === ROLE.EMPLOYEE ? taskHealth : taskHealth?.summary
+  const extensionSummary = taskExtensions?.summary || {}
+  const highestPendingEmployee = (teamCompletion?.employees || []).reduce((top, item) => {
+    if (!top || (item.pending_tasks || 0) > (top.pending_tasks || 0)) return item
+    return top
+  }, null)
 
   const navigateFromChart = (entry, fallback) => {
     const route = entry?.payload?.route || entry?.route || fallback
@@ -291,6 +308,7 @@ const Dashboard = () => {
     { id: 'workflow-guide', name: 'Workflow Guide' },
     { id: 'workflow-journey', name: 'Workflow Journey' },
     { id: 'snapshot-cards', name: 'Snapshot Cards' },
+    { id: 'task-health', name: 'Task Health' },
     { id: 'sales-pipeline', name: 'Revenue & Pipeline' },
     { id: 'sales-performance', name: 'Sales Performance' },
     { id: 'reports', name: 'Reports' },
@@ -482,6 +500,42 @@ const Dashboard = () => {
           ))}
         </section>
       ) : null} */}
+
+      {renderDashboardSection('task-health', (
+      <section className="card p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Task Health</h2>
+            <p className="text-sm text-text-muted dark:text-text-secondary">
+              {role === ROLE.EMPLOYEE ? 'Your assigned task status and extension requests.' : 'Team deadline pressure and extension workflow.'}
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/tasks')}>
+            Open Tasks
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {role === ROLE.EMPLOYEE ? (
+            <>
+              <TaskHealthCard label="Assigned" value={healthSummary?.total_assigned_tasks ?? 0} />
+              <TaskHealthCard label="Completed" value={healthSummary?.completed_tasks ?? 0} />
+              <TaskHealthCard label="Pending" value={healthSummary?.pending_tasks ?? 0} />
+              <TaskHealthCard label="Overdue" value={healthSummary?.overdue_tasks ?? 0} tone="danger" />
+              <TaskHealthCard label="Extension Requests" value={extensionSummary.pending ?? healthSummary?.extension_requests?.pending ?? 0} />
+            </>
+          ) : (
+            <>
+              <TaskHealthCard label="Team Overdue Tasks" value={healthSummary?.overdue ?? 0} tone="danger" />
+              <TaskHealthCard label="Pending Extension Requests" value={extensionSummary.pending ?? 0} />
+              <TaskHealthCard label="Tasks Due Today" value={healthSummary?.due_today ?? 0} />
+              <TaskHealthCard label="Highest Pending Work" value={highestPendingEmployee?.pending_tasks ?? 0} helper={highestPendingEmployee?.employee_name || 'No employee load'} />
+              <TaskHealthCard label="Completed Tasks" value={(teamCompletion?.employees || []).reduce((sum, item) => sum + (item.completed_tasks || 0), 0)} />
+            </>
+          )}
+        </div>
+      </section>
+      ))}
 
       {renderDashboardSection('sales-pipeline', (
       canSeeSalesWidgets ? (
@@ -1059,6 +1113,16 @@ export function DashboardSectionVisibilityPanel({
         ) : null}
       </div>
     </aside>
+  )
+}
+
+function TaskHealthCard({ label, value, helper, tone = 'default' }) {
+  return (
+    <article className={`rounded-2xl border p-4 ${tone === 'danger' ? 'border-red-200 bg-red-50/70 dark:border-red-900/60 dark:bg-red-950/20' : 'border-border bg-surface dark:border-border dark:bg-black/70'}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted dark:text-text-secondary">{label}</p>
+      <p className="mt-3 text-2xl font-semibold text-text-primary dark:text-text-primary">{value}</p>
+      {helper ? <p className="mt-2 text-xs text-text-muted dark:text-text-secondary">{helper}</p> : null}
+    </article>
   )
 }
 

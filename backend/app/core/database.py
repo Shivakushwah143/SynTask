@@ -17,7 +17,7 @@ from app.models.company_subscription import CompanySubscription
 from app.models.usage_tracking import UsageTracking
 from app.models.billing_transaction import BillingTransaction
 from app.models.payment_webhook import PaymentWebhook
-from app.models.task import Task, TaskComment
+from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
 from app.models.project import Project, Epic, Sprint
@@ -150,6 +150,7 @@ async def init_db():
                 PaymentWebhook,
                 Task,
                 TaskComment,
+                TaskExtensionRequest,
                 Ticket,
                 TicketComment,
                 Notification,
