@@ -22,6 +22,31 @@ export const tasksAPI = {
     return response.data
   },
 
+  getMyTaskHealth: async () => {
+    const response = await api.get('/tasks/health/me')
+    return response.data
+  },
+
+  getTaskHealthSummary: async () => {
+    const response = await api.get('/tasks/health/summary')
+    return response.data
+  },
+
+  getTeamCompletionSummary: async () => {
+    const response = await api.get('/tasks/health/team-completion')
+    return response.data
+  },
+
+  getOverdueTaskSummary: async () => {
+    const response = await api.get('/tasks/health/overdue')
+    return response.data
+  },
+
+  getExtensionRequestSummary: async () => {
+    const response = await api.get('/tasks/health/extensions')
+    return response.data
+  },
+
   // Create task
   createTask: async (taskData) => {
     const formData = new URLSearchParams()
@@ -65,6 +90,39 @@ export const tasksAPI = {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       }
+    })
+    return response.data
+  },
+
+  requestExtension: async (taskId, data) => {
+    const formData = new URLSearchParams()
+    formData.append('requested_due_date', data.requested_due_date)
+    formData.append('reason', data.reason)
+    const response = await api.post(`/tasks/${taskId}/extension-requests`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    })
+    return response.data
+  },
+
+  listExtensionRequests: async (taskId) => {
+    const response = await api.get(`/tasks/${taskId}/extension-requests`)
+    return response.data
+  },
+
+  approveExtensionRequest: async (requestId, comment = '') => {
+    const formData = new URLSearchParams()
+    if (comment) formData.append('comment', comment)
+    const response = await api.post(`/tasks/extension-requests/${requestId}/approve`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    })
+    return response.data
+  },
+
+  rejectExtensionRequest: async (requestId, comment = '') => {
+    const formData = new URLSearchParams()
+    if (comment) formData.append('comment', comment)
+    const response = await api.post(`/tasks/extension-requests/${requestId}/reject`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     })
     return response.data
   },
