@@ -433,6 +433,12 @@ class InboxImportRequest(BaseModel):
     process_now: bool = True
 
 
+class InboxSyncResponse(BaseModel):
+    synced_count: int
+    created_count: int
+    processed_count: int
+
+
 class InboxMergeRequest(BaseModel):
     candidate_id: str
 
