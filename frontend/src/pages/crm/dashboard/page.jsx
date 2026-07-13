@@ -1,10 +1,6 @@
 import { useQuery } from 'react-query'
-<<<<<<< HEAD
 import { Activity, ArrowRight, Briefcase, CalendarDays, CalendarRange, CheckCircle2, ClipboardList, Clock3, DollarSign, FileCheck2, GitBranch, HeartHandshake, LineChart, Receipt, TimerReset, TrendingUp, UserCheck, UserRoundSearch, Users } from 'lucide-react'
-=======
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
-import { Activity, ArrowRight, CalendarDays, Clock3, LineChart, TrendingUp, Users } from 'lucide-react'
->>>>>>> 58e94b3954491d1c231e25872ffc2e68ac57afff
 import { format } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { activityAPI } from '../../../api/activity'
@@ -18,6 +14,7 @@ import { BUSINESS_WORKFLOW_STEPS } from '../../../config/businessWorkflow'
 import { canAccessOwner } from '../../../config/domainOwnership'
 import { useAuthStore } from '../../../store/authStore'
 import { isSuperAdminRole, normalizeRole } from '../../../utils/roles'
+import { formatCurrency } from '../pipeline/utils'
 
 const workflowIcons = {
   lead: UserRoundSearch,
@@ -34,19 +31,6 @@ const workflowIcons = {
   invoice: Receipt,
   payment: DollarSign,
   reports: LineChart,
-}
-
-const formatCurrency = (value, currency = 'INR') => {
-  const numericValue = Number(value || 0)
-  try {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(numericValue)
-  } catch {
-    return `Rs ${numericValue.toLocaleString('en-IN')}`
-  }
 }
 
 const formatDateTime = (value) => {
@@ -135,6 +119,7 @@ export default function CRMDashboardPage() {
 
   const stageBreakdown = dashboard?.sales?.pipeline?.stage_breakdown || []
   const loading = dashboardQuery.isLoading || activityQuery.isLoading || meetingsQuery.isLoading
+  const hasDashboardError = dashboardQuery.isError || activityQuery.isError || meetingsQuery.isError
   const workflowShortcuts = BUSINESS_WORKFLOW_STEPS.filter((step) => (
     (!step.roles || step.roles.includes(userRole)) &&
     canAccessOwner(step, user, isSuperAdminRole(userRole))
@@ -196,7 +181,13 @@ export default function CRMDashboardPage() {
           </>
         }
       >
-        {loading ? (
+        {hasDashboardError ? (
+          <CRMEmptyState
+            icon={Activity}
+            title="CRM dashboard data could not load"
+            description="Refresh the page or check the CRM, activity, and meetings APIs before using these dashboard metrics."
+          />
+        ) : loading ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {[1, 2, 3, 4].map((item) => (
               <div key={item} className="rounded-2xl border border-surface-border/80 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">

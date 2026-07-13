@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { format } from 'date-fns'
 import { useTasks } from '@/hooks/useTasks'
 
 const statuses = [
@@ -61,7 +62,7 @@ export default function BoardView() {
                     )}
                     {task.due_date && (
                       <p className="mt-1 text-xs text-gray-500">
-                        Due: {new Date(task.due_date).toLocaleDateString()}
+                        Due: {format(new Date(task.due_date), 'MMM d, yyyy')}
                       </p>
                     )}
                   </div>

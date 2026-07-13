@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useNavigate } from 'react-router-dom'
+import { format } from 'date-fns'
 import { Building2, CircleDot, Clock3, Plus, Search, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
@@ -119,7 +120,7 @@ export default function CRMCompaniesPage() {
     { key: 'contacts', header: 'Contacts', render: (row) => String(row.contact_count || 0) },
     { key: 'leads', header: 'Leads', render: (row) => String(row.lead_count || 0) },
     { key: 'primary', header: 'Primary contact', render: (row) => row.primary_contact_name || '-' },
-    { key: 'updated', header: 'Updated', render: (row) => (row.updated_at ? new Date(row.updated_at).toLocaleDateString() : '-') },
+    { key: 'updated', header: 'Updated', render: (row) => (row.updated_at ? format(new Date(row.updated_at), 'MMM d, yyyy') : '-') },
     {
       key: 'actions',
       header: '',

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { format } from 'date-fns'
 import { useTasks } from '@/hooks/useTasks'
 
 export default function ListView() {
@@ -39,7 +40,7 @@ export default function ListView() {
                 <td className="px-4 py-3 text-sm text-gray-600">{task.status}</td>
                 <td className="px-4 py-3 text-sm text-gray-600">{task.priority || '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-600">
-                  {task.due_date ? new Date(task.due_date).toLocaleDateString() : '—'}
+                  {task.due_date ? format(new Date(task.due_date), 'MMM d, yyyy') : '—'}
                 </td>
               </tr>
             ))
