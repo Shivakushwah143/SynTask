@@ -448,6 +448,55 @@ async def get_task(
     }
 
 
+@router.delete("/{task_id}")
+async def delete_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a task in the current company."""
+    task = await Task.get(task_id)
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    check_company_access(current_user, task.company_id)
+
+    can_delete = (
+        current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]
+        or task.created_by == str(current_user.id)
+    )
+    if not can_delete:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete this task"
+        )
+
+    await task.delete()
+    await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
+
+    await publish_event(
+        build_domain_event(
+            event_name="TaskDeleted",
+            aggregate_type="task",
+            aggregate_id=str(task.id),
+            company_id=str(task.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "task_id": str(task.id),
+                "title": task.title,
+                "project_id": str(task.project_id) if task.project_id else None,
+            },
+            project_id=str(task.project_id) if task.project_id else None,
+            metadata={"source": "task_delete"},
+        )
+    )
+
+    return {"message": "Task deleted successfully", "task_id": task_id}
+
+
 @router.get("/{task_id}/execution")
 async def get_task_execution(
     task_id: str,

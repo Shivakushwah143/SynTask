@@ -1,5 +1,5 @@
 import { useQuery } from 'react-query'
-import { Activity, ArrowRight, CalendarDays, Clock3, LineChart, TrendingUp, Users } from 'lucide-react'
+import { Activity, ArrowRight, Briefcase, CalendarDays, CalendarRange, CheckCircle2, ClipboardList, Clock3, DollarSign, FileCheck2, GitBranch, HeartHandshake, LineChart, Receipt, TimerReset, TrendingUp, UserCheck, UserRoundSearch, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { activityAPI } from '../../../api/activity'
@@ -8,6 +8,27 @@ import { meetingsApi } from '../../../api/meetings'
 import { CRMEmptyState, CRMPage, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Skeleton } from '../../../components/ui'
 import { WorkflowGuide } from '../../../components/workflow/WorkflowGuide'
+import { BUSINESS_WORKFLOW_STEPS } from '../../../config/businessWorkflow'
+import { canAccessOwner } from '../../../config/domainOwnership'
+import { useAuthStore } from '../../../store/authStore'
+import { isSuperAdminRole, normalizeRole } from '../../../utils/roles'
+
+const workflowIcons = {
+  lead: UserRoundSearch,
+  qualification: GitBranch,
+  'follow-up': CalendarDays,
+  meeting: CalendarRange,
+  proposal: FileCheck2,
+  negotiation: HeartHandshake,
+  won: UserCheck,
+  client: Briefcase,
+  project: Briefcase,
+  tasks: ClipboardList,
+  execution: TimerReset,
+  invoice: Receipt,
+  payment: DollarSign,
+  reports: LineChart,
+}
 
 const formatCurrency = (value, currency = 'INR') => {
   const numericValue = Number(value || 0)
@@ -37,6 +58,8 @@ const isSameDay = (dateA, dateB) =>
   dateA.getDate() === dateB.getDate()
 
 export default function CRMDashboardPage() {
+  const { user } = useAuthStore()
+  const userRole = normalizeRole(user?.role)
   const dashboardQuery = useQuery('crm-dashboard', crmApi.getDashboard)
   const activityQuery = useQuery('crm-activity-timeline', () => activityAPI.getTimeline({ days: 14, limit: 20 }))
   const meetingsQuery = useQuery('crm-upcoming-meetings', () => meetingsApi.list({ limit: 20 }))
@@ -73,6 +96,10 @@ export default function CRMDashboardPage() {
 
   const stageBreakdown = dashboard?.sales?.pipeline?.stage_breakdown || []
   const loading = dashboardQuery.isLoading || activityQuery.isLoading || meetingsQuery.isLoading
+  const workflowShortcuts = BUSINESS_WORKFLOW_STEPS.filter((step) => (
+    (!step.roles || step.roles.includes(userRole)) &&
+    canAccessOwner(step, user, isSuperAdminRole(userRole))
+  ))
 
   return (
     <CRMPage>
@@ -88,6 +115,34 @@ export default function CRMDashboardPage() {
           { label: 'After this?', value: 'Jump into the lead workspace or CRM reports.' },
         ]}
       />
+      <CRMSection
+        title="Workflow Shortcuts"
+        description="One-click movement through the business flow. These are shortcuts into existing CRM, project, task, and finance pages."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {workflowShortcuts.map((step, index) => {
+            const Icon = workflowIcons[step.key] || CheckCircle2
+            return (
+              <Link
+                key={step.key}
+                to={step.href}
+                className="group flex min-h-16 items-center justify-between rounded-lg border border-surface-border/80 bg-white px-3 py-3 text-left transition hover:border-primary-300 hover:bg-primary-50/70 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-primary-700 dark:hover:bg-primary-950/30"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700 transition group-hover:bg-primary-100 group-hover:text-primary-700 dark:bg-gray-900 dark:text-gray-200 dark:group-hover:bg-primary-900/50 dark:group-hover:text-primary-200">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{step.label}</span>
+                    <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">Step {index + 1}</span>
+                  </span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-gray-400 transition group-hover:translate-x-0.5 group-hover:text-primary-600" />
+              </Link>
+            )
+          })}
+        </div>
+      </CRMSection>
       <CRMSection
         title="Overview"
         description="Sales-derived signal for the CRM workspace foundation."

@@ -5,7 +5,7 @@ import { useDebounce } from '../hooks/useDebounce'
 import { Skeleton } from './ui'
 
 const COMMANDS = [
-  { id: 'workflow', label: 'Open Business Workflow', description: 'Continue the Lead-to-Reports lifecycle', href: '/workflow', icon: Sparkles },
+  { id: 'workflow', label: 'Open Workflow Shortcuts', description: 'Jump into CRM pipeline shortcuts', href: '/crm/pipeline', icon: Sparkles },
   { id: 'dashboard', label: 'Open Main Dashboard', description: 'Return to the workspace overview', href: '/dashboard', icon: Sparkles },
   { id: 'projects', label: 'Open Projects', description: 'View project workspace', href: '/projects', icon: FolderKanban },
   { id: 'tasks', label: 'Open Tasks', description: 'Review task list', href: '/tasks', icon: CheckSquare },

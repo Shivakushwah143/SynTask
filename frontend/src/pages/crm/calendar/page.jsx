@@ -61,7 +61,7 @@ export default function CRMCalendarPage() {
   const [search, setSearch] = useState('')
   const [cursorDate, setCursorDate] = useState(() => new Date())
 
-  const meetingsQuery = useQuery([CALENDAR_QUERY_KEY, 'meetings'], () => meetingsApi.list({ limit: 200 }), { staleTime: 60 * 1000 })
+  const meetingsQuery = useQuery([CALENDAR_QUERY_KEY, 'meetings'], () => meetingsApi.list({ limit: 100 }), { staleTime: 60 * 1000 })
   const tasksQuery = useQuery([CALENDAR_QUERY_KEY, 'tasks'], () => tasksAPI.listTasks({ limit: 200 }), { staleTime: 60 * 1000 })
   const activitiesQuery = useQuery([CALENDAR_QUERY_KEY, 'activities'], () => activityAPI.getTimeline({ days: 90, limit: 500 }), { staleTime: 60 * 1000 })
 

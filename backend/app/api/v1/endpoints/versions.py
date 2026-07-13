@@ -112,6 +112,7 @@ async def list_versions(
     }
 
 
+@router.patch("/{version_id}/release")
 @router.patch("/versions/{version_id}/release")
 async def release_version(
     version_id: str,
@@ -136,5 +137,4 @@ async def release_version(
     await version.save()
     
     return {"message": "Version released successfully"}
-
 

@@ -15,7 +15,7 @@ from typing import Any, Dict, List
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal
 from app.models.sales_product import SalesProduct
-from app.crm.models import SalesProspect, ProspectStatus
+from app.models.sales_prospect import SalesProspect, ProspectStatus
 from app.models.sales_contact import SalesContact
 from app.models.user import User, UserRole
 
