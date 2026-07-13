@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, X } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { ledgerAPI } from '../api/ledger'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { formatCurrency } from './crm/pipeline/utils'
+import { Button, Modal, Table } from '../components/ui'
 
 const Ledger = () => {
   const [ledgerData, setLedgerData] = useState(null)
@@ -110,15 +112,6 @@ const Ledger = () => {
     }
   }
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
-  }
-
   const getDaysPassedBadge = (days) => {
     if (days < 30) {
       return 'bg-green-100 text-green-800'
@@ -128,6 +121,90 @@ const Ledger = () => {
       return 'bg-red-100 text-red-800'
     }
   }
+
+  const closePaymentModal = () => {
+    setShowPaymentModal(false)
+    setSelectedInvoice(null)
+  }
+
+  const closeTDSModal = () => {
+    setShowTDSModal(false)
+    setSelectedInvoice(null)
+  }
+
+  const invoiceColumns = [
+    {
+      key: 'invoice_id',
+      header: 'Invoice ID',
+      render: (invoice) => <span className="font-medium text-text-primary">{invoice.invoice_id}</span>,
+    },
+    { key: 'client_name', header: 'Client', render: (invoice) => invoice.client_name },
+    { key: 'invoice_date_formatted', header: 'Invoice Date', render: (invoice) => invoice.invoice_date_formatted },
+    {
+      key: 'days_passed',
+      header: 'Days Passed',
+      render: (invoice) => (
+        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getDaysPassedBadge(invoice.days_passed)}`}>
+          {invoice.days_passed} days
+        </span>
+      ),
+    },
+    { key: 'total_amount', header: 'Total', render: (invoice) => formatCurrency(invoice.total_amount) },
+    {
+      key: 'total_received',
+      header: 'Received',
+      render: (invoice) => <span className="font-medium text-emerald-600 dark:text-emerald-300">{formatCurrency(invoice.total_received)}</span>,
+    },
+    {
+      key: 'outstanding_amount',
+      header: 'Outstanding',
+      render: (invoice) => <span className="font-medium text-rose-600 dark:text-rose-300">{formatCurrency(invoice.outstanding_amount)}</span>,
+    },
+    {
+      key: 'tds_amount',
+      header: 'TDS',
+      render: (invoice) => (
+        <div className="flex items-center gap-2">
+          <span>{formatCurrency(invoice.tds_amount)}</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setSelectedInvoice(invoice)
+              setTdsAmount(invoice.tds_amount.toString())
+              setShowTDSModal(true)
+            }}
+          >
+            Edit
+          </Button>
+        </div>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (invoice) => (
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => {
+            setSelectedInvoice(invoice)
+            setPaymentForm({
+              amount: invoice.outstanding_amount > 0 ? invoice.outstanding_amount.toString() : '',
+              payment_date: format(new Date(), 'yyyy-MM-dd'),
+              payment_method: 'cash',
+              reference_number: '',
+              notes: '',
+            })
+            setShowPaymentModal(true)
+          }}
+        >
+          Add Payment
+        </Button>
+      ),
+    },
+  ]
 
   if (loading && !ledgerData) {
     return (
@@ -209,129 +286,39 @@ const Ledger = () => {
             </select>
           </div>
           <div className="flex items-end gap-2">
-            <button
+            <Button
+              type="button"
               onClick={handleApplyFilters}
-              className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+              className="w-full"
             >
               Apply
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
               onClick={handleRefresh}
-              className="px-4 py-2 bg-surface-muted text-text-primary rounded-lg hover:bg-surface dark:bg-black/70 dark:text-text-primary dark:hover:bg-white/5"
+              className="px-3"
               title="Refresh"
             >
               <RefreshCw className="h-5 w-5" />
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Invoices Table */}
-      <div className="bg-surface rounded-lg shadow overflow-hidden dark:bg-black/85 dark:border dark:border-border">
+      <div className="bg-surface rounded-lg shadow dark:bg-black/85 dark:border dark:border-border">
         {loading ? (
           <div className="p-8 text-center text-text-muted">Loading...</div>
-        ) : !ledgerData?.invoices || ledgerData.invoices.length === 0 ? (
-          <div className="p-8 text-center text-text-muted">No invoices found</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-surface-muted dark:bg-black/70">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">INVOICE ID</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">CLIENT</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">INVOICE DATE</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">DAYS PASSED</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">TOTAL</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">RECEIVED</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">OUTSTANDING</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">TDS</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody className="bg-surface divide-y divide-border dark:bg-black/85">
-                {ledgerData.invoices.map((invoice) => (
-                  <tr key={invoice.id} className="hover:bg-surface-muted dark:hover:bg-white/5">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-text-primary">{invoice.invoice_id}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-text-primary">{invoice.client_name}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-text-primary">{invoice.invoice_date_formatted}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDaysPassedBadge(invoice.days_passed)}`}>
-                        {invoice.days_passed} days
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{formatCurrency(invoice.total_amount)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-green-600 font-medium">{formatCurrency(invoice.total_received)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-red-600 font-medium">{formatCurrency(invoice.outstanding_amount)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-text-primary">{formatCurrency(invoice.tds_amount)}</span>
-                        <button
-                          onClick={() => {
-                            setSelectedInvoice(invoice)
-                            setTdsAmount(invoice.tds_amount.toString())
-                            setShowTDSModal(true)
-                          }}
-                          className="px-2 py-1 text-xs bg-amber-100 text-amber-800 rounded hover:bg-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => {
-                          setSelectedInvoice(invoice)
-                          setPaymentForm({
-                            amount: invoice.outstanding_amount > 0 ? invoice.outstanding_amount.toString() : '',
-                            payment_date: format(new Date(), 'yyyy-MM-dd'),
-                            payment_method: 'cash',
-                            reference_number: '',
-                            notes: '',
-                          })
-                          setShowPaymentModal(true)
-                        }}
-                        className="px-3 py-1 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-                      >
-                        Add Payment
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table columns={invoiceColumns} data={ledgerData?.invoices || []} emptyMessage="No invoices found" />
         )}
       </div>
 
       {/* Add Payment Modal */}
-      {showPaymentModal && selectedInvoice && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-xl font-bold">Add Payment</h2>
-              <button
-                onClick={() => {
-                  setShowPaymentModal(false)
-                  setSelectedInvoice(null)
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={handleAddPayment} className="p-6 space-y-4">
+      <Modal isOpen={showPaymentModal && Boolean(selectedInvoice)} onClose={closePaymentModal} title="Add Payment">
+        {selectedInvoice ? (
+            <form onSubmit={handleAddPayment} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Invoice ID</label>
                 <input
@@ -401,46 +388,29 @@ const Ledger = () => {
                 />
               </div>
               <div className="flex justify-end gap-2 pt-4">
-                <button
+                <Button
                   type="button"
-                  onClick={() => {
-                    setShowPaymentModal(false)
-                    setSelectedInvoice(null)
-                  }}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  variant="secondary"
+                  onClick={closePaymentModal}
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+                  loading={submitting}
+                  loadingText="Adding..."
                 >
-                  {submitting ? 'Adding...' : 'Add Payment'}
-                </button>
+                  Add Payment
+                </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+        ) : null}
+      </Modal>
 
       {/* Edit TDS Modal */}
-      {showTDSModal && selectedInvoice && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-xl font-bold">Edit TDS</h2>
-              <button
-                onClick={() => {
-                  setShowTDSModal(false)
-                  setSelectedInvoice(null)
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={handleUpdateTDS} className="p-6 space-y-4">
+      <Modal isOpen={showTDSModal && Boolean(selectedInvoice)} onClose={closeTDSModal} title="Edit TDS">
+        {selectedInvoice ? (
+            <form onSubmit={handleUpdateTDS} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Invoice ID</label>
                 <input
@@ -463,28 +433,24 @@ const Ledger = () => {
                 />
               </div>
               <div className="flex justify-end gap-2 pt-4">
-                <button
+                <Button
                   type="button"
-                  onClick={() => {
-                    setShowTDSModal(false)
-                    setSelectedInvoice(null)
-                  }}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  variant="secondary"
+                  onClick={closeTDSModal}
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+                  loading={submitting}
+                  loadingText="Updating..."
                 >
-                  {submitting ? 'Updating...' : 'Update TDS'}
-                </button>
+                  Update TDS
+                </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+        ) : null}
+      </Modal>
     </div>
   )
 }

@@ -12,17 +12,20 @@ import {
   X,
   Package,
   BarChart3,
+  Bot,
   TrendingUp
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useUIStore } from '../store/uiStore'
 import ThemeToggle from '../components/ThemeToggle'
+import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
 
 const SuperAdminLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout, isLoggingOut } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
 
   const handleLogout = async () => {
     if (isLoggingOut) return
@@ -181,6 +184,14 @@ const SuperAdminLayout = () => {
           </button>
           
           <div className="flex items-center space-x-4 ml-auto">
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className="inline-flex items-center gap-2 rounded-full border border-surface-border bg-surface/95 px-3 py-2 text-sm font-medium text-text-primary transition hover:bg-surface-muted dark:border-gray-800 dark:bg-black dark:text-gray-100 dark:hover:bg-gray-900"
+            >
+              <Bot className="h-4 w-4" />
+              AI
+            </button>
             <ThemeToggle />
             <span className="text-sm text-text-secondary dark:text-gray-300">
               Welcome back, <span className="font-medium text-text-primary dark:text-gray-100">{user?.first_name}</span>
@@ -193,6 +204,7 @@ const SuperAdminLayout = () => {
           <Outlet />
         </main>
       </div>
+      <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   )
 }

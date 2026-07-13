@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
 import { GlobalSearch } from '../components/GlobalSearch'
+import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
 
 const BREADCRUMB_LABELS = {
@@ -41,6 +42,7 @@ const CRM_BREADCRUMB_LABELS = {
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
   const openSearch = () => setSearchOpen(true)
@@ -66,7 +68,7 @@ const MainLayout = () => {
       {/* Main Content */}
       <div className="flex min-w-0 w-full flex-1 flex-col  overflow-hidden">
         {/* Header */}
-        <Header title="Main Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
+        <Header title="Main Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} onAssistantOpen={() => setAssistantOpen(true)} />
 
         {/* Page Content */}
         <main className={`min-w-0 flex-1 px-4 pl-2 md:pl-6 py-4 md:py-6 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
@@ -74,6 +76,7 @@ const MainLayout = () => {
         </main>
       </div>
       <GlobalSearch isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+      <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   )
 }

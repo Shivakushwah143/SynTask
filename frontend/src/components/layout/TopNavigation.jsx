@@ -1,10 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, MessageCircle, Search, Video } from 'lucide-react'
+import { Bot, Menu, MessageCircle, Search, Video } from 'lucide-react'
 import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
 import { Button } from '../ui'
 import { useAuthStore } from '../../store/authStore'
-import { ROLE, isSuperAdminRole, normalizeRole } from '../../utils/roles'
+import { ROLE, hasCompanyAdminAccess, isManagerRole, isSuperAdminRole, normalizeRole } from '../../utils/roles'
 
 const GLOBAL_COMMUNICATION_LINKS = [
   {
@@ -23,7 +23,7 @@ const GLOBAL_COMMUNICATION_LINKS = [
   },
 ]
 
-export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onLogout, logoutLoading = false }) {
+export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onAssistantOpen, onLogout, logoutLoading = false }) {
   const location = useLocation()
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)
@@ -32,6 +32,7 @@ export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSear
   const communicationLinks = GLOBAL_COMMUNICATION_LINKS.filter(
     (item) => item.roles.includes(userRole) && hasModule(item.module),
   )
+  const canUseAssistant = hasCompanyAdminAccess(userRole) || isManagerRole(userRole)
 
   return (
     <header className="sticky top-0 z-30 min-w-0 border-b border-primary-200/70 bg-[rgba(252,250,244,0.98)] shadow-[0_8px_24px_rgba(63,49,37,0.08)] backdrop-blur-xl dark:border-[#5a4635] dark:bg-[rgb(36_28_20_/_0.96)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.35)]">
@@ -76,6 +77,12 @@ export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSear
                 )
               })}
             </nav>
+          ) : null}
+          {canUseAssistant ? (
+            <Button variant="ghost" size="sm" onClick={onAssistantOpen} className="rounded-full border border-surface-border bg-surface/95 px-2 text-text-primary hover:bg-surface-muted sm:px-3 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]">
+              <Bot className="h-4 w-4" />
+              <span className="hidden sm:inline">AI</span>
+            </Button>
           ) : null}
           <Button variant="ghost" size="sm" onClick={onCommandOpen} className="hidden md:inline-flex rounded-full border border-surface-border bg-surface/95 text-text-primary hover:bg-surface-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]">
             <span className="inline-flex items-center gap-2">

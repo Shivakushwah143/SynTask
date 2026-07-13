@@ -1,8 +1,9 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Plus, Search, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'

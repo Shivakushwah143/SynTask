@@ -3,12 +3,13 @@ import toast from 'react-hot-toast'
 import { workflowsApi } from '../api/workflows'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess } from '../utils/roles'
-import { PageHeader, Button, Modal, FormField, EmptyState, Badge } from '../components/ui'
+import { PageHeader, Button, Modal, FormField, EmptyState, Badge, ConfirmDialog } from '../components/ui'
 
 const defaultWorkflowForm = { name: '', description: '', initial_status: 'todo', is_default: false }
 const defaultStatusForm = { name: '', key: '', description: '', color: '#0052CC', category: 'todo', order: 0 }
 const defaultTransitionForm = { name: '', from_status: '', to_status: '' }
 const emptyEditing = { type: '', id: null }
+const emptyConfirm = { type: '', item: null, loading: false }
 
 const WorkflowAdmin = () => {
   const { user } = useAuthStore()
@@ -25,6 +26,7 @@ const WorkflowAdmin = () => {
   const [workflowForm, setWorkflowForm] = useState(defaultWorkflowForm)
   const [statusForm, setStatusForm] = useState(defaultStatusForm)
   const [transitionForm, setTransitionForm] = useState(defaultTransitionForm)
+  const [confirmDelete, setConfirmDelete] = useState(emptyConfirm)
 
   const loadData = async () => {
     try {
@@ -150,14 +152,20 @@ const WorkflowAdmin = () => {
     }
   }
 
-  const handleDeleteWorkflow = async (workflowId) => {
-    if (!window.confirm('Delete this workflow?')) return
+  const requestDeleteWorkflow = (workflow) => {
+    setConfirmDelete({ type: 'workflow', item: workflow, loading: false })
+  }
+
+  const deleteWorkflow = async (workflowId) => {
     try {
+      setConfirmDelete((state) => ({ ...state, loading: true }))
       await workflowsApi.deleteWorkflow(workflowId)
       toast.success('Workflow deleted')
+      setConfirmDelete(emptyConfirm)
       await loadData()
     } catch (error) {
-      toast.error('Failed to delete workflow')
+      setConfirmDelete((state) => ({ ...state, loading: false }))
+      toast.error(error.response?.data?.detail || 'Failed to delete workflow')
     }
   }
 
@@ -191,14 +199,20 @@ const WorkflowAdmin = () => {
     }
   }
 
-  const handleDeleteStatus = async (statusId) => {
-    if (!window.confirm('Delete this status?')) return
+  const requestDeleteStatus = (status) => {
+    setConfirmDelete({ type: 'status', item: status, loading: false })
+  }
+
+  const deleteStatus = async (statusId) => {
     try {
+      setConfirmDelete((state) => ({ ...state, loading: true }))
       await workflowsApi.deleteStatus(statusId)
       toast.success('Status deleted')
+      setConfirmDelete(emptyConfirm)
       await loadData()
     } catch (error) {
-      toast.error('Failed to delete status')
+      setConfirmDelete((state) => ({ ...state, loading: false }))
+      toast.error(error.response?.data?.detail || 'Failed to delete status')
     }
   }
 
@@ -232,14 +246,63 @@ const WorkflowAdmin = () => {
     }
   }
 
-  const handleDeleteTransition = async (transitionId) => {
-    if (!window.confirm('Delete this transition?')) return
+  const requestDeleteTransition = (transition) => {
+    setConfirmDelete({ type: 'transition', item: transition, loading: false })
+  }
+
+  const deleteTransition = async (transitionId) => {
     try {
+      setConfirmDelete((state) => ({ ...state, loading: true }))
       await workflowsApi.deleteTransition(transitionId)
       toast.success('Transition deleted')
+      setConfirmDelete(emptyConfirm)
       await loadData()
     } catch (error) {
-      toast.error('Failed to delete transition')
+      setConfirmDelete((state) => ({ ...state, loading: false }))
+      toast.error(error.response?.data?.detail || 'Failed to delete transition')
+    }
+  }
+
+  const getDeleteConfirmCopy = () => {
+    const item = confirmDelete.item || {}
+    if (confirmDelete.type === 'workflow') {
+      return {
+        title: `Delete workflow "${item.name || 'Untitled workflow'}"?`,
+        message: `This will remove the workflow definition "${item.name || 'Untitled workflow'}". Statuses and transitions that depend on this workflow may no longer be available to users.`,
+        label: 'Delete workflow',
+      }
+    }
+    if (confirmDelete.type === 'status') {
+      const transitionCount = transitions.filter((transition) => transition.from_status === item.key || transition.to_status === item.key).length
+      return {
+        title: `Delete status "${item.name || item.key || 'Untitled status'}"?`,
+        message: `This will remove status "${item.name || item.key || 'Untitled status'}" from the workflow. ${transitionCount} transition${transitionCount === 1 ? '' : 's'} currently reference this status and may need reassignment.`,
+        label: 'Delete status',
+      }
+    }
+    if (confirmDelete.type === 'transition') {
+      return {
+        title: `Delete transition "${item.name || 'Untitled transition'}"?`,
+        message: `This will remove the allowed movement from "${item.from_status || 'source'}" to "${item.to_status || 'target'}". Users will no longer be able to move work through this path.`,
+        label: 'Delete transition',
+      }
+    }
+    return { title: 'Confirm delete', message: '', label: 'Delete' }
+  }
+
+  const handleConfirmDelete = () => {
+    const itemId = confirmDelete.item?.id
+    if (!itemId) return
+    if (confirmDelete.type === 'workflow') {
+      deleteWorkflow(itemId)
+      return
+    }
+    if (confirmDelete.type === 'status') {
+      deleteStatus(itemId)
+      return
+    }
+    if (confirmDelete.type === 'transition') {
+      deleteTransition(itemId)
     }
   }
 
@@ -307,7 +370,7 @@ const WorkflowAdmin = () => {
                     <Button variant="secondary" size="sm" onClick={() => toggleWorkflow(workflow.id)}>
                       {workflow.is_active ? 'Deactivate' : 'Activate'}
                     </Button>
-                    <Button variant="danger" size="sm" onClick={() => handleDeleteWorkflow(workflow.id)}>Delete</Button>
+                    <Button variant="danger" size="sm" onClick={() => requestDeleteWorkflow(workflow)}>Delete</Button>
                   </div>
                 </div>
                 <div className="mt-3 text-xs text-gray-500">
@@ -327,8 +390,8 @@ const WorkflowAdmin = () => {
                 {statuses.length ? statuses.map((status) => (
                   <div key={status.id} className="flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1">
                     <Badge label={status.name} colorKey={status.category || 'scheduled'} />
-                    <button type="button" className="text-xs text-gray-600 hover:text-gray-900" onClick={() => openEditStatus(status)}>Edit</button>
-                    <button type="button" className="text-xs text-red-600 hover:text-red-700" onClick={() => handleDeleteStatus(status.id)}>Delete</button>
+                    <Button type="button" variant="ghost" size="sm" className="min-h-8 px-2 text-xs" onClick={() => openEditStatus(status)}>Edit</Button>
+                    <Button type="button" variant="danger" size="sm" className="min-h-8 px-2 text-xs" onClick={() => requestDeleteStatus(status)}>Delete</Button>
                   </div>
                 )) : <p className="text-sm text-gray-500">No statuses yet</p>}
               </div>
@@ -341,8 +404,8 @@ const WorkflowAdmin = () => {
                     <div className="flex items-center justify-between gap-2">
                       <span>{transition.name}: {transition.from_status} → {transition.to_status}</span>
                       <div className="flex gap-2">
-                        <button type="button" className="text-xs text-gray-600 hover:text-gray-900" onClick={() => openEditTransition(transition)}>Edit</button>
-                        <button type="button" className="text-xs text-red-600 hover:text-red-700" onClick={() => handleDeleteTransition(transition.id)}>Delete</button>
+                        <Button type="button" variant="ghost" size="sm" className="min-h-8 px-2 text-xs" onClick={() => openEditTransition(transition)}>Edit</Button>
+                        <Button type="button" variant="danger" size="sm" className="min-h-8 px-2 text-xs" onClick={() => requestDeleteTransition(transition)}>Delete</Button>
                       </div>
                     </div>
                   </div>
@@ -426,6 +489,15 @@ const WorkflowAdmin = () => {
           </div>
         </form>
       </Modal>
+      <ConfirmDialog
+        isOpen={Boolean(confirmDelete.type)}
+        title={getDeleteConfirmCopy().title}
+        message={getDeleteConfirmCopy().message}
+        confirmLabel={getDeleteConfirmCopy().label}
+        loading={confirmDelete.loading}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setConfirmDelete(emptyConfirm)}
+      />
     </div>
   )
 }
