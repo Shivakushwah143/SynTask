@@ -242,8 +242,11 @@ async def startup_event():
     # Start background task for deadline checking
     import asyncio
     from app.core.deadline_checker import run_deadline_checker
+    from app.services.hr_mail_sync import run_imap_recruitment_sync_loop
     asyncio.create_task(run_deadline_checker())
     logger.info("Deadline checker background task started")
+    asyncio.create_task(run_imap_recruitment_sync_loop())
+    logger.info("IMAP recruitment sync background task started")
 
 # Shutdown event
 @app.on_event("shutdown")

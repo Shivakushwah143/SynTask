@@ -960,6 +960,17 @@ class RecruitmentInboxService:
         return import_job
 
     @staticmethod
+    async def sync_now(company_id: str) -> dict[str, int]:
+        from app.services.hr_mail_sync import sync_inbox_once
+
+        result = await sync_inbox_once()
+        return {
+            "synced_count": int(result.get("synced_count", 0)),
+            "created_count": int(result.get("created_count", 0)),
+            "processed_count": int(result.get("processed_count", 0)),
+        }
+
+    @staticmethod
     async def process_import(company_id: str, import_id: str) -> RecruitmentImportJob:
         import_job = await RecruitmentInboxService.get_inbox_item(company_id, import_id)
         if import_job.status == ImportStatus.IGNORED:
