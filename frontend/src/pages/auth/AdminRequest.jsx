@@ -18,6 +18,7 @@ import toast from 'react-hot-toast'
 import { companiesAPI } from '../../api/companies'
 import { subscriptionsAPI } from '../../api/subscriptions'
 import { Button, FormField, inputClassName } from '../../components/ui'
+import GoogleLoginButton from '../../components/auth/GoogleLoginButton'
 
 const paymentOptions = [
   { value: 'stripe', label: 'Stripe' },
@@ -233,6 +234,16 @@ const AdminRequest = () => {
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back to sign in
         </Link>
+      </div>
+
+      <div className="rounded-lg border border-surface-border bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+          <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">
+            Already have approved access? Continue with your Google workspace account.
+          </p>
+          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">or</span>
+          <GoogleLoginButton onSuccess={() => navigate('/dashboard')} />
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">

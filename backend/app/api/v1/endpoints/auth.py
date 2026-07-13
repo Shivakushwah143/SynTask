@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from pydantic import BaseModel
 
-from app.models.user import User, UserStatus
+from app.models.user import AuthProvider, User, UserRole, UserStatus
 from app.core.security import (
     verify_password, 
     get_password_hash, 
@@ -31,6 +31,69 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 ALLOWED_AVATAR_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+
+class GoogleLoginRequest(BaseModel):
+    id_token: str
+    remember_me: bool = False
+
+
+def _split_google_name(name: str, email: str) -> tuple[str, str]:
+    cleaned = (name or "").strip()
+    if cleaned:
+        parts = cleaned.split(maxsplit=1)
+        return parts[0], parts[1] if len(parts) > 1 else ""
+    return email.split("@", 1)[0], ""
+
+
+def _auth_response(user: User, remember_me: bool = False) -> Dict:
+    access_token_expires = timedelta(days=30 if remember_me else settings.ACCESS_TOKEN_EXPIRE_MINUTES / 60 / 24)
+    token_payload = {
+        "sub": str(user.id),
+        "email": user.email,
+        "role": user.role,
+        "modules": getattr(user, "modules", ["task"]),
+        "active_module": getattr(user, "active_module", "task")
+    }
+    access_token = create_access_token(
+        data=token_payload,
+        expires_delta=access_token_expires
+    )
+    refresh_token = create_refresh_token(
+        data={"sub": str(user.id)}
+    )
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": user.role,
+            "company_id": user.company_id,
+            "modules": getattr(user, "modules", ["task"]),
+            "active_module": getattr(user, "active_module", "task"),
+            "notification_preferences": getattr(user, 'notification_preferences', {
+                "email_notifications": True,
+                "in_app_notifications": True,
+                "task_assignment_alerts": True,
+                "ticket_updates": True
+            }),
+            "avatar": user.avatar,
+            "provider": getattr(user, "provider", AuthProvider.LOCAL),
+        }
+    }
+
+
+def _reject_blocked_account(user: User) -> None:
+    if user.status in {UserStatus.INACTIVE, UserStatus.SUSPENDED}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is not active"
+        )
 
 
 async def find_user_by_reset_token(token: str) -> Optional[User]:
@@ -65,7 +128,7 @@ async def login(
         )
     
     # Check password
-    if not verify_password(login_request.password, user.password_hash):
+    if not user.password_hash or not verify_password(login_request.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
@@ -78,45 +141,108 @@ async def login(
             detail="Account is not active"
         )
     
-    # Create tokens
-    access_token_expires = timedelta(days=30 if login_request.remember_me else settings.ACCESS_TOKEN_EXPIRE_MINUTES / 60 / 24)
-    token_payload = {
-        "sub": str(user.id),
-        "email": user.email,
-        "role": user.role,
-        "modules": getattr(user, "modules", ["task"]),
-        "active_module": getattr(user, "active_module", "task")
-    }
-    access_token = create_access_token(
-        data=token_payload,
-        expires_delta=access_token_expires
-    )
-    refresh_token = create_refresh_token(
-        data={"sub": str(user.id)}
-    )
-    
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "user": {
-            "id": str(user.id),
-            "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "role": user.role,
-            "company_id": user.company_id,
-            "modules": getattr(user, "modules", ["task"]),
-            "active_module": getattr(user, "active_module", "task"),
-            "notification_preferences": getattr(user, 'notification_preferences', {
-                "email_notifications": True,
-                "in_app_notifications": True,
-                "task_assignment_alerts": True,
-                "ticket_updates": True
-            }),
-            "avatar": user.avatar,
-        }
-    }
+    return _auth_response(user, login_request.remember_me)
+
+
+@router.post("/google")
+@limiter.limit("10/minute")
+async def google_login(
+    request: Request,
+    google_request: GoogleLoginRequest
+):
+    """Login or link account with a backend-verified Google ID token."""
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google login is not configured"
+        )
+
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token as google_id_token
+
+        profile = google_id_token.verify_oauth2_token(
+            google_request.id_token,
+            google_requests.Request(),
+            settings.GOOGLE_CLIENT_ID,
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired Google token"
+        )
+    except Exception as exc:
+        logger.warning("Google token verification failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google verification failed"
+        )
+
+    email = (profile.get("email") or "").lower()
+    google_id = profile.get("sub")
+    name = profile.get("name") or ""
+    picture = profile.get("picture")
+    email_verified = profile.get("email_verified")
+
+    if not email or not google_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google token is missing required account details"
+        )
+    if email_verified is False:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Google account email is not verified"
+        )
+
+    try:
+        user = await User.find_one(User.email == email)
+        if user:
+            _reject_blocked_account(user)
+            if not getattr(user, "google_id", None):
+                user.google_id = google_id
+            elif user.google_id != google_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Email is already linked to another Google account"
+                )
+            if not getattr(user, "provider", None):
+                user.provider = AuthProvider.LOCAL
+            user.avatar = picture or user.avatar
+            user.is_email_verified = True
+            if user.status == UserStatus.PENDING:
+                user.status = UserStatus.ACTIVE
+            user.last_login = datetime.utcnow()
+            user.updated_at = datetime.utcnow()
+            await user.save()
+            return _auth_response(user, google_request.remember_me)
+
+        first_name, last_name = _split_google_name(name, email)
+        user = User(
+            email=email,
+            password_hash=None,
+            provider=AuthProvider.GOOGLE,
+            google_id=google_id,
+            avatar=picture,
+            first_name=first_name,
+            last_name=last_name,
+            role=UserRole.EMPLOYEE,
+            status=UserStatus.ACTIVE,
+            modules=["task"],
+            active_module="task",
+            is_email_verified=True,
+            last_login=datetime.utcnow(),
+        )
+        await user.insert()
+        return _auth_response(user, google_request.remember_me)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Google login failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to complete Google login"
+        )
 
 
 @router.post("/refresh")
@@ -341,6 +467,12 @@ async def change_password(
 ):
     """Change password for logged-in user"""
     try:
+        if not current_user.password_hash:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This account does not have a local password"
+            )
+
         # Verify old password
         if not verify_password(request.old_password, current_user.password_hash):
             raise HTTPException(
