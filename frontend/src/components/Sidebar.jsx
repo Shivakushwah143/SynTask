@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  ClipboardCheck,
   Contact,
   CreditCard,
   DollarSign,
@@ -208,6 +209,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: "Leaves",
       href: "/leaves",
       icon: CalendarCheck2,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
+      name: "Daily EOD",
+      href: "/eod",
+      icon: ClipboardCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
@@ -463,7 +470,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "communication",
       label: "Communication",
-      items: ["Notifications", "Timeline", "Leaves"]
+      items: ["Notifications", "Timeline", "Leaves", "Daily EOD"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },

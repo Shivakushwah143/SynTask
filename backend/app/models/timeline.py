@@ -31,6 +31,8 @@ class TimelineEventType(str, Enum):
     WFH_APPROVED = "wfh_approved"
     WFH_STARTED = "wfh_started"
     WFH_ENDED = "wfh_ended"
+    EOD_SUBMITTED = "eod_submitted"
+    EOD_UPDATED = "eod_updated"
 
 
 class TimelineModule(str, Enum):
@@ -38,6 +40,7 @@ class TimelineModule(str, Enum):
     MEETING = "meeting"
     ATTENDANCE = "attendance"
     LEAVE = "leave"
+    EOD = "eod"
 
 
 class TimelineEvent(Document):

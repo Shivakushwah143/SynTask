@@ -26,6 +26,7 @@ import AIBriefingCenter from '../components/AIBriefingCenter'
 import { Badge, Button, EmptyState, PageHeader, SkeletonCard, SkeletonTable, Table } from '../components/ui'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { attendanceAPI } from '../api/attendance'
+import { eodAPI } from '../api/eod'
 import { ChartTooltip } from '../components/charts/ChartTooltip'
 import { WorkflowGuide } from '../components/workflow/WorkflowGuide'
 import WorkflowJourney from '../components/workflow/WorkflowJourney'
@@ -82,6 +83,7 @@ const Dashboard = () => {
   const [projects, setProjects] = useState([])
   const [exporting, setExporting] = useState(false)
   const [attendanceToday, setAttendanceToday] = useState(null)
+  const [eodToday, setEodToday] = useState(null)
   const [attendanceStats, setAttendanceStats] = useState(null)
   const [metrics, setMetrics] = useState(null)
   const [revenueMode, setRevenueMode] = useState('Accrual')
@@ -125,6 +127,8 @@ const Dashboard = () => {
             if (attTodayRes && attTodayRes.data) {
               setAttendanceToday(attTodayRes.data)
             }
+            const eodTodayRes = await eodAPI.today()
+            setEodToday(eodTodayRes)
           } catch (e) {
             console.error(e)
           }
@@ -262,6 +266,7 @@ const Dashboard = () => {
     { name: 'Meetings', value: upcomingMeetings.length, route: '/meetings' },
     { name: 'High Priority', value: priorityTasks.length, route: '/tasks' },
   ]
+  const eodStatusLabel = eodToday?.status === 'submitted' ? 'Submitted' : eodToday?.status === 'leave' ? 'Leave' : 'Not Submitted'
 
   const navigateFromChart = (entry, fallback) => {
     const route = entry?.payload?.route || entry?.route || fallback
@@ -452,6 +457,18 @@ const Dashboard = () => {
             {role === ROLE.EMPLOYEE ? 'Your latest attendance status.' : 'People present today.'}
           </p>
         </div>
+        {role === ROLE.EMPLOYEE ? (
+        <div className="card p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Today&apos;s EOD</p>
+            <Badge label={eodStatusLabel} colorKey={eodToday?.status === 'submitted' ? 'submitted' : eodToday?.status === 'leave' ? 'pending' : 'draft'} />
+          </div>
+          <p className="mt-3 text-2xl font-semibold text-text-primary dark:text-text-primary">{eodStatusLabel}</p>
+          <Button className="mt-4" size="sm" variant={eodToday?.status === 'submitted' ? 'secondary' : 'primary'} onClick={() => navigate('/eod')}>
+            {eodToday?.status === 'submitted' ? "Edit Today's EOD" : "Submit Today's EOD"}
+          </Button>
+        </div>
+        ) : null}
       </section>
       ))}
 
