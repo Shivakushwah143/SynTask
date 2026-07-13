@@ -17,6 +17,11 @@ class TimelineEventType(str, Enum):
     TASK_UPDATED = "task_updated"
     TASK_REOPENED = "task_reopened"
     TASK_DELETED = "task_deleted"
+    TASK_DUE_TODAY = "task_due_today"
+    TASK_OVERDUE = "task_overdue"
+    TASK_EXTENSION_REQUESTED = "task_extension_requested"
+    TASK_EXTENSION_APPROVED = "task_extension_approved"
+    TASK_EXTENSION_REJECTED = "task_extension_rejected"
     ATTENDANCE_CHECK_IN = "attendance_check_in"
     ATTENDANCE_CHECK_OUT = "attendance_check_out"
     MEETING_CREATED = "meeting_created"
@@ -31,6 +36,8 @@ class TimelineEventType(str, Enum):
     WFH_APPROVED = "wfh_approved"
     WFH_STARTED = "wfh_started"
     WFH_ENDED = "wfh_ended"
+    EOD_SUBMITTED = "eod_submitted"
+    EOD_UPDATED = "eod_updated"
 
 
 class TimelineModule(str, Enum):
@@ -38,6 +45,7 @@ class TimelineModule(str, Enum):
     MEETING = "meeting"
     ATTENDANCE = "attendance"
     LEAVE = "leave"
+    EOD = "eod"
 
 
 class TimelineEvent(Document):

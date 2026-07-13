@@ -90,10 +90,10 @@ const LiveMonitor = () => {
   const connectSocket = useCallback(() => {
     if (socketRef.current && socketRef.current.readyState <= WebSocket.OPEN) return
 
-    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
-    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const cleanUrl = apiBaseUrl.replace(/^https?:\/\//, '')
-    const wsUrl = `${wsProto}//${cleanUrl}/attendance/ws?token=${token}`
+    const apiBaseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+    const apiUrl = new URL(apiBaseUrl, window.location.origin)
+    const wsProto = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${wsProto}//${apiUrl.host}${apiUrl.pathname.replace(/\/$/, '')}/attendance/ws?token=${encodeURIComponent(token)}`
 
     const ws = new WebSocket(wsUrl)
     socketRef.current = ws
@@ -161,8 +161,8 @@ const LiveMonitor = () => {
       }, delay)
     }
 
-    ws.onerror = (err) => {
-      console.error('LiveMonitor WS error:', err)
+    ws.onerror = () => {
+      setIsWsConnected(false)
     }
   }, [token])
 

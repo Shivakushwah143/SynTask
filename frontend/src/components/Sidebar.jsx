@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  ClipboardCheck,
   Contact,
   CreditCard,
   DollarSign,
@@ -39,12 +40,9 @@ import {
   UserCog,
   UserRoundSearch,
   X,
-  CalendarClock,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
-import { BUSINESS_WORKFLOW_STEPS } from "../config/businessWorkflow";
-import { canAccessOwner } from "../config/domainOwnership";
 import { HR_MODULES, HR_ROLES } from "../config/hrModules";
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
@@ -208,6 +206,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: "Leaves",
       href: "/leaves",
       icon: CalendarCheck2,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
+      name: "Daily EOD",
+      href: "/eod",
+      icon: ClipboardCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
@@ -420,26 +424,6 @@ const Sidebar = ({ isOpen, onClose }) => {
     .filter((module) => module.roles.includes(userRole) && (hasModule(module.module) || module.key === "recruitment"))
     .flatMap((module) => module.navigation.map((item) => ({ ...item, match: item.href === module.basePath ? module.basePath : undefined })));
 
-  const workflowIcons = {
-    lead: UserRoundSearch,
-    qualification: GitBranch,
-    'follow-up': CalendarClock,
-    meeting: CalendarRange,
-    proposal: FileCheck2,
-    negotiation: HeartHandshake,
-    won: UserCheck,
-    client: Briefcase,
-    project: FolderKanban,
-    tasks: ClipboardList,
-    execution: TimerReset,
-    invoice: Receipt,
-    payment: DollarSign,
-    reports: LineChart,
-  };
-  const workflowNavigation = BUSINESS_WORKFLOW_STEPS
-    .filter((step) => (!step.roles || step.roles.includes(userRole)) && canAccessOwner(step, user, isSuperAdminRole(userRole)))
-    .map((step) => ({ ...step, name: step.label, icon: workflowIcons[step.key] }));
-
   const itemByName = filteredNavigation.reduce((acc, item) => {
     acc[item.name] = item;
     return acc;
@@ -448,11 +432,6 @@ const Sidebar = ({ isOpen, onClose }) => {
   const dashboardNavigation = filteredNavigation.filter((item) => item.name === "Dashboard");
 
   const navigationGroups = [
-    {
-      key: "business-workflow",
-      label: "Business Workflow",
-      items: workflowNavigation,
-    },
     {
       key: "workspace",
       label: "Workspace Tools",
@@ -463,7 +442,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "communication",
       label: "Communication",
-      items: ["Notifications", "Timeline", "Leaves"]
+      items: ["Notifications", "Timeline", "Leaves", "Daily EOD"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },

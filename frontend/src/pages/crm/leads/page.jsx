@@ -1,21 +1,42 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
-import { useNavigate } from 'react-router-dom'
+<<<<<<< HEAD
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Plus, Search, Sparkles, Users } from 'lucide-react'
+=======
+import { useNavigate } from 'react-router-dom'
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
+import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Plus, Search, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
+>>>>>>> 58e94b3954491d1c231e25872ffc2e68ac57afff
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
-import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
+import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection } from '../../../components/crm'
+import { ChartCard } from '../../../components/charts/ChartCard'
+import { ChartTooltip } from '../../../components/charts/ChartTooltip'
 import { Badge, Button, Modal, Skeleton, inputClassName } from '../../../components/ui'
 import BulkImportLeadsModal from '../../../components/BulkImportProspectsModal'
 import { useAuthStore } from '../../../store/authStore'
 import { isEmployeeRole, normalizeRole } from '../../../utils/roles'
 import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, normalizeText } from '../pipeline/utils'
 
+const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
+const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
+const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
+const getResponseItems = (data, key) => {
+  const direct = data?.[key]
+  const nested = data?.data?.[key]
+  if (Array.isArray(direct)) return direct
+  if (Array.isArray(nested)) return nested
+  if (Array.isArray(data)) return data
+  return []
+}
+
 export default function CRMLeadsPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)
   const isEmployee = isEmployeeRole(userRole)
@@ -44,6 +65,17 @@ export default function CRMLeadsPage() {
   const [leadSearch, setLeadSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
+
+  useEffect(() => {
+    if (searchParams.get('import') !== '1') return
+    setImportOpen(true)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('import')
+      return next
+    }, { replace: true })
+  }, [searchParams, setSearchParams])
+
   const pipelineQuery = useQuery('crm-leads-entry', crmApi.getPipeline, {
     staleTime: 5 * 60 * 1000,
   })
@@ -85,6 +117,7 @@ export default function CRMLeadsPage() {
   const allLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []), [stages])
   const stageOptions = useMemo(() => stages.filter((stage) => (stage.leads || []).length).map((stage) => ({ value: stage.key, label: stage.name })), [stages])
   const totalPipelineValue = useMemo(() => allLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0), [allLeads])
+  const leadAnalytics = useMemo(() => buildLeadDashboardAnalytics(allLeads, stages, new Date(), pipelineQuery.data?.meta?.currency || 'INR'), [allLeads, pipelineQuery.data?.meta?.currency, stages])
   const filteredLeads = useMemo(() => {
     const query = normalizeText(leadSearch)
     const stage = normalizeText(stageFilter)
@@ -121,11 +154,29 @@ export default function CRMLeadsPage() {
     if (Array.isArray(data?.items)) return data.items
     return []
   }, [usersQuery.data])
-  const categories = useMemo(() => (Array.isArray(categoriesQuery.data?.categories) ? categoriesQuery.data.categories : []), [categoriesQuery.data])
-  const products = useMemo(() => (Array.isArray(productsQuery.data?.products) ? productsQuery.data.products : []), [productsQuery.data])
+<<<<<<< HEAD
+  const categories = useMemo(() => getResponseItems(categoriesQuery.data, 'categories'), [categoriesQuery.data])
+  const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
+  const defaultStageId = getStageValue(stages[0])
+  const defaultCategoryId = getOptionId(categories[0])
+  const defaultProductIds = getOptionId(products[0])
+  const defaultOwnerId = getUserId(assignableUsers[0]) || currentUserId
+=======
+  const categories = useMemo(() => getSalesCollection(categoriesQuery.data, 'categories'), [categoriesQuery.data])
+  const products = useMemo(() => getSalesCollection(productsQuery.data, 'products'), [productsQuery.data])
+  const userNameById = useMemo(() => {
+    const map = new Map()
+    assignableUsers.forEach((item) => {
+      const id = String(item.id || item._id || '')
+      const name = [item.first_name, item.last_name].filter(Boolean).join(' ').trim() || item.email
+      if (id && name) map.set(id, name)
+    })
+    return map
+  }, [assignableUsers])
   const defaultStageId = stages[0]?.id || stages[0]?.name || ''
   const defaultCategoryId = categories[0]?.id || categories[0]?._id || ''
   const defaultProductIds = products[0]?.id || products[0]?._id || ''
+>>>>>>> 58e94b3954491d1c231e25872ffc2e68ac57afff
 
   useEffect(() => {
     if (!createOpen) return
@@ -134,9 +185,9 @@ export default function CRMLeadsPage() {
       category_id: state.category_id || defaultCategoryId,
       product_ids: state.product_ids || defaultProductIds,
       current_stage: state.current_stage || defaultStageId,
-      assigned_to: state.assigned_to || assignableUsers[0]?.id || '',
+      assigned_to: state.assigned_to || defaultOwnerId,
     }))
-  }, [assignableUsers, createOpen, defaultCategoryId, defaultProductIds, defaultStageId])
+  }, [createOpen, defaultCategoryId, defaultOwnerId, defaultProductIds, defaultStageId])
 
   const mergeMutation = useMutation((payload) => crmApi.mergeProspects(payload), {
     onSuccess: () => {
@@ -303,29 +354,100 @@ export default function CRMLeadsPage() {
         )}
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <CRMStatCard icon={Users} label="Total leads" value={String(leadCount)} helper={`${filteredLeads.length} visible now`} tone="blue" />
-        <CRMStatCard icon={Sparkles} label="Active leads" value={String(activeCount)} helper="Open records in the current pipeline" tone="emerald" />
-        <CRMStatCard icon={CalendarDays} label="Pipeline value" value={formatCurrency(totalPipelineValue, pipelineQuery.data?.meta?.currency || 'INR')} helper={`${stages.length} configured stages`} tone="amber" />
-      </div>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.85fr)]">
+        <ChartCard
+          title="Lead Momentum"
+          period="Last 6 Months"
+          right={<Badge label={`${filteredLeads.length} visible`} colorKey="draft" />}
+          className="overflow-hidden shadow-sm"
+        >
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.7fr)_minmax(220px,0.3fr)]">
+            <div>
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-3xl font-semibold tracking-tight text-gray-950 dark:text-gray-50">{leadCount}</p>
+                  <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">Total leads in active pipeline</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-300">{formatCurrency(totalPipelineValue, pipelineQuery.data?.meta?.currency || 'INR')}</p>
+                  <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">Pipeline value</p>
+                </div>
+              </div>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={leadAnalytics.monthlyTrend} margin={{ left: -16, right: 10, top: 8, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="leadMomentumFill" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stopColor="#2563eb" stopOpacity={0.22} />
+                        <stop offset="100%" stopColor="#2563eb" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.16} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                    <ChartTooltip />
+                    <Area type="monotone" dataKey="count" name="Leads" stroke="#2563eb" strokeWidth={3} fill="url(#leadMomentumFill)" activeDot={{ r: 6, fill: '#2563eb' }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="grid content-start gap-3">
+              {leadAnalytics.insights.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={item.route ? () => navigate(item.route) : undefined}
+                  className="rounded-2xl border border-surface-border/80 bg-gray-50/80 p-4 text-left transition hover:border-primary-200 hover:bg-primary-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-950/70 dark:hover:border-primary-800 dark:hover:bg-primary-950/20"
+                >
+                  <span className="flex items-center gap-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                    <item.icon className="h-4 w-4 text-primary-600 dark:text-primary-300" />
+                    {item.label}
+                  </span>
+                  <span className="mt-2 block text-2xl font-semibold text-gray-950 dark:text-gray-50">{item.value}</span>
+                  <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{item.helper}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </ChartCard>
 
-      <CRMSection
-        title="Lead entry points"
-        description="The lead workspace lives at /crm/leads/:leadId. Start from the pipeline or related activity screens."
-        actions={<Badge label="Sales module" colorKey="draft" />}
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>
-            Go to Pipeline
-          </Button>
-          <Button variant="secondary" onClick={() => navigate('/crm/activities')}>
-            View Activities
-          </Button>
-          <Button variant="secondary" onClick={() => navigate('/crm/companies')}>
-            Open Companies
-          </Button>
+        <div className="grid gap-4">
+          <ChartCard
+            title="Stage Mix"
+            period={`${stages.length} stages`}
+            className="shadow-sm"
+          >
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={leadAnalytics.stageStack} barCategoryGap="28%" margin={{ left: -18, right: 8, top: 8, bottom: 0 }}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.16} />
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                  <ChartTooltip />
+                  <Bar dataKey="hot" stackId="stage" name="Hot" fill="#f97316" radius={[6, 6, 0, 0]} maxBarSize={42} />
+                  <Bar dataKey="warm" stackId="stage" name="Warm" fill="#38bdf8" maxBarSize={42} />
+                  <Bar dataKey="cold" stackId="stage" name="Cold" fill="#6366f1" radius={[0, 0, 6, 6]} maxBarSize={42} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+
+          <div className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-950 dark:text-gray-50">Lead shortcuts</h3>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Jump into related CRM surfaces.</p>
+              </div>
+              <Badge label="Sales module" colorKey="draft" />
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
+              <Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Pipeline</Button>
+              <Button variant="secondary" onClick={() => navigate('/crm/activities')}>Activities</Button>
+              <Button variant="secondary" onClick={() => navigate('/crm/companies')}>Companies</Button>
+            </div>
+          </div>
         </div>
-      </CRMSection>
+      </section>
 
       {!isEmployee && (
         <Modal
@@ -348,7 +470,7 @@ export default function CRMLeadsPage() {
                 category_id: createForm.category_id || defaultCategoryId,
                 product_ids: createForm.product_ids || defaultProductIds,
                 current_stage: createForm.current_stage || defaultStageId,
-                assigned_to: createForm.assigned_to || (assignableUsers[0]?.id || ''),
+                assigned_to: createForm.assigned_to || defaultOwnerId,
                 interest_level: createForm.interest_level || 'medium',
                 estimated_close_date: createForm.estimated_close_date || new Date().toISOString().slice(0, 10),
                 remark: createForm.remark.trim(),
@@ -359,8 +481,14 @@ export default function CRMLeadsPage() {
                 toast.error('First name, last name, and phone are required')
                 return
               }
-              if (!payload.category_id || !payload.product_ids || !payload.current_stage || !payload.assigned_to) {
-                toast.error('Select category, product, stage, and owner')
+              const missingFields = [
+                !payload.category_id && 'category',
+                !payload.product_ids && 'product',
+                !payload.current_stage && 'stage',
+                !payload.assigned_to && 'owner',
+              ].filter(Boolean)
+              if (missingFields.length) {
+                toast.error(`Missing ${missingFields.join(', ')}. Check CRM settings.`)
                 return
               }
               createLeadMutation.mutate(payload)
@@ -396,7 +524,7 @@ export default function CRMLeadsPage() {
                 <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
                   <option value="">Select category</option>
                   {categories.map((category) => (
-                    <option key={category.id || category._id} value={category.id || category._id}>{category.name}</option>
+                    <option key={getOptionId(category)} value={getOptionId(category)}>{category.name}</option>
                   ))}
                 </select>
               </label>
@@ -405,7 +533,7 @@ export default function CRMLeadsPage() {
                 <select className={inputClassName} value={createForm.product_ids || defaultProductIds} onChange={(e) => setCreateForm((state) => ({ ...state, product_ids: e.target.value }))}>
                   <option value="">Select product</option>
                   {products.map((product) => (
-                    <option key={product.id || product._id} value={product.id || product._id}>{product.name}</option>
+                    <option key={getOptionId(product)} value={getOptionId(product)}>{product.name}</option>
                   ))}
                 </select>
               </label>
@@ -414,19 +542,22 @@ export default function CRMLeadsPage() {
                 <select className={inputClassName} value={createForm.current_stage || defaultStageId} onChange={(e) => setCreateForm((state) => ({ ...state, current_stage: e.target.value }))}>
                   <option value="">Select stage</option>
                   {stages.map((stage) => (
-                    <option key={stage.id || stage.name} value={stage.id || stage.name}>{stage.name}</option>
+                    <option key={getStageValue(stage)} value={getStageValue(stage)}>{stage.name}</option>
                   ))}
                 </select>
               </label>
               <label className="space-y-1">
                 <span className="text-xs font-medium text-gray-600">Owner</span>
-                <select className={inputClassName} value={createForm.assigned_to} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
+                <select className={inputClassName} value={createForm.assigned_to || defaultOwnerId} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
                   <option value="">Select owner</option>
                   {assignableUsers.map((userOption) => (
-                    <option key={userOption.id || userOption._id} value={userOption.id || userOption._id}>
+                    <option key={getUserId(userOption)} value={getUserId(userOption)}>
                       {userOption.first_name} {userOption.last_name} {userOption.role ? `(${userOption.role})` : ''}
                     </option>
                   ))}
+                  {!assignableUsers.length && defaultOwnerId ? (
+                    <option value={defaultOwnerId}>{user?.first_name} {user?.last_name} ({user?.role || 'owner'})</option>
+                  ) : null}
                 </select>
               </label>
               <label className="space-y-1">
@@ -466,7 +597,7 @@ export default function CRMLeadsPage() {
         >
           {assignedLeadsQuery.isLoading ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-24 w-full rounded-3xl" />)}
+              {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-24 w-full rounded-2xl" />)}
             </div>
           ) : assignedLeadsQuery.isError ? (
             <CRMEmptyState
@@ -476,7 +607,7 @@ export default function CRMLeadsPage() {
               action={<Button variant="secondary" onClick={() => assignedLeadsQuery.refetch()}>Retry</Button>}
             />
           ) : employeeLeads.length ? (
-            <div className="overflow-hidden rounded-3xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-800">
                 <thead className="bg-gray-50 dark:bg-gray-950">
                   <tr>
@@ -566,12 +697,13 @@ export default function CRMLeadsPage() {
             </div>
           )}
         >
-          <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto]">
+          <div className="mb-4 rounded-2xl border border-surface-border/80 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-950/50">
+            <div className="grid gap-2 lg:grid-cols-[minmax(220px,1fr)_160px_160px_auto]">
             <label className="relative block">
               <span className="sr-only">Search leads</span>
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
-                className="input pl-10"
+                className="input min-h-10 pl-10"
                 value={leadSearch}
                 onChange={(event) => setLeadSearch(event.target.value)}
                 placeholder="Search leads, contacts, owner..."
@@ -579,7 +711,7 @@ export default function CRMLeadsPage() {
             </label>
             <label className="block">
               <span className="sr-only">Stage</span>
-              <select className="input" value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}>
+              <select className="input min-h-10" value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}>
                 <option value="">All stages</option>
                 {stageOptions.map((stage) => (
                   <option key={stage.value} value={stage.value}>{stage.label}</option>
@@ -588,7 +720,7 @@ export default function CRMLeadsPage() {
             </label>
             <label className="block">
               <span className="sr-only">Priority</span>
-              <select className="input" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+              <select className="input min-h-10" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
                 <option value="">All priorities</option>
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
@@ -610,11 +742,12 @@ export default function CRMLeadsPage() {
               <Filter className="h-4 w-4" />
               Reset
             </Button>
+            </div>
           </div>
 
           {pipelineQuery.isLoading ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-3xl" />)}
+              {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-2xl" />)}
             </div>
           ) : pipelineQuery.isError ? (
             <CRMEmptyState
@@ -678,7 +811,7 @@ export default function CRMLeadsPage() {
                               </span>
                             </button>
                           </td>
-                          <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{getLeadOwnerLabel(lead)}</td>
+                          <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{getOwnerName(lead, userNameById)}</td>
                           <td className="px-4 py-3"><Badge label={lead.current_stage || lead.stage || 'Unstaged'} colorKey="draft" /></td>
                           <td className="px-4 py-3"><PriorityPill priority={priority} /></td>
                           <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{formatCurrency(getLeadDealValue(lead), pipelineQuery.data?.meta?.currency || 'INR')}</td>
@@ -725,7 +858,7 @@ export default function CRMLeadsPage() {
       >
         {duplicatesQuery.isLoading ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {[1, 2, 3].map((item) => <Skeleton key={item} className="h-28 w-full rounded-3xl" />)}
+            {[1, 2, 3].map((item) => <Skeleton key={item} className="h-28 w-full rounded-2xl" />)}
           </div>
         ) : duplicatesQuery.isError ? (
           <CRMEmptyState
@@ -737,7 +870,7 @@ export default function CRMLeadsPage() {
         ) : duplicateGroups.length ? (
           <div className="space-y-3">
             {duplicateGroups.map((group) => (
-              <article key={group.match_key} className="rounded-3xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <article key={group.match_key} className="rounded-2xl border border-surface-border/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{group.match_key}</p>
@@ -752,7 +885,7 @@ export default function CRMLeadsPage() {
                     <button
                       key={lead.id}
                       type="button"
-                      className="rounded-2xl border border-gray-200 bg-gray-50 p-3 text-left text-sm hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-800"
+                      className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-left text-sm transition hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-800"
                       onClick={() => navigate(`/crm/leads/${lead.id}`)}
                     >
                       <p className="font-medium text-gray-900 dark:text-gray-100">{lead.prospect_name || 'Lead'}</p>
@@ -783,7 +916,7 @@ export default function CRMLeadsPage() {
         ) : null}
         {((!isEmployee && leadsQuery.isLoading) || (isEmployee && pipelineQuery.isLoading)) ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-3xl" />)}
+              {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-2xl" />)}
           </div>
         ) : ((!isEmployee && leadsQuery.isError) || (isEmployee && pipelineQuery.isError)) ? (
           <CRMEmptyState
@@ -794,7 +927,7 @@ export default function CRMLeadsPage() {
           />
         ) : !isEmployee ? (
           allAccountLeads.length ? (
-            <div className="overflow-hidden rounded-3xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-800">
                 <thead className="bg-gray-50 dark:bg-gray-950">
                   <tr>
@@ -816,7 +949,7 @@ export default function CRMLeadsPage() {
                             <p className="text-xs text-gray-500 dark:text-gray-400">{lead.email || lead.phone || '-'}</p>
                           </button>
                         </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{lead.owner_name || lead.assigned_to_name || lead.assigned_to || 'Unassigned'}</td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{getOwnerName(lead, userNameById)}</td>
                         <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{lead.current_stage || lead.stage || 'Unknown'}</td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
@@ -836,7 +969,7 @@ export default function CRMLeadsPage() {
         ) : recentLeads.length ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {recentLeads.map((lead) => (
-              <label key={lead.id || lead._id} className="rounded-3xl border border-surface-border/80 bg-white p-4 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800">
+              <label key={lead.id || lead._id} className="rounded-2xl border border-surface-border/80 bg-white p-3 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800">
                 <div className="flex items-start justify-between gap-3">
                   <input
                     type="checkbox"
@@ -848,7 +981,7 @@ export default function CRMLeadsPage() {
                   />
                   <button type="button" onClick={() => navigate(`/crm/leads/${lead.id || lead._id}`)} className="min-w-0 flex-1 text-left">
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{lead.company_name || lead.prospect_name || 'Lead'}</p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{lead.owner_name || lead.assigned_to_name || lead.assigned_to || 'Unassigned'}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{getOwnerName(lead, userNameById)}</p>
                   </button>
                   <Badge label={lead.current_stage || lead.stage || 'Unknown'} colorKey="draft" />
                 </div>
@@ -871,7 +1004,7 @@ export default function CRMLeadsPage() {
           description="Quickly mark whether a meeting is scheduled or the lead is a dead end."
         >
           {recentLeads.length ? (
-            <div className="overflow-hidden rounded-3xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
               <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-800">
                 <thead className="bg-gray-50 dark:bg-gray-950">
                   <tr>
@@ -895,7 +1028,7 @@ export default function CRMLeadsPage() {
                           </button>
                           <p className="text-xs text-gray-500">{lead.email || lead.phone || '-'}</p>
                         </td>
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{lead.owner_name || lead.assigned_to_name || lead.assigned_to || 'Unassigned'}</td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{getOwnerName(lead, userNameById)}</td>
                         <td className="px-4 py-3">
                           <button
                             type="button"
@@ -943,10 +1076,10 @@ export default function CRMLeadsPage() {
           queryClient.invalidateQueries('crm-lead-duplicates')
           queryClient.invalidateQueries('crm-pipeline-board')
         }}
-        categories={categoriesQuery.data?.categories || []}
+        categories={categories}
         stages={stagesQuery.data?.stages || []}
         users={assignableUsers}
-        products={productsQuery.data?.products || []}
+        products={products}
       />
 
       <BulkUpdateModal
@@ -985,6 +1118,75 @@ function BulkUpdateModal({ isOpen, onClose, leadCount, onSubmit, loading, stages
 
 function Field({ label, children }) {
   return <label className="block"><span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>{children}</label>
+}
+
+export function getSalesCollection(data, legacyKey) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.[legacyKey])) return data[legacyKey]
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.data?.[legacyKey])) return data.data[legacyKey]
+  if (Array.isArray(data?.data?.items)) return data.data.items
+  return []
+}
+
+export function getOwnerName(lead, userNameById = new Map()) {
+  const direct = lead?.owner_name || lead?.assigned_to_name || lead?.owner?.name
+  if (direct) return direct
+  const ownerId = String(lead?.assigned_to || lead?.owner_id || '')
+  if (ownerId && userNameById.has(ownerId)) return userNameById.get(ownerId)
+  return 'Unassigned'
+}
+
+export function buildLeadDashboardAnalytics(leads = [], stages = [], now = new Date(), currency = 'INR') {
+  const monthFormatter = new Intl.DateTimeFormat('en', { month: 'short' })
+  const monthKeys = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1)
+    return {
+      key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+      name: monthFormatter.format(date),
+      count: 0,
+      value: 0,
+    }
+  })
+  const monthByKey = new Map(monthKeys.map((item) => [item.key, item]))
+  leads.forEach((lead) => {
+    const rawDate = lead.created_at || lead.updated_at || lead.estimated_close_date
+    const date = rawDate ? new Date(rawDate) : null
+    if (!date || Number.isNaN(date.getTime())) return
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    const bucket = monthByKey.get(key)
+    if (!bucket) return
+    bucket.count += 1
+    bucket.value += getLeadDealValue(lead)
+  })
+
+  const stageLookup = new Map(stages.map((stage) => [normalizeText(stage.key || stage.id || stage.name), stage.name || stage.key || 'Stage']))
+  const stageTotals = new Map()
+  leads.forEach((lead) => {
+    const stageKey = getLeadStageKey(lead) || normalizeText(lead.current_stage || lead.stage || 'unstaged')
+    const stageName = stageLookup.get(stageKey) || lead.current_stage || lead.stage || 'Unstaged'
+    const priority = normalizeText(getLeadPriority(lead) || 'medium')
+    const type = ['critical', 'high', 'hot'].includes(priority) ? 'hot' : ['medium', 'warm'].includes(priority) ? 'warm' : 'cold'
+    const current = stageTotals.get(stageName) || { name: stageName, hot: 0, warm: 0, cold: 0 }
+    current[type] += 1
+    stageTotals.set(stageName, current)
+  })
+
+  const activeCount = leads.filter((lead) => !['won', 'lost', 'closed'].includes(String(lead?.status || '').toLowerCase())).length
+  const meetingCount = leads.filter((lead) => Boolean(parseLeadCustomFields(lead).meeting_scheduled)).length
+  const hotCount = leads.filter((lead) => ['critical', 'high', 'hot'].includes(normalizeText(getLeadPriority(lead)))).length
+  const pipelineValue = leads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0)
+
+  return {
+    monthlyTrend: monthKeys,
+    stageStack: Array.from(stageTotals.values()).slice(0, 6),
+    insights: [
+      { label: 'Active', value: activeCount, helper: `${leads.length} total records`, icon: Sparkles, route: '/crm/pipeline' },
+      { label: 'Hot leads', value: hotCount, helper: 'High-intent priority mix', icon: Target, route: '/crm/pipeline' },
+      { label: 'Meetings', value: meetingCount, helper: 'Scheduled follow-ups', icon: CalendarDays, route: '/crm/activities' },
+      { label: 'Avg value', value: leads.length ? formatCurrency(Math.round(pipelineValue / leads.length), currency) : formatCurrency(0, currency), helper: 'Mean deal size', icon: TrendingUp, route: '/crm/pipeline' },
+    ],
+  }
 }
 
 function parseLeadCustomFields(lead) {

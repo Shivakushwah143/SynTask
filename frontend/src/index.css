@@ -25,9 +25,9 @@
     --color-app-surface-muted: rgba(239, 230, 216, 0.98);
     --color-app-surface-subtle: rgba(233, 223, 208, 0.98);
     --color-app-border: theme('colors.surface.border');
-    --color-app-text: theme('colors.text.primary');
-    --color-app-text-secondary: theme('colors.text.secondary');
-    --color-app-text-muted: theme('colors.text.muted');
+    --color-app-text: #312a23;
+    --color-app-text-secondary: #4d453d;
+    --color-app-text-muted: #5f554b;
     --radius-sm: 0.75rem;
     --radius-md: 1rem;
     --radius-lg: 1rem;
@@ -37,6 +37,7 @@
     --shadow-md: 0 10px 24px -20px rgb(63 49 37 / 0.18);
     --shadow-lg: 0 18px 36px -28px rgb(63 49 37 / 0.22);
     --focus-ring: 0 0 0 2px rgb(229 106 31 / 0.22);
+    --icon-scale-primary: 1.2;
   }
 
   html.dark,
@@ -48,8 +49,8 @@
     --color-app-surface-subtle: #332a21;
     --color-app-border: #44382c;
     --color-app-text: #fff8ee;
-    --color-app-text-secondary: #e2d4c3;
-    --color-app-text-muted: #baad9b;
+    --color-app-text-secondary: #f0e2d0;
+    --color-app-text-muted: #ddcdb8;
     --shadow-sm: 0 1px 0 0 rgb(255 250 244 / 0.06);
     --shadow-md: 0 14px 34px -24px rgb(0 0 0 / 0.7);
     --shadow-lg: 0 22px 48px -28px rgb(0 0 0 / 0.85);
@@ -141,7 +142,7 @@
   }
   
   .input {
-    @apply min-h-11 w-full rounded-2xl border border-surface-border bg-white/80 px-4 py-2.5 text-sm transition-colors placeholder:text-text-muted focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-gray-100 dark:placeholder:text-[#8f8374];
+    @apply min-h-11 w-full rounded-2xl border border-surface-border bg-white/80 px-4 py-2.5 text-sm transition-colors placeholder:text-text-muted focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-gray-100 dark:placeholder:text-[var(--color-app-text-muted)];
   }
   
   .card {
@@ -196,6 +197,33 @@
 }
 
 @layer utilities {
+  :where(
+    .btn,
+    button,
+    a,
+    nav,
+    table,
+    .card,
+    .page-header,
+    .section-header,
+    [role='button'],
+    [role='menuitem']
+  ) svg.lucide,
+  :where(.crm-icon-surface, .empty-state, .page-action) svg.lucide {
+    --tw-scale-x: var(--icon-scale-primary);
+    --tw-scale-y: var(--icon-scale-primary);
+    transform:
+      translate(var(--tw-translate-x, 0), var(--tw-translate-y, 0))
+      rotate(var(--tw-rotate, 0))
+      skewX(var(--tw-skew-x, 0))
+      skewY(var(--tw-skew-y, 0))
+      scaleX(var(--tw-scale-x))
+      scaleY(var(--tw-scale-y));
+    transform-origin: center;
+    flex-shrink: 0;
+    vertical-align: middle;
+  }
+
   .viewport-scroll-x {
     max-width: 100%;
     overflow-x: auto;
@@ -477,12 +505,34 @@
 
   :where(html.dark, html[data-theme='dark']) .text-gray-700,
   :where(html.dark, html[data-theme='dark']) .text-gray-600 {
-    color: theme('colors.text.secondary');
+    color: var(--color-app-text-secondary);
   }
 
   :where(html.dark, html[data-theme='dark']) .text-gray-500,
   :where(html.dark, html[data-theme='dark']) .text-gray-400 {
-    color: theme('colors.text.muted');
+    color: var(--color-app-text-muted);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .text-text-primary {
+    color: var(--color-app-text);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .text-text-secondary {
+    color: var(--color-app-text-secondary);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .text-text-muted {
+    color: var(--color-app-text-muted);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .text-gray-700,
+  :where(html:not(.dark):not([data-theme='dark'])) .text-gray-600 {
+    color: var(--color-app-text-secondary);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .text-gray-500,
+  :where(html:not(.dark):not([data-theme='dark'])) .text-gray-400 {
+    color: var(--color-app-text-muted);
   }
 
   :where(html.dark, html[data-theme='dark']) .text-blue-700,

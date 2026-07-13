@@ -68,9 +68,9 @@ export default {
           border: '#e4dccb',
         },
         text: {
-          primary: '#383028',
-          secondary: '#6f675d',
-          muted: '#8f877a',
+          primary: '#312a23',
+          secondary: '#4d453d',
+          muted: '#5f554b',
           inverse: '#fffaf4',
         },
         status: {

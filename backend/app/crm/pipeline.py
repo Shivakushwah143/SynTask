@@ -294,10 +294,11 @@ def _build_pipeline_summary(prospects: List[SalesProspect]) -> Dict[str, Any]:
 
 class CRMPipelineService:
     @staticmethod
-    async def load_pipeline(current_user: User) -> Dict[str, Any]:
+    async def load_pipeline(current_user: User, limit: int = 500) -> Dict[str, Any]:
         company_id = _user_company_id(current_user)
         stage_catalog = await _load_stage_documents(current_user)
         stage_index = _build_stage_index(stage_catalog)
+        safe_limit = max(1, min(int(limit or 500), 1000))
 
         query: Dict[str, Any] = {
             "company_id": company_id,
@@ -310,7 +311,9 @@ class CRMPipelineService:
                 {"assigned_by": current_user_id},
             ]
 
-        prospects = await SalesProspect.find(query).sort("-updated_at").to_list()
+        prospects_query = SalesProspect.find(query)
+        total_prospects = await prospects_query.count()
+        prospects = await SalesProspect.find(query).sort("-updated_at").to_list(length=safe_limit)
         owner_ids = {
             str(prospect.assigned_to)
             for prospect in prospects
@@ -390,6 +393,9 @@ class CRMPipelineService:
                 "company_id": company_id,
                 "stage_source": "fixed_state_machine",
                 "approved_stages": [stage["name"] for stage in APPROVED_PIPELINE_STAGES],
+                "limit": safe_limit,
+                "total_leads": total_prospects,
+                "has_more": total_prospects > len(prospects),
             },
         }
 

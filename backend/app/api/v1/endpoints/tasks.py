@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import datetime
 from bson import ObjectId
 
-from app.models.task import Task, TaskStatus, TaskPriority, TaskComment
+from app.models.task import Task, TaskExtensionRequest, TaskStatus, TaskPriority
 from app.models.department import Department
 from app.models.user import User, UserRole
 from app.events import publish_event
@@ -17,11 +17,39 @@ from app.api.dependencies import (
     check_company_access,
 )
 from app.services.task_service import TaskService
+from app.services.task_health_service import (
+    assert_task_manage_access,
+    assert_task_view_access,
+    build_employee_task_summary,
+    build_extension_request_summary,
+    build_overdue_task_summary,
+    build_task_health_summary,
+    build_team_completion_summary,
+    create_extension_request,
+    review_extension_request,
+    serialize_extension_request,
+    serialize_task_health,
+    sync_task_health,
+    sync_task_health_for_company,
+)
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.services.timeline_service import create_timeline_event
 from app.core.cache import cache_delete_pattern
 
 router = APIRouter()
+
+
+def _parse_task_datetime(value: str, field_name: str = "date") -> datetime:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            return datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid {field_name} format. Use ISO format or YYYY-MM-DD",
+            )
 
 
 async def _resolve_department(company_id: str, department_id: Optional[str]):
@@ -190,6 +218,8 @@ async def list_tasks(
         query["department_id"] = department_id
 
     tasks = await Task.find(query).skip(skip).limit(limit).sort("-created_at").to_list()
+    for task in tasks:
+        await sync_task_health(task)
     total = await Task.find(query).count()
 
     return {
@@ -205,6 +235,8 @@ async def list_tasks(
                 "department_id": getattr(task, "department_id", None),
                 "department": getattr(task, "department", None),
                 "due_date": task.due_date,
+                "health_status": getattr(task.health_status, "value", task.health_status),
+                "extension_count": getattr(task, "extension_count", 0),
                 "created_at": task.created_at,
             }
             for task in tasks
@@ -380,6 +412,7 @@ async def create_task(
     # we respond. Everything else (email, notification, cache, event) is
     # non-critical and happens in the background AFTER the response is sent. ---
     await task.insert()
+    await sync_task_health(task)
 
     if task.assigned_to:
         await create_timeline_event(
@@ -410,10 +443,112 @@ async def create_task(
         "department_id": task.department_id,
         "department": task.department,
         "due_date": task.due_date,
+        "health_status": getattr(task.health_status, "value", task.health_status),
+        "extension_count": getattr(task, "extension_count", 0),
         "created_at": task.created_at,
         "message": "Task created successfully",
         "task_id": str(task.id)
     }
+
+
+@router.post("/health/sync")
+async def sync_task_health_endpoint(current_user: User = Depends(get_current_user)):
+    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
+    count = await sync_task_health_for_company(None if current_user.role == UserRole.SUPER_ADMIN else current_user.company_id)
+    return {"message": "Task health synced", "processed": count}
+
+
+@router.get("/health/me")
+async def my_task_health(current_user: User = Depends(get_current_user)):
+    return await build_employee_task_summary(current_user)
+
+
+@router.get("/health/summary")
+async def task_health_summary(current_user: User = Depends(get_current_user)):
+    return await build_task_health_summary(current_user)
+
+
+@router.get("/health/team-completion")
+async def team_completion_summary(current_user: User = Depends(get_current_user)):
+    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
+    return await build_team_completion_summary(current_user)
+
+
+@router.get("/health/overdue")
+async def overdue_task_summary(current_user: User = Depends(get_current_user)):
+    return await build_overdue_task_summary(current_user)
+
+
+@router.get("/health/extensions")
+async def extension_request_summary(current_user: User = Depends(get_current_user)):
+    return await build_extension_request_summary(current_user)
+
+
+@router.get("/{task_id}/health")
+async def get_task_health(task_id: str, current_user: User = Depends(get_current_user)):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await assert_task_view_access(current_user, task)
+    await sync_task_health(task)
+    return {"task": serialize_task_health(task)}
+
+
+@router.post("/{task_id}/extension-requests")
+async def request_task_extension(
+    task_id: str,
+    requested_due_date: str = Form(...),
+    reason: str = Form(...),
+    current_user: User = Depends(get_current_user),
+):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    request = await create_extension_request(
+        task,
+        current_user,
+        _parse_task_datetime(requested_due_date, "requested_due_date"),
+        reason,
+    )
+    return {"message": "Extension request submitted", "request": serialize_extension_request(request)}
+
+
+@router.get("/{task_id}/extension-requests")
+async def list_task_extension_requests(task_id: str, current_user: User = Depends(get_current_user)):
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    await assert_task_view_access(current_user, task)
+    requests = await TaskExtensionRequest.find(TaskExtensionRequest.task_id == task_id).sort("-created_at").to_list()
+    return {"requests": [serialize_extension_request(item) for item in requests]}
+
+
+@router.post("/extension-requests/{request_id}/approve")
+async def approve_task_extension(
+    request_id: str,
+    comment: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    request = await TaskExtensionRequest.get(request_id)
+    if not request:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Extension request not found")
+    reviewed = await review_extension_request(request, current_user, True, comment)
+    return {"message": "Extension approved", "request": serialize_extension_request(reviewed)}
+
+
+@router.post("/extension-requests/{request_id}/reject")
+async def reject_task_extension(
+    request_id: str,
+    comment: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    request = await TaskExtensionRequest.get(request_id)
+    if not request:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Extension request not found")
+    reviewed = await review_extension_request(request, current_user, False, comment)
+    return {"message": "Extension rejected", "request": serialize_extension_request(reviewed)}
 
 
 @router.get("/{task_id}")
@@ -432,6 +567,7 @@ async def get_task(
 
     # Check access permissions
     check_company_access(current_user, task.company_id)
+    await sync_task_health(task)
 
     # Get assigned user details
     assigned_user = None
@@ -457,11 +593,62 @@ async def get_task(
         "department_id": getattr(task, "department_id", None),
         "department": getattr(task, "department", None),
         "due_date": task.due_date,
+        "health_status": getattr(task.health_status, "value", task.health_status),
+        "extension_count": getattr(task, "extension_count", 0),
         "tags": task.tags,
         "attachments": task.attachments if hasattr(task, 'attachments') and task.attachments else [],
         "created_at": task.created_at,
         "updated_at": task.updated_at,
     }
+
+
+@router.delete("/{task_id}")
+async def delete_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a task in the current company."""
+    task = await Task.get(task_id)
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    check_company_access(current_user, task.company_id)
+
+    can_delete = (
+        current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]
+        or task.created_by == str(current_user.id)
+    )
+    if not can_delete:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete this task"
+        )
+
+    await task.delete()
+    await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
+
+    await publish_event(
+        build_domain_event(
+            event_name="TaskDeleted",
+            aggregate_type="task",
+            aggregate_id=str(task.id),
+            company_id=str(task.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "task_id": str(task.id),
+                "title": task.title,
+                "project_id": str(task.project_id) if task.project_id else None,
+            },
+            project_id=str(task.project_id) if task.project_id else None,
+            metadata={"source": "task_delete"},
+        )
+    )
+
+    return {"message": "Task deleted successfully", "task_id": task_id}
 
 
 @router.get("/{task_id}/execution")
@@ -893,6 +1080,7 @@ async def update_task(
 
     task.updated_at = datetime.utcnow()
     await task.save()
+    await sync_task_health(task)
 
     if task.assigned_to and task.assigned_to != previous_assigned_to:
         await create_timeline_event(
@@ -957,6 +1145,8 @@ async def update_task(
         "assigned_to": task.assigned_to,
         "assigned_to_name": f"{assigned_user.first_name} {assigned_user.last_name}" if assigned_user else None,
         "due_date": task.due_date,
+        "health_status": getattr(task.health_status, "value", task.health_status),
+        "extension_count": getattr(task, "extension_count", 0),
         "tags": task.tags,
         "updated_at": task.updated_at,
         "message": "Task updated successfully"

@@ -1,6 +1,6 @@
 export function RecruitmentStatCard({ label, value, icon: Icon, helper }) {
   return (
-    <div className="rounded-3xl border border-surface-border bg-surface p-5 shadow-card dark:border-gray-800 dark:bg-gray-950">
+    <div className="crm-icon-surface rounded-3xl border border-surface-border bg-surface p-5 shadow-card dark:border-gray-800 dark:bg-gray-950">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-text-muted">{label}</p>

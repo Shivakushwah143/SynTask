@@ -40,6 +40,8 @@ class TaskService:
             task.completed_at = None
         task.updated_at = datetime.utcnow()
         await task.save()
+        from app.services.task_health_service import sync_task_health
+        await sync_task_health(task)
 
         if old_status != status_value:
             asyncio.create_task(

@@ -17,11 +17,11 @@ export function WorkflowGuide({ className = '', title, description, nextStep, pr
               {description}
             </p>
           ) : null}
-          {nextStep ? (
+          {/* {nextStep ? (
             <p className="mt-4 inline-flex rounded-full bg-surface px-3 py-1 text-sm font-medium text-primary-700 ring-1 ring-primary-200 dark:bg-black/70 dark:text-primary-300 dark:ring-primary-900/50">
               {nextStep}
             </p>
-          ) : null}
+          ) : null} */}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {secondaryAction ? (
@@ -32,7 +32,7 @@ export function WorkflowGuide({ className = '', title, description, nextStep, pr
           ) : null}
         </div>
       </div>
-      {bullets.length ? (
+      {/* {bullets.length ? (
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {bullets.map((bullet) => (
             <div key={bullet.label} className="rounded-2xl border border-surface-border bg-surface/95 p-4 dark:border-border dark:bg-black/70">
@@ -41,7 +41,7 @@ export function WorkflowGuide({ className = '', title, description, nextStep, pr
             </div>
           ))}
         </div>
-      ) : null}
+      ) : null} */}
     </section>
   )
 }
