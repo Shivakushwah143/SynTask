@@ -54,6 +54,18 @@ class Settings(BaseSettings):
     MAIL_TLS: bool = True
     MAIL_SSL: bool = False
 
+    # IMAP recruitment inbox sync
+    IMAP_ENABLED: bool = False
+    IMAP_HOST: Optional[str] = None
+    IMAP_PORT: int = 993
+    IMAP_SSL: bool = True
+    IMAP_USERNAME: Optional[str] = None
+    IMAP_PASSWORD: Optional[str] = None
+    IMAP_FOLDER: str = "INBOX"
+    IMAP_POLL_SECONDS: int = 60
+    IMAP_MARK_SEEN: bool = True
+    IMAP_TARGET_COMPANY_EMAIL: Optional[str] = None
+
     # Brevo outbound email
     BREVO_API_KEY: Optional[str] = None
     BREVO_SENDER_EMAIL: Optional[str] = None

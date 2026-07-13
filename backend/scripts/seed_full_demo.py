@@ -56,6 +56,24 @@ from app.models.sales_prospect import InterestLevel, ProspectStatus, SalesProspe
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.ticket import Ticket, TicketPriority, TicketStatus, TicketType
 from app.models.user import User, UserRole, UserStatus
+from app.recruitment.models import (
+    Application,
+    Candidate,
+    CandidateStatus,
+    CandidateTimeline,
+    Interview,
+    InterviewDecision,
+    InterviewFeedback,
+    InterviewFeedbackStatus,
+    InterviewLifecycleStatus,
+    JobApplicationMethod,
+    JobEmploymentType,
+    JobLifecycleStatus,
+    JobStatus,
+    JobVisibility,
+    JobWorkMode,
+    RecruitmentJob,
+)
 
 
 random.seed(42)
@@ -134,6 +152,19 @@ CLIENT_NAMES = [
 
 def full_name(first: str, last: str) -> str:
     return f"{first} {last}"
+
+
+def slugify(value: str) -> str:
+    parts = (
+        value.lower()
+        .replace("&", " and ")
+        .replace("/", " ")
+        .replace("-", " ")
+        .replace("'", "")
+        .replace(".", " ")
+        .split()
+    )
+    return "-".join(parts)
 
 
 async def upsert_company(record: dict[str, Any]) -> Company:
@@ -277,6 +308,365 @@ async def upsert_crm_company(company_id: str, admin: User) -> CRMCompany:
         crm_company.updated_at = now
         await crm_company.save()
     return crm_company
+
+
+async def upsert_recruitment_job(
+    *,
+    company_id: str,
+    admin_id: str,
+    recruiter_id: str,
+    department_id: str,
+    title: str,
+    slug: str,
+    location: str,
+    employment_type: JobEmploymentType,
+    work_mode: JobWorkMode,
+    lifecycle_status: JobLifecycleStatus,
+    required_skills: list[str],
+    openings: int,
+) -> RecruitmentJob:
+    now = datetime.utcnow()
+    job = await RecruitmentJob.find_one({"company_id": company_id, "slug": slug})
+    if not job:
+        job = RecruitmentJob(
+            company_id=company_id,
+            title=title,
+            slug=slug,
+            department_id=department_id,
+            hiring_manager_id=admin_id,
+            recruiter_ids=[recruiter_id],
+            employment_type=employment_type,
+            work_mode=work_mode,
+            location=location,
+            experience_min=2.0,
+            experience_max=6.0,
+            salary_min=700000,
+            salary_max=1400000,
+            openings=openings,
+            required_skills=required_skills,
+            description=f"Seeded {title.lower()} role for HR demo review and admin visibility.",
+            responsibilities="Own role intake, collaborate with hiring managers, and move candidates through the pipeline.",
+            qualifications="Relevant experience, strong communication, and structured hiring judgment.",
+            benefits="Hybrid work, learning budget, health coverage, and flexible leave.",
+            visibility=JobVisibility.PUBLIC,
+            application_method=JobApplicationMethod.PORTAL,
+            status=JobStatus.PUBLISHED,
+            lifecycle_status=lifecycle_status,
+            publish_options={"seed": DEMO_TAG, "channels": ["career_portal", "admin"]},
+            created_by=admin_id,
+            created_at=now,
+            updated_at=now,
+        )
+        await job.insert()
+    else:
+        job.department_id = department_id
+        job.hiring_manager_id = admin_id
+        job.recruiter_ids = [recruiter_id]
+        job.employment_type = employment_type
+        job.work_mode = work_mode
+        job.location = location
+        job.openings = openings
+        job.required_skills = required_skills
+        job.description = f"Seeded {title.lower()} role for HR demo review and admin visibility."
+        job.visibility = JobVisibility.PUBLIC
+        job.application_method = JobApplicationMethod.PORTAL
+        job.status = JobStatus.PUBLISHED
+        job.lifecycle_status = lifecycle_status
+        job.publish_options = {"seed": DEMO_TAG, "channels": ["career_portal", "admin"]}
+        job.updated_at = now
+        await job.save()
+    return job
+
+
+async def upsert_candidate(
+    *,
+    company_id: str,
+    job_id: str,
+    full_name: str,
+    email: str,
+    phone: str,
+    current_company: str,
+    experience_years: float,
+    location: str,
+    skills: list[str],
+    status: CandidateStatus,
+    recruiter_id: str,
+) -> Candidate:
+    now = datetime.utcnow()
+    candidate = await Candidate.find_one({"company_id": company_id, "email": email})
+    if not candidate:
+        candidate = Candidate(
+            company_id=company_id,
+            job_id=job_id,
+            source="career_portal",
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            current_company=current_company,
+            experience_years=experience_years,
+            expected_salary=950000 + int(experience_years * 50000),
+            notice_period="30 days",
+            location=location,
+            education="Bachelor's Degree",
+            skills=skills,
+            status=status,
+            assigned_recruiter_id=recruiter_id,
+            created_at=now,
+            updated_at=now,
+        )
+        await candidate.insert()
+    else:
+        candidate.job_id = job_id
+        candidate.source = "career_portal"
+        candidate.full_name = full_name
+        candidate.phone = phone
+        candidate.current_company = current_company
+        candidate.experience_years = experience_years
+        candidate.expected_salary = 950000 + int(experience_years * 50000)
+        candidate.notice_period = "30 days"
+        candidate.location = location
+        candidate.education = "Bachelor's Degree"
+        candidate.skills = skills
+        candidate.status = status
+        candidate.assigned_recruiter_id = recruiter_id
+        candidate.updated_at = now
+        await candidate.save()
+    return candidate
+
+
+async def upsert_application(
+    *,
+    company_id: str,
+    candidate_id: str,
+    job_id: str,
+    recruiter_id: str,
+    tracking_code: str,
+    status: CandidateStatus,
+) -> Application:
+    now = datetime.utcnow()
+    application = await Application.find_one({"company_id": company_id, "tracking_code": tracking_code})
+    if not application:
+        application = Application(
+            company_id=company_id,
+            candidate_id=candidate_id,
+            job_id=job_id,
+            source="career_portal",
+            status=status,
+            assigned_recruiter_id=recruiter_id,
+            tracking_code=tracking_code,
+            applied_at=now,
+            updated_at=now,
+        )
+        await application.insert()
+    else:
+        application.candidate_id = candidate_id
+        application.job_id = job_id
+        application.status = status
+        application.assigned_recruiter_id = recruiter_id
+        application.updated_at = now
+        await application.save()
+    return application
+
+
+async def upsert_interview(
+    *,
+    company_id: str,
+    candidate_id: str,
+    application_id: str,
+    job_id: str,
+    interviewer_ids: list[str],
+    schedule_at: datetime,
+    status: InterviewLifecycleStatus,
+    decision: InterviewDecision | None = None,
+) -> Interview:
+    now = datetime.utcnow()
+    interview = await Interview.find_one(
+        {"company_id": company_id, "candidate_id": candidate_id, "job_id": job_id, "schedule_at": schedule_at}
+    )
+    if not interview:
+        interview = Interview(
+            company_id=company_id,
+            candidate_id=candidate_id,
+            application_id=application_id,
+            job_id=job_id,
+            round=1,
+            interview_type="technical",
+            interview_mode="online",
+            interviewer_ids=interviewer_ids,
+            panel_name="Hiring Panel",
+            mode="video",
+            meeting_link=f"https://meet.syntask.local/{slugify(candidate_id)}-{schedule_at.date().isoformat()}",
+            location="Google Meet",
+            schedule_at=schedule_at,
+            scheduled_at=now,
+            duration_minutes=45,
+            status=status,
+            feedback_status=InterviewFeedbackStatus.PENDING if status != InterviewLifecycleStatus.COMPLETED else InterviewFeedbackStatus.SUBMITTED,
+            decision=decision,
+            notes=f"seed:{candidate_id}:{job_id}",
+            created_at=now,
+            updated_at=now,
+        )
+        await interview.insert()
+    else:
+        interview.application_id = application_id
+        interview.job_id = job_id
+        interview.interviewer_ids = interviewer_ids
+        interview.schedule_at = schedule_at
+        interview.status = status
+        interview.feedback_status = InterviewFeedbackStatus.PENDING if status != InterviewLifecycleStatus.COMPLETED else InterviewFeedbackStatus.SUBMITTED
+        interview.decision = decision
+        interview.notes = f"seed:{candidate_id}:{job_id}"
+        interview.updated_at = now
+        await interview.save()
+    return interview
+
+
+async def seed_recruitment_demo(
+    *,
+    company_id: str,
+    admin: User,
+    hr_manager: User,
+    recruiter: User,
+    hr_department_id: str,
+) -> dict[str, list[Any]]:
+    now = datetime.utcnow()
+    jobs = [
+        await upsert_recruitment_job(
+            company_id=company_id,
+            admin_id=str(admin.id),
+            recruiter_id=str(recruiter.id),
+            department_id=hr_department_id,
+            title="Senior HR Generalist",
+            slug=f"senior-hr-generalist-{DEMO_TAG}",
+            location="Bengaluru",
+            employment_type=JobEmploymentType.FULL_TIME,
+            work_mode=JobWorkMode.HYBRID,
+            lifecycle_status=JobLifecycleStatus.PUBLISHED,
+            required_skills=["HR Operations", "Employee Relations", "Policy Design"],
+            openings=1,
+        ),
+        await upsert_recruitment_job(
+            company_id=company_id,
+            admin_id=str(admin.id),
+            recruiter_id=str(recruiter.id),
+            department_id=hr_department_id,
+            title="Technical Recruiter",
+            slug=f"technical-recruiter-{DEMO_TAG}",
+            location="Remote",
+            employment_type=JobEmploymentType.FULL_TIME,
+            work_mode=JobWorkMode.REMOTE,
+            lifecycle_status=JobLifecycleStatus.APPROVED,
+            required_skills=["Sourcing", "Interviewing", "ATS Management"],
+            openings=2,
+        ),
+        await upsert_recruitment_job(
+            company_id=company_id,
+            admin_id=str(admin.id),
+            recruiter_id=str(recruiter.id),
+            department_id=hr_department_id,
+            title="Payroll Specialist",
+            slug=f"payroll-specialist-{DEMO_TAG}",
+            location="Mumbai",
+            employment_type=JobEmploymentType.CONTRACT,
+            work_mode=JobWorkMode.ONSITE,
+            lifecycle_status=JobLifecycleStatus.PAUSED,
+            required_skills=["Payroll", "Compliance", "Excel"],
+            openings=1,
+        ),
+    ]
+
+    candidate_specs = [
+        ("Ananya Rao", "ananya.rao@example.com", "+91-90000-10001", "ZenWorks", 4.5, "Bengaluru", ["HR Operations", "People Analytics"], CandidateStatus.SHORTLISTED, jobs[0]),
+        ("Karan Mehta", "karan.mehta@example.com", "+91-90000-10002", "PulseStack", 5.0, "Mumbai", ["Sourcing", "Stakeholder Management"], CandidateStatus.INTERVIEW_1, jobs[1]),
+        ("Ritika Sharma", "ritika.sharma@example.com", "+91-90000-10003", "CloudAxis", 3.0, "Delhi NCR", ["Payroll", "Statutory Compliance"], CandidateStatus.NEW, jobs[2]),
+        ("Mohit Iyer", "mohit.iyer@example.com", "+91-90000-10004", "BrightMinds", 6.0, "Remote", ["Candidate Experience", "ATS"], CandidateStatus.OFFER_SENT, jobs[1]),
+        ("Sara Khan", "sara.khan@example.com", "+91-90000-10005", "Northstar Labs", 4.0, "Bengaluru", ["Policy Writing", "Employee Relations"], CandidateStatus.INTERVIEW_2, jobs[0]),
+    ]
+    candidates: list[Candidate] = []
+    applications: list[Application] = []
+    interviews: list[Interview] = []
+
+    for idx, (full_name_text, email, phone, current_company, exp, location, skills, status, job) in enumerate(candidate_specs):
+        candidate = await upsert_candidate(
+            company_id=company_id,
+            job_id=str(job.id),
+            full_name=full_name_text,
+            email=email,
+            phone=phone,
+            current_company=current_company,
+            experience_years=exp,
+            location=location,
+            skills=skills,
+            status=status,
+            recruiter_id=str(recruiter.id),
+        )
+        candidates.append(candidate)
+        applications.append(
+            await upsert_application(
+                company_id=company_id,
+                candidate_id=str(candidate.id),
+                job_id=str(job.id),
+                recruiter_id=str(recruiter.id),
+                tracking_code=f"HR-{company_id[-6:]}-{idx + 1:03d}",
+                status=status,
+            )
+        )
+
+        timeline = await CandidateTimeline.find_one({"company_id": company_id, "candidate_id": str(candidate.id), "event_type": "seeded"})
+        if not timeline:
+            timeline = CandidateTimeline(
+                company_id=company_id,
+                candidate_id=str(candidate.id),
+                job_id=str(job.id),
+                event_type="seeded",
+                payload={"seed": DEMO_TAG, "candidate": full_name_text, "job": job.title, "status": status.value},
+                actor_id=str(recruiter.id),
+                created_at=now - timedelta(days=idx + 1),
+            )
+            await timeline.insert()
+
+    interview_dates = [
+        now + timedelta(hours=4),
+        now + timedelta(days=1, hours=2),
+        now + timedelta(days=2, hours=3),
+    ]
+    interview_statuses = [
+        InterviewLifecycleStatus.SCHEDULED,
+        InterviewLifecycleStatus.CONFIRMED,
+        InterviewLifecycleStatus.IN_PROGRESS,
+    ]
+    for idx, candidate in enumerate(candidates[:3]):
+        interview = await upsert_interview(
+            company_id=company_id,
+            candidate_id=str(candidate.id),
+            application_id=str(applications[idx].id),
+            job_id=str(jobs[idx % len(jobs)].id),
+            interviewer_ids=[str(hr_manager.id), str(admin.id)],
+            schedule_at=interview_dates[idx],
+            status=interview_statuses[idx],
+        )
+        interviews.append(interview)
+
+    feedback = await InterviewFeedback.find_one({"company_id": company_id, "interview_id": str(interviews[-1].id), "interviewer_id": str(hr_manager.id)})
+    if not feedback:
+        feedback = InterviewFeedback(
+            company_id=company_id,
+            interview_id=str(interviews[-1].id),
+            application_id=str(applications[2].id),
+            interviewer_id=str(hr_manager.id),
+            decision=InterviewDecision.PASSED,
+            feedback="Strong communication, clear HR domain knowledge, and good role fit.",
+            score=8.5,
+            strengths=["Communication", "Process thinking", "Stakeholder management"],
+            concerns=["Needs deeper payroll experience"],
+            submitted_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        await feedback.insert()
+
+    return {"jobs": jobs, "candidates": candidates, "applications": applications, "interviews": interviews}
 
 
 async def upsert_sales_catalog(company_id: str, admin_id: str, company_index: int) -> tuple[list[SalesCategory], list[SalesProduct]]:
@@ -991,9 +1381,22 @@ async def build_company_bundle(company_record: dict[str, Any], company_index: in
         modules=["task", "sales", "crm", "projects"],
     )
 
+    dept_hr = await upsert_department(company_id, "Human Resources", str(admin.id))
     dept_sales = await upsert_department(company_id, "Sales", str(admin.id))
     dept_delivery = await upsert_department(company_id, "Delivery", str(admin.id))
     dept_support = await upsert_department(company_id, "Support", str(admin.id))
+
+    hr_manager = await upsert_user(
+        email=f"hr{company_index + 1}@demo.com",
+        first_name=f"HR{company_index + 1}",
+        last_name="Lead",
+        role=UserRole.MANAGER,
+        company_id=company_id,
+        department_id=str(dept_hr.id),
+        reports_to=str(admin.id),
+        ancestors=[str(admin.id)],
+        modules=["task", "hr", "crm"],
+    )
 
     manager = await upsert_user(
         email=f"manager{company_index + 1}@demo.com",
@@ -1018,9 +1421,21 @@ async def build_company_bundle(company_record: dict[str, Any], company_index: in
         modules=["task", "sales", "crm"],
     )
 
+    recruiter = await upsert_user(
+        email=f"recruiter{company_index + 1}@demo.com",
+        first_name=f"Recruiter{company_index + 1}",
+        last_name="Demo",
+        role=UserRole.LEAD,
+        company_id=company_id,
+        department_id=str(dept_hr.id),
+        reports_to=str(hr_manager.id),
+        ancestors=[str(admin.id), str(hr_manager.id)],
+        modules=["task", "hr", "crm"],
+    )
+
     employees: list[User] = []
     for employee_index in range(5):
-        dept = [dept_sales, dept_delivery, dept_support][employee_index % 3]
+        dept = [dept_hr, dept_sales, dept_delivery, dept_support][employee_index % 4]
         employee = await upsert_user(
             email=f"emp{company_index + 1}{employee_index + 1}@demo.com",
             first_name=f"Emp{company_index + 1}{employee_index + 1}",
@@ -1042,18 +1457,28 @@ async def build_company_bundle(company_record: dict[str, Any], company_index: in
     categories, products = await upsert_sales_catalog(company_id, str(admin.id), company_index)
     projects = await upsert_projects(company_id, admin, employees, company_index)
     clients = await upsert_clients(company_id, str(admin.id), [str(project.id) for project in projects])
+    recruitment = await seed_recruitment_demo(
+        company_id=company_id,
+        admin=admin,
+        hr_manager=hr_manager,
+        recruiter=recruiter,
+        hr_department_id=str(dept_hr.id),
+    )
 
     return {
         "company": company,
         "admin": admin,
+        "hr_manager": hr_manager,
         "manager": manager,
         "lead": lead_user,
+        "recruiter": recruiter,
         "employees": employees,
         "crm_company": crm_company,
         "categories": categories,
         "products": products,
         "projects": projects,
         "clients": clients,
+        "recruitment": recruitment,
     }
 
 

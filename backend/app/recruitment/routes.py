@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from app.models.user import User
 from app.recruitment.models import (Candidate, CandidateStatus, CandidateTimeline,
@@ -66,6 +67,64 @@ def company(user: User) -> str:
     return user.company_id
 
 
+def serialize_job(job: RecruitmentJob) -> dict:
+    analytics_counters = getattr(job, "analytics_counters", None)
+    if hasattr(analytics_counters, "model_dump"):
+        analytics_counters = analytics_counters.model_dump()
+    elif analytics_counters is None:
+        analytics_counters = {}
+
+    return {
+        "id": str(getattr(job, "id", "")),
+        "company_id": job.company_id,
+        "title": job.title,
+        "slug": job.slug,
+        "department_id": job.department_id,
+        "hiring_manager_id": getattr(job, "hiring_manager_id", None),
+        "recruiter_ids": list(getattr(job, "recruiter_ids", []) or []),
+        "employment_type": getattr(job, "employment_type", None),
+        "work_mode": getattr(job, "work_mode", None),
+        "location": job.location,
+        "experience_min": getattr(job, "experience_min", 0),
+        "experience_max": getattr(job, "experience_max", None),
+        "salary_min": getattr(job, "salary_min", None),
+        "salary_max": getattr(job, "salary_max", None),
+        "openings": getattr(job, "openings", 1),
+        "required_skills": list(getattr(job, "required_skills", []) or []),
+        "description": job.description,
+        "responsibilities": getattr(job, "responsibilities", None),
+        "qualifications": getattr(job, "qualifications", None),
+        "benefits": getattr(job, "benefits", None),
+        "application_deadline": getattr(job, "application_deadline", None),
+        "auto_close": getattr(job, "auto_close", False),
+        "visibility": getattr(job, "visibility", None),
+        "application_method": getattr(job, "application_method", None),
+        "lifecycle_status": getattr(job, "lifecycle_status", None),
+        "analytics_counters": analytics_counters,
+        "created_by": getattr(job, "created_by", ""),
+        "created_at": getattr(job, "created_at", None),
+        "updated_at": getattr(job, "updated_at", None),
+    }
+
+
+class SyncNowResponse(BaseModel):
+    synced_count: int
+    created_count: int
+    processed_count: int
+
+
+class SyncStatusResponse(BaseModel):
+    enabled: bool
+    configured: bool
+    host: Optional[str] = None
+    folder: str
+    poll_seconds: int
+    mark_seen: bool
+    target_company_email: Optional[str] = None
+    resolved_company_id: Optional[str] = None
+    resolved_company_name: Optional[str] = None
+
+
 # =============================================================================
 # Job Engine API Endpoints (Phase 2)
 # =============================================================================
@@ -114,7 +173,7 @@ async def job_dashboard(user: User = Depends(require_job_view)):
 async def create_job(payload: JobCreate, user: User = Depends(require_job_create)):
     """Create a new job."""
     job = await JobService.create_job(company(user), str(user.id), payload)
-    return job
+    return serialize_job(job)
 
 
 # List Jobs with filtering, sorting, pagination
@@ -161,7 +220,7 @@ async def list_jobs(
     )
 
     return JobListResponse(
-        items=[JobResponse.model_validate(job) for job in items],
+        items=[JobResponse.model_validate(serialize_job(job)) for job in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -174,7 +233,7 @@ async def list_jobs(
 async def get_job(job_id: str, user: User = Depends(require_job_view)):
     """Get a job by ID."""
     job = await JobService.get_job(job_id, company(user))
-    return job
+    return serialize_job(job)
 
 
 # Update Job
@@ -183,7 +242,7 @@ async def update_job(job_id: str, payload: JobUpdate, user: User = Depends(requi
     """Update an existing job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.update_job(job, payload, str(user.id))
-    return job
+    return serialize_job(job)
 
 
 # Publish Job
@@ -192,7 +251,7 @@ async def publish_job(job_id: str, user: User = Depends(require_job_publish)):
     """Publish a job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.publish_job(job, str(user.id))
-    return job
+    return serialize_job(job)
 
 
 # Pause Job
@@ -201,7 +260,7 @@ async def pause_job(job_id: str, user: User = Depends(require_job_publish)):
     """Pause a published job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.pause_job(job, str(user.id))
-    return job
+    return serialize_job(job)
 
 
 # Close Job
@@ -210,7 +269,7 @@ async def close_job(job_id: str, user: User = Depends(require_job_publish)):
     """Close a job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.close_job(job, str(user.id))
-    return job
+    return serialize_job(job)
 
 
 # Archive Job
@@ -219,7 +278,7 @@ async def archive_job(job_id: str, user: User = Depends(require_job_archive)):
     """Archive a job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.archive_job(job, str(user.id))
-    return job
+    return serialize_job(job)
 
 
 # Restore Job
@@ -228,7 +287,7 @@ async def restore_job(job_id: str, user: User = Depends(require_job_update)):
     """Restore an archived job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.restore_job(job, str(user.id))
-    return job
+    return serialize_job(job)
 
 
 # Duplicate Job
@@ -237,7 +296,7 @@ async def duplicate_job(job_id: str, user: User = Depends(require_job_create)):
     """Duplicate an existing job."""
     job = await JobService.get_job(job_id, company(user))
     job = await JobService.duplicate_job(job, str(user.id))
-    return job
+    return serialize_job(job)
 
 
 # =============================================================================
@@ -478,15 +537,28 @@ async def list_inbox(
     )
 
 
-@router.get("/inbox/{import_id}", response_model=InboxItemResponse)
-async def get_inbox_item(import_id: str, user: User = Depends(require_recruitment_access)):
-    item = await RecruitmentInboxService.get_inbox_item(company(user), import_id)
-    return InboxItemResponse.model_validate(ImportHistoryService.serialize(item))
-
-
 @router.post("/inbox/import", status_code=201, response_model=InboxItemResponse)
 async def import_inbox_email(payload: InboxImportRequest, user: User = Depends(require_recruitment_access)):
     item = await RecruitmentInboxService.import_email(company(user), str(user.id), payload)
+    return InboxItemResponse.model_validate(ImportHistoryService.serialize(item))
+
+
+@router.post("/inbox/sync-now", response_model=SyncNowResponse)
+async def sync_inbox_now(user: User = Depends(require_recruitment_access)):
+    result = await RecruitmentInboxService.sync_now(company(user))
+    return SyncNowResponse(**result)
+
+
+@router.get("/inbox/sync-status", response_model=SyncStatusResponse)
+async def inbox_sync_status(user: User = Depends(require_recruitment_access)):
+    from app.services.hr_mail_sync import get_imap_sync_status
+
+    return SyncStatusResponse(**await get_imap_sync_status())
+
+
+@router.get("/inbox/{import_id}", response_model=InboxItemResponse)
+async def get_inbox_item(import_id: str, user: User = Depends(require_recruitment_access)):
+    item = await RecruitmentInboxService.get_inbox_item(company(user), import_id)
     return InboxItemResponse.model_validate(ImportHistoryService.serialize(item))
 
 

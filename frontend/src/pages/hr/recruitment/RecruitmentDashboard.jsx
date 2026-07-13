@@ -27,11 +27,15 @@ export default function RecruitmentDashboard() {
   const candidateQuery = useQuery(["recruitment", "dashboard", "recentCandidates"], () => recruitmentApi.getCandidates({ page: 1, page_size: 5 }), { retry: 1 });
   const interviewQuery = useQuery(["recruitment", "dashboard", "recentInterviews"], () => recruitmentApi.getInterviews({ page: 1, page_size: 5 }), { retry: 1 });
 
-  const dashboard = dashboardQuery.data || {};
-  const recentJobs = toArray(jobDashboardQuery.data?.recent_jobs || jobDashboardQuery.data?.recentJobs);
-  const recentApplications = toArray(candidateQuery.data);
-  const interviews = toArray(interviewQuery.data);
-  const funnel = dashboard.funnel || {};
+  const dashboard = dashboardQuery.data?.data || dashboardQuery.data || {};
+  const jobDashboard = jobDashboardQuery.data?.data || jobDashboardQuery.data || {};
+  const recentJobs = toArray(jobDashboard.recent_jobs || jobDashboard.recentJobs);
+  const recentApplications = toArray(candidateQuery.data?.data || candidateQuery.data);
+  const interviews = toArray(interviewQuery.data?.data || interviewQuery.data);
+  const metricsData = dashboard.metrics || dashboard;
+  const funnel = Array.isArray(dashboard.funnel)
+    ? Object.fromEntries(dashboard.funnel.map((item) => [item._id, item.count]))
+    : (dashboard.funnel || {});
 
   const isLoading = dashboardQuery.isLoading || jobDashboardQuery.isLoading;
 
@@ -67,7 +71,7 @@ export default function RecruitmentDashboard() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {metrics.map((card) => (
-            <RecruitmentStatCard key={card.key} label={card.label} value={dashboard[card.key] ?? dashboard[card.alt] ?? 0} icon={card.icon} />
+            <RecruitmentStatCard key={card.key} label={card.label} value={metricsData[card.key] ?? metricsData[card.alt] ?? 0} icon={card.icon} />
           ))}
         </div>
       )}
