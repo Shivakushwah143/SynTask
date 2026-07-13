@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import logging
 
 from app.models.meeting import Meeting, MeetingStatus
+from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole
 from app.events import publish_event
 from app.events.factories import build_domain_event
@@ -17,6 +18,7 @@ from app.api.dependencies import (
 )
 from app.core.zoom import ZoomService
 from app.core.config import settings
+from app.services.timeline_service import create_timeline_event
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +116,24 @@ async def create_meeting(
         )
         
         await meeting.insert()
+
+        await create_timeline_event(
+            user_id=str(current_user.id),
+            company_id=current_user.company_id,
+            event_type=TimelineEventType.MEETING_CREATED,
+            title="Meeting Created",
+            description=meeting.title,
+            related_module=TimelineModule.MEETING,
+            related_record_id=str(meeting.id),
+            actor_id=str(current_user.id),
+            timestamp=meeting.created_at,
+            metadata={
+                "meeting_title": meeting.title,
+                "meeting_date": meeting.meeting_date.isoformat(),
+                "participant_ids": meeting.participant_ids,
+            },
+            idempotency_key=f"meeting:{meeting.id}:created:{current_user.id}",
+        )
 
         await publish_event(
             build_domain_event(

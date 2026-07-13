@@ -158,6 +158,30 @@ async def get_msa_file(filename: str):
     )
 
 
+@router.get("/leaves/{filename}")
+async def get_leave_file(filename: str):
+    """Get leave attachment file."""
+    filename = Path(filename).name
+    file_path = UPLOAD_DIR / "leaves" / filename
+
+    if not file_path.exists():
+        logger.warning(f"Leave file not found: {filename}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found"
+        )
+
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    if not content_type:
+        content_type = 'application/octet-stream'
+
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type=content_type
+    )
+
+
 @router.get("/{filename}")
 async def get_file(filename: str):
     """Get uploaded file - Public access for images"""

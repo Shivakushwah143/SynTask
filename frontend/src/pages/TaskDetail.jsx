@@ -50,6 +50,10 @@ const TaskDetail = () => {
   const [updatingWatch, setUpdatingWatch] = useState(false)
   const [updatingField, setUpdatingField] = useState(null)
   const [composerOpen, setComposerOpen] = useState(false)
+  const [extensionRequests, setExtensionRequests] = useState([])
+  const [extensionForm, setExtensionForm] = useState({ requested_due_date: '', reason: '' })
+  const [submittingExtension, setSubmittingExtension] = useState(false)
+  const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
 
   const loadTask = useCallback(async () => {
     try {
@@ -128,6 +132,13 @@ const TaskDetail = () => {
         setChangelog(changelogResponse.data.changelog || [])
       } catch (error) {
         console.error('Error loading changelog:', error)
+      }
+
+      try {
+        const extensionData = await tasksAPI.listExtensionRequests(data.id)
+        setExtensionRequests(extensionData.requests || [])
+      } catch (error) {
+        console.error('Error loading extension requests:', error)
       }
     } catch (error) {
       console.error('Error loading task:', error)
@@ -224,6 +235,41 @@ const TaskDetail = () => {
       toast.error('Failed to update task')
     } finally {
       setSavingEdit(false)
+    }
+  }
+
+  const handleExtensionRequest = async (event) => {
+    event.preventDefault()
+    if (!taskId || submittingExtension) return
+    try {
+      setSubmittingExtension(true)
+      await tasksAPI.requestExtension(taskId, extensionForm)
+      toast.success('Extension request submitted')
+      setExtensionForm({ requested_due_date: '', reason: '' })
+      await loadTask()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to request extension')
+    } finally {
+      setSubmittingExtension(false)
+    }
+  }
+
+  const handleExtensionReview = async (requestId, action) => {
+    if (!requestId || reviewingExtensionId) return
+    try {
+      setReviewingExtensionId(requestId)
+      if (action === 'approve') {
+        await tasksAPI.approveExtensionRequest(requestId)
+        toast.success('Extension approved')
+      } else {
+        await tasksAPI.rejectExtensionRequest(requestId)
+        toast.success('Extension rejected')
+      }
+      await loadTask()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to review extension')
+    } finally {
+      setReviewingExtensionId(null)
     }
   }
 
@@ -946,6 +992,21 @@ const TaskDetail = () => {
                     )}
                   </div>
 
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Health</label>
+                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold capitalize ${
+                      task.health_status === 'overdue'
+                        ? 'bg-red-100 text-red-700'
+                        : task.health_status === 'due_today'
+                          ? 'bg-amber-100 text-amber-700'
+                          : task.health_status === 'extended'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {(task.health_status || 'healthy').replace(/_/g, ' ')}
+                    </span>
+                  </div>
+
                   {/* Labels */}
                   <div>
                     <label className="text-xs font-medium text-gray-500 block mb-1">Labels</label>
@@ -982,6 +1043,60 @@ const TaskDetail = () => {
                 </div>
               )}
             </div>
+
+            {task.assigned_to === String(user?.id || user?._id) && task.status !== 'completed' && task.due_date ? (
+              <div className="pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-900">Request extension</h3>
+                <form className="mt-3 space-y-3" onSubmit={handleExtensionRequest}>
+                  <input
+                    type="datetime-local"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    value={extensionForm.requested_due_date}
+                    onChange={(event) => setExtensionForm((state) => ({ ...state, requested_due_date: event.target.value }))}
+                    required
+                  />
+                  <textarea
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    rows={3}
+                    placeholder="Reason"
+                    value={extensionForm.reason}
+                    onChange={(event) => setExtensionForm((state) => ({ ...state, reason: event.target.value }))}
+                    required
+                  />
+                  <button type="submit" disabled={submittingExtension} className="w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                    {submittingExtension ? 'Submitting...' : 'Submit extension request'}
+                  </button>
+                </form>
+              </div>
+            ) : null}
+
+            {extensionRequests.length ? (
+              <div className="pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-900">Extension requests</h3>
+                <div className="mt-3 space-y-2">
+                  {extensionRequests.map((request) => (
+                    <article key={request.id} className="rounded-xl border border-gray-200 p-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-gray-900">{request.status}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {request.requested_due_date ? format(new Date(request.requested_due_date), 'MMM d, yyyy') : 'No date'}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">{request.status}</span>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-600">{request.reason}</p>
+                      {request.status === 'pending' && user.role !== 'employee' ? (
+                        <div className="mt-3 flex gap-2">
+                          <button type="button" disabled={reviewingExtensionId === request.id} onClick={() => handleExtensionReview(request.id, 'approve')} className="flex-1 rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Approve</button>
+                          <button type="button" disabled={reviewingExtensionId === request.id} onClick={() => handleExtensionReview(request.id, 'reject')} className="flex-1 rounded-lg bg-red-600 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Reject</button>
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {/* Actions */}
             <div className="pt-4 border-t border-gray-200">

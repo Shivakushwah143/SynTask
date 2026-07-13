@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
-import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameDay, isSameMonth, parseISO, startOfMonth, startOfWeek } from 'date-fns'
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock3, LayoutGrid, List, Plus, Search, Sparkles, Columns3 } from 'lucide-react'
+import { addDays, addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isAfter, isSameDay, isSameMonth, startOfMonth, startOfWeek } from 'date-fns'
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock3, LayoutGrid, List, Plus, Search, Sparkles, Columns3, Bell, CheckSquare, Video, CalendarRange } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { calendarApi } from '../api/calendar'
 import { contentCalendarApi } from '../api/contentCalendar'
 import { projectsApi } from '../api/projects'
 import { Badge, Button, EmptyState, FormField, Modal, PageHeader, Skeleton } from '../components/ui'
@@ -10,14 +11,19 @@ import { CRMSection, CRMStatCard } from '../components/crm'
 import { asArray, formatDateTime } from './phase4Utils'
 
 const QUERY_KEY = 'content-calendar'
-const VIEWS = ['calendar', 'board', 'list', 'timeline', 'agenda']
+const VIEWS = ['calendar', 'week_timeline', 'board', 'list', 'agenda']
 const VIEW_LABELS = {
-  calendar: 'Calendar',
+  calendar: 'Month',
+  week_timeline: 'Week Timeline',
   board: 'Board',
   list: 'List',
-  timeline: 'Timeline',
   agenda: 'Agenda',
 }
+
+const TIMELINE_START_HOUR = 6
+const TIMELINE_END_HOUR = 20
+const HOUR_HEIGHT = 60
+const HOURS = Array.from({ length: TIMELINE_END_HOUR - TIMELINE_START_HOUR + 1 }, (_, index) => TIMELINE_START_HOUR + index)
 
 const STATUS_TONES = {
   draft: 'draft',
@@ -74,6 +80,14 @@ export default function Calendar() {
   const calendarQuery = useQuery([QUERY_KEY, projectId], () => contentCalendarApi.getCalendar(projectId ? { project_id: projectId } : {}), {
     staleTime: 60 * 1000,
   })
+  const weekDays = useMemo(() => getWeekDays(selected), [selected])
+  const weekStart = weekDays[0]
+  const weekEnd = weekDays[6]
+  const workspaceEventsQuery = useQuery(
+    ['workspace-calendar-events', format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')],
+    () => calendarApi.getEvents({ start_date: format(weekStart, 'yyyy-MM-dd'), end_date: format(weekEnd, 'yyyy-MM-dd') }),
+    { staleTime: 60 * 1000 },
+  )
   const projectsQuery = useQuery(['content-calendar-projects'], () => projectsApi.getProjects({ limit: 200 }), {
     staleTime: 5 * 60 * 1000,
   })
@@ -121,11 +135,16 @@ export default function Calendar() {
   const deliverables = calendarQuery.data?.deliverables || { completed: 0, remaining: 0, delayed: 0, upcoming: 0, monthly_targets: [] }
   const today = new Date()
   const visibleItems = useMemo(() => {
-    if (view === 'timeline' || view === 'agenda') return filteredItems
+    if (view === 'week_timeline' || view === 'agenda') return filteredItems
     if (view === 'calendar') return filteredItems.filter((item) => item.publish_date || item.due_date)
     if (view === 'board') return filteredItems
     return filteredItems
   }, [filteredItems, view])
+  const workspaceEvents = useMemo(() => normalizeWorkspaceEvents(workspaceEventsQuery.data?.events || []), [workspaceEventsQuery.data])
+  const timelineEvents = useMemo(() => {
+    const contentEvents = visibleItems.map(normalizeContentEvent).filter(Boolean)
+    return [...workspaceEvents, ...contentEvents]
+  }, [visibleItems, workspaceEvents])
 
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 })
@@ -133,29 +152,28 @@ export default function Calendar() {
     return eachDayOfInterval({ start, end })
   }, [month])
 
-  const groupedByDay = useMemo(() => {
-    const map = new Map()
-    visibleItems.forEach((item) => {
-      const timestamp = item.publish_date || item.due_date || item.shoot_date || item.created_at
-      if (!timestamp) return
-      const key = format(parseISO(String(timestamp)), 'yyyy-MM-dd')
-      if (!map.has(key)) map.set(key, [])
-      map.get(key).push(item)
-    })
-    return Array.from(map.entries()).map(([date, dayItems]) => ({ date, items: dayItems }))
-  }, [visibleItems])
-
   const activeItems = useMemo(() => visibleItems.filter((item) => !['published'].includes(String(item.status))), [visibleItems])
+  const todayEvents = useMemo(() => timelineEvents.filter((event) => isSameDay(getEventDate(event), today)).sort(sortByDate), [timelineEvents, today])
+  const upcomingEvents = useMemo(() => timelineEvents.filter((event) => isAfter(getEventDate(event), today)).sort(sortByDate).slice(0, 8), [timelineEvents, today])
+  const reminders = useMemo(() => timelineEvents.filter((event) => ['high', 'urgent', 'critical'].includes(String(event.priority || '').toLowerCase()) || String(event.type) === 'meeting').sort(sortByDate).slice(0, 5), [timelineEvents])
 
   const openEditor = (item) => {
-    setDetailItem(item)
+    setDetailItem(item.original || item)
+  }
+
+  const openTimelineEvent = (event) => {
+    if (event.original?.content_type) {
+      setDetailItem(event.original)
+      return
+    }
+    setDetailItem(event)
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Content Calendar"
-        description="Delivery hub for project-linked content planning, shoots, reviews, and publishing."
+        title="Work Calendar"
+        description="Month planning plus week timeline for meetings, tasks, and delivery events."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => setShowCreate(true)}>
@@ -164,7 +182,7 @@ export default function Calendar() {
             </Button>
             {VIEWS.map((item) => (
               <Button key={item} variant={view === item ? 'primary' : 'secondary'} size="sm" onClick={() => setView(item)}>
-                {item === 'calendar' ? <LayoutGrid className="h-4 w-4" /> : item === 'board' ? <Columns3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
+                {item === 'calendar' ? <LayoutGrid className="h-4 w-4" /> : item === 'week_timeline' ? <CalendarRange className="h-4 w-4" /> : item === 'board' ? <Columns3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
                 {VIEW_LABELS[item]}
               </Button>
             ))}
@@ -220,13 +238,13 @@ export default function Calendar() {
         <CRMStatCard icon={Sparkles} label="Upcoming" value={String(deliverables.upcoming || 0)} tone="slate" />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <CRMSection title={`${VIEW_LABELS[view]} View`} description="Project-linked content items with lifecycle and shoot planning.">
-          {calendarQuery.isLoading ? (
+          {calendarQuery.isLoading || (view === 'week_timeline' && workspaceEventsQuery.isLoading) ? (
             <div className="space-y-3">
               {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-24 w-full rounded-3xl" />)}
             </div>
-          ) : !visibleItems.length ? (
+          ) : !visibleItems.length && view !== 'week_timeline' ? (
             <EmptyState title="No content items" description="Create the first item to start planning delivery work." action={<Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> Create item</Button>} icon={CalendarIcon} />
           ) : view === 'calendar' ? (
             <MonthCalendar days={days} items={visibleItems} selected={selected} setSelected={setSelected} month={month} onOpen={openEditor} />
@@ -234,33 +252,20 @@ export default function Calendar() {
             <BoardView items={activeItems} onOpen={openEditor} />
           ) : view === 'list' ? (
             <ListView items={visibleItems} onOpen={openEditor} />
-          ) : view === 'timeline' ? (
-            <TimelineView groups={groupedByDay} onOpen={openEditor} />
+          ) : view === 'week_timeline' ? (
+            <WeekTimelineView days={weekDays} events={timelineEvents} onOpen={openTimelineEvent} />
           ) : (
             <AgendaView items={visibleItems} selected={selected} onSelect={setSelected} onOpen={openEditor} />
           )}
         </CRMSection>
 
-        <div className="space-y-6">
-          <CRMSection title="Deliverables" description="Monthly planning snapshots and delivery totals.">
-            <div className="space-y-3">
-              <DeliverableRow label="Completed" value={deliverables.completed || 0} tone="emerald" />
-              <DeliverableRow label="Remaining" value={deliverables.remaining || 0} tone="blue" />
-              <DeliverableRow label="Delayed" value={deliverables.delayed || 0} tone="amber" />
-              <DeliverableRow label="Upcoming" value={deliverables.upcoming || 0} tone="slate" />
-            </div>
-          </CRMSection>
-
-          <CRMSection title="Today" description="Items due, shooting, or publishing today.">
-            {visibleItems.filter((item) => isSameDay(parseAnyDate(item.publish_date || item.due_date || item.shoot_date), today)).length ? (
-              <div className="space-y-3">
-                {visibleItems.filter((item) => isSameDay(parseAnyDate(item.publish_date || item.due_date || item.shoot_date), today)).slice(0, 6).map((item) => <ContentCard key={item.id} item={item} compact onOpen={openEditor} />)}
-              </div>
-            ) : (
-              <EmptyState icon={Clock3} title="Nothing today" description="No content items are scheduled for today." />
-            )}
-          </CRMSection>
-        </div>
+        <CalendarSidebar
+          todayEvents={todayEvents}
+          upcomingEvents={upcomingEvents}
+          reminders={reminders}
+          deliverables={deliverables}
+          onOpen={openTimelineEvent}
+        />
       </section>
 
       <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -331,36 +336,96 @@ export default function Calendar() {
         </form>
       </Modal>
 
-      <Modal isOpen={Boolean(detailItem)} onClose={() => setDetailItem(null)} title="Content item">
+      <Modal isOpen={Boolean(detailItem)} onClose={() => setDetailItem(null)} title="Calendar item">
         {detailItem ? (
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{detailItem.title}</h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{detailItem.notes || 'No notes.'}</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{detailItem.notes || detailItem.description || 'No notes.'}</p>
               </div>
-              <Badge label={String(detailItem.status).replace(/_/g, ' ')} colorKey={STATUS_TONES[detailItem.status] || 'draft'} />
+              <Badge label={String(detailItem.status || detailItem.type).replace(/_/g, ' ')} colorKey={STATUS_TONES[detailItem.status] || detailItem.type || 'draft'} />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Type" value={TYPE_LABELS[detailItem.content_type] || detailItem.content_type} />
-              <Field label="Project" value={detailItem.project_id} />
+              <Field label="Type" value={TYPE_LABELS[detailItem.content_type] || detailItem.content_type || detailItem.type} />
+              <Field label="Project" value={detailItem.project_name || detailItem.project_id} />
               <Field label="Platform" value={detailItem.platform || '-'} />
-              <Field label="Assignee" value={detailItem.assignee_name || detailItem.assignee_id || '-'} />
-              <Field label="Due date" value={formatDateTime(detailItem.due_date)} />
+              <Field label="Owner" value={detailItem.assignee_name || detailItem.assignee || detailItem.host || detailItem.assignee_id || '-'} />
+              <Field label="Due date" value={formatDateTime(detailItem.due_date || detailItem.start_at || detailItem.start)} />
               <Field label="Publish date" value={formatDateTime(detailItem.publish_date)} />
             </div>
             <div className="flex flex-wrap gap-2">
               {(detailItem.tags || []).map((tag) => <Badge key={tag} label={tag} colorKey="draft" />)}
             </div>
-            <div className="flex flex-wrap justify-end gap-2">
+            {detailItem.content_type ? <div className="flex flex-wrap justify-end gap-2">
               <Button variant="secondary" onClick={() => deleteMutation.mutate(detailItem.id)} loading={deleteMutation.isLoading}>Delete</Button>
               <Button variant="primary" onClick={() => updateMutation.mutate({ id: detailItem.id, payload: { status: nextStatus(detailItem.status) } })} loading={updateMutation.isLoading}>Advance status</Button>
-            </div>
+            </div> : null}
           </div>
         ) : null}
       </Modal>
     </div>
   )
+}
+
+export function getWeekDays(value) {
+  const start = new Date(value)
+  const day = start.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  start.setDate(start.getDate() + diff)
+  start.setHours(0, 0, 0, 0)
+  return Array.from({ length: 7 }, (_, index) => addDays(start, index))
+}
+
+export function getEventDate(event) {
+  if (event.start_at) return new Date(event.start_at)
+  if (event.due_date) return new Date(event.due_date)
+  if (event.publish_date) return new Date(event.publish_date)
+  if (event.shoot_date) return new Date(event.shoot_date)
+  if (event.start && event.time) return new Date(`${event.start}T${event.time.length === 5 ? `${event.time}:00` : event.time}`)
+  if (event.start) return new Date(event.start)
+  if (event.created_at) return new Date(event.created_at)
+  return new Date()
+}
+
+export function getEventStyle(event) {
+  const date = getEventDate(event)
+  const minutes = Math.max(0, ((date.getHours() - TIMELINE_START_HOUR) * 60) + date.getMinutes())
+  const duration = Number(event.duration_minutes || event.duration || 60)
+  return {
+    top: `${minutes}px`,
+    height: `${Math.max(34, duration)}px`,
+  }
+}
+
+function sortByDate(a, b) {
+  return getEventDate(a) - getEventDate(b)
+}
+
+function normalizeWorkspaceEvents(events) {
+  return events.map((event) => ({
+    ...event,
+    start_at: event.due_date || (event.start && event.time ? `${event.start}T${event.time.length === 5 ? `${event.time}:00` : event.time}` : event.start),
+    duration_minutes: event.duration || (event.type === 'task' ? 45 : 60),
+    label: event.type === 'meeting' ? 'Meeting' : 'Task',
+    original: event,
+  }))
+}
+
+function normalizeContentEvent(item) {
+  const date = item.publish_date || item.due_date || item.shoot_date || item.created_at
+  if (!date) return null
+  return {
+    id: `content_${item.id}`,
+    type: 'content',
+    title: item.title,
+    start_at: date,
+    duration_minutes: 60,
+    status: item.status,
+    priority: item.priority,
+    label: TYPE_LABELS[item.content_type] || 'Content',
+    original: item,
+  }
 }
 
 function parseAnyDate(value) {
@@ -480,19 +545,131 @@ function ListView({ items, onOpen }) {
   )
 }
 
-function TimelineView({ groups, onOpen }) {
+function CalendarSidebar({ todayEvents, upcomingEvents, reminders, deliverables, onOpen }) {
   return (
-    <div className="space-y-4">
-      {groups.length ? groups.map((group) => (
-        <div key={group.date} className="space-y-3">
-          <div className="sticky top-0 rounded-2xl bg-surface-muted px-4 py-2 text-sm font-semibold text-text-secondary dark:bg-black dark:text-gray-200">
-            {format(parseISO(group.date), 'EEEE, MMM d')}
-          </div>
-          {group.items.map((item) => <ContentCard key={item.id} item={item} onOpen={onOpen} />)}
+    <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+      <SidebarPanel title="Today's Schedule" icon={Clock3}>
+        <ScheduleList items={todayEvents.slice(0, 6)} emptyTitle="No events today" onOpen={onOpen} />
+      </SidebarPanel>
+      <SidebarPanel title="Upcoming Events" icon={CalendarIcon}>
+        <ScheduleList items={upcomingEvents} emptyTitle="No upcoming events" onOpen={onOpen} />
+      </SidebarPanel>
+      <SidebarPanel title="Reminders" icon={Bell}>
+        <ScheduleList items={reminders} emptyTitle="No reminders" onOpen={onOpen} />
+      </SidebarPanel>
+      <SidebarPanel title="Deliverables" icon={Sparkles}>
+        <div className="space-y-3">
+          <DeliverableRow label="Completed" value={deliverables.completed || 0} tone="emerald" />
+          <DeliverableRow label="Remaining" value={deliverables.remaining || 0} tone="blue" />
+          <DeliverableRow label="Delayed" value={deliverables.delayed || 0} tone="amber" />
+          <DeliverableRow label="Upcoming" value={deliverables.upcoming || 0} tone="slate" />
         </div>
-      )) : <EmptyState title="No timeline items" description="Switch filters or create new content items." />}
+      </SidebarPanel>
+    </aside>
+  )
+}
+
+function SidebarPanel({ title, icon: Icon, children }) {
+  return (
+    <section className="rounded-3xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-black">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary-50 text-primary-700 dark:bg-primary-950/50 dark:text-primary-200">
+          <Icon className="h-4 w-4" />
+        </span>
+        <h3 className="text-sm font-semibold text-text-primary dark:text-gray-100">{title}</h3>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function ScheduleList({ items, emptyTitle, onOpen }) {
+  if (!items.length) return <EmptyState icon={Clock3} title={emptyTitle} description="Schedule cards appear here when work is dated." />
+  return (
+    <div className="space-y-2">
+      {items.map((item) => <TimelineEventCard key={`${item.type}-${item.id}`} event={item} onOpen={onOpen} compact />)}
     </div>
   )
+}
+
+function WeekTimelineView({ days, events, onOpen }) {
+  const timedEvents = events.filter((event) => {
+    const date = getEventDate(event)
+    return days.some((day) => isSameDay(day, date))
+  })
+
+  return (
+    <div className="overflow-hidden rounded-3xl border border-surface-border/80 bg-surface/95 dark:border-gray-800 dark:bg-black">
+      <div className="grid min-w-[820px] grid-cols-[72px_repeat(7,minmax(96px,1fr))] border-b border-surface-border bg-surface-muted dark:border-gray-800 dark:bg-gray-950">
+        <div className="p-3 text-xs font-semibold uppercase text-text-muted">Time</div>
+        {days.map((day) => (
+          <div key={day.toISOString()} className={`border-l border-surface-border p-3 text-center dark:border-gray-800 ${isSameDay(day, new Date()) ? 'bg-primary-50/70 dark:bg-primary-950/30' : ''}`}>
+            <p className="text-xs font-semibold uppercase text-text-muted">{format(day, 'EEE')}</p>
+            <p className="mt-1 text-lg font-semibold text-text-primary dark:text-gray-100">{format(day, 'd')}</p>
+          </div>
+        ))}
+      </div>
+      <div className="overflow-x-auto">
+        <div className="grid min-w-[820px] grid-cols-[72px_repeat(7,minmax(96px,1fr))]">
+          <div className="bg-surface-muted/70 dark:bg-gray-950">
+            {HOURS.map((hour) => (
+              <div key={hour} className="h-[60px] border-b border-surface-border px-2 py-1 text-right text-xs text-text-muted dark:border-gray-800">
+                {format(new Date(2026, 0, 1, hour), 'ha')}
+              </div>
+            ))}
+          </div>
+          {days.map((day) => (
+            <div key={day.toISOString()} className="relative border-l border-surface-border dark:border-gray-800" style={{ height: `${HOURS.length * HOUR_HEIGHT}px` }}>
+              {HOURS.map((hour) => <div key={hour} className="h-[60px] border-b border-surface-border dark:border-gray-800" />)}
+              {timedEvents.filter((event) => isSameDay(getEventDate(event), day)).map((event) => (
+                <button
+                  key={`${event.type}-${event.id}`}
+                  type="button"
+                  onClick={() => onOpen(event)}
+                  className={`absolute left-1 right-1 overflow-hidden rounded-xl border px-2 py-1 text-left text-xs shadow-sm transition hover:brightness-95 ${eventToneClass(event)}`}
+                  style={getEventStyle(event)}
+                  title={event.title}
+                >
+                  <span className="block truncate font-semibold">{event.title}</span>
+                  <span className="mt-0.5 block truncate opacity-80">{format(getEventDate(event), 'h:mm a')} · {event.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      {!timedEvents.length ? <div className="p-6"><EmptyState title="No week events" description="Meetings, tasks, and content dates appear here by time." /></div> : null}
+    </div>
+  )
+}
+
+function TimelineEventCard({ event, onOpen, compact = false }) {
+  const Icon = event.type === 'meeting' ? Video : event.type === 'task' ? CheckSquare : CalendarIcon
+  return (
+    <button type="button" onClick={() => onOpen(event)} className={`w-full rounded-2xl border border-surface-border/80 bg-surface-muted/70 text-left transition hover:bg-surface-muted dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-900 ${compact ? 'p-3' : 'p-4'}`}>
+      <div className="flex items-start gap-3">
+        <span className={`mt-0.5 inline-flex h-8 w-8 flex-none items-center justify-center rounded-xl ${eventIconClass(event)}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-text-primary dark:text-gray-100">{event.title}</span>
+          <span className="mt-1 block text-xs text-text-muted dark:text-gray-400">{format(getEventDate(event), 'MMM d, h:mm a')}</span>
+        </span>
+      </div>
+    </button>
+  )
+}
+
+function eventToneClass(event) {
+  if (event.type === 'meeting') return 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950/70 dark:text-blue-100'
+  if (event.type === 'task') return 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-100'
+  return 'border-primary-200 bg-primary-50 text-primary-800 dark:border-primary-900 dark:bg-primary-950/70 dark:text-primary-100'
+}
+
+function eventIconClass(event) {
+  if (event.type === 'meeting') return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200'
+  if (event.type === 'task') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200'
+  return 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-200'
 }
 
 function AgendaView({ items, selected, onSelect, onOpen }) {
