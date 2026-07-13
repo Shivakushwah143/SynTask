@@ -435,6 +435,22 @@ export const PipelineColumn = memo(function PipelineColumn({
   )
 })
 
+function StageProgress({ stage, stages = [] }) {
+  const currentIndex = Math.max(0, stages.findIndex((item) => item.key === stage.key))
+  const total = Math.max(stages.length, 1)
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between text-[11px] font-medium text-text-muted dark:text-gray-400">
+        <span>Step {currentIndex + 1} of {total}</span>
+        <span>{Math.round(((currentIndex + 1) / total) * 100)}%</span>
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-muted dark:bg-gray-800">
+        <div className="h-full rounded-full bg-primary-500" style={{ width: `${((currentIndex + 1) / total) * 100}%` }} />
+      </div>
+    </div>
+  )
+}
+
 export const PipelineLeadCard = memo(function PipelineLeadCard({
   lead,
   stage,
@@ -573,6 +589,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
         <LeadMetaRow label="Created" value={formatShortDate(lead.created_at || lead.createdAt || lead.created_date)} />
         <LeadMetaRow label="Stage" value={stage.name} />
       </div>
+      <StageProgress stage={stage} stages={stages} />
 
       {tags.length ? (
         <div className="mt-3 flex flex-wrap gap-2">

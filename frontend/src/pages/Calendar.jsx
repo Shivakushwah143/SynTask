@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { addDays, addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isAfter, isSameDay, isSameMonth, startOfMonth, startOfWeek } from 'date-fns'
@@ -133,7 +134,7 @@ export default function Calendar() {
   }, [items, projectId, search, statusFilter, typeFilter])
 
   const deliverables = calendarQuery.data?.deliverables || { completed: 0, remaining: 0, delayed: 0, upcoming: 0, monthly_targets: [] }
-  const today = new Date()
+  const today = useMemo(() => new Date(), [])
   const visibleItems = useMemo(() => {
     if (view === 'week_timeline' || view === 'agenda') return filteredItems
     if (view === 'calendar') return filteredItems.filter((item) => item.publish_date || item.due_date)

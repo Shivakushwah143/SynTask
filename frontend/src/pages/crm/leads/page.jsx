@@ -1,13 +1,9 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
-<<<<<<< HEAD
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Plus, Search, Sparkles, Users } from 'lucide-react'
-=======
-import { useNavigate } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, Phone, Plus, Search, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
->>>>>>> 58e94b3954491d1c231e25872ffc2e68ac57afff
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -107,7 +103,6 @@ export default function CRMLeadsPage() {
   const board = useMemo(() => buildPipelineBoard(pipelineQuery.data || {}), [pipelineQuery.data])
   const stages = useMemo(() => (Array.isArray(board?.stages) ? board.stages : []), [board])
   const leadCount = useMemo(() => stages.reduce((sum, stage) => sum + (stage.leads?.length || 0), 0), [stages])
-  const activeCount = useMemo(() => stages.reduce((sum, stage) => sum + (stage.leads || []).filter((lead) => !['won', 'lost', 'closed'].includes(String(lead?.status || '').toLowerCase())).length, 0), [stages])
   const recentLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []).slice(0, 6), [stages])
   const allAccountLeads = useMemo(() => {
     const items = leadsQuery.data?.prospects || leadsQuery.data?.items || leadsQuery.data?.data?.prospects || leadsQuery.data?.data?.items || []
@@ -154,16 +149,8 @@ export default function CRMLeadsPage() {
     if (Array.isArray(data?.items)) return data.items
     return []
   }, [usersQuery.data])
-<<<<<<< HEAD
   const categories = useMemo(() => getResponseItems(categoriesQuery.data, 'categories'), [categoriesQuery.data])
   const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
-  const defaultStageId = getStageValue(stages[0])
-  const defaultCategoryId = getOptionId(categories[0])
-  const defaultProductIds = getOptionId(products[0])
-  const defaultOwnerId = getUserId(assignableUsers[0]) || currentUserId
-=======
-  const categories = useMemo(() => getSalesCollection(categoriesQuery.data, 'categories'), [categoriesQuery.data])
-  const products = useMemo(() => getSalesCollection(productsQuery.data, 'products'), [productsQuery.data])
   const userNameById = useMemo(() => {
     const map = new Map()
     assignableUsers.forEach((item) => {
@@ -173,10 +160,10 @@ export default function CRMLeadsPage() {
     })
     return map
   }, [assignableUsers])
-  const defaultStageId = stages[0]?.id || stages[0]?.name || ''
-  const defaultCategoryId = categories[0]?.id || categories[0]?._id || ''
-  const defaultProductIds = products[0]?.id || products[0]?._id || ''
->>>>>>> 58e94b3954491d1c231e25872ffc2e68ac57afff
+  const defaultStageId = getStageValue(stages[0])
+  const defaultCategoryId = getOptionId(categories[0])
+  const defaultProductIds = getOptionId(products[0])
+  const defaultOwnerId = getUserId(assignableUsers[0]) || currentUserId
 
   useEffect(() => {
     if (!createOpen) return

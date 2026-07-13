@@ -9,20 +9,21 @@ import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, EmptyState, inputClassName } from '../../../components/ui'
-import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
+import { formatCurrency, formatShortDate, getCanonicalPipelineStageKey, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
 import { LeadFilesTab } from './files'
 
 export const LEAD_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'notes', label: 'Notes' },
-  { key: 'files', label: 'Files' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'meetings', label: 'Meetings' },
   { key: 'emails', label: 'Emails' },
+  { key: 'files', label: 'Files' },
   { key: 'call_logs', label: 'Calls' },
   { key: 'proposal', label: 'Proposal' },
   { key: 'ai', label: 'AI' },
 ]
+const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'notes', 'tasks', 'meetings', 'emails'])
 
 const leadTone = (value) => {
   const key = String(value || '').toLowerCase()
@@ -31,6 +32,8 @@ const leadTone = (value) => {
   if (['won', 'active', 'low', 'cold', 'new'].some((item) => key.includes(item))) return 'emerald'
   return 'slate'
 }
+
+const LEAD_STAGE_STEPS = ['New', 'Contacted', 'Qualified', 'Discovery', 'Proposal', 'Negotiation', 'Won']
 
 const toneClass = (tone) => ({
   rose: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-950/30 dark:text-rose-200 dark:ring-rose-900/50',
@@ -61,6 +64,10 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   body,
   sidebar,
 }) {
+  const stageKey = getCanonicalPipelineStageKey(lead?.current_stage || lead?.stage || 'new')
+  const stageIndex = Math.max(0, LEAD_STAGE_STEPS.findIndex((stage) => getCanonicalPipelineStageKey(stage) === stageKey))
+  const stageStep = stageIndex + 1
+  const stageTotal = LEAD_STAGE_STEPS.length
   return (
     <CRMPage>
       <CRMPageTitle
@@ -85,6 +92,22 @@ export const LeadWorkspace = memo(function LeadWorkspace({
       />
 
       <LeadHeader lead={lead} breadcrumbs={breadcrumbs} />
+
+      <section className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:text-gray-400">Pipeline progress</p>
+            <p className="mt-1 text-sm font-semibold text-text-primary dark:text-gray-100">
+              Step {stageStep} of {stageTotal}: {LEAD_STAGE_STEPS[stageIndex] || lead?.current_stage || 'New'}
+            </p>
+          </div>
+          <div className="min-w-48 flex-1 sm:max-w-sm">
+            <div className="h-2 overflow-hidden rounded-full bg-surface-muted dark:bg-gray-800">
+              <div className="h-full rounded-full bg-primary-500" style={{ width: `${(stageStep / stageTotal) * 100}%` }} />
+            </div>
+          </div>
+        </div>
+      </section>
 
       <LeadTabs activeTab={activeTab} onTabChange={onTabChange} />
 
@@ -155,10 +178,13 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [] }) {
 })
 
 export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
+  const primaryTabs = LEAD_TABS.filter((tab) => PRIMARY_LEAD_TAB_KEYS.has(tab.key))
+  const moreTabs = LEAD_TABS.filter((tab) => !PRIMARY_LEAD_TAB_KEYS.has(tab.key))
+  const activeMoreTab = moreTabs.find((tab) => tab.key === activeTab)
   return (
     <nav aria-label="Lead workspace sections" className="overflow-x-auto rounded-2xl border border-surface-border/80 bg-white/90 p-2 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
       <div className="flex min-w-max items-center gap-2">
-        {LEAD_TABS.map((tab) => {
+        {primaryTabs.map((tab) => {
           const isActive = activeTab === tab.key
           const commonClass = `inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
             isActive
@@ -195,6 +221,25 @@ export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
             </button>
           )
         })}
+        <label className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+          activeMoreTab
+            ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200'
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
+        }`}
+        >
+          <span>More</span>
+          <select
+            className="bg-transparent text-sm font-medium outline-none"
+            value={activeMoreTab?.key || ''}
+            onChange={(event) => {
+              if (event.target.value) onTabChange?.(event.target.value)
+            }}
+            aria-label="More lead sections"
+          >
+            <option value="">Select</option>
+            {moreTabs.map((tab) => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
+          </select>
+        </label>
       </div>
     </nav>
   )
