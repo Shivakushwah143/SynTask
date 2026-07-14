@@ -459,89 +459,130 @@ async def get_assignable_users(
 async def get_my_team(
     current_user: User = Depends(get_current_user)
 ):
-    """Get team members for current Lead"""
-    if current_user.role != UserRole.LEAD:
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only Leads can access their team"
-        )
-    
-    # Get Lead with managed_employee_ids
-    lead = await Lead.get(str(current_user.id))
-    if not lead:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Lead not found"
-        )
-    
-    # Get all employees under this Lead
-    managed_ids = getattr(lead, "managed_employee_ids", []) or []
-    
-    # Get employees by lead_id
-    employees_by_lead = await Employee.find({
-        "company_id": current_user.company_id,
-        "status": UserStatus.ACTIVE,
-        "lead_id": str(current_user.id)
-    }).to_list()
-    
-    # Get employees by managed_employee_ids
-    employees_by_managed = []
-    if managed_ids:
-        employees_by_managed = await Employee.find({
-            "company_id": current_user.company_id,
-            "status": UserStatus.ACTIVE,
-            "_id": {"$in": managed_ids}
-        }).to_list()
-    
-    # Combine and remove duplicates
-    all_employee_ids = set()
-    team_members = []
-    for emp in employees_by_lead + employees_by_managed:
-        if str(emp.id) not in all_employee_ids:
-            all_employee_ids.add(str(emp.id))
-            team_members.append(emp)
-    
-    # Get task and ticket counts for each team member
-    from app.models.task import Task
-    from app.models.ticket import Ticket
-    
-    team_data = []
-    for employee in team_members:
-        task_count = await Task.find({
-            "assigned_to": str(employee.id),
-            "company_id": current_user.company_id
-        }).count()
-        
-        ticket_count = await Ticket.find({
-            "assigned_to": str(employee.id),
-            "company_id": current_user.company_id
-        }).count()
-        
-        team_data.append({
-            "id": str(employee.id),
-            "email": employee.email,
-            "first_name": employee.first_name,
-            "last_name": employee.last_name,
-            "role": employee.role.value,
-            "status": employee.status.value,
-            "department_id": getattr(employee, "department_id", None),
-            "designation": employee.designation,
-            "phone": employee.phone,
-            "created_at": employee.created_at,
-            "task_count": task_count,
-            "ticket_count": ticket_count,
-        })
-    
-    return {
-        "team_members": team_data,
-        "total": len(team_data),
-        "lead_info": {
-            "id": str(lead.id),
-            "first_name": lead.first_name,
-            "last_name": lead.last_name,
-            "team_name": lead.team_name,
+    """Get team members for the current user based on hierarchy."""
+    try:
+        if current_user.role not in [UserRole.LEAD, UserRole.MANAGER, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+
+        team_members = []
+        lead = None
+
+        if current_user.role == UserRole.LEAD:
+            lead = await Lead.get(str(current_user.id))
+            if not lead:
+                return {"team_members": [], "total": 0, "lead_info": {"id": str(current_user.id), "first_name": current_user.first_name, "last_name": current_user.last_name, "team_name": None}}
+
+            managed_ids = getattr(lead, "managed_employee_ids", []) or []
+            employees_by_lead = await Employee.find({
+                "company_id": current_user.company_id,
+                "status": UserStatus.ACTIVE,
+                "lead_id": str(current_user.id)
+            }).to_list()
+
+            employees_by_managed = []
+            if managed_ids:
+                employees_by_managed = await Employee.find({
+                    "company_id": current_user.company_id,
+                    "status": UserStatus.ACTIVE,
+                    "_id": {"$in": managed_ids}
+                }).to_list()
+
+            all_employee_ids = set()
+            for emp in employees_by_lead + employees_by_managed:
+                if str(emp.id) not in all_employee_ids:
+                    all_employee_ids.add(str(emp.id))
+                    team_members.append(emp)
+
+        elif current_user.role == UserRole.MANAGER:
+            subordinates = await current_user.get_all_subordinates()
+            subordinate_ids = {str(sub.id) for sub in subordinates}
+            subordinate_ids.add(str(current_user.id))
+
+            all_users = await User.find({
+                "company_id": current_user.company_id,
+                "status": UserStatus.ACTIVE,
+            }).to_list()
+            team_members = [
+                user for user in all_users
+                if str(user.id) in subordinate_ids and str(user.id) != str(current_user.id)
+            ]
+
+        else:
+            all_users = await User.find({
+                "company_id": current_user.company_id,
+                "status": UserStatus.ACTIVE,
+            }).to_list()
+            team_members = [
+                user
+                for user in all_users
+                if getattr(user, "role", None) in [UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE]
+            ]
+
+        from app.models.task import Task
+        from app.models.ticket import Ticket
+
+        team_data = []
+        for employee in team_members:
+            try:
+                task_count = await Task.find({
+                    "assigned_to": str(employee.id),
+                    "company_id": current_user.company_id
+                }).count()
+            except Exception:
+                task_count = 0
+
+            try:
+                ticket_count = await Ticket.find({
+                    "assigned_to": str(employee.id),
+                    "company_id": current_user.company_id
+                }).count()
+            except Exception:
+                ticket_count = 0
+
+            team_data.append({
+                "id": str(employee.id),
+                "email": employee.email,
+                "first_name": employee.first_name,
+                "last_name": employee.last_name,
+                "role": getattr(employee.role, "value", employee.role),
+                "status": getattr(employee.status, "value", employee.status),
+                "department_id": getattr(employee, "department_id", None),
+                "designation": getattr(employee, "designation", None),
+                "phone": getattr(employee, "phone", None),
+                "created_at": getattr(employee, "created_at", None),
+                "task_count": task_count,
+                "ticket_count": ticket_count,
+            })
+
+        return {
+            "team_members": team_data,
+            "total": len(team_data),
+            "lead_info": {
+                "id": str(getattr(lead, "id", current_user.id)),
+                "first_name": getattr(lead, "first_name", current_user.first_name),
+                "last_name": getattr(lead, "last_name", current_user.last_name),
+                "team_name": getattr(lead, "team_name", None),
+            }
         }
-    }
+    except HTTPException:
+        raise
+    except Exception as error:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error loading my team: {error}", exc_info=True)
+        return {
+            "team_members": [],
+            "total": 0,
+            "lead_info": {
+                "id": str(current_user.id),
+                "first_name": current_user.first_name,
+                "last_name": current_user.last_name,
+                "team_name": None,
+            },
+        }
 
 
 # ==================== USER CRUD ENDPOINTS ====================

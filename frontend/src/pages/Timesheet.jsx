@@ -1,15 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import {
   Clock, TrendingUp, CheckCircle2, Timer, AlertTriangle,
-  LogIn, LogOut, Coffee, BarChart2
+  LogIn, LogOut, Coffee, BarChart2, ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { timesheetApi } from '../api/timesheet'
 import { attendanceAPI } from '../api/attendance'
 import { Badge, Button, EmptyState, FormField, inputClassName, PageHeader, SkeletonTable, Table } from '../components/ui'
 import { asArray, formatDate, toFormData } from './phase4Utils'
-import { format, parseISO } from 'date-fns'
+import { addWeeks, eachDayOfInterval, endOfWeek, format, parseISO, startOfWeek, isSameDay } from 'date-fns'
 
 const STANDARD_WORK_SECONDS = 8 * 3600
 
@@ -165,9 +165,36 @@ export default function Timesheet() {
   })
   const [errors, setErrors] = useState({})
   const [attendanceSummary, setAttendanceSummary] = useState(null)
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [weeklyDraft, setWeeklyDraft] = useState({})
+  const [savingWeek, setSavingWeek] = useState(false)
 
   const mine = useQuery('my-timesheet', timesheetApi.getMine)
   const entries = asArray(mine.data, ['entries', 'timesheet'])
+  const weekStart = useMemo(() => startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 }), [weekOffset])
+  const weekDays = useMemo(() => eachDayOfInterval({ start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 1 }) }), [weekStart])
+  const rows = useMemo(() => {
+    const map = new Map()
+    entries.forEach((entry) => {
+      const label = entry.project_name || entry.task_title || entry.miscellaneous_description || entry.meeting_title || 'Unassigned'
+      if (!map.has(label)) {
+        map.set(label, { label, entries: [] })
+      }
+      map.get(label).entries.push(entry)
+    })
+    return Array.from(map.values())
+  }, [entries])
+
+  useEffect(() => {
+    const nextDraft = {}
+    rows.forEach((row) => {
+      weekDays.forEach((day) => {
+        const entry = row.entries.find((item) => isSameDay(new Date(item.date), day))
+        nextDraft[`${row.label}-${day.toISOString().slice(0, 10)}`] = entry ? String(entry.hours_spent_today || entry.hours_spent || '') : ''
+      })
+    })
+    setWeeklyDraft(nextDraft)
+  }, [rows, weekDays])
 
   const create = useMutation(
     (payload) => timesheetApi.createEntry(toFormData(payload)),
@@ -206,6 +233,46 @@ export default function Timesheet() {
     create.mutate(form)
   }
 
+  const weekEntryFor = (row, day) => row.entries.find((entry) => isSameDay(new Date(entry.date), day))
+  const weeklyTotal = (day) => rows.reduce((sum, row) => {
+    const entry = weekEntryFor(row, day)
+    return sum + Number(entry?.hours_spent_today || entry?.hours_spent || 0)
+  }, 0)
+
+  const handleWeekSave = async () => {
+    try {
+      setSavingWeek(true)
+      const payloads = []
+      rows.forEach((row) => {
+        weekDays.forEach((day) => {
+          const key = `${row.label}-${day.toISOString().slice(0, 10)}`
+          const hours = Number(weeklyDraft[key] || 0)
+          if (hours > 0) {
+            payloads.push({
+              date: day.toISOString().slice(0, 10),
+              hours_spent_today: hours,
+              miscellaneous_description: row.label,
+              is_miscellaneous: true,
+            })
+          }
+        })
+      })
+
+      for (const payload of payloads) {
+        // Existing API creates a daily entry; save one entry per filled cell.
+        // This keeps the weekly grid aligned with the current backend contract.
+        await timesheetApi.createEntry(toFormData(payload))
+      }
+
+      toast.success('Weekly timesheet saved')
+      await queryClient.invalidateQueries('my-timesheet')
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to save weekly timesheet')
+    } finally {
+      setSavingWeek(false)
+    }
+  }
+
   const columns = [
     { key: 'date', header: 'Date', render: (row) => formatDate(row.date) },
     {
@@ -231,6 +298,67 @@ export default function Timesheet() {
 
       {/* Attendance Summary Block */}
       <AttendanceSummaryBlock summary={attendanceSummary} />
+
+      <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-gray-900 dark:text-gray-100">Weekly Grid</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{format(weekStart, 'MMM d, yyyy')} - {format(weekDays[6], 'MMM d, yyyy')}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setWeekOffset((value) => value - 1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setWeekOffset(0)}>
+              Current Week
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setWeekOffset((value) => value + 1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button size="sm" onClick={handleWeekSave} loading={savingWeek}>
+              Save Week
+            </Button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <div className="min-w-[900px]">
+            <div className="grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2 border-b border-gray-200 pb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:text-gray-400">
+              <div>Project / Task</div>
+              {weekDays.map((day) => <div key={day.toISOString()} className="text-center">{format(day, 'EEE dd')}</div>)}
+            </div>
+            <div className="space-y-2 pt-3">
+              {rows.length ? rows.map((row) => (
+                <div key={row.label} className="grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-medium text-gray-800 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100">
+                    {row.label}
+                  </div>
+                  {weekDays.map((day) => {
+                    const key = `${row.label}-${day.toISOString().slice(0, 10)}`
+                    return (
+                      <input
+                        key={day.toISOString()}
+                        className={`${inputClassName} text-center`}
+                        type="number"
+                        min="0"
+                        step="0.25"
+                        value={weeklyDraft[key] ?? ''}
+                        onChange={(event) => setWeeklyDraft((state) => ({ ...state, [key]: event.target.value }))}
+                        placeholder="0"
+                      />
+                    )
+                  })}
+                </div>
+              )) : (
+                <EmptyState icon={Clock} title="No weekly rows" description="Log entries to populate the weekly grid." />
+              )}
+            </div>
+            <div className="mt-3 grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <div className="font-medium">Daily total</div>
+              {weekDays.map((day) => <div key={day.toISOString()} className="text-center font-semibold">{weeklyTotal(day)}</div>)}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Quick Entry Form */}
       <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-sm">

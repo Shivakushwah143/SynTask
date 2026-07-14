@@ -5,15 +5,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { 
   Area, AreaChart, Bar, BarChart, CartesianGrid, 
   ResponsiveContainer, XAxis, YAxis, PieChart, Pie, 
-  Cell, Tooltip, Legend, Line, LineChart, ComposedChart
+  Cell, Tooltip, Legend, Line, ComposedChart
 } from 'recharts'
 import { 
   ArrowRight, CalendarDays, Download, Filter, Import, Mail, Merge, 
   Phone, Plus, Search, Sparkles, Target, TrendingUp, Users,
-  Zap, Award, Clock, Briefcase, UserCheck, Star, BarChart3,
-  PieChart as PieChartIcon, Activity, CheckCircle, XCircle, AlertCircle,
-  Eye, ChevronDown, ChevronUp, Building, Calendar, DollarSign,
-  UserPlus, BarChart2, Layers, MoreHorizontal
+  Zap, Eye, ChevronUp, DollarSign, Layers
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
@@ -290,19 +287,6 @@ export default function CRMLeadsPage() {
       toast.error(error?.response?.data?.detail || 'Bulk update failed')
     },
   })
-
-  const statusMutation = useMutation(
-    ({ leadId, customFields }) => salesApi.updateLeadForm(leadId, { custom_fields: JSON.stringify(customFields) }),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('crm-leads-entry')
-        queryClient.invalidateQueries('crm-pipeline-board')
-      },
-      onError: (error) => {
-        toast.error(error?.response?.data?.detail || 'Could not update lead status')
-      },
-    }
-  )
 
   const employeeStatusMutation = useMutation(
     ({ leadId, customFields }) => salesApi.updateLeadForm(leadId, { custom_fields: JSON.stringify(customFields) }),
@@ -1160,7 +1144,7 @@ function BulkUpdateModal({ isOpen, onClose, leadCount, onSubmit, loading, stages
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Bulk update ${leadCount} leads`} size="lg">
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Stage"><select className={inputClassName} value={fields.current_stage} onChange={(e) => setFields((s) => ({ ...s, current_stage: e.target.value }))}><option value="">No change</option>{stages.map((s) => <option key={s.id || s.name} value={s.id || s.name}>{s.name}</option>)}</select></Field>
+        <Field label="Stage"><select className={inputClassName} value={fields.current_stage} onChange={(e) => setFields((s) => ({ ...s, current_stage: e.target.value }))}><option value="">No change</option>{stages.map((s) => <option key={s.id || s.key || s.name} value={s.key || s.id || s.name}>{s.name}</option>)}</select></Field>
         <Field label="Status"><select className={inputClassName} value={fields.status} onChange={(e) => setFields((s) => ({ ...s, status: e.target.value }))}><option value="">No change</option><option value="active">Active</option><option value="won">Won</option><option value="lost">Lost</option><option value="closed">Closed</option></select></Field>
         <Field label="Owner"><select className={inputClassName} value={fields.assigned_to} onChange={(e) => setFields((s) => ({ ...s, assigned_to: e.target.value }))}><option value="">No change</option>{users.map((u) => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}</select></Field>
         <Field label="Priority"><select className={inputClassName} value={fields.interest_level} onChange={(e) => setFields((s) => ({ ...s, interest_level: e.target.value }))}><option value="">No change</option><option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option></select></Field>

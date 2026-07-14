@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Bot, Menu, MessageCircle, Search, Video } from 'lucide-react'
+import { Bot, Maximize2, Menu, MessageCircle, Minimize2, Search, Video } from 'lucide-react'
 import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
 import { Button } from '../ui'
@@ -23,7 +23,20 @@ const GLOBAL_COMMUNICATION_LINKS = [
   },
 ]
 
-export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onAssistantOpen, onLogout, logoutLoading = false }) {
+export function TopNavigation({
+  title,
+  subtitle,
+  breadcrumb,
+  onMenuClick,
+  onSearchOpen,
+  onCommandOpen,
+  onAssistantOpen,
+  onLogout,
+  logoutLoading = false,
+  showAiFullscreenAction = false,
+  isFullscreen = false,
+  fullscreenLabel = 'Toggle AI briefing fullscreen',
+}) {
   const location = useLocation()
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)

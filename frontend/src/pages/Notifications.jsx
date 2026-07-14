@@ -37,6 +37,23 @@ const Notifications = () => {
     }
   }
 
+  const handleNotificationClick = async (notification) => {
+    try {
+      if (!notification.is_read) {
+        await notificationsAPI.markAsRead(notification.id)
+        setNotifications((current) => current.map((item) => (
+          item.id === notification.id ? { ...item, is_read: true } : item
+        )))
+        setUnreadCount((current) => Math.max(0, current - 1))
+      }
+      if (notification.action_url) {
+        window.location.href = notification.action_url
+      }
+    } catch {
+      toast.error('Failed to update notification')
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -73,6 +90,15 @@ const Notifications = () => {
             notifications.map((notification) => (
               <div
                 key={notification.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleNotificationClick(notification)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    handleNotificationClick(notification)
+                  }
+                }}
                 className={`card p-4 ${notification.is_read ? '' : 'border-primary-200 bg-primary-50/40 dark:border-primary-900/40 dark:bg-primary-950/20'}`}
               >
                 <div className="flex items-start justify-between gap-4">

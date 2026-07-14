@@ -13,24 +13,29 @@ import NaturalDateInput from '../components/tasks/NaturalDateInput'
 import { useViewStore } from '../store/viewStore'
 import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
+import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
 
 const Tasks = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
-  const { view } = useViewStore()
+  const { view, setView } = useViewStore()
   const userRole = normalizeRole(user?.role)
   const canManageTasks = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+  const routeState = useMemo(() => readTaskRouteState(searchParams), [searchParams])
+  const [searchQuery, setSearchQuery] = useState(routeState.searchQuery)
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState({
+    status: routeState.filters.status || '',
     priority: '',
     assigned_to: '',
     department_id: '',
+    due_from: routeState.filters.due_from || '',
+    due_to: routeState.filters.due_to || '',
   })
   const [assignableUsers, setAssignableUsers] = useState([])
   const [loadingUsers, setLoadingUsers] = useState(false)
@@ -55,6 +60,29 @@ const Tasks = () => {
   }
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
+
+  useEffect(() => {
+    setSearchQuery(routeState.searchQuery)
+    setFilters((current) => ({
+      ...current,
+      status: routeState.filters.status || '',
+      priority: routeState.filters.priority || '',
+      assigned_to: routeState.filters.assigned_to || '',
+      department_id: routeState.filters.department_id || '',
+      due_from: routeState.filters.due_from || '',
+      due_to: routeState.filters.due_to || '',
+    }))
+    if (routeState.view !== view) {
+      setView(routeState.view)
+    }
+  }, [routeState.filters.assigned_to, routeState.filters.department_id, routeState.filters.due_from, routeState.filters.due_to, routeState.filters.priority, routeState.filters.status, routeState.searchQuery, routeState.view, setView, view])
+
+  useEffect(() => {
+    const nextParams = writeTaskRouteState(searchParams, { view, searchQuery, filters })
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [filters, searchParams, searchQuery, setSearchParams, view])
 
   // Fetch tasks
   const loadAssignableUsers = useCallback(async () => {
@@ -88,7 +116,12 @@ const Tasks = () => {
   const fetchTasks = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await tasksAPI.listTasks(filters)
+      const data = await tasksAPI.listTasks({
+        status: filters.status,
+        priority: filters.priority,
+        assigned_to: filters.assigned_to,
+        department_id: filters.department_id,
+      })
       let filteredTasks = data.tasks || []
       
       // Apply search filter
@@ -98,6 +131,27 @@ const Tasks = () => {
           task.title?.toLowerCase().includes(query) ||
           task.description?.toLowerCase().includes(query)
         )
+      }
+
+      const dueFrom = filters.due_from ? new Date(filters.due_from) : null
+      const dueTo = filters.due_to ? new Date(filters.due_to) : null
+      if (dueFrom || dueTo) {
+        filteredTasks = filteredTasks.filter((task) => {
+          if (!task.due_date) return false
+          const dueDate = new Date(task.due_date)
+          if (Number.isNaN(dueDate.getTime())) return false
+          if (dueFrom) {
+            const fromStart = new Date(dueFrom)
+            fromStart.setHours(0, 0, 0, 0)
+            if (dueDate < fromStart) return false
+          }
+          if (dueTo) {
+            const toEnd = new Date(dueTo)
+            toEnd.setHours(23, 59, 59, 999)
+            if (dueDate > toEnd) return false
+          }
+          return true
+        })
       }
       
       setTasks(filteredTasks)
@@ -165,6 +219,14 @@ const Tasks = () => {
   const visibleAssignableUsers = selectedDepartmentId
     ? assignableUsers.filter((item) => item.department_id === selectedDepartmentId)
     : assignableUsers
+  const uniqueAssignableUsers = useMemo(
+    () => Array.from(new Map(visibleAssignableUsers.map((item) => [item.id, item])).values()),
+    [visibleAssignableUsers],
+  )
+  const uniqueDepartments = useMemo(
+    () => Array.from(new Map(departments.map((department) => [department.id, department])).values()),
+    [departments],
+  )
 
   const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks), [tasks])
   const taskGraphSummary = useMemo(() => buildTaskGraphSummary(tasks), [tasks])
@@ -175,6 +237,24 @@ const Tasks = () => {
     setSelectedDepartmentId('')
     setDueDateValue('')
     setEstimatedHoursValue('')
+  }
+
+  const resetFilters = () => {
+    setSearchQuery('')
+    setFilters({
+      status: '',
+      priority: '',
+      assigned_to: '',
+      department_id: '',
+      due_from: '',
+      due_to: '',
+    })
+    setSearchParams(writeTaskRouteState(searchParams, { view, searchQuery: '', filters: {} }), { replace: true })
+  }
+
+  const handleViewChange = (nextView) => {
+    setView(nextView)
+    setSearchParams(writeTaskRouteState(searchParams, { view: nextView, searchQuery, filters }), { replace: true })
   }
 
   // Handle create task
@@ -250,7 +330,7 @@ const Tasks = () => {
           <p className="text-gray-600 text-xs mt-0.5 dark:text-[var(--color-app-text-secondary)]">Track work and priorities.</p>
         </div>
         <div className="flex items-center gap-2">
-          <ViewToggle />
+          <ViewToggle view={view} onChange={handleViewChange} />
           {canManageTasks && (
             <button
               onClick={() => {
@@ -294,10 +374,30 @@ const Tasks = () => {
             <Filter className="h-4 w-4 mr-2" />
             Filters
           </button>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="btn btn-secondary flex items-center"
+          >
+            Reset Filters
+          </button>
         </div>
 
         {showFilters && (
           <div className="mt-4 grid grid-cols-1 gap-4 border-t border-surface-border pt-4 dark:border-[var(--color-app-border)] sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Status</label>
+              <select
+                value={filters.status}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                className="input"
+              >
+                <option value="">All Statuses</option>
+                {statuses.map((status) => (
+                  <option key={status.id} value={status.id}>{status.label}</option>
+                ))}
+              </select>
+            </div>
             <div>
             <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Priority</label>
               <select
@@ -327,6 +427,24 @@ const Tasks = () => {
                   ))}
                 </select>
               </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Due From</label>
+              <input
+                type="date"
+                value={filters.due_from}
+                onChange={(e) => setFilters({ ...filters, due_from: e.target.value })}
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Due To</label>
+              <input
+                type="date"
+                value={filters.due_to}
+                onChange={(e) => setFilters({ ...filters, due_to: e.target.value })}
+                className="input"
+              />
+            </div>
             {isCompanyAdmin && (
               <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Department</label>
@@ -510,7 +628,7 @@ const Tasks = () => {
                   disabled={loadingUsers}
                 >
                   <option value="">Unassigned</option>
-                  {visibleAssignableUsers.map((u) => (
+                  {uniqueAssignableUsers.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.first_name} {u.last_name} ({u.role === 'lead' ? 'Lead' : 'Employee'})
                     </option>
@@ -540,7 +658,7 @@ const Tasks = () => {
                     disabled={loadingDepartments}
                   >
                     <option value="">No department</option>
-                    {departments.map((department) => (
+                    {uniqueDepartments.map((department) => (
                       <option key={department.id} value={department.id}>
                         {department.name}
                       </option>

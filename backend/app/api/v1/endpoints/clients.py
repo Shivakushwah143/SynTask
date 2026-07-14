@@ -34,7 +34,7 @@ PROJECT_UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "projects"
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@router.post("/")
+@router.post("")
 async def create_client(
     name: str = Form(...),
     email: Optional[str] = Form(None),
@@ -122,7 +122,7 @@ async def create_client(
     }
 
 
-@router.get("/")
+@router.get("")
 async def list_clients(
     status_filter: Optional[str] = None,
     assigned_to: Optional[str] = None,

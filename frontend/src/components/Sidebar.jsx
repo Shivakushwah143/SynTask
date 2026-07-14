@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ClipboardList,
   ClipboardCheck,
+  CheckSquare,
   Contact,
   CreditCard,
   DollarSign,
@@ -154,7 +155,14 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: "Projects",
       href: "/projects",
       icon: FolderKanban,
-      roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
+    },
+    {
+      name: "Tasks",
+      href: "/tasks",
+      icon: CheckSquare,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
     {
@@ -366,6 +374,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const filteredNavigation = navigation.filter(
     (item) => item.roles.includes(userRole) && hasModule(item.module) && hasCapability(item.capability) && hasDepartment(item.department),
   );
+  const pinnedNavigation = filteredNavigation.filter((item) => ['Projects', 'Tasks'].includes(item.name));
   const toggleFavorite = (href) => {
     setFavorites((current) => (
       current.includes(href) ? current.filter((item) => item !== href) : [...current, href]
@@ -603,6 +612,18 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </div>
               </div>
             ) : null}
+            {pinnedNavigation.map((item) => (
+              <SidebarNavItem
+                key={item.name}
+                item={item}
+                location={location}
+                collapsed={collapsed}
+                onClose={onClose}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
+                showFavorite
+              />
+            ))}
             {dashboardNavigation.map((item) => (
               <SidebarNavItem
                 key={item.name}

@@ -98,6 +98,10 @@ export default function Projects() {
     () => filterProjects(projects, { searchQuery, filters }),
     [filters, projects, searchQuery],
   )
+  const uniqueAssignableUsers = useMemo(
+    () => Array.from(new Map(assignableUsers.map((item) => [item.id, item])).values()),
+    [assignableUsers],
+  )
 
   const summary = useMemo(() => ({
     total: projects.length,
@@ -248,7 +252,7 @@ export default function Projects() {
             </select>
             <select className={inputClassName} value={filters.owner} onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}>
               <option value="">All owners</option>
-              {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
             </select>
           </div>
         </div>
@@ -327,7 +331,7 @@ export default function Projects() {
             <FormField label="Lead">
               <select className={inputClassName} value={formData.lead_id} onChange={(event) => setFormData((state) => ({ ...state, lead_id: event.target.value }))}>
                 <option value="">Select lead</option>
-                {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+                {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
               </select>
             </FormField>
             <FormField label="Start date">
