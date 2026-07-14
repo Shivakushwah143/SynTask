@@ -24,14 +24,19 @@ const Settings = () => {
     const formData = new FormData(e.target)
     const oldPassword = formData.get('old_password')
     const newPassword = formData.get('new_password')
-    if (!oldPassword || !newPassword) return toast.error('Please fill in all fields')
+    const confirmPassword = formData.get('confirm_password')
+
+    if (!oldPassword) return toast.error('Current password is required')
+    if (!newPassword || !confirmPassword) return toast.error('Please fill in all fields')
+    if (newPassword !== confirmPassword) return toast.error('New passwords do not match')
+
     try {
       setChangingPassword(true)
       await authAPI.changePassword(oldPassword, newPassword)
       toast.success('Password changed successfully')
       e.target.reset()
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to change password')
+      toast.error(error?.response?.data?.detail || 'Failed to change password')
     } finally {
       setChangingPassword(false)
     }
@@ -124,6 +129,9 @@ const Settings = () => {
               </FormField>
               <FormField label="New Password" required>
                 <input type="password" name="new_password" required minLength={8} className={inputClassName} />
+              </FormField>
+              <FormField label="Confirm New Password" required>
+                <input type="password" name="confirm_password" required minLength={8} className={inputClassName} />
               </FormField>
               <Button type="submit" loading={changingPassword}>Change Password</Button>
             </form>

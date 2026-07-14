@@ -5,6 +5,7 @@ import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole, normalizeRole, getRoleLabel } from '../utils/roles'
+import { EmptyState } from '../components/ui'
 import toast from 'react-hot-toast'
 
 const Users = () => {
@@ -23,6 +24,7 @@ const Users = () => {
   // Check if current user is a Lead
   const isLead = isLeadRole(user?.role)
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
+  const isEmployee = normalizeRole(user?.role) === 'employee'
 
   // Fetch users
   const fetchUsers = useCallback(async () => {
@@ -66,6 +68,17 @@ const Users = () => {
       fetchDepartments()
     }
   }, [fetchUsers, fetchDepartments, isCompanyAdmin])
+
+  if (isEmployee) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          title="Access denied"
+          description="You do not have permission to view this page."
+        />
+      </div>
+    )
+  }
 
   // Validate form data
   const validateForm = (formData) => {

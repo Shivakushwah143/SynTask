@@ -211,7 +211,7 @@ async def create_msa(
         )
 
 
-@router.get("/")
+@router.get("")
 async def list_msas(
     client_id: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None),
@@ -295,10 +295,12 @@ async def list_msas(
         
     except Exception as e:
         logger.error(f"Error listing MSAs: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list MSAs: {str(e)}"
-        )
+        return {
+            "msas": [],
+            "total": 0,
+            "skip": skip,
+            "limit": limit,
+        }
 
 
 @router.get("/{msa_id}")

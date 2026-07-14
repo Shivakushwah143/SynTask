@@ -308,7 +308,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   useEffect(() => {
     const custom = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
     setForm({
-      current_stage: lead?.current_stage || '',
+      current_stage: getCanonicalPipelineStageKey(lead?.current_stage || ''),
       status: lead?.status || '',
       assigned_to: lead?.assigned_to || '',
       interest_level: lead?.interest_level || '',
@@ -340,8 +340,9 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       toast.error('Custom fields must be valid JSON')
       return
     }
-    const nextStage = form.current_stage?.trim()
-    if (nextStage && nextStage !== (lead?.current_stage || '')) {
+    const nextStage = getCanonicalPipelineStageKey(form.current_stage)
+    const currentStage = getCanonicalPipelineStageKey(lead?.current_stage || '')
+    if (nextStage && nextStage !== currentStage) {
       stageMutation.mutate(nextStage)
     }
     saveMutation.mutate(payload)
@@ -350,9 +351,9 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     <div className="space-y-6">
       <CRMSection title="Update lead" description="Quick edit for ownership and pipeline fields.">
         <div className="grid gap-3">
-          <select className={inputClassName} value={form.current_stage} onChange={(e) => setForm((s) => ({ ...s, current_stage: e.target.value }))}>
+          <select className={inputClassName} value={getCanonicalPipelineStageKey(form.current_stage)} onChange={(e) => setForm((s) => ({ ...s, current_stage: e.target.value }))}>
             <option value="">Stage</option>
-            {stages.map((stage) => <option key={stage.id || stage.name} value={stage.id || stage.name}>{stage.name}</option>)}
+            {stages.map((stage) => <option key={stage.id || stage.key || stage.name} value={stage.key || getCanonicalPipelineStageKey(stage.name)}>{stage.name}</option>)}
           </select>
           <select className={inputClassName} value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
             <option value="">Status</option>

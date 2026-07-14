@@ -57,7 +57,7 @@ export default function CRMPipelinePage() {
   const pipelineSearchContext = usePipelineSearchContext()
   const searchValue = pipelineSearchContext.searchValue ?? localSearchValue
   const setSearchValue = pipelineSearchContext.setSearchValue || setLocalSearchValue
-  const pipelineQuery = useQuery(PIPELINE_QUERY_KEY, () => crmApi.getPipeline({ limit: 1000 }), {
+  const pipelineQuery = useQuery(PIPELINE_QUERY_KEY, () => crmApi.getPipeline({ limit: 500 }), {
     staleTime: 5 * 60 * 1000,
   })
   const [activeLeadId, setActiveLeadId] = useState(null)

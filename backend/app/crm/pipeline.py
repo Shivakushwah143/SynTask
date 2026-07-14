@@ -313,7 +313,11 @@ class CRMPipelineService:
 
         prospects_query = SalesProspect.find(query)
         total_prospects = await prospects_query.count()
-        prospects = await SalesProspect.find(query).sort("-updated_at").to_list(length=safe_limit)
+        ordered_prospects = SalesProspect.find(query).sort("-updated_at")
+        try:
+            prospects = await ordered_prospects.to_list(length=safe_limit)
+        except TypeError:
+            prospects = (await ordered_prospects.to_list())[:safe_limit]
         owner_ids = {
             str(prospect.assigned_to)
             for prospect in prospects
