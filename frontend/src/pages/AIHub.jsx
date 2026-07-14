@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { format } from 'date-fns'
 import {
   ArrowRight,
   Bot,
-  CheckCircle2,
   Clock3,
   LibraryBig,
   Lightbulb,
   MessageSquareText,
-  ShieldCheck,
   Sparkles,
   Wand2,
   Activity,
@@ -19,7 +16,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
-import { Button, EmptyState, PageHeader, Badge } from '../components/ui'
+import { Button, PageHeader, Badge } from '../components/ui'
 
 const QUICK_ACTIONS = [
   { label: 'Open AI Chat', path: '/ai-assistant', icon: MessageSquareText, color: 'blue' },
@@ -58,19 +55,15 @@ const EMPLOYEES = [
 export default function AIHub() {
   const navigate = useNavigate()
   const [logs, setLogs] = useState([])
-  const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const loadData = useCallback(async () => {
     try {
-      setLoading(true)
       const response = await aiAPI.listLogs(12)
       setLogs(Array.isArray(response) ? response : [])
     } catch (error) {
       toast.error('Failed to load AI activity')
       setLogs([])
-    } finally {
-      setLoading(false)
     }
   }, [])
 

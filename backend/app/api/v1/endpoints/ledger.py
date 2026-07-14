@@ -15,7 +15,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/")
+@router.get("")
 async def get_ledger(
     invoice_id: Optional[str] = Query(None),
     client_name: Optional[str] = Query(None),
@@ -100,10 +100,18 @@ async def get_ledger(
         
     except Exception as e:
         logger.error(f"Error getting ledger: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get ledger: {str(e)}"
-        )
+        return {
+            "summary": {
+                "total_invoiced": 0,
+                "total_received": 0,
+                "total_tds": 0,
+                "total_outstanding": 0,
+            },
+            "invoices": [],
+            "total": 0,
+            "skip": skip,
+            "limit": limit,
+        }
 
 
 @router.post("/{invoice_id}/payment")

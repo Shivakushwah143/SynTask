@@ -2,15 +2,19 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import {
+  ArrowDown,
+  ArrowUp,
   Layers3,
   ListChecks,
   Settings,
   Target,
+  Trash2,
   Users2,
 } from 'lucide-react'
 import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, FormField, inputClassName, Modal } from '../../../components/ui'
+import { useConfirmation } from '../../../hooks/useConfirmation'
 import { asArray } from '../../phase4Utils'
 
 const STORAGE_KEY = 'sytask-crm-settings'
@@ -158,11 +162,12 @@ export default function CRMSettingsPage() {
 
 function PipelineMastersSection() {
   const queryClient = useQueryClient()
+  const { confirm } = useConfirmation()
   const [activeResource, setActiveResource] = useState(PIPELINE_RESOURCES[0])
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(() => toFormState(PIPELINE_RESOURCES[0]))
   const { data, isLoading } = useQuery(['crm-settings-resource', activeResource.key], activeResource.query)
-  const rows = asArray(data, [activeResource.key])
+  const rows = asArray(data, [activeResource.key]).slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
   const categoriesQuery = useQuery(['crm-settings-categories'], salesApi.getCategories)
   const categories = asArray(categoriesQuery.data, ['categories'])
 
@@ -182,6 +187,52 @@ function PipelineMastersSection() {
   useEffect(() => {
     setForm(toFormState(activeResource))
   }, [activeResource])
+
+  const persistStageOrder = async (nextRows) => {
+    if (activeResource.key !== 'stages') return
+    await Promise.all(
+      nextRows.map((row, index) => (
+        salesApi.updateStageMaster(row.id, {
+          name: row.name,
+          order: index,
+          is_default: Boolean(row.is_default),
+        })
+      ))
+    )
+    await queryClient.invalidateQueries(['crm-settings-resource', activeResource.key])
+  }
+
+  const moveStage = async (index, direction) => {
+    const targetIndex = index + direction
+    if (targetIndex < 0 || targetIndex >= rows.length) return
+    const nextRows = [...rows]
+    const [moved] = nextRows.splice(index, 1)
+    nextRows.splice(targetIndex, 0, moved)
+    try {
+      await persistStageOrder(nextRows)
+      toast.success('Stage order updated')
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Unable to reorder stages')
+    }
+  }
+
+  const deleteStage = async (stage) => {
+    const confirmed = await confirm({
+      title: 'Delete stage',
+      message: `Delete ${stage.name}? This cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDangerous: true,
+    })
+    if (!confirmed) return
+    try {
+      await salesApi.deleteStageMaster(stage.id)
+      toast.success('Stage deleted')
+      await queryClient.invalidateQueries(['crm-settings-resource', activeResource.key])
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Unable to delete stage')
+    }
+  }
 
   return (
     <CRMSection
@@ -206,10 +257,33 @@ function PipelineMastersSection() {
       )}
     >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {(isLoading ? Array.from({ length: 3 }, (_, index) => ({ id: `s-${index}` })) : rows).map((row) => (
+        {(isLoading ? Array.from({ length: 3 }, (_, index) => ({ id: `s-${index}` })) : rows).map((row, index) => (
           <article key={row.id || row.name || row.label} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{row.name || row.label || row.title || row.category_name || row.product_name || 'Item'}</p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{row.status || (row.is_active === false ? 'Inactive' : 'Active')}</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{row.name || row.label || row.title || row.category_name || row.product_name || 'Item'}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{row.status || (row.is_active === false ? 'Inactive' : 'Active')}</p>
+              </div>
+              {activeResource.key === 'stages' && !isLoading ? (
+                <Badge label={`#${index + 1}`} colorKey="draft" />
+              ) : null}
+            </div>
+            {activeResource.key === 'stages' && !isLoading ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="secondary" size="sm" onClick={() => moveStage(index, -1)} disabled={index === 0}>
+                  <ArrowUp className="mr-1 h-4 w-4" />
+                  Up
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => moveStage(index, 1)} disabled={index === rows.length - 1}>
+                  <ArrowDown className="mr-1 h-4 w-4" />
+                  Down
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => deleteStage(row)}>
+                  <Trash2 className="mr-1 h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
+            ) : null}
           </article>
         ))}
       </div>

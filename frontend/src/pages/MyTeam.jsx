@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Users, CheckSquare, Ticket, Phone, Briefcase, Calendar, Plus, MoreVertical } from 'lucide-react'
 import { usersAPI } from '../api/users'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { ROLE, normalizeRole } from '../utils/roles'
+
+const allowedTeamRoles = [ROLE.LEAD, ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN]
 
 const MyTeam = () => {
   const { user } = useAuthStore()
@@ -15,18 +18,36 @@ const MyTeam = () => {
   const [submitting, setSubmitting] = useState(false)
   const [openMenuFor, setOpenMenuFor] = useState(null)
   const [editingMember, setEditingMember] = useState(null)
+  const normalizedRole = normalizeRole(user?.role)
 
-  useEffect(() => {
-    if (user?.role === 'lead') {
-      fetchTeam()
-    }
-  }, [user])
-
-  const fetchTeam = async () => {
+  const fetchTeam = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await usersAPI.getMyTeam()
-      setTeamData(data)
+      if (normalizedRole === ROLE.LEAD) {
+        const data = await usersAPI.getMyTeam()
+        setTeamData(data)
+        return
+      }
+
+      const data = await usersAPI.listUsers(null, null, 'active', 0, 500)
+      const users = Array.isArray(data?.users) ? data.users : []
+      const teamMembers = users.filter((member) => {
+        const memberRole = normalizeRole(member.role)
+        if (member.id === user?.id) return false
+        return [ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(memberRole)
+      })
+
+      setTeamData({
+        team_members: teamMembers.map((member) => ({
+          ...member,
+          task_count: member.task_count ?? 0,
+          ticket_count: member.ticket_count ?? 0,
+        })),
+        total: teamMembers.length,
+        lead_info: {
+          team_name: 'Team overview',
+        },
+      })
     } catch (error) {
       console.error('Error loading team:', error)
       toast.error('Failed to load team members')
@@ -34,7 +55,13 @@ const MyTeam = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [normalizedRole, user?.id])
+
+  useEffect(() => {
+    if (allowedTeamRoles.includes(normalizedRole)) {
+      fetchTeam()
+    }
+  }, [fetchTeam, normalizedRole])
 
   const handleAddOrUpdateMember = async (e) => {
     e.preventDefault()
@@ -104,11 +131,11 @@ const MyTeam = () => {
     }
   }
 
-  if (user?.role !== 'lead') {
+  if (!allowedTeamRoles.includes(normalizedRole)) {
     return (
       <div className="space-y-6">
         <div className="card text-center py-12">
-          <p className="text-gray-600">This page is only available for Leads.</p>
+          <p className="text-gray-600">This page is only available for Leads, Managers, and Admins.</p>
         </div>
       </div>
     )

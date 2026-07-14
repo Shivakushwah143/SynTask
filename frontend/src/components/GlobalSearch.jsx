@@ -13,6 +13,33 @@ const icons = {
   crm: Sparkles,
 }
 
+const LOCAL_RESULTS = [
+  { id: 'dashboard', type: 'crm', title: 'Main Dashboard', subtitle: 'Overview and widgets', keywords: ['dashboard', 'overview', 'home'] },
+  { id: 'tasks', type: 'task', title: 'Tasks', subtitle: 'Task board and list', keywords: ['tasks', 'todo', 'work'] },
+  { id: 'projects', type: 'project', title: 'Projects', subtitle: 'Project list and board', keywords: ['projects', 'workspaces', 'boards'] },
+  { id: 'tickets', type: 'ticket', title: 'Tickets', subtitle: 'Requests and support items', keywords: ['tickets', 'requests', 'support'] },
+  { id: 'clients', type: 'client', title: 'Clients', subtitle: 'Client directory', keywords: ['clients', 'accounts', 'customers'] },
+  { id: 'crm-pipeline', type: 'crm', title: 'CRM Pipeline', subtitle: 'Sales pipeline board', keywords: ['crm', 'pipeline', 'sales'] },
+  { id: 'crm-leads', type: 'crm', title: 'CRM Leads', subtitle: 'Lead list and workspace', keywords: ['leads', 'prospects'] },
+  { id: 'calendar', type: 'crm', title: 'Calendar', subtitle: 'Meetings and content calendar', keywords: ['calendar', 'meetings', 'schedule'] },
+]
+
+const rankLocalResults = (query) => {
+  const value = query.trim().toLowerCase()
+  const scored = LOCAL_RESULTS.map((item) => {
+    const haystack = [item.title, item.subtitle, ...(item.keywords || [])].join(' ').toLowerCase()
+    let score = 0
+    if (!value) score = 10
+    else if (item.title.toLowerCase().startsWith(value)) score = 100
+    else if (haystack.includes(value)) score = 60
+    else if (value.split(/\s+/).some((part) => part && haystack.includes(part))) score = 40
+    return { ...item, score }
+  })
+  return scored
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+}
+
 export function GlobalSearch({ isOpen, onClose }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
@@ -20,6 +47,7 @@ export function GlobalSearch({ isOpen, onClose }) {
   const inputRef = useRef(null)
   const navigate = useNavigate()
   const debouncedQuery = useDebounce(query, 300)
+  const initialResults = rankLocalResults('')
 
   useEffect(() => {
     if (!isOpen) return undefined
@@ -38,18 +66,21 @@ export function GlobalSearch({ isOpen, onClose }) {
 
   useEffect(() => {
     if (!debouncedQuery.trim() || debouncedQuery.trim().length < 2) {
-      setResults([])
+      setResults(initialResults)
       return undefined
     }
 
     let active = true
     setLoading(true)
     api.get('/search', { params: { q: debouncedQuery.trim() } })
-      .then((data) => {
-        if (active) setResults(Array.isArray(data) ? data : [])
+      .then((response) => {
+        if (!active) return
+        const serverResults = Array.isArray(response?.data) ? response.data : Array.isArray(response?.data?.items) ? response.data.items : []
+        const merged = serverResults.length ? serverResults : rankLocalResults(debouncedQuery.trim())
+        setResults(merged)
       })
       .catch(() => {
-        if (active) setResults([])
+        if (active) setResults(rankLocalResults(debouncedQuery.trim()))
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -58,7 +89,7 @@ export function GlobalSearch({ isOpen, onClose }) {
     return () => {
       active = false
     }
-  }, [debouncedQuery])
+  }, [debouncedQuery, initialResults])
 
   const handleSelect = (result) => {
     const paths = {
@@ -101,11 +132,8 @@ export function GlobalSearch({ isOpen, onClose }) {
               {[1, 2, 3].map((item) => <Skeleton key={item} className="h-14 rounded-xl" />)}
             </div>
           ) : null}
-          {!loading && query.length >= 2 && results.length === 0 ? (
-            <div className="px-6 py-10 text-center text-sm text-text-secondary dark:text-gray-400">No results for {query}</div>
-          ) : null}
-          {!loading && query.length < 2 ? (
-            <div className="px-6 py-10 text-center text-sm text-text-secondary dark:text-gray-400">Type at least 2 characters to search.</div>
+          {!loading && results.length === 0 ? (
+            <div className="px-6 py-10 text-center text-sm text-text-secondary dark:text-gray-400">No matching results found.</div>
           ) : null}
           {results.map((result) => {
             const Icon = icons[result.type] || FileText
