@@ -380,7 +380,7 @@ class AssignmentEngine:
         query: Dict[str, Any] = {
             "company_id": current_user.company_id,
             "status": UserStatus.ACTIVE,
-            "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+            "role": {"$in": [UserRole.ADMIN.value, UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
         }
         if department_id:
             query["$or"] = [
@@ -533,7 +533,7 @@ class LeadEngine:
             estimated_close_date=_parse_datetime(normalized.get("estimated_close_date")),
             assigned_to=str(normalized.get("assigned_to")),
             assigned_by=str(normalized.get("assigned_by")),
-            current_stage="new",
+            current_stage=normalized.get("current_stage") or "new",
             due_date=_parse_datetime(normalized.get("due_date"), normalized.get("due_time")),
             due_time=normalized.get("due_time"),
             remark=normalized.get("remark"),

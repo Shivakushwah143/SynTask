@@ -6,7 +6,6 @@ import {
   Bot,
   Briefcase,
   CalendarCheck2,
-  CalendarClock,
   CalendarDays,
   CalendarClock,
   CalendarRange,

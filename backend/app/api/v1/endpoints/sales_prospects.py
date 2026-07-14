@@ -507,12 +507,12 @@ async def create_prospect(
     last_name: str = Form(...),
     country_code: str = Form(...),
     phone: str = Form(...),
-    category_id: str = Form(...),
-    product_ids: str = Form(...),  # Comma-separated or pipe-separated
-    interest_level: str = Form(...),
-    estimated_close_date: str = Form(...),  # DD-MM-YYYY
-    assigned_to: str = Form(...),
-    current_stage: str = Form(...),
+    category_id: Optional[str] = Form(None),
+    product_ids: Optional[str] = Form(None),  # Comma-separated or pipe-separated
+    interest_level: Optional[str] = Form(None),
+    estimated_close_date: Optional[str] = Form(None),  # DD-MM-YYYY
+    assigned_to: Optional[str] = Form(None),
+    current_stage: Optional[str] = Form(None),
     email: Optional[str] = Form(None),
     contact_id: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),  # DD-MM-YYYY
@@ -542,11 +542,11 @@ async def create_prospect(
             "country_code": country_code,
             "phone": phone,
             "category_id": category_id,
-            "product_ids": _parse_multi_value(product_ids),
-            "interest_level": interest_level,
-            "estimated_close_date": estimated_close_date,
+            "product_ids": _parse_multi_value(product_ids) if product_ids else [],
+            "interest_level": interest_level or "medium",
+            "estimated_close_date": estimated_close_date or datetime.utcnow().date().isoformat(),
             "assigned_to": assigned_to,
-            "current_stage": current_stage,
+            "current_stage": current_stage or "new",
             "email": email,
             "contact_id": contact_id,
             "due_date": due_date,
