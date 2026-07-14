@@ -17,7 +17,7 @@ from app.models.company_subscription import CompanySubscription
 from app.models.usage_tracking import UsageTracking
 from app.models.billing_transaction import BillingTransaction
 from app.models.payment_webhook import PaymentWebhook
-from app.models.task import Task, TaskComment
+from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
 from app.models.project import Project, Epic, Sprint
@@ -72,7 +72,15 @@ from app.models.attendance import (
     Attendance, AttendanceSession, BreakLog,
     MonitoringSession, CameraSession, ScreenShareSession
 )
+from app.models.timeline import TimelineEvent
+from app.models.leave import LeaveRequest
+from app.models.eod import EODReport
 from app.models.capability import seed_default_capabilities
+from app.recruitment.models import (
+    Application, Candidate, CandidateNote, CandidateTimeline, Interview,
+    InterviewFeedback, Offer, RecruitmentAttachment, RecruitmentAudit,
+    RecruitmentImportJob, RecruitmentJob, RecruitmentOutbox, Resume,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +150,7 @@ async def init_db():
                 PaymentWebhook,
                 Task,
                 TaskComment,
+                TaskExtensionRequest,
                 Ticket,
                 TicketComment,
                 Notification,
@@ -213,6 +222,22 @@ async def init_db():
                 MonitoringSession,
                 CameraSession,
                 ScreenShareSession,
+                TimelineEvent,
+                LeaveRequest,
+                EODReport,
+                RecruitmentJob,
+                Candidate,
+                Application,
+                Resume,
+                Interview,
+                InterviewFeedback,
+                Offer,
+                CandidateNote,
+                RecruitmentAttachment,
+                RecruitmentImportJob,
+                CandidateTimeline,
+                RecruitmentOutbox,
+                RecruitmentAudit,
             ]
         )
 

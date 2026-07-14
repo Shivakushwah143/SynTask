@@ -34,6 +34,7 @@ def compute_work_type(total_seconds: float) -> dict:
 from app.core.redis_client import close_redis, get_redis
 from app.api.v1.router import api_router
 from app.events.subscribers.knowledge import register_knowledge_subscribers
+from app.recruitment.subscribers import register_recruitment_subscribers
 from app.middleware.rate_limiter import (
     RateLimitExceeded,
     _rate_limit_exceeded_handler,
@@ -210,6 +211,7 @@ async def startup_event():
     logger.info("Database initialized successfully")
     await rebuild_all_ancestors()
     register_knowledge_subscribers()
+    register_recruitment_subscribers()
     logger.info("Knowledge subscribers registered")
     # Cleanup lingering manager Working sessions on server start to prevent auto-start after restart
     from datetime import datetime
@@ -240,8 +242,11 @@ async def startup_event():
     # Start background task for deadline checking
     import asyncio
     from app.core.deadline_checker import run_deadline_checker
+    from app.services.hr_mail_sync import run_imap_recruitment_sync_loop
     asyncio.create_task(run_deadline_checker())
     logger.info("Deadline checker background task started")
+    asyncio.create_task(run_imap_recruitment_sync_loop())
+    logger.info("IMAP recruitment sync background task started")
 
 # Shutdown event
 @app.on_event("shutdown")

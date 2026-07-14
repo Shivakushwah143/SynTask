@@ -6,12 +6,14 @@ import {
   Bot,
   Briefcase,
   CalendarCheck2,
+  CalendarClock,
   CalendarDays,
   CalendarRange,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  ClipboardCheck,
   Contact,
   CreditCard,
   DollarSign,
@@ -42,8 +44,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
-import { BUSINESS_WORKFLOW_STEPS } from "../config/businessWorkflow";
-import { canAccessOwner } from "../config/domainOwnership";
+import { HR_MODULES, HR_ROLES } from "../config/hrModules";
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
 const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
@@ -56,6 +57,12 @@ const Sidebar = ({ isOpen, onClose }) => {
   const userRole = normalizeRole(user?.role);
   const hasModule = (module) =>
     !module || user?.modules?.includes(module) || isSuperAdminRole(userRole);
+  const userCapabilities = new Set(user?.capabilities || user?.permissions || []);
+  const userDepartment = String(user?.department || user?.department_key || '').toLowerCase();
+  const hasCapability = (capability) =>
+    !capability || userCapabilities.has(capability) || isSuperAdminRole(userRole);
+  const hasDepartment = (department) =>
+    !department || !userDepartment || String(department).toLowerCase() === userDepartment || isSuperAdminRole(userRole);
   const [favorites, setFavorites] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('syntask-sidebar-favorites') || '[]')
@@ -197,6 +204,24 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
+      name: "Timeline",
+      href: "/timeline",
+      icon: CalendarClock,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
+      name: "Leaves",
+      href: "/leaves",
+      icon: CalendarCheck2,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
+      name: "Daily EOD",
+      href: "/eod",
+      icon: ClipboardCheck,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
       name: "Workspace Reports",
       href: "/reports",
       icon: LineChart,
@@ -243,6 +268,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       match: "/crm",
       icon: TrendingUp,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
+      name: "HR",
+      href: "/hr",
+      match: "/hr",
+      icon: UserCog,
+      roles: HR_ROLES,
     },
     {
       name: "Bulk Lead Import",
@@ -332,7 +364,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   ];
 
   const filteredNavigation = navigation.filter(
-    (item) => item.roles.includes(userRole) && hasModule(item.module),
+    (item) => item.roles.includes(userRole) && hasModule(item.module) && hasCapability(item.capability) && hasDepartment(item.department),
   );
   const toggleFavorite = (href) => {
     setFavorites((current) => (
@@ -393,27 +425,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   ];
 
   const filteredCrmNavigation = crmNavigation
-    .filter((item) => item && !['/crm/pipeline', '/crm/leads'].includes(item.href) && (item.roles ? item.roles.includes(userRole) : true));
+    .filter((item) => item && !['/crm/pipeline', '/crm/leads'].includes(item.href) && (item.roles ? item.roles.includes(userRole) : true) && hasCapability(item.capability) && hasDepartment(item.department));
 
-  const workflowIcons = {
-    lead: UserRoundSearch,
-    qualification: GitBranch,
-    'follow-up': CalendarClock,
-    meeting: CalendarRange,
-    proposal: FileCheck2,
-    negotiation: HeartHandshake,
-    won: UserCheck,
-    client: Briefcase,
-    project: FolderKanban,
-    tasks: ClipboardList,
-    execution: TimerReset,
-    invoice: Receipt,
-    payment: DollarSign,
-    reports: LineChart,
-  };
-  const workflowNavigation = BUSINESS_WORKFLOW_STEPS
-    .filter((step) => (!step.roles || step.roles.includes(userRole)) && canAccessOwner(step, user, isSuperAdminRole(userRole)))
-    .map((step) => ({ ...step, name: step.label, icon: workflowIcons[step.key] }));
+  const hrNavigation = HR_MODULES
+    .filter((module) => module.roles.includes(userRole) && (hasModule(module.module) || module.key === "recruitment") && hasCapability(module.capability) && hasDepartment(module.department))
+    .flatMap((module) => module.navigation.map((item) => ({ ...item, match: item.href === module.basePath ? module.basePath : undefined })));
 
   const itemByName = filteredNavigation.reduce((acc, item) => {
     acc[item.name] = item;
@@ -424,11 +440,6 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const navigationGroups = [
     {
-      key: "business-workflow",
-      label: "Business Workflow",
-      items: workflowNavigation,
-    },
-    {
       key: "workspace",
       label: "Workspace Tools",
       items: ["Service Requests", "Workspace Calendar", "Timesheet", "My Team", "Workflows"]
@@ -438,7 +449,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "communication",
       label: "Communication",
-      items: ["Notifications"]
+      items: ["Notifications", "Timeline", "Leaves", "Daily EOD"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -446,6 +457,11 @@ const Sidebar = ({ isOpen, onClose }) => {
       key: "crm",
       label: "CRM Tools",
       items: filteredCrmNavigation,
+    },
+    {
+      key: "hr",
+      label: "HR Department",
+      items: hrNavigation,
     },
     {
       key: "ai-marketing",

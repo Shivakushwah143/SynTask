@@ -1,0 +1,59 @@
+import api from "./axios";
+
+export const recruitmentApi = {
+  getDashboard: (params) => api.get("/recruitment/dashboard", { params }),
+  getJobDashboard: () => api.get("/recruitment/jobs/dashboard"),
+  getJobs: (params) => api.get("/recruitment/jobs", { params }),
+  getJob: (id) => api.get(`/recruitment/jobs/${id}`),
+  createJob: (payload) => api.post("/recruitment/jobs", payload),
+  updateJob: (id, payload) => api.patch(`/recruitment/jobs/${id}`, payload),
+  publishJob: (id) => api.post(`/recruitment/jobs/${id}/publish`),
+  pauseJob: (id) => api.post(`/recruitment/jobs/${id}/pause`),
+  archiveJob: (id) => api.post(`/recruitment/jobs/${id}/archive`),
+  duplicateJob: (id) => api.post(`/recruitment/jobs/${id}/duplicate`),
+  getInbox: (params) => api.get("/recruitment/inbox", { params }),
+  getInboxItem: (id) => api.get(`/recruitment/inbox/${id}`),
+  importInbox: (payload) => api.post("/recruitment/inbox/import", payload),
+  syncInboxNow: () => api.post("/recruitment/inbox/sync-now"),
+  getInboxSyncStatus: () => api.get("/recruitment/inbox/sync-status"),
+  retryInbox: (id) => api.post(`/recruitment/inbox/${id}/retry`),
+  ignoreInbox: (id) => api.post(`/recruitment/inbox/${id}/ignore`),
+  getCandidates: (params) => api.get("/recruitment/candidates", { params }),
+  getCandidate: (id) => api.get(`/recruitment/candidates/${id}`),
+  updateCandidate: (id, payload) => api.patch(`/recruitment/candidates/${id}`, payload),
+  assignCandidate: (id, payload) => api.post(`/recruitment/candidates/${id}/assign`, payload),
+  archiveCandidate: (id) => api.post(`/recruitment/candidates/${id}/archive`),
+  restoreCandidate: (id) => api.post(`/recruitment/candidates/${id}/restore`),
+  addCandidateNote: (id, payload) => api.post(`/recruitment/candidates/${id}/note`, payload),
+  addCandidateAttachment: (id, file) => {
+    const data = new FormData();
+    data.append("file", file);
+    return api.post(`/recruitment/candidates/${id}/attachment`, data);
+  },
+  getCandidateTimeline: (id) => api.get(`/recruitment/candidates/${id}/timeline`),
+  getResumePool: (params) => api.get("/recruitment/resume-pool", { params }),
+  getInterviews: (params) => api.get("/recruitment/interviews", { params }),
+  getInterview: (id) => api.get(`/recruitment/interviews/${id}`),
+  createInterview: (payload) => api.post("/recruitment/interviews", payload),
+  updateInterview: (id, payload) => api.patch(`/recruitment/interviews/${id}`, payload),
+  rescheduleInterview: (id, payload) => api.post(`/recruitment/interviews/${id}/reschedule`, payload),
+  cancelInterview: (id, payload) => api.post(`/recruitment/interviews/${id}/cancel`, payload),
+  submitInterviewFeedback: (id, payload) => api.post(`/recruitment/interviews/${id}/feedback`, payload),
+  recordInterviewDecision: (id, payload) => api.post(`/recruitment/interviews/${id}/decision`, payload),
+  getReportsOverview: (params) => api.get("/recruitment/reports", { params }),
+  getReportFunnel: (params) => api.get("/recruitment/reports/funnel", { params }),
+  getReportJobs: (params) => api.get("/recruitment/reports/jobs", { params }),
+  getReportDepartments: (params) => api.get("/recruitment/reports/departments", { params }),
+  getReportRecruiters: (params) => api.get("/recruitment/reports/recruiters", { params }),
+  getReportInterviews: (params) => api.get("/recruitment/reports/interviews", { params }),
+  getReportOffers: (params) => api.get("/recruitment/reports/offers", { params }),
+  getReportTrends: (params) => api.get("/recruitment/reports/trends", { params }),
+};
+
+export const careersApi = {
+  getPortal: (params) => api.get("/careers", { params }),
+  getJobs: (params) => api.get("/careers/jobs", { params }),
+  getJob: (slug, params) => api.get(`/careers/jobs/${slug}`, { params }),
+  apply: (jobId, payload, params) => api.post(`/careers/jobs/${jobId}/apply`, payload, { params }),
+  track: (trackingCode, params) => api.get(`/careers/applications/${trackingCode}`, { params }),
+};

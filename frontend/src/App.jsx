@@ -31,6 +31,9 @@ const AIPrioritization = lazy(() => import('./pages/AIPrioritization'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Subscriptions = lazy(() => import('./pages/Subscriptions'))
 const ActivityLog = lazy(() => import('./pages/ActivityLog'))
+const Timeline = lazy(() => import('./pages/Timeline'))
+const Leaves = lazy(() => import('./pages/Leaves'))
+const EODReports = lazy(() => import('./pages/EODReports'))
 const Settings = lazy(() => import('./pages/Settings'))
 const MyTeam = lazy(() => import('./pages/MyTeam'))
 const NotFound = lazy(() => import('./pages/NotFound'))
@@ -79,6 +82,17 @@ const CRMCalendarPage = lazy(() => import('./pages/crm/calendar/page'))
 const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
+const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
+const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
+const RecruitmentJobsPage = lazy(() => import('./modules/hr/recruitment/pages/JobsPage'))
+const RecruitmentInboxPage = lazy(() => import('./modules/hr/recruitment/pages/InboxPage'))
+const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pages/CandidatesPage'))
+const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
+const RecruitmentInterviewsPage = lazy(() => import('./modules/hr/recruitment/pages/InterviewsPage'))
+const RecruitmentReportsPage = lazy(() => import('./modules/hr/recruitment/pages/ReportsPage'))
+const CareersLandingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareersLandingPage })))
+const CareerJobDetailsPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerJobDetailsPage })))
+const CareerTrackingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerTrackingPage })))
 
 const AdminDashboard = lazy(() => import('./pages/superadmin/AdminDashboard'))
 const TenantManagement = lazy(() => import('./pages/superadmin/TenantManagement'))
@@ -170,11 +184,14 @@ function App() {
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />
         <Route path="/reset-password" element={<PublicRouteAllowAuth><AuthLayout><ResetPassword /></AuthLayout></PublicRouteAllowAuth>} />
         <Route path="/msa/sign/:token" element={<PublicRouteAllowAuth><MSASign /></PublicRouteAllowAuth>} />
+        <Route path="/careers" element={withBoundary(<CareersLandingPage />)} />
+        <Route path="/careers/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
+        <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={withBoundary(<Dashboard />)} />
-          <Route path="workflow" element={withBoundary(<Dashboard />)} />
-          <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
+          <Route path="workflow" element={<Navigate to="/crm/pipeline" replace />} />
+          <Route path="leads" element={<Navigate to="/crm/leads" replace />} />
           <Route path="tasks" element={withBoundary(<Tasks />)} />
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
@@ -192,8 +209,12 @@ function App() {
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
           <Route path="calendar" element={withBoundary(<Calendar />)} />
+          <Route path="content-calendar" element={withBoundary(<Calendar />)} />
+          <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />
+          <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
+          <Route path="attendance/reports" element={<Navigate to="/attendance-reports" replace />} />
           <Route path="live-monitor" element={withBoundary(<LiveMonitor />)} />
           <Route path="attendance-reports" element={withBoundary(<AttendanceReports />)} />
 
@@ -210,8 +231,23 @@ function App() {
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
         <Route path="activity" element={withBoundary(<ActivityLog />)} />
+        <Route path="timeline" element={withBoundary(<Timeline />)} />
+        <Route path="leaves" element={withBoundary(<Leaves />)} />
+        <Route path="eod" element={withBoundary(<EODReports />)} />
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
+          <Route path="hr">
+            <Route index element={withBoundary(<HRDepartment />)} />
+            <Route path="recruitment">
+              <Route index element={withBoundary(<RecruitmentDashboard />)} />
+              <Route path="jobs" element={withBoundary(<RecruitmentJobsPage />)} />
+              <Route path="inbox" element={withBoundary(<RecruitmentInboxPage />)} />
+              <Route path="candidates" element={withBoundary(<RecruitmentCandidatesPage />)} />
+              <Route path="resume-pool" element={withBoundary(<RecruitmentResumePoolPage />)} />
+              <Route path="interviews" element={withBoundary(<RecruitmentInterviewsPage />)} />
+              <Route path="reports" element={withBoundary(<RecruitmentReportsPage />)} />
+            </Route>
+          </Route>
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
             <Route index element={<Navigate to="pipeline" replace />} />
             <Route path="dashboard" element={withBoundary(<CRMDashboardPage />)} />
@@ -224,6 +260,7 @@ function App() {
             <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
             <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
+            <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
             <Route path="settings" element={withBoundary(<CRMSettingsPage />)} />
           </Route>
       </Route>
@@ -258,7 +295,7 @@ function App() {
       </Routes>
       <ConfirmDialog />
       <UndoBar />
-      {import.meta.env.DEV && <Agentation />}
+      {import.meta.env.DEV && import.meta.env.VITE_ENABLE_AGENTATION === 'true' && <Agentation />}
     </Suspense>
   )
 }

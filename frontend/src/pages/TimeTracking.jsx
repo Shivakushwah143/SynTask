@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { format } from 'date-fns'
 import { Clock, Plus, Trash2 } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { timeTrackingApi } from '../api/timeTracking'
@@ -204,7 +205,7 @@ const TimeTracking = () => {
                             <div className="text-sm text-gray-500 mt-1">{log.description}</div>
                           )}
                           <div className="text-xs text-gray-400 mt-1">
-                            {new Date(log.date).toLocaleDateString()}
+                            {format(new Date(log.date), 'MMM d, yyyy')}
                           </div>
                         </div>
                         <button
@@ -321,4 +322,3 @@ const TimeTracking = () => {
 }
 
 export default TimeTracking
-

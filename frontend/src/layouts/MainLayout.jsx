@@ -3,8 +3,8 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
 import { GlobalSearch } from '../components/GlobalSearch'
+import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
-import WorkflowStepNavigation from '../components/workflow/WorkflowStepNavigation'
 
 const BREADCRUMB_LABELS = {
   dashboard: 'Main Dashboard',
@@ -16,6 +16,13 @@ const BREADCRUMB_LABELS = {
   meetings: 'Meetings',
   notifications: 'Notifications',
   'crm': 'CRM',
+  hr: 'HR',
+  recruitment: 'Recruitment',
+  jobs: 'Jobs',
+  inbox: 'Inbox',
+  candidates: 'Candidates',
+  'resume-pool': 'Resume Pool',
+  interviews: 'Interviews',
   reports: 'Workspace Reports',
   settings: 'System Settings',
 }
@@ -35,14 +42,20 @@ const CRM_BREADCRUMB_LABELS = {
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
   const isDashboardPage = location.pathname === '/dashboard' || location.pathname === '/'
   const openSearch = () => setSearchOpen(true)
   const pathSegments = location.pathname.split('/').filter(Boolean)
   const isCrmPath = pathSegments[0] === 'crm'
+  const isHrPath = pathSegments[0] === 'hr'
   const breadcrumb = pathSegments
-    .map((segment, index) => (isCrmPath && index > 0 ? CRM_BREADCRUMB_LABELS[segment] : BREADCRUMB_LABELS[segment]) || segment)
+    .map((segment, index) => {
+      if (isCrmPath && index > 0) return CRM_BREADCRUMB_LABELS[segment] || BREADCRUMB_LABELS[segment] || segment
+      if (isHrPath && segment === 'reports') return 'Recruitment Reports'
+      return BREADCRUMB_LABELS[segment] || segment
+    })
     .join(' / ')
 
   useKeyboardShortcut('k', openSearch, { ctrlKey: true })
@@ -56,7 +69,7 @@ const MainLayout = () => {
       {/* Main Content */}
       <div className="flex min-w-0 w-full flex-1 flex-col  overflow-hidden">
         {/* Header */}
-        <Header title="Main Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} />
+        <Header title="Main Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} onAssistantOpen={() => setAssistantOpen(true)} />
 
         {/* Page Content */}
         <main className={`min-w-0 flex-1 px-4 pl-2 md:pl-6 py-4 md:py-6 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
@@ -64,10 +77,9 @@ const MainLayout = () => {
         </main>
       </div>
       <GlobalSearch isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+      <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   )
 }
 
 export default MainLayout
-
-

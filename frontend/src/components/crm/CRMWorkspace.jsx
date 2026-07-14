@@ -156,7 +156,7 @@ export function CRMContent({ className = '', children, aside }) {
 
 export function CRMSection({ title, description, actions, children, className = '' }) {
   return (
-    <section className={`rounded-2xl border border-surface-border/80 bg-white/85 p-5 shadow-sm dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19_/_0.88)] ${className}`}>
+    <section className={`rounded-2xl border border-primary-200/60 bg-[linear-gradient(135deg,rgba(255,250,244,0.96),rgba(248,242,232,0.9))] p-5 shadow-[0_14px_36px_rgba(63,49,37,0.07)] dark:border-[#5a4635] dark:bg-[linear-gradient(135deg,rgba(36,28,20,0.96),rgba(20,16,12,0.94))] dark:shadow-[0_18px_42px_rgba(0,0,0,0.24)] ${className}`}>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
@@ -182,7 +182,7 @@ export function CRMStatCard({ icon: Icon, label, value, helper, tone = 'blue' })
   }
 
   return (
-    <article className="rounded-2xl border border-surface-border/80 bg-gradient-to-br from-white via-primary-50/40 to-white p-4 shadow-sm dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface)] dark:via-[var(--color-app-surface-muted)] dark:to-[var(--color-app-surface)]">
+    <article className="crm-icon-surface rounded-2xl border border-surface-border/80 bg-gradient-to-br from-white via-primary-50/40 to-white p-4 shadow-sm dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface)] dark:via-[var(--color-app-surface-muted)] dark:to-[var(--color-app-surface)]">
       <div className={`inline-flex rounded-2xl border p-3 ${tones[tone] || tones.blue}`}>
         {Icon ? <Icon className="h-5 w-5" /> : null}
       </div>
@@ -197,7 +197,7 @@ export function CRMStatCard({ icon: Icon, label, value, helper, tone = 'blue' })
 
 export function CRMEmptyState({ title, description, action, icon: Icon }) {
   return (
-    <div className="rounded-2xl border border-dashed border-surface-border bg-primary-50/30 p-8 text-center dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)]">
+    <div className="empty-state rounded-2xl border border-dashed border-surface-border bg-primary-50/30 p-8 text-center dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)]">
       {Icon ? (
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 text-primary-700 dark:bg-primary-950/60 dark:text-primary-300">
           <Icon className="h-7 w-7" />
