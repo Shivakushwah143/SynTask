@@ -37,6 +37,9 @@
     --shadow-md: 0 10px 24px -20px rgb(63 49 37 / 0.18);
     --shadow-lg: 0 18px 36px -28px rgb(63 49 37 / 0.22);
     --focus-ring: 0 0 0 2px rgb(229 106 31 / 0.22);
+    --select-accent: #e56a1f;
+    --select-option-bg: #fff4ec;
+    --select-option-text: #312a23;
     --icon-scale-primary: 1.2;
   }
 
@@ -55,6 +58,9 @@
     --shadow-md: 0 14px 34px -24px rgb(0 0 0 / 0.7);
     --shadow-lg: 0 22px 48px -28px rgb(0 0 0 / 0.85);
     --focus-ring: 0 0 0 3px rgb(229 106 31 / 0.28);
+    --select-accent: #f8a26d;
+    --select-option-bg: #332a21;
+    --select-option-text: #fff8ee;
   }
 
   body {
@@ -81,6 +87,38 @@
   select,
   textarea {
     touch-action: manipulation;
+  }
+
+  select,
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='range'],
+  progress {
+    accent-color: var(--select-accent);
+  }
+
+  select {
+    background-color: var(--color-app-surface);
+    border-color: var(--color-app-border);
+    color: var(--color-app-text);
+  }
+
+  select:focus {
+    border-color: var(--select-accent);
+    box-shadow: var(--focus-ring);
+    outline: none;
+  }
+
+  select option {
+    background-color: var(--color-app-surface);
+    color: var(--color-app-text);
+  }
+
+  select option:checked,
+  select option:hover,
+  select option:focus {
+    background-color: var(--select-option-bg);
+    color: var(--select-option-text);
   }
 
   main,
@@ -143,6 +181,11 @@
   
   .input {
     @apply min-h-11 w-full rounded-2xl border border-surface-border bg-white/80 px-4 py-2.5 text-sm transition-colors placeholder:text-text-muted focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-gray-100 dark:placeholder:text-[var(--color-app-text-muted)];
+  }
+
+  select.input {
+    background-color: var(--color-app-surface);
+    color: var(--color-app-text);
   }
   
   .card {

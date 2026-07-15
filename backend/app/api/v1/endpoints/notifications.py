@@ -1,10 +1,12 @@
 """
 Notification Endpoints
 """
-from fastapi import APIRouter, HTTPException, status, Depends
 from datetime import datetime
+from typing import Any, Optional
 
-from app.notification_center.models import Notification
+from fastapi import APIRouter, HTTPException, Query, status, Depends
+
+from app.models.notification import Notification
 from app.models.user import User
 from app.api.dependencies import get_current_user
 from app.api.deps import Pagination20, PaginationParams
@@ -12,9 +14,46 @@ from app.api.deps import Pagination20, PaginationParams
 router = APIRouter()
 
 
+def _notification_type_value(value: Any) -> str:
+    return getattr(value, "value", str(value or "system"))
+
+
+def _serialize_notification(notification: Notification) -> dict[str, Any]:
+    return {
+        "id": str(notification.id),
+        "user_id": notification.user_id,
+        "company_id": notification.company_id,
+        "type": _notification_type_value(notification.type),
+        "title": notification.title,
+        "message": notification.message,
+        "is_read": notification.is_read,
+        "read_at": notification.read_at,
+        "action_url": notification.action_url,
+        "related_id": notification.related_id,
+        "related_type": notification.related_type,
+        "metadata": notification.metadata or {},
+        "created_at": notification.created_at,
+    }
+
+
+async def _get_owned_notification(notification_id: str, current_user: User) -> Notification:
+    notification = await Notification.get(notification_id)
+    if not notification:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Notification not found",
+        )
+    if str(notification.user_id) != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+    return notification
+
+
 @router.get("/")
 async def list_notifications(
-    is_read: bool = None,
+    is_read: Optional[bool] = Query(default=None),
     pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
@@ -30,20 +69,7 @@ async def list_notifications(
     unread_count = await Notification.find({"user_id": str(current_user.id), "is_read": False}).count()
     
     return {
-        "notifications": [
-            {
-                "id": str(notif.id),
-                "type": notif.type.value,
-                "title": notif.title,
-                "message": notif.message,
-                "is_read": notif.is_read,
-                "action_url": notif.action_url,
-                "related_id": notif.related_id,
-                "related_type": notif.related_type,
-                "created_at": notif.created_at,
-            }
-            for notif in notifications
-        ],
+        "notifications": [_serialize_notification(notif) for notif in notifications],
         "total": total,
         "unread_count": unread_count,
         "skip": skip,
@@ -57,25 +83,12 @@ async def mark_notification_as_read(
     current_user: User = Depends(get_current_user)
 ):
     """Mark notification as read"""
-    notification = await Notification.get(notification_id)
-    
-    if not notification:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notification not found"
-        )
-    
-    if notification.user_id != str(current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-    
+    notification = await _get_owned_notification(notification_id, current_user)
     notification.is_read = True
     notification.read_at = datetime.now()
     await notification.save()
     
-    return {"message": "Notification marked as read"}
+    return {"message": "Notification marked as read", "notification": _serialize_notification(notification)}
 
 
 @router.post("/mark-all-read")
@@ -101,21 +114,7 @@ async def delete_notification(
     current_user: User = Depends(get_current_user)
 ):
     """Delete notification"""
-    notification = await Notification.get(notification_id)
-    
-    if not notification:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notification not found"
-        )
-    
-    if notification.user_id != str(current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
-    
+    notification = await _get_owned_notification(notification_id, current_user)
     await notification.delete()
     
     return {"message": "Notification deleted successfully"}
-

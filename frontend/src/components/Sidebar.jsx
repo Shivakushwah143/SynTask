@@ -52,6 +52,16 @@ const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
 const WIDTH_KEY = "syntask-sidebar-width";
 const WIDTH_OPTIONS = [240, 280, 320];
 
+const getApiAssetUrl = (path) => {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  const apiOrigin = import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "";
+  if (path.startsWith("/uploads/avatars/")) {
+    return `${apiOrigin}/api/v1${path}`;
+  }
+  return `${apiOrigin}${path}`;
+};
+
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { user } = useAuthStore();
@@ -683,13 +693,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className="flex-shrink-0">
                 {user?.avatar ? (
                   <img
-                    src={
-                      user.avatar.startsWith("http")
-                        ? user.avatar
-                        : user.avatar.startsWith("/uploads/avatars/")
-                        ? `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}/api/v1${user.avatar}`
-                        : `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${user.avatar}`
-                    }
+                    src={getApiAssetUrl(user.avatar)}
                     alt={user?.first_name}
                     className="h-10 w-10 rounded-full object-cover border border-white/10 shadow-none"
                     onError={(e) => {

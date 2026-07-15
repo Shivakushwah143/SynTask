@@ -10,6 +10,7 @@ const MSA = () => {
   const { user } = useAuthStore()
   const [msas, setMsas] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [activeTab, setActiveTab] = useState('client') // 'client' or 'candidate'
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showSendModal, setShowSendModal] = useState(false)
@@ -56,12 +57,19 @@ const MSA = () => {
   const loadMSAs = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError(null)
       const params = { msa_type: activeTab }
       const data = await msaAPI.listMSAs(params)
       setMsas(data.msas || [])
     } catch (error) {
       console.error('Error loading MSAs:', error)
-      toast.error('Failed to load MSAs')
+      const message = error.response?.status === 403
+        ? 'You do not have permission to view MSAs. Please contact your administrator.'
+        : error.response?.status === 401
+          ? 'Please login to view MSAs'
+          : 'Failed to load MSAs'
+      setLoadError(message)
+      toast.error(message)
       setMsas([])
     } finally {
       setLoading(false)
@@ -369,6 +377,18 @@ const MSA = () => {
       <div className="viewport-scroll-x bg-surface rounded-lg shadow-sm dark:bg-black/85">
         {loading ? (
           <div className="p-8 text-center text-text-muted">Loading...</div>
+        ) : loadError ? (
+          <div className="p-8 text-center">
+            <div className="font-semibold text-text-primary">MSAs unavailable</div>
+            <div className="mt-1 text-sm text-text-muted">{loadError}</div>
+            <button
+              type="button"
+              onClick={loadMSAs}
+              className="mt-4 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            >
+              Retry
+            </button>
+          </div>
         ) : filteredMSAs.length === 0 ? (
           <div className="p-8 text-center text-text-muted">No MSAs found</div>
         ) : (

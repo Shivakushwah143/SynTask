@@ -87,4 +87,7 @@ class CRMActivity(Document):
             IndexModel([("company_id", ASCENDING), ("entity_type", ASCENDING), ("entity_id", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("activity_type", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("owner_id", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("status", ASCENDING), ("due_date", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("owner_id", ASCENDING), ("due_date", ASCENDING)]),
         ]
