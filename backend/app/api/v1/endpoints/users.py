@@ -22,6 +22,7 @@ from app.api.dependencies import (
     check_company_access
 )
 from app.services.user_service import UserService
+from app.api.deps import Pagination20, PaginationParams
 
 router = APIRouter()
 
@@ -169,11 +170,11 @@ async def list_users(
     company_id: str = None,
     role: str = None,
     status_filter: str = Query(None, alias="status"),
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
     """List users with hierarchical RBAC filtering"""
+    skip, limit = pagination.skip, pagination.limit
     # Super Admin can see all users
     if current_user.role == UserRole.SUPER_ADMIN:
         query = {}
@@ -729,6 +730,20 @@ async def create_employee(
     phone: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
+
+    print("\n========== CREATE EMPLOYEE API ==========")
+    print(f"[DEBUG] Email          : {email}")
+    print(f"[DEBUG] Password       : {password}")
+    print(f"[DEBUG] First Name     : {first_name}")
+    print(f"[DEBUG] Last Name      : {last_name}")
+    print(f"[DEBUG] Lead ID        : {lead_id}")
+    print(f"[DEBUG] Department ID  : {department_id}")
+    print(f"[DEBUG] Designation    : {designation}")
+    print(f"[DEBUG] Phone          : {phone}")
+    print(f"[DEBUG] Current User ID: {current_user.id}")
+    print(f"[DEBUG] Current User Email: {current_user.email}")
+    print(f"[DEBUG] Current User Role : {current_user.role}")
+    print("=========================================\n")
     """Create an Employee (Company Admin or Lead)"""
     # Check if email already exists
     existing = await User.find_one(User.email == email)
@@ -769,9 +784,6 @@ async def create_employee(
         phone=phone,
         status=UserStatus.ACTIVE
     )
-    await UserService.update_hierarchy_ancestors(employee)
-    
-    from app.services.user_service import UserService
     await UserService.update_hierarchy_ancestors(employee)
     await employee.insert()
     

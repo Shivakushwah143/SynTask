@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.api.dependencies import get_current_user
 from app.crm.activities import CRMActivitiesService
 from app.models.user import User
+from app.api.deps import Pagination100, PaginationParams
 
 router = APIRouter()
 
@@ -51,10 +52,10 @@ async def list_activities(
     search: Optional[str] = None,
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
-    skip: int = 0,
-    limit: int = 100,
+    pagination: PaginationParams = Pagination100,
     current_user: User = Depends(get_current_user),
 ):
+    skip, limit = pagination.skip, pagination.limit
     return await CRMActivitiesService.list_activities(
         current_user,
         entity_type=entity_type,

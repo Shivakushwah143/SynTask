@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Building2, CheckSquare, FileText, Search, Sparkles, Ticket, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
@@ -47,7 +47,7 @@ export function GlobalSearch({ isOpen, onClose }) {
   const inputRef = useRef(null)
   const navigate = useNavigate()
   const debouncedQuery = useDebounce(query, 300)
-  const initialResults = rankLocalResults('')
+  const initialResults = useMemo(() => rankLocalResults(''), [])
 
   useEffect(() => {
     if (!isOpen) return undefined
