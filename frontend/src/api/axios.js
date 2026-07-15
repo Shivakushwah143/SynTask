@@ -171,7 +171,7 @@ axiosInstance.interceptors.response.use(
       error.response?.data
     )
 
-    if (error.response?.status !== 401) {
+    if (![401, 403].includes(error.response?.status)) {
       toast.error(errorMessage)
     }
 
@@ -180,4 +180,3 @@ axiosInstance.interceptors.response.use(
 )
 
 export default axiosInstance
-

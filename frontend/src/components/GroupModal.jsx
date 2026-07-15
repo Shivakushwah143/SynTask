@@ -20,7 +20,8 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
   const getAvatarUrl = (avatar) => {
     if (!avatar) return null
     if (avatar.startsWith('http')) return avatar
-    const apiUrl = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'
+    const apiUrl = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || ''
+    if (avatar.startsWith('/uploads/avatars/')) return `${apiUrl}/api/v1${avatar}`
     return `${apiUrl}${avatar}`
   }
 
@@ -446,4 +447,3 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
 }
 
 export default GroupModal
-
