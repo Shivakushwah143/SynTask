@@ -156,7 +156,7 @@ async def move_task_to_sprint(
         )
     
     task.sprint_id = sprint_id
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now()
     await task.save()
     
     return {"message": "Task moved to sprint successfully"}
@@ -188,9 +188,10 @@ async def remove_task_from_sprint(
         )
     
     task.sprint_id = None
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now()
     await task.save()
     
     return {"message": "Task removed from sprint successfully"}
+
 
 

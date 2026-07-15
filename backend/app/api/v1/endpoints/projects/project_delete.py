@@ -49,7 +49,7 @@ async def delete_project(
                 "name": project.name,
                 "description": project.description,
                 "status": project.status.value if getattr(project, "status", None) else None,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now().isoformat(),
             },
             project_id=str(project.project_id or project.id),
             metadata={"source": "project_delete"},
@@ -64,3 +64,4 @@ async def delete_project(
 
 
 # Epic Endpoints
+

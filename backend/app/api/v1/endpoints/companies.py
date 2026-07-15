@@ -261,7 +261,7 @@ async def approve_company(
     # Update company
     company.status = CompanyStatus.ACTIVE
     company.admin_id = str(admin.id)
-    company.approved_at = datetime.utcnow()
+    company.approved_at = datetime.now()
     company.approved_by = str(current_user.id)
     await company.save()
     
@@ -273,7 +273,7 @@ async def approve_company(
     
     if plan_doc:
         amount = plan_doc.price_monthly if billing_cycle_val == "monthly" else plan_doc.price_yearly
-        start_date = datetime.utcnow()
+        start_date = datetime.now()
         sub = CompanySubscription(
             company_id=company_id,
             plan_id=str(plan_doc.id),
@@ -338,7 +338,7 @@ async def update_company_status(
         )
     
     company.status = new_status
-    company.updated_at = datetime.utcnow()
+    company.updated_at = datetime.now()
     await company.save()
     
     return {"message": "Company status updated successfully"}
@@ -373,3 +373,4 @@ async def delete_company(
     await company.delete()
     
     return {"message": "Company permanently deleted"} 
+

@@ -179,7 +179,7 @@ async def update_plan(
     for key, value in update_data.items():
         setattr(plan, key, value)
     
-    plan.updated_at = datetime.utcnow()
+    plan.updated_at = datetime.now()
     await plan.save()
     return _plan_to_response(plan)
 
@@ -221,9 +221,10 @@ async def delete_plan(
     
     plan.deleted = True
     plan.status = PlanStatus.ARCHIVED
-    plan.updated_at = datetime.utcnow()
+    plan.updated_at = datetime.now()
     await plan.save()
     return None
+
 
 
 

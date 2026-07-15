@@ -129,7 +129,7 @@ class TaskBreakdownAgent:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -158,7 +158,7 @@ class TaskBreakdownAgent:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=True,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(),
                 context={
                     **context,
                     "error": str(error),
@@ -166,3 +166,4 @@ class TaskBreakdownAgent:
                     "prompt_role_key": prompt_package.prompt_role_key,
                 },
             )
+

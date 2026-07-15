@@ -118,7 +118,7 @@ class EmotionDetector:
             burnout_risk=burnout_risk,
             mood=mood,
         )
-        now = datetime.utcnow()
+        now = datetime.now()
 
         user_state = await AIUserState.find_one(
             AIUserState.user_id == str(current_user.id),
@@ -151,3 +151,4 @@ class EmotionDetector:
             "workload_metrics": user_state.workload_metrics.model_dump(),
             "tone_guidance": EmotionTemplates.build_tone_guidance(user_state.emotional_state.model_dump()),
         }
+

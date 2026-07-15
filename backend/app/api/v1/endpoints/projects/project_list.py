@@ -103,7 +103,7 @@ async def list_projects(
         days_until_delivery = None
         priority = "normal"
         if project.delivery_date:
-            delta = project.delivery_date - datetime.utcnow()
+            delta = project.delivery_date - datetime.now()
             days_until_delivery = delta.days
             if days_until_delivery < 0:
                 priority = "overdue"
@@ -152,4 +152,5 @@ async def list_projects(
     if cache_key:
         await cache_set(cache_key, data, ttl=180)
     return data
+
 

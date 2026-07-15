@@ -132,9 +132,10 @@ async def release_version(
     version.released = True
     version.status = VersionStatus.RELEASED
     if not version.release_date:
-        version.release_date = datetime.utcnow()
-    version.updated_at = datetime.utcnow()
+        version.release_date = datetime.now()
+    version.updated_at = datetime.now()
     await version.save()
     
     return {"message": "Version released successfully"}
+
 

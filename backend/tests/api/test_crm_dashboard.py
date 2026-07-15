@@ -19,7 +19,7 @@ class FakeQuery:
 
 @pytest.mark.asyncio
 async def test_build_sales_dashboard_summary_aggregates_sales_data(monkeypatch):
-    now = datetime.utcnow()
+    now = datetime.now()
     active_prospect = SimpleNamespace(
         id="prospect-1",
         current_stage="Discovery",
@@ -86,3 +86,4 @@ async def test_build_crm_dashboard_payload_includes_workspace_metadata(monkeypat
     assert payload["workspace"]["feature_flags"]["dashboard"] is True
     assert payload["navigation"][0]["path"] == "/crm/dashboard"
     assert payload["sales"]["summary"]["prospect_count"] == 0
+

@@ -53,9 +53,9 @@ async def get_company_usage(
 ):
     """Get usage statistics for a specific company"""
     if not month:
-        month = datetime.utcnow().month
+        month = datetime.now().month
     if not year:
-        year = datetime.utcnow().year
+        year = datetime.now().year
     
     # Get current usage
     usage = await UsageTracking.find_one(
@@ -141,8 +141,8 @@ async def get_usage_analytics(
     current_user: User = Depends(get_current_super_admin)
 ):
     """Get usage analytics across all companies (real-time from DB when UsageTracking missing)."""
-    current_month = datetime.utcnow().month
-    current_year = datetime.utcnow().year
+    current_month = datetime.now().month
+    current_year = datetime.now().year
 
     # Get all active subscriptions (Beanie In operator)
     try:
@@ -248,6 +248,7 @@ async def get_usage_analytics(
             continue
 
     return analytics
+
 
 
 

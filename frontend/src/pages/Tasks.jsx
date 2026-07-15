@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo } from 'lucide-react'
+import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
@@ -24,6 +24,8 @@ const Tasks = () => {
   const canManageTasks = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const routeState = useMemo(() => readTaskRouteState(searchParams), [searchParams])
@@ -44,6 +46,9 @@ const Tasks = () => {
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
   const [dueDateValue, setDueDateValue] = useState('')
   const [estimatedHoursValue, setEstimatedHoursValue] = useState('')
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(1)
+  const pageSize = 20
 
   const statuses = [
     { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
@@ -84,6 +89,13 @@ const Tasks = () => {
     }
   }, [filters, searchParams, searchQuery, setSearchParams, view])
 
+  useEffect(() => {
+    const nextParams = writeTaskRouteState(searchParams, { view, searchQuery, filters, page })
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [filters, page, searchQuery, searchParams, setSearchParams, view])
+
   // Fetch tasks
   const loadAssignableUsers = useCallback(async () => {
     try {
@@ -113,16 +125,20 @@ const Tasks = () => {
     }
   }, [isCompanyAdmin])
 
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(async ({ isRefresh = false } = {}) => {
     try {
-      setLoading(true)
+      if (!isRefresh) setLoading(true)
+      setRefreshing(isRefresh)
+      setLoadError('')
       const data = await tasksAPI.listTasks({
         status: filters.status,
         priority: filters.priority,
         assigned_to: filters.assigned_to,
         department_id: filters.department_id,
+        skip: (page - 1) * pageSize,
+        limit: pageSize,
       })
-      let filteredTasks = data.tasks || []
+      let filteredTasks = Array.isArray(data.tasks) ? data.tasks : []
       
       // Apply search filter
       if (searchQuery.trim()) {
@@ -155,14 +171,17 @@ const Tasks = () => {
       }
       
       setTasks(filteredTasks)
+      setTotalCount(Number(data.total || filteredTasks.length || 0))
     } catch (error) {
       console.error('Error loading tasks:', error)
+      setLoadError(error.response?.data?.detail || error.message || 'Failed to load tasks')
       toast.error('Failed to load tasks')
       setTasks([])
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }, [filters, searchQuery])
+  }, [filters, page, searchQuery])
 
   useEffect(() => {
     loadAssignableUsers()
@@ -201,7 +220,7 @@ const Tasks = () => {
 
   useEffect(() => {
     const handleTasksUpdated = () => {
-      fetchTasks()
+      fetchTasks({ isRefresh: true })
     }
     window.addEventListener('syntask:tasks-updated', handleTasksUpdated)
     const interval = setInterval(handleTasksUpdated, 30000)
@@ -241,6 +260,7 @@ const Tasks = () => {
 
   const resetFilters = () => {
     setSearchQuery('')
+    setPage(1)
     setFilters({
       status: '',
       priority: '',
@@ -249,12 +269,12 @@ const Tasks = () => {
       due_from: '',
       due_to: '',
     })
-    setSearchParams(writeTaskRouteState(searchParams, { view, searchQuery: '', filters: {} }), { replace: true })
+    setSearchParams(writeTaskRouteState(searchParams, { view, searchQuery: '', filters: {}, page: 1 }), { replace: true })
   }
 
   const handleViewChange = (nextView) => {
     setView(nextView)
-    setSearchParams(writeTaskRouteState(searchParams, { view: nextView, searchQuery, filters }), { replace: true })
+    setSearchParams(writeTaskRouteState(searchParams, { view: nextView, searchQuery, filters, page }), { replace: true })
   }
 
   // Handle create task
@@ -294,7 +314,7 @@ const Tasks = () => {
       setSelectedDepartmentId('')
       setDueDateValue('')
       setEstimatedHoursValue('')
-      await fetchTasks()
+      await fetchTasks({ isRefresh: true })
       e.target.reset()
     } catch (error) {
       console.error('Error creating task:', error)
@@ -321,6 +341,29 @@ const Tasks = () => {
     )
   }
 
+  if (loadError) {
+    return (
+      <div className="p-4">
+        <EmptyState
+          icon={AlertTriangle}
+          title="Could not load tasks"
+          description={loadError}
+          action={(
+          <button
+            type="button"
+            onClick={() => fetchTasks({ isRefresh: true })}
+            className="btn btn-primary inline-flex items-center gap-2"
+            aria-busy={refreshing || undefined}
+          >
+              <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Try again
+            </button>
+          )}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="p-4">
       {/* Page Header */}
@@ -331,6 +374,15 @@ const Tasks = () => {
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle view={view} onChange={handleViewChange} />
+          <button
+            type="button"
+            onClick={() => fetchTasks({ isRefresh: true })}
+            className="btn btn-secondary inline-flex items-center gap-2"
+            aria-busy={refreshing || undefined}
+          >
+            <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
           {canManageTasks && (
             <button
               onClick={() => {
@@ -381,6 +433,13 @@ const Tasks = () => {
           >
             Reset Filters
           </button>
+        </div>
+        <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
+          <span>Showing {tasks.length} of {totalCount}</span>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={page * pageSize >= totalCount} onClick={() => setPage((value) => value + 1)}>Next</button>
+          </div>
         </div>
 
         {showFilters && (
@@ -483,7 +542,7 @@ const Tasks = () => {
                 {tasks.length === 0 ? (
                   <tr>
                     <td colSpan="4" className="px-4 py-6 text-center text-sm text-gray-500 dark:text-[var(--color-app-text-muted)]">
-                      No tasks yet.
+                      No tasks match the current filters.
                     </td>
                   </tr>
                 ) : (
@@ -494,7 +553,11 @@ const Tasks = () => {
                       className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-[var(--color-app-surface-muted)]"
                     >
                       <td className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-[var(--color-app-text)]">{task.title}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">{task.status}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">
+                        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium capitalize text-gray-700 dark:bg-[var(--color-app-surface-subtle)] dark:text-[var(--color-app-text-secondary)]">
+                          {String(task.status || '').replace(/_/g, ' ')}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">{priorities[task.priority]?.label || task.priority}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">
                         {task.due_date ? format(new Date(task.due_date), 'MMM d') : '—'}

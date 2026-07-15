@@ -40,7 +40,7 @@ def _priority_value(value: Optional[str]) -> CRMActivityPriority:
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now()
 
 
 def _lead_or_404(current_user: User, lead_id: str) -> SalesProspect:
@@ -657,3 +657,4 @@ def build_default_tool_registry() -> ToolRegistry:
 
 def register_default_tools(executor) -> ToolRegistry:
     return build_default_tool_registry()
+

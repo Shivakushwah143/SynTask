@@ -48,6 +48,7 @@ const MainLayout = () => {
   const isDashboardPage = location.pathname === '/dashboard' || location.pathname === '/'
   const openSearch = useCallback(() => setSearchOpen(true), [])
   const closeSearch = useCallback(() => setSearchOpen(false), [])
+  // const openSearch = () => setSearchOpen(true)
   const pathSegments = location.pathname.split('/').filter(Boolean)
   const isCrmPath = pathSegments[0] === 'crm'
   const isHrPath = pathSegments[0] === 'hr'

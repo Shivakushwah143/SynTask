@@ -851,7 +851,7 @@ async def update_user_status(
     check_company_access(current_user, user.company_id)
     
     user.status = new_status
-    user.updated_at = datetime.utcnow()
+    user.updated_at = datetime.now()
     await user.save()
     
     return {"message": "User status updated successfully"}
@@ -1010,7 +1010,7 @@ async def update_user(
                 assigned_by=current_user,
                 previous_department_name=previous_department_name,
             )
-    user.updated_at = datetime.utcnow()
+    user.updated_at = datetime.now()
     await user.save()
 
     return {"message": "User updated successfully"}
@@ -1206,3 +1206,4 @@ async def create_user_hierarchical(
         "role": target_role.value,
         "reports_to": reports_to
     }
+

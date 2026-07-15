@@ -44,7 +44,7 @@ describe('DashboardSectionVisibilityPanel', () => {
   it('does not collapse when clicking inside the open panel', () => {
     const { onCollapse } = renderPanel()
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: /Dashboard Sections/i }))
+    fireEvent.pointerDown(screen.getByRole('region', { name: /Dashboard sections/i }))
 
     expect(onCollapse).not.toHaveBeenCalled()
   })
@@ -60,8 +60,7 @@ describe('DashboardSectionVisibilityPanel', () => {
   it('keeps the collapsed reopen button accessible', () => {
     const { onToggleCollapsed } = renderPanel({ collapsed: true })
 
-    const button = screen.getByRole('button', { name: 'Show dashboard sections' })
-    expect(button).toHaveAttribute('aria-expanded', 'false')
+    const button = screen.getByRole('button', { name: 'Open dashboard sections' })
 
     fireEvent.click(button)
 

@@ -891,13 +891,13 @@ async def add_task_comment(
         user_id=str(current_user.id),
         user_name=f"{current_user.first_name} {current_user.last_name}",
         content=content,
-        created_at=datetime.utcnow()
+        created_at=datetime.now()
     )
 
     await comment.insert()
 
     # Update task's updated_at
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now()
     await task.save()
     await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
 
@@ -1079,7 +1079,7 @@ async def update_task(
     if estimated_hours is not None:
         task.estimated_hours = float(estimated_hours) if estimated_hours != '' else None
 
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now()
     await task.save()
     await sync_task_health(task)
 
@@ -1178,7 +1178,7 @@ async def add_task_attachment(
     # Add file URL to attachments (avoid duplicates)
     if file_url not in task.attachments:
         task.attachments.append(file_url)
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now()
         await task.save()
 
         await publish_event(

@@ -150,7 +150,7 @@ async def update_automation_rule(
     if actions is not None:
         rule.actions = actions
     
-    rule.updated_at = datetime.utcnow()
+    rule.updated_at = datetime.now()
     await rule.save()
     
     return {"message": "Automation rule updated successfully"}
@@ -173,7 +173,7 @@ async def toggle_automation_rule(
     check_company_access(current_user, rule.company_id)
     
     rule.is_active = not rule.is_active
-    rule.updated_at = datetime.utcnow()
+    rule.updated_at = datetime.now()
     await rule.save()
     
     return {
@@ -248,5 +248,6 @@ async def get_automation_executions(
         "skip": skip,
         "limit": limit
     }
+
 
 

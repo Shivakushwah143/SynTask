@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FileText, Plus, Trash2, X, Search, Eye, Send, Mail } from 'lucide-react'
+import { CreditCard, Download, FileText, Plus, Trash2, X, Search, Eye, Send, Mail } from 'lucide-react'
 import { invoicesAPI } from '../api/invoices'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -39,7 +39,6 @@ const Invoices = () => {
   
   const [clientDetails, setClientDetails] = useState(null)
   const [submitting, setSubmitting] = useState(false)
-  const [seeding, setSeeding] = useState(false)
   const [recordingPayment, setRecordingPayment] = useState(false)
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
@@ -244,21 +243,6 @@ const Invoices = () => {
     }
   }
 
-  const handleSeedDemoInvoices = async () => {
-    try {
-      setSeeding(true)
-      const result = await invoicesAPI.seedDemoInvoices()
-      toast.success(result.message || 'Demo invoices are ready')
-      await loadClients()
-      await loadInvoices()
-    } catch (error) {
-      console.error('Error seeding demo invoices:', error)
-      toast.error(error.response?.data?.detail || 'Failed to seed demo invoices')
-    } finally {
-      setSeeding(false)
-    }
-  }
-
   const handleRecordFullPayment = async (invoice) => {
     const outstandingAmount = Number(invoice.outstanding_amount ?? invoice.total_amount ?? 0)
     if (outstandingAmount <= 0) {
@@ -333,8 +317,6 @@ const Invoices = () => {
       toast.error('Failed to delete invoice')
     }
   }
-
-  const totals = calculateTotals()
 
   const filteredInvoices = invoices.filter(invoice => {
     const matchesSearch = !searchQuery || 

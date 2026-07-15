@@ -126,7 +126,7 @@ class ReviewOrchestrator:
             review_config=review_config,
             context_snapshot=context_snapshot,
             created_by=created_by,
-            queued_at=datetime.utcnow(),
+            queued_at=datetime.now(),
         )
         await self.repository.create_review(review)
         return review
@@ -141,7 +141,7 @@ class ReviewOrchestrator:
         campaign_review: CreativeCampaignReview | None = None,
     ) -> CreativeReview:
         review.status = CreativeReviewStatus.RUNNING
-        review.started_at = datetime.utcnow()
+        review.started_at = datetime.now()
         await self.repository.update_review(review)
         await self.repository.create_history(
             CreativeReviewHistory(
@@ -218,7 +218,7 @@ class ReviewOrchestrator:
         review.prompt_version = review.prompt_version or "n/a"
         review.rule_version = review.rule_version or "policy-v1"
         review.analyzer_versions = analyzer_versions
-        review.completed_at = datetime.utcnow()
+        review.completed_at = datetime.now()
         review.status = CreativeReviewStatus.COMPLETED
         await self.repository.update_review(review)
 
@@ -319,7 +319,7 @@ class ReviewOrchestrator:
                 "action": action.value,
                 "notes": notes,
                 "reviewer_id": reviewer_id,
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(),
                 "payload": payload or {},
             }
         )
@@ -341,3 +341,4 @@ class ReviewOrchestrator:
             )
         )
         return review
+

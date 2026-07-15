@@ -257,7 +257,7 @@ class ProjectService:
 
                 project.assigned_to = assigned_to
                 project.assigned_by = str(current_user.id)
-                project.assigned_at = datetime.utcnow()
+                project.assigned_at = datetime.now()
                 if assigned_user.role == UserRole.LEAD:
                     project.lead_id = assigned_to
                 if old_assigned_to != assigned_to:
@@ -280,6 +280,7 @@ class ProjectService:
                 detail="Start date cannot be after delivery date",
             )
 
-        project.updated_at = datetime.utcnow()
+        project.updated_at = datetime.now()
         await project.save()
         return project
+

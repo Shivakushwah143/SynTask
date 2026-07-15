@@ -169,7 +169,7 @@ class CRMCompanyService:
         if existing:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company already exists")
 
-        now = datetime.utcnow()
+        now = datetime.now()
         company = CRMCompany(
             name=name,
             company_id=tenant_id if current_user.role != UserRole.SUPER_ADMIN else str(payload.get("company_id") or ""),
@@ -309,7 +309,7 @@ class CRMCompanyService:
         company = await _company_or_403(current_user, company_id)
         previous_name = company.name
         previous_primary_contact_id = company.primary_contact_id
-        now = datetime.utcnow()
+        now = datetime.now()
 
         if "name" in payload and payload["name"] is not None:
             name = payload["name"].strip()
@@ -439,7 +439,7 @@ class CRMCompanyService:
     @staticmethod
     async def delete_company(current_user: User, company_id: str) -> Dict[str, Any]:
         company = await _company_or_403(current_user, company_id)
-        now = datetime.utcnow()
+        now = datetime.now()
         company.deleted = True
         company.deleted_by = str(getattr(current_user, "id", ""))
         company.deleted_at = now
@@ -462,3 +462,4 @@ class CRMCompanyService:
         )
 
         return {"message": "Company deleted successfully"}
+

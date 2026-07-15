@@ -37,7 +37,7 @@ DEFAULT_SOURCE_LABELS = {
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now()
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -939,3 +939,4 @@ class LeadEngine:
         from app.crm.pipeline import CRMPipelineService
 
         return await CRMPipelineService.move_lead(current_user, lead_id, target_stage, reason=reason)
+

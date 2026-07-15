@@ -146,7 +146,7 @@ async def toggle_webhook(
     check_company_access(current_user, webhook.company_id)
     
     webhook.is_active = not webhook.is_active
-    webhook.updated_at = datetime.utcnow()
+    webhook.updated_at = datetime.now()
     await webhook.save()
     
     return {
@@ -219,5 +219,6 @@ async def get_webhook_deliveries(
         "skip": skip,
         "limit": limit
     }
+
 
 

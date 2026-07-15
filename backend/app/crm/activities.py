@@ -691,7 +691,7 @@ class CRMActivitiesService:
             "overdue": sum(
                 1
                 for item in feed_items
-                if item.get("due_date") and item.get("status") != CRMActivityStatus.COMPLETED.value and item["due_date"] < datetime.utcnow()
+                if item.get("due_date") and item.get("status") != CRMActivityStatus.COMPLETED.value and item["due_date"] < datetime.now()
             ),
             "completed": sum(1 for item in feed_items if item.get("status") == CRMActivityStatus.COMPLETED.value),
             "scheduled": sum(1 for item in feed_items if item.get("status") == CRMActivityStatus.SCHEDULED.value),
@@ -731,7 +731,7 @@ class CRMActivitiesService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
         activity_type = _activity_type_value(payload.get("activity_type"))
-        now = datetime.utcnow()
+        now = datetime.now()
         owner_id = str(payload.get("owner_id") or "").strip() or None
         owner_name = None
         if owner_id:
@@ -819,7 +819,7 @@ class CRMActivitiesService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
         entity_context = await _resolve_entity(current_user, activity.entity_type, activity.entity_id)
-        now = datetime.utcnow()
+        now = datetime.now()
 
         if "title" in payload:
             title = str(payload.get("title") or "").strip()
@@ -917,7 +917,7 @@ class CRMActivitiesService:
         if activity.company_id != company_id and current_user.role != UserRole.SUPER_ADMIN:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-        now = datetime.utcnow()
+        now = datetime.now()
         activity.deleted = True
         activity.deleted_at = now
         activity.deleted_by = str(getattr(current_user, "id", ""))
@@ -950,3 +950,4 @@ class CRMActivitiesService:
             "message": "Activity deleted successfully",
             "activity_id": str(activity.id),
         }
+

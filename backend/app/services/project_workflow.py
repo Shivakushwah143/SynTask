@@ -48,11 +48,12 @@ async def advance_project(
         )
 
     if next_status == ProjectStatus.COMPLETED:
-        project.completed_at = datetime.utcnow()
+        project.completed_at = datetime.now()
     elif next_status != ProjectStatus.COMPLETED:
         project.completed_at = None
 
     project.status = next_status
-    project.updated_at = datetime.utcnow()
+    project.updated_at = datetime.now()
     await project.save()
     return project
+
