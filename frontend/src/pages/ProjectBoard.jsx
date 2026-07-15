@@ -220,6 +220,27 @@ export default function ProjectBoard() {
   const allProjectTasks = Object.values(boardData?.tasks_by_status || {}).flat()
   const completedTasks = allProjectTasks.filter((task) => ['completed', 'done'].includes((task.status || '').toLowerCase())).length
   const completionPercentage = allProjectTasks.length ? Math.round((completedTasks / allProjectTasks.length) * 100) : 0
+  const overdueTasks = allProjectTasks.filter((task) => {
+    if (!task.due_date) return false
+    try {
+      return new Date(task.due_date).getTime() < Date.now() && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
+    } catch {
+      return false
+    }
+  }).length
+  const dueSoonTasks = allProjectTasks.filter((task) => {
+    if (!task.due_date) return false
+    try {
+      const dueAt = new Date(task.due_date).getTime()
+      const now = Date.now()
+      const inThreeDays = now + (3 * 24 * 60 * 60 * 1000)
+      return dueAt >= now && dueAt <= inThreeDays && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
+    } catch {
+      return false
+    }
+  }).length
+  const unassignedTasks = allProjectTasks.filter((task) => !task.assigned_to).length
+  const totalEstimatedHours = allProjectTasks.reduce((sum, task) => sum + Number(task.estimated_hours || 0), 0)
   const projectRecord = projectInfo || boardData?.project || {}
   const activeProject = projectInfo?.name || boardData?.project?.name || 'Project'
   const projectDescription = projectRecord.description || 'No project description available.'
@@ -240,10 +261,14 @@ export default function ProjectBoard() {
     color: STATUS_COLORS[status.id] || '#4285F4',
   })).filter((item) => item.value > 0)
   const overviewCards = [
-    { title: 'Tasks', value: allProjectTasks.length, color: '#4285F4', helper: 'Total scope' },
-    { title: 'Complete', value: completedTasks, color: '#2FB47C', helper: 'Closed work' },
-    { title: 'In progress', value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === 'in_progress').length, color: '#FF8A4C', helper: 'Active now' },
-    { title: 'Completion', value: `${projectRecord.statistics?.completion_percentage ?? completionPercentage}%`, color: '#7C6FE0', helper: 'Delivery health' },
+    { title: 'Tasks', value: allProjectTasks.length, color: '#4285F4', helper: 'Live total tasks' },
+    { title: 'Complete', value: completedTasks, color: '#2FB47C', helper: 'Tasks finished' },
+    { title: 'Overdue', value: overdueTasks, color: '#EF4444', helper: 'Past due items' },
+    { title: 'Due soon', value: dueSoonTasks, color: '#FF8A4C', helper: 'Next 3 days' },
+    { title: 'Unassigned', value: unassignedTasks, color: '#7C6FE0', helper: 'Needs ownership' },
+    { title: 'Est. hours', value: totalEstimatedHours, color: '#0EA5E9', helper: 'Task effort' },
+    { title: 'In progress', value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === 'in_progress').length, color: '#A855F7', helper: 'Active now' },
+    { title: 'Completion', value: `${completionPercentage}%`, color: '#7C6FE0', helper: 'Derived from live tasks' },
   ]
 
   return (
@@ -286,17 +311,17 @@ export default function ProjectBoard() {
                 <div className="mt-4">
                   <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
                     <span>Completion</span>
-                    <span>{projectRecord.statistics?.completion_percentage ?? completionPercentage}%</span>
+                    <span>{completionPercentage}%</span>
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-white/70 dark:bg-black/55">
                     <div
                       className="h-full rounded-full bg-[linear-gradient(90deg,#2FB47C,#FF8A4C,#7C6FE0)] transition-all duration-300"
-                      style={{ width: `${Math.max(0, Math.min(100, projectRecord.statistics?.completion_percentage ?? completionPercentage))}%` }}
+                      style={{ width: `${Math.max(0, Math.min(100, completionPercentage))}%` }}
                     />
                   </div>
                 </div>
               </div>
-              <ProjectStatusDonut data={statusChartData} completion={projectRecord.statistics?.completion_percentage ?? completionPercentage} />
+              <ProjectStatusDonut data={statusChartData} completion={completionPercentage} />
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {overviewCards.map((card) => (
@@ -576,7 +601,15 @@ function ProjectStatusDonut({ data, completion }) {
             </PieChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-full items-center justify-center rounded-full border border-dashed border-border text-xs text-text-muted">No tasks</div>
+          <div className="flex h-full items-center justify-center">
+            <div className="relative flex h-28 w-28 items-center justify-center rounded-full border border-dashed border-primary-200 bg-gradient-to-br from-primary-50 via-white to-amber-50 text-center shadow-[0_10px_30px_rgba(252,165,17,0.08)] dark:border-primary-900/60 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900">
+              <div className="absolute inset-4 rounded-full bg-[conic-gradient(from_180deg,rgba(59,130,246,0.08),rgba(249,115,22,0.08),rgba(34,197,94,0.08),rgba(59,130,246,0.08))] blur-[1px]" />
+              <div className="relative">
+                <p className="text-lg font-semibold tabular-nums text-text-primary dark:text-text-primary">0%</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">No tasks</p>
+              </div>
+            </div>
+          </div>
         )}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-2xl font-semibold tabular-nums text-text-primary dark:text-text-primary">{completion}%</span>
@@ -584,15 +617,30 @@ function ProjectStatusDonut({ data, completion }) {
         </div>
       </div>
       <div className="mt-2 grid gap-1.5">
-        {(hasData ? data : [{ id: 'empty', name: 'No tasks', value: 0, color: '#9ca3af' }]).slice(0, 4).map((item) => (
-          <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
-            <span className="inline-flex min-w-0 items-center gap-2 text-text-secondary dark:text-text-secondary">
-              <span className="h-2 w-2 flex-none rounded-full" style={{ backgroundColor: item.color }} />
-              <span className="truncate capitalize">{item.name}</span>
-            </span>
-            <span className="font-semibold tabular-nums text-text-primary dark:text-text-primary">{item.value}</span>
-          </div>
-        ))}
+        {hasData ? (
+          data.slice(0, 4).map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
+              <span className="inline-flex min-w-0 items-center gap-2 text-text-secondary dark:text-text-secondary">
+                <span className="h-2 w-2 flex-none rounded-full" style={{ backgroundColor: item.color }} />
+                <span className="truncate capitalize">{item.name}</span>
+              </span>
+              <span className="font-semibold tabular-nums text-text-primary dark:text-text-primary">{item.value}</span>
+            </div>
+          ))
+        ) : (
+          <>
+            <div className="rounded-xl border border-dashed border-primary-200/70 bg-primary-50/70 px-3 py-2 text-xs text-text-secondary dark:border-primary-900/60 dark:bg-gray-900/40 dark:text-text-secondary">
+              No tasks have been added to this project yet.
+            </div>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="inline-flex min-w-0 items-center gap-2 text-text-secondary dark:text-text-secondary">
+                <span className="h-2 w-2 flex-none rounded-full bg-gray-300 dark:bg-gray-600" />
+                <span className="truncate">Awaiting first task</span>
+              </span>
+              <span className="font-semibold tabular-nums text-text-primary dark:text-text-primary">0</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
