@@ -9,6 +9,7 @@ from app.models.task import Task, TaskStatus, TaskPriority
 from app.models.project import Project, Sprint
 from app.models.user import User
 from app.api.dependencies import get_current_user, check_company_access
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -18,11 +19,11 @@ async def get_project_backlog(
     project_id: str,
     epic_id: Optional[str] = None,
     priority: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """Get backlog for a project (tasks not in any sprint)"""
+    skip, limit = pagination.skip, pagination.limit
     project = await Project.get(project_id)
     
     if not project:

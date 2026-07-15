@@ -7,6 +7,7 @@ from datetime import datetime
 from app.notification_center.models import Notification
 from app.models.user import User
 from app.api.dependencies import get_current_user
+from app.api.deps import Pagination20, PaginationParams
 
 router = APIRouter()
 
@@ -14,11 +15,11 @@ router = APIRouter()
 @router.get("/")
 async def list_notifications(
     is_read: bool = None,
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
     """List user notifications"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"user_id": str(current_user.id)}
     
     if is_read is not None:

@@ -152,8 +152,6 @@ const Invoices = () => {
     }
   }
 
-  const totals = calculateTotals()
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!formData.client_id) {

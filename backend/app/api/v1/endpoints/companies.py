@@ -11,6 +11,7 @@ from app.models.company_subscription import CompanySubscription, CompanySubscrip
 from app.models.subscription_plan import SubscriptionPlan as SubscriptionPlanDoc
 from app.core.security import get_password_hash
 from app.api.dependencies import get_current_user, get_current_super_admin
+from app.api.deps import Pagination20, PaginationParams
 
 
 router = APIRouter()
@@ -90,11 +91,11 @@ async def register_company(
 @router.get("/")
 async def list_companies(
     status_filter: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_super_admin)
 ):
     """List all companies (Super Admin only)"""
+    skip, limit = pagination.skip, pagination.limit
     query = {}
     if status_filter:
         query["status"] = status_filter

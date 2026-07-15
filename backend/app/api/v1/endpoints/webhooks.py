@@ -8,6 +8,7 @@ from datetime import datetime
 from app.models.webhook import Webhook, WebhookDelivery, WebhookEvent
 from app.models.user import User
 from app.api.dependencies import get_current_user, get_current_company_admin, check_company_access
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -178,11 +179,11 @@ async def delete_webhook(
 @router.get("/{webhook_id}/deliveries")
 async def get_webhook_deliveries(
     webhook_id: str,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """Get webhook delivery history"""
+    skip, limit = pagination.skip, pagination.limit
     webhook = await Webhook.get(webhook_id)
     
     if not webhook:

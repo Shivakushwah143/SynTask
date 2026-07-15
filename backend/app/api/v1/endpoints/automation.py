@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.task import Task, TaskStatus
 from app.models.notification import Notification, NotificationType
 from app.api.dependencies import get_current_user, get_current_company_admin, check_company_access
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -205,11 +206,11 @@ async def delete_automation_rule(
 @router.get("/{rule_id}/executions")
 async def get_automation_executions(
     rule_id: str,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """Get automation rule execution history"""
+    skip, limit = pagination.skip, pagination.limit
     rule = await AutomationRule.get(rule_id)
     
     if not rule:

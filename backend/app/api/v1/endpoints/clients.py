@@ -23,6 +23,7 @@ from app.api.dependencies import (
 )
 
 from app.core.config import settings
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -126,11 +127,11 @@ async def create_client(
 async def list_clients(
     status_filter: Optional[str] = None,
     assigned_to: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """List all clients for the current user's company"""
+    skip, limit = pagination.skip, pagination.limit
     # Super admins and admins with no company can see all clients
     if current_user.role == UserRole.SUPER_ADMIN:
         query = {}

@@ -9,6 +9,7 @@ from app.models.time_tracking import TimeLog, TimeTrackingSummary
 from app.models.task import Task
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, check_company_access
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -101,11 +102,11 @@ async def log_time(
 @router.get("/tasks/{task_id}/time-logs")
 async def get_task_time_logs(
     task_id: str,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """Get all time logs for a task"""
+    skip, limit = pagination.skip, pagination.limit
     task = await Task.get(task_id)
     
     if not task:
@@ -236,11 +237,11 @@ async def get_user_time_logs(
     user_id: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """Get time logs for a user"""
+    skip, limit = pagination.skip, pagination.limit
     # Check access
     if user_id != str(current_user.id) and current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
         raise HTTPException(

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -70,11 +71,11 @@ async def create_page(
 async def list_pages(
     project_id: str,
     status_filter: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """List all pages in a project"""
+    skip, limit = pagination.skip, pagination.limit
     project, _ = await get_project_by_id(project_id, current_user.company_id)
     if not project:
         raise HTTPException(
