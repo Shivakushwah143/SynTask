@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, RefreshCw, X } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Plus, RefreshCw, UserPlus, X } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
@@ -20,11 +20,21 @@ const Users = () => {
   const [submitting, setSubmitting] = useState(false)
   const [formErrors, setFormErrors] = useState({})
   const [departments, setDepartments] = useState([])
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
+  const [showDepartmentCreate, setShowDepartmentCreate] = useState(false)
+  const [newDepartmentName, setNewDepartmentName] = useState('')
+  const [newDepartmentManagerId, setNewDepartmentManagerId] = useState('')
+  const [departmentSubmitting, setDepartmentSubmitting] = useState(false)
+  const [departmentError, setDepartmentError] = useState('')
   
   // Check if current user is a Lead
   const isLead = isLeadRole(user?.role)
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isEmployee = normalizeRole(user?.role) === 'employee'
+  const managerOptions = useMemo(
+    () => users.filter((item) => item.status === 'active'),
+    [users],
+  )
 
   // Fetch users
   const fetchUsers = useCallback(async () => {
@@ -196,13 +206,11 @@ const Users = () => {
       }
       
       toast.success(`✅ ${userType === 'manager' ? 'Manager' : userType === 'lead' ? 'Lead' : 'Employee'} created successfully!`)
-      setShowAddModal(false)
-      setFormErrors({})
+      closeUserModal()
       await fetchUsers()
       
       // Reset form
       e.target.reset()
-      setUserType('employee')
     } catch (error) {
       console.error('Error creating user:', error)
       
@@ -230,9 +238,60 @@ const Users = () => {
   // Handle edit
   const handleEdit = (userToEdit) => {
     setEditingUser(userToEdit)
+    setSelectedDepartmentId(userToEdit.department_id || '')
+    setShowDepartmentCreate(false)
+    setNewDepartmentName('')
+    setNewDepartmentManagerId('')
+    setDepartmentError('')
     const normalizedRole = normalizeRole(userToEdit.role)
     setUserType(normalizedRole === 'manager' ? 'manager' : normalizedRole === 'lead' ? 'lead' : 'employee')
     setShowAddModal(true)
+  }
+
+  const closeUserModal = () => {
+    setShowAddModal(false)
+    setEditingUser(null)
+    setUserType('employee')
+    setFormErrors({})
+    setSelectedDepartmentId('')
+    setShowDepartmentCreate(false)
+    setNewDepartmentName('')
+    setNewDepartmentManagerId('')
+    setDepartmentError('')
+    const form = document.querySelector('form')
+    if (form) form.reset()
+  }
+
+  const handleCreateDepartment = async () => {
+    const name = newDepartmentName.trim()
+    if (!name) {
+      setDepartmentError('Department name is required')
+      return
+    }
+
+    try {
+      setDepartmentSubmitting(true)
+      setDepartmentError('')
+      const department = await departmentsAPI.createDepartment({
+        name,
+        manager_id: newDepartmentManagerId || null,
+      })
+      setDepartments((current) => {
+        const withoutDuplicate = current.filter((item) => item.id !== department.id)
+        return [...withoutDuplicate, department].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      })
+      setSelectedDepartmentId(department.id)
+      setShowDepartmentCreate(false)
+      setNewDepartmentName('')
+      setNewDepartmentManagerId('')
+      toast.success('Department created')
+    } catch (error) {
+      const message = error.response?.data?.detail || error.message || 'Failed to create department'
+      setDepartmentError(message)
+      toast.error(message)
+    } finally {
+      setDepartmentSubmitting(false)
+    }
   }
 
   // Handle update user
@@ -280,9 +339,7 @@ const Users = () => {
       setSubmitting(true)
       await usersAPI.updateUser(editingUser.id, updateData)
       toast.success('User updated successfully')
-      setShowAddModal(false)
-      setEditingUser(null)
-      setFormErrors({})
+      closeUserModal()
       await fetchUsers()
       // Reset form
       const form = document.querySelector('form')
@@ -371,6 +428,11 @@ const Users = () => {
           <button
             onClick={() => {
               setShowAddModal(true)
+              setSelectedDepartmentId('')
+              setShowDepartmentCreate(false)
+              setNewDepartmentName('')
+              setNewDepartmentManagerId('')
+              setDepartmentError('')
               // If Lead, only allow creating employees
               if (isLead) {
                 setUserType('employee')
@@ -478,26 +540,48 @@ const Users = () => {
 
       {/* Add/Edit User Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
-              {editingUser ? 'Edit User' : 'Add New User'}
-            </h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-md">
+          <div className="my-4 flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-2xl dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19)] dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200/80 bg-gradient-to-r from-[#fff7ed] via-[#fffdf8] to-white px-6 py-5 dark:border-[var(--color-app-border)] dark:bg-[linear-gradient(135deg,rgba(40,33,25,0.98),rgba(29,24,19,0.98)_52%,rgba(20,16,12,0.98))]">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-primary-600 text-white shadow-[0_12px_28px_rgba(229,106,31,0.28)] dark:bg-primary-500">
+                  <UserPlus className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-[var(--color-app-text)]">
+                    {editingUser ? 'Edit User' : 'Add New User'}
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-[var(--color-app-text-muted)]">
+                    {editingUser ? 'Update profile, department, and role details.' : 'Create teammate profile with role, department, and access details.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeUserModal}
+                className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:text-[var(--color-app-text-muted)] dark:hover:bg-white/10 dark:hover:text-[var(--color-app-text)]"
+                aria-label="Close user form"
+                disabled={submitting}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-6 py-5 dark:bg-[rgb(29_24_19)]">
             
             {/* User Type Selection - Only show for Company Admin and when adding new user */}
             {isCompanyAdmin && !editingUser && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="mb-5 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)]">
+                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-[var(--color-app-text-secondary)]">
                   User Type
                 </label>
-                <div className="flex space-x-4">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setUserType('manager')}
-                    className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors ${
+                    className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                       userType === 'manager'
-                        ? 'border-primary-600 bg-primary-50 text-primary-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-primary-300'
+                        ? 'border-primary-500 bg-primary-600 text-white shadow-sm dark:bg-primary-500'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300 hover:bg-primary-50 dark:border-[var(--color-app-border)] dark:bg-[rgb(22_18_14)] dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-subtle)] dark:hover:text-[var(--color-app-text)]'
                     }`}
                   >
                     Manager
@@ -505,10 +589,10 @@ const Users = () => {
                   <button
                     type="button"
                     onClick={() => setUserType('lead')}
-                    className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors ${
+                    className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                       userType === 'lead'
-                        ? 'border-primary-600 bg-primary-50 text-primary-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-primary-300'
+                        ? 'border-primary-500 bg-primary-600 text-white shadow-sm dark:bg-primary-500'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300 hover:bg-primary-50 dark:border-[var(--color-app-border)] dark:bg-[rgb(22_18_14)] dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-subtle)] dark:hover:text-[var(--color-app-text)]'
                     }`}
                   >
                     Lead
@@ -516,10 +600,10 @@ const Users = () => {
                   <button
                     type="button"
                     onClick={() => setUserType('employee')}
-                    className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors ${
+                    className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                       userType === 'employee'
-                        ? 'border-primary-600 bg-primary-50 text-primary-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-primary-300'
+                        ? 'border-primary-500 bg-primary-600 text-white shadow-sm dark:bg-primary-500'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300 hover:bg-primary-50 dark:border-[var(--color-app-border)] dark:bg-[rgb(22_18_14)] dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-subtle)] dark:hover:text-[var(--color-app-text)]'
                     }`}
                   >
                     Employee
@@ -527,19 +611,19 @@ const Users = () => {
                 </div>
               </div>
             )}
-            
+             
             {/* Info message for Leads */}
             {isLead && !editingUser && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-800">
+              <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3 dark:border-sky-500/25 dark:bg-sky-500/10">
+                <p className="text-sm text-sky-800 dark:text-sky-100">
                   <strong>Note:</strong> The employee you create will be automatically added to your team.
                 </p>
               </div>
             )}
 
-            <form onSubmit={editingUser ? handleUpdateUser : handleAddUser} className="space-y-4" autoComplete="off">
+            <form onSubmit={editingUser ? handleUpdateUser : handleAddUser} className="grid grid-cols-1 gap-4 sm:grid-cols-2" autoComplete="off">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   First Name *
                 </label>
                   <input
@@ -561,7 +645,7 @@ const Users = () => {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Last Name *
                 </label>
                   <input
@@ -583,7 +667,7 @@ const Users = () => {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Email *
                 </label>
                   <input
@@ -605,7 +689,7 @@ const Users = () => {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Password {editingUser ? '(leave blank to keep current)' : '*'}
                 </label>
                 <input
@@ -626,13 +710,13 @@ const Users = () => {
                   <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>
                 )}
                 {!editingUser && (
-                  <p className="text-gray-500 text-xs mt-1">
+                  <p className="text-gray-500 text-xs mt-1 dark:text-[var(--color-app-text-muted)]">
                     Must contain at least 8 characters, one uppercase, one lowercase, and one number
                   </p>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Phone
                 </label>
                 <input
@@ -654,12 +738,21 @@ const Users = () => {
               </div>
               {isCompanyAdmin ? (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                     Department
                   </label>
                   <select
                     name="department_id"
-                    defaultValue={editingUser?.department_id || ''}
+                    value={selectedDepartmentId}
+                    onChange={(event) => {
+                      if (event.target.value === '__create_department__') {
+                        setShowDepartmentCreate(true)
+                        setDepartmentError('')
+                        return
+                      }
+                      setSelectedDepartmentId(event.target.value)
+                      setShowDepartmentCreate(false)
+                    }}
                     className="input"
                   >
                     <option value="">No department</option>
@@ -668,11 +761,26 @@ const Users = () => {
                         {department.name}
                       </option>
                     ))}
+                    <option value="__create_department__">+ Create new department</option>
                   </select>
+                  <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-primary-200/70 bg-primary-50/80 px-3 py-2.5 text-xs text-primary-800 shadow-sm dark:border-primary-500/25 dark:bg-primary-500/10 dark:text-primary-100">
+                    <span className="font-medium">Missing department?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDepartmentCreate(true)
+                        setDepartmentError('')
+                      }}
+                      className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-primary-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-400"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Create here
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                     Department
                   </label>
                   <input
@@ -689,7 +797,7 @@ const Users = () => {
               {/* Lead-specific fields */}
               {userType === 'lead' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                     Team Name
                   </label>
                   <input
@@ -706,7 +814,7 @@ const Users = () => {
               {userType === 'employee' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                       Designation
                     </label>
                     <input
@@ -720,7 +828,7 @@ const Users = () => {
                   {/* Only show Lead ID field for Company Admin, not for Leads */}
                   {isCompanyAdmin && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                         Lead ID (Optional)
                       </label>
                       <input
@@ -743,7 +851,7 @@ const Users = () => {
                 </>
               )}
 
-              <div className="flex space-x-3 pt-4">
+              <div className="flex gap-3 border-t border-gray-200 pt-4 sm:col-span-2 dark:border-[var(--color-app-border)]">
                 <button
                   type="submit"
                   disabled={submitting}
@@ -757,15 +865,7 @@ const Users = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowAddModal(false)
-                    setEditingUser(null)
-                    setUserType('employee')
-                    setFormErrors({})
-                    // Reset form
-                    const form = document.querySelector('form')
-                    if (form) form.reset()
-                  }}
+                  onClick={closeUserModal}
                   disabled={submitting}
                   className="btn btn-secondary flex-1"
                 >
@@ -773,6 +873,106 @@ const Users = () => {
                 </button>
               </div>
             </form>
+            </div>
+
+            {showDepartmentCreate && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Create department">
+                <div className="w-full max-w-md overflow-hidden rounded-2xl border border-surface-border bg-white shadow-2xl dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19)]">
+                  <div className="flex items-start justify-between gap-3 border-b border-gray-200 bg-gradient-to-r from-[#fff7ed] to-white px-5 py-4 dark:border-[var(--color-app-border)] dark:bg-[linear-gradient(135deg,rgba(40,33,25,0.98),rgba(29,24,19,0.98))]">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-[var(--color-app-text)]">Create Department</h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-[var(--color-app-text-muted)]">
+                        {userType === 'manager'
+                          ? 'Add department for this manager.'
+                          : 'Add department and assign manager now.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDepartmentCreate(false)
+                        setNewDepartmentName('')
+                        setNewDepartmentManagerId('')
+                        setDepartmentError('')
+                      }}
+                      className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-[var(--color-app-text-muted)] dark:hover:bg-white/10 dark:hover:text-[var(--color-app-text)]"
+                      aria-label="Close department popup"
+                      disabled={departmentSubmitting}
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="space-y-4 px-5 py-5 dark:bg-[rgb(29_24_19)]">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-[var(--color-app-text-secondary)]">
+                        Department Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={newDepartmentName}
+                        onChange={(event) => {
+                          setNewDepartmentName(event.target.value)
+                          if (departmentError) setDepartmentError('')
+                        }}
+                        className={`input ${departmentError ? 'border-red-500' : ''}`}
+                        maxLength={100}
+                        placeholder="e.g. Operations"
+                        autoFocus
+                      />
+                      {departmentError && (
+                        <p className="mt-1 text-xs text-red-500" role="alert">{departmentError}</p>
+                      )}
+                    </div>
+
+                    {userType !== 'manager' && (
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-[var(--color-app-text-secondary)]">
+                          Manager
+                        </label>
+                        <select
+                          value={newDepartmentManagerId}
+                          onChange={(event) => setNewDepartmentManagerId(event.target.value)}
+                          className="input"
+                        >
+                          <option value="">No manager</option>
+                          {managerOptions.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.first_name} {item.last_name} ({getRoleLabel(item.role)})
+                            </option>
+                          ))}
+                        </select>
+                        {managerOptions.length === 0 && (
+                          <p className="mt-1 text-xs text-amber-600 dark:text-amber-200">No active users available for manager assignment.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-3 border-t border-gray-200 bg-white/95 px-5 py-4 dark:border-[var(--color-app-border)] dark:bg-[rgb(24_19_15)]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDepartmentCreate(false)
+                        setNewDepartmentName('')
+                        setNewDepartmentManagerId('')
+                        setDepartmentError('')
+                      }}
+                      className="btn btn-secondary flex-1"
+                      disabled={departmentSubmitting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateDepartment}
+                      className="btn btn-primary flex-1"
+                      disabled={departmentSubmitting}
+                    >
+                      {departmentSubmitting ? 'Creating...' : 'Create Department'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
