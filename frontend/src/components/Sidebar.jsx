@@ -388,7 +388,6 @@ const Sidebar = ({ isOpen, onClose }) => {
   const filteredNavigation = navigation.filter(
     (item) => item.roles.includes(userRole) && hasModule(item.module) && hasCapability(item.capability) && hasDepartment(item.department),
   );
-  const pinnedNavigation = filteredNavigation.filter((item) => ['Projects', 'Tasks'].includes(item.name));
   const toggleFavorite = (href) => {
     setFavorites((current) => (
       current.includes(href) ? current.filter((item) => item !== href) : [...current, href]
@@ -463,9 +462,23 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const navigationGroups = [
     {
-      key: "workspace",
-      label: "Workspace Tools",
-      items: ["Service Requests", "Workspace Calendar", "Timesheet", "My Team", "Workflows"]
+      key: "operations",
+      label: "Core Operations",
+      items: ["Service Requests", "Workspace Calendar", "Timesheet"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
+      key: "delivery",
+      label: "Project Delivery",
+      items: ["Projects", "Tasks"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
+      key: "people",
+      label: "People & Activity",
+      items: ["My Team", "Users", "Departments", "Attendance", "Live Attendance", "Attendance Reports"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -503,7 +516,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "administration",
       label: "Administration",
-      items: ["Users", "Departments", "Attendance", "Live Attendance", "Attendance Reports", "Company Directory", "Bulk Lead Import", "Audit Log", "Settings"]
+      items: ["Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices", "Agreements"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -626,18 +639,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </div>
               </div>
             ) : null}
-            {pinnedNavigation.map((item) => (
-              <SidebarNavItem
-                key={item.name}
-                item={item}
-                location={location}
-                collapsed={collapsed}
-                onClose={onClose}
-                favorites={favorites}
-                onToggleFavorite={toggleFavorite}
-                showFavorite
-              />
-            ))}
             {dashboardNavigation.map((item) => (
               <SidebarNavItem
                 key={item.name}
@@ -650,7 +651,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                 showFavorite
               />
             ))}
-
             {navigationGroups.map((group) => (
               <SidebarNavGroup
                 key={group.key}
