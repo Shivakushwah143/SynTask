@@ -3,6 +3,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { AlertCircle, CalendarDays, ChevronDown, Filter, MoreHorizontal, MoveRight, RefreshCw, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, getStageDealValue, getStageKey } from './utils'
@@ -469,12 +470,16 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   const sortableId = lead.id || lead._id
   const [menuOpen, setMenuOpen] = useState(false)
   const actionButtonRef = useRef(null)
+  const menuRef = useRef(null)
   const [menuPosition, setMenuPosition] = useState(null)
   const stageActions = useMemo(() => {
     const wantedActions = [
-      { label: 'Follow Up Call', stageNames: ['Follow Up Call', 'Contacted'] },
-      { label: 'Schedule a Meeting', stageNames: ['Schedule a Meeting', 'Discovery Scheduled'] },
-      { label: 'Send Proposal', stageNames: ['Send Proposal', 'Proposal Sent'] },
+      { label: 'Contacted', stageNames: ['Contacted', 'Follow Up Call', 'Follow-Up Call'] },
+      { label: 'Qualified', stageNames: ['Qualified', 'Qualification'] },
+      { label: 'Discovery', stageNames: ['Discovery', 'Schedule a Meeting', 'Discovery Scheduled'] },
+      { label: 'Schedule a Meeting', stageNames: ['Discovery', 'Schedule a Meeting', 'Discovery Scheduled'] },
+      { label: 'Proposal', stageNames: ['Proposal', 'Send Proposal', 'Proposal Sent'] },
+      { label: 'Send Proposal', stageNames: ['Proposal', 'Send Proposal', 'Proposal Sent'] },
       { label: 'Negotiation', stageNames: ['Negotiation'] },
       { label: 'Won', stageNames: ['Won'] },
       { label: 'Lost', stageNames: ['Lost'] },
@@ -514,13 +519,34 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
       const rect = actionButtonRef.current?.getBoundingClientRect()
       if (!rect) return
       const width = 224
-      const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12)
-      setMenuPosition({ top: rect.bottom + 8, left, width })
+      const margin = 12
+      const left = Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin)
+      const spaceBelow = window.innerHeight - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+      const renderAbove = spaceBelow < 180 && spaceAbove > spaceBelow
+      const maxHeight = Math.max(180, Math.min(320, (renderAbove ? spaceAbove : spaceBelow) - 8))
+      setMenuPosition(
+        renderAbove
+          ? { bottom: window.innerHeight - rect.top + 8, left, width, maxHeight }
+          : { top: rect.bottom + 8, left, width, maxHeight }
+      )
     }
     updatePosition()
+    const handlePointerDown = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target) && actionButtonRef.current && !actionButtonRef.current.contains(event.target)) {
+        setMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
     window.addEventListener('resize', updatePosition)
     window.addEventListener('scroll', updatePosition, true)
     return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition, true)
     }
@@ -542,6 +568,49 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
+  const menuNode = menuOpen && typeof document !== 'undefined' ? createPortal((
+    <div
+      ref={menuRef}
+      className="fixed z-[9999] overflow-y-auto rounded-2xl border border-surface-border/80 bg-surface/95 p-2 shadow-2xl backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/98"
+      style={menuPosition || { width: 224, top: 'auto', left: 'auto', maxHeight: 280 }}
+    >
+      <ActionItem
+        label="Copy lead ID"
+        onClick={() => {
+          onCopyLeadId?.(lead)
+          setMenuOpen(false)
+        }}
+      />
+      {stageActions.map((action) => (
+        <ActionItem
+          key={`${action.key}-${action.label}`}
+          label={`Move to ${action.label}`}
+          onClick={() => {
+            onMoveLeadToStage?.(lead, action.key)
+            setMenuOpen(false)
+          }}
+        />
+      ))}
+      <ActionItem
+        label="Move to previous stage"
+        disabled={!canMovePrevious}
+        onClick={() => {
+          if (!canMovePrevious) return
+          onMoveLeadToStage?.(lead, stage.previousStageKey)
+          setMenuOpen(false)
+        }}
+      />
+      <ActionItem
+        label="Move to next stage"
+        disabled={!canMoveNext}
+        onClick={() => {
+          if (!canMoveNext) return
+          onMoveLeadToStage?.(lead, stage.nextStageKey)
+          setMenuOpen(false)
+        }}
+      />
+    </div>
+  ), document.body) : null
 
   return (
     <article
@@ -617,48 +686,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
             Actions
             <ChevronDown className="h-3.5 w-3.5" />
           </Button>
-          {menuOpen ? (
-            <div
-              className="fixed z-50 overflow-hidden rounded-2xl border border-surface-border/80 bg-surface/95 p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900"
-              style={menuPosition || { width: 224 }}
-            >
-              <ActionItem
-                label="Copy lead ID"
-                onClick={() => {
-                  onCopyLeadId?.(lead)
-                  setMenuOpen(false)
-                }}
-              />
-              {stageActions.map((action) => (
-                <ActionItem
-                  key={action.key}
-                  label={`Move to ${action.label}`}
-                  onClick={() => {
-                    onMoveLeadToStage?.(lead, action.key)
-                    setMenuOpen(false)
-                  }}
-                />
-              ))}
-              <ActionItem
-                label="Move to previous stage"
-                disabled={!canMovePrevious}
-                onClick={() => {
-                  if (!canMovePrevious) return
-                  onMoveLeadToStage?.(lead, stage.previousStageKey)
-                  setMenuOpen(false)
-                }}
-              />
-              <ActionItem
-                label="Move to next stage"
-                disabled={!canMoveNext}
-                onClick={() => {
-                  if (!canMoveNext) return
-                  onMoveLeadToStage?.(lead, stage.nextStageKey)
-                  setMenuOpen(false)
-                }}
-              />
-            </div>
-          ) : null}
+          {menuNode}
         </div>
         <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-text-muted dark:text-gray-500">
           {stage.name}
@@ -802,7 +830,7 @@ function ActionItem({ label, onClick, disabled = false }) {
       }}
       className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-200 dark:hover:bg-gray-800"
     >
-      <span>{label}</span>
+      <span className="min-w-0 truncate">{label}</span>
     </button>
   )
 }

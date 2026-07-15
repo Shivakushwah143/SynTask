@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { DashboardSectionVisibilityPanel } from './Dashboard'
+import { DashboardSectionVisibilityPanel } from './DashboardSectionVisibilityPanelView.jsx'
 
 const sections = [
   { id: 'one', name: 'One' },

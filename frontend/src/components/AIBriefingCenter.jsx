@@ -654,6 +654,17 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
     }
   }, [handleSetState])
 
+
+  useEffect(() => {
+    window.addEventListener('syntask:toggle-ai-briefing-fullscreen', toggleFullscreen)
+    return () => window.removeEventListener('syntask:toggle-ai-briefing-fullscreen', toggleFullscreen)
+  }, [toggleFullscreen])
+
+  useEffect(() => {
+    const syncFullscreenState = () => handleSetState({ isFullscreen: Boolean(document.fullscreenElement) })
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState)
+  }, [handleSetState])
   const handleFontSizeChange = useCallback((size) => {
     handleSetState({ fontSize: size })
     document.documentElement.style.fontSize = FONT_SIZES[size]
@@ -933,13 +944,6 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
               isHighContrast={state.isHighContrast}
             />
             <KeyboardShortcutsGuide />
-            <button
-              onClick={toggleFullscreen}
-              className="rounded-lg p-2 text-slate-600 transition-all hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              aria-label="Toggle fullscreen"
-            >
-              {state.isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-            </button>
             <button
               type="button"
               onClick={() => handleSetState({ isOpen: true })}

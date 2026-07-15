@@ -128,6 +128,36 @@ const NotificationBell = () => {
     }
   }, [navigate, getNotificationRoute])
 
+  const showNotificationPopup = useCallback((notif) => {
+    toast.custom(
+      (t) => (
+        <button
+          type="button"
+          onClick={() => {
+            toast.dismiss(t.id)
+            handleNotificationClick(notif)
+          }}
+          className={`w-full max-w-sm rounded-2xl border px-4 py-3 text-left shadow-[0_20px_40px_rgba(15,23,42,0.16)] transition-transform hover:-translate-y-0.5 ${
+            notif.is_read
+              ? 'border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
+              : 'border-amber-200 bg-amber-50 text-slate-900 dark:border-amber-900/60 dark:bg-slate-900 dark:text-slate-100'
+          }`}
+        >
+          <p className="text-sm font-semibold leading-5">
+            {notif.title}
+          </p>
+          <p className="mt-1 text-xs leading-4 text-slate-600 line-clamp-2 dark:text-slate-300">
+            {notif.message}
+          </p>
+        </button>
+      ),
+      {
+        duration: 6000,
+        position: 'top-right',
+      }
+    )
+  }, [handleNotificationClick])
+
   const fetchNotifications = useCallback(async (isInitialLoad = false, skipPopups = false) => {
     try {
       const data = await notificationsAPI.listNotifications(null, 0, 10)
@@ -146,26 +176,9 @@ const NotificationBell = () => {
             unreadNotifs.forEach(notif => {
               // Mark this notification ID as shown
               lastNotificationIdsRef.current.add(notif.id)
-              
+
               // Show toast notification with click handler
-              toast(
-                (t) => (
-                  <div 
-                    className="w-full cursor-pointer"
-                    onClick={() => {
-                      toast.dismiss(t.id)
-                      handleNotificationClick(notif)
-                    }}
-                  >
-                    <p className="font-semibold text-sm text-gray-900">{notif.title}</p>
-                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{notif.message}</p>
-                  </div>
-                ),
-                {
-                  duration: 5000,
-                  position: 'top-right',
-                }
-              )
+              showNotificationPopup(notif)
             })
             hasShownInitialPopupsRef.current = true
           }
@@ -194,26 +207,9 @@ const NotificationBell = () => {
           newNotifs.forEach(notif => {
             // Mark this notification ID as shown
             lastNotificationIdsRef.current.add(notif.id)
-            
+
             // Show toast notification with click handler
-            toast(
-              (t) => (
-                <div 
-                  className="w-full cursor-pointer"
-                  onClick={() => {
-                    toast.dismiss(t.id)
-                    handleNotificationClick(notif)
-                  }}
-                >
-                  <p className="font-semibold text-sm text-gray-900">{notif.title}</p>
-                  <p className="text-xs text-gray-600 mt-1 line-clamp-2">{notif.message}</p>
-                </div>
-              ),
-              {
-                duration: 5000,
-                position: 'top-right',
-              }
-            )
+            showNotificationPopup(notif)
           })
         }
       }
@@ -237,7 +233,7 @@ const NotificationBell = () => {
       }
       // Silently fail if server is not running - don't spam console
     }
-  }, [emitTaskRefresh, handleNotificationClick])
+  }, [emitTaskRefresh, showNotificationPopup])
 
   useEffect(() => {
     // Only reset and show initial popups when user actually changes (login)

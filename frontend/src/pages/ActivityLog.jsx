@@ -11,15 +11,6 @@ const ActivityLog = () => {
     days: 30,
   })
 
-
-
-
-  
-  useEffect(() => {
-    fetchActivities()
-  }, [fetchActivities])
-  
-
   const fetchActivities = useCallback(async () => {
     try {
       setLoading(true)
@@ -32,6 +23,10 @@ const ActivityLog = () => {
       setLoading(false)
     }
   }, [filters])
+
+  useEffect(() => {
+    fetchActivities()
+  }, [fetchActivities])
 
   const getActivityIcon = (type) => {
     if (type.includes('task')) {

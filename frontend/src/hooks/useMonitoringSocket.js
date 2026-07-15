@@ -343,7 +343,6 @@ export const useMonitoringSocket = () => {
       setTimeout(() => {
         if (!sendStart()) {
           actionPendingRef.current = false
-          toast.error('Failed to connect to the tracking server. Please try again.')
         }
       }, 600)
     }

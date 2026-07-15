@@ -15,11 +15,12 @@ import { changelogApi } from '../api/changelog'
 import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
+import { resolveTaskBackTarget } from './taskNavigation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
 const TaskDetail = () => {
-  const { taskId, projectId } = useParams()
+  const { taskId } = useParams()
   const navigate = useNavigate()
   const { confirm } = useConfirmation()
   const { user } = useAuthStore()
@@ -54,6 +55,17 @@ const TaskDetail = () => {
   const [extensionForm, setExtensionForm] = useState({ requested_due_date: '', reason: '' })
   const [submittingExtension, setSubmittingExtension] = useState(false)
   const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
+
+  const navigateBack = useCallback(() => {
+    const fallbackPath = '/tasks'
+    const historyState = window.history.state || {}
+    const target = resolveTaskBackTarget(historyState, fallbackPath)
+    if (target) {
+      navigate(target)
+      return
+    }
+    navigate(-1)
+  }, [navigate])
 
   const loadTask = useCallback(async () => {
     try {
@@ -289,11 +301,7 @@ const TaskDetail = () => {
       setDeleting(true)
       await tasksAPI.deleteTask(taskId)
       toast.success('Task deleted successfully')
-      if (projectId) {
-        navigate(`/projects/${projectId}/board`)
-      } else {
-        navigate('/projects')
-      }
+      navigateBack()
     } catch (error) {
       toast.error('Failed to delete task')
     } finally {
@@ -426,13 +434,7 @@ const TaskDetail = () => {
       <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between bg-white">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => {
-              if (projectId) {
-                navigate(`/projects/${projectId}/board`)
-              } else {
-                navigate('/projects')
-              }
-            }}
+            onClick={navigateBack}
             className="text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -475,13 +477,7 @@ const TaskDetail = () => {
             <Maximize2 className="h-5 w-5 text-gray-600" />
           </button>
           <button
-            onClick={() => {
-              if (projectId) {
-                navigate(`/projects/${projectId}/board`)
-              } else {
-                navigate('/projects')
-              }
-            }}
+            onClick={navigateBack}
             className="p-2 hover:bg-gray-100 rounded"
           >
             <X className="h-5 w-5 text-gray-600" />

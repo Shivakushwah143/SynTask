@@ -21,16 +21,18 @@ axiosInstance.interceptors.request.use(
     config.headers = config.headers || {}
 
     // First try to get token from state, then from storage
-    let token = useAuthStore.getState().token
-    if (!token) {
-      token = getAccessToken()
-    }
-    
-    if (token) {
-      if (typeof config.headers.set === 'function') {
-        config.headers.set('Authorization', `Bearer ${token}`)
-      } else {
-        config.headers.Authorization = `Bearer ${token}`
+    if (!config.skipAuth) {
+      let token = useAuthStore.getState().token
+      if (!token) {
+        token = getAccessToken()
+      }
+      
+      if (token) {
+        if (typeof config.headers.set === 'function') {
+          config.headers.set('Authorization', `Bearer ${token}`)
+        } else {
+          config.headers.Authorization = `Bearer ${token}`
+        }
       }
     }
     

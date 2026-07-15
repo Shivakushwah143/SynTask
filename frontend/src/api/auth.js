@@ -6,6 +6,9 @@ export const authAPI = {
       email, 
       password, 
       remember_me: rememberMe 
+    }, {
+      skipAuth: true,
+      skipAuthRefresh: true,
     })
     return response.data
   },

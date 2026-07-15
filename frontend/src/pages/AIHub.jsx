@@ -1,27 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { format } from 'date-fns'
 import {
   ArrowRight,
   Bot,
-  CheckCircle2,
   Clock3,
   LibraryBig,
   Lightbulb,
   MessageSquareText,
-  ShieldCheck,
   Sparkles,
   Wand2,
+  Activity,
+  Zap,
+  Users,
+  TrendingUp,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
-import { Button, EmptyState, PageHeader, Badge } from '../components/ui'
+import { Button, PageHeader, Badge } from '../components/ui'
 
 const QUICK_ACTIONS = [
-  { label: 'Open AI Chat', path: '/ai-assistant', icon: MessageSquareText },
-  { label: 'Open Creative Director', path: '/creative-director', icon: Wand2 },
-  { label: 'Open Strategist', path: '/ai-prioritization', icon: Sparkles },
-  { label: 'Review reports', path: '/reports', icon: LibraryBig },
+  { label: 'Open AI Chat', path: '/ai-assistant', icon: MessageSquareText, color: 'blue' },
+  { label: 'Creative Director', path: '/creative-director', icon: Wand2, color: 'purple' },
+  { label: 'Marketing Strategist', path: '/ai-prioritization', icon: Sparkles, color: 'green' },
+  { label: 'Review reports', path: '/reports', icon: LibraryBig, color: 'orange' },
 ]
 
 const EMPLOYEES = [
@@ -31,6 +32,7 @@ const EMPLOYEES = [
     description: 'Reviews assets, compares versions, and surfaces approval risks.',
     status: 'active',
     path: '/creative-director',
+    icon: Wand2,
   },
   {
     id: 'marketing-strategist',
@@ -38,6 +40,7 @@ const EMPLOYEES = [
     description: 'Prioritizes campaign actions and flags delivery pressure.',
     status: 'active',
     path: '/ai-prioritization',
+    icon: Sparkles,
   },
   {
     id: 'workspace-assistant',
@@ -45,25 +48,22 @@ const EMPLOYEES = [
     description: 'Answers questions using verified project, task, and conversation context.',
     status: 'listening',
     path: '/ai-assistant',
+    icon: MessageSquareText,
   },
 ]
 
 export default function AIHub() {
   const navigate = useNavigate()
   const [logs, setLogs] = useState([])
-  const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const loadData = useCallback(async () => {
     try {
-      setLoading(true)
       const response = await aiAPI.listLogs(12)
       setLogs(Array.isArray(response) ? response : [])
     } catch (error) {
       toast.error('Failed to load AI activity')
       setLogs([])
-    } finally {
-      setLoading(false)
     }
   }, [])
 
@@ -83,27 +83,41 @@ export default function AIHub() {
   const metrics = useMemo(() => {
     const successful = logs.filter((item) => item.status === 'success').length
     const pending = logs.filter((item) => item.status !== 'success').length
-    const fallback = logs.filter((item) => item.fallback_used).length
     return [
-      { label: 'Active employees', value: EMPLOYEES.length },
-      { label: 'Recent actions', value: logs.length },
-      { label: 'Successful runs', value: successful },
-      { label: 'Fallbacks', value: fallback || pending },
+      { 
+        label: 'Active AI Employees', 
+        value: EMPLOYEES.length,
+        icon: Users,
+        description: 'Working alongside your team'
+      },
+      { 
+        label: 'Recent Actions', 
+        value: logs.length,
+        icon: Activity,
+        description: 'Last 24 hours'
+      },
+      { 
+        label: 'Success Rate', 
+        value: logs.length > 0 ? `${Math.round((successful / logs.length) * 100)}%` : '—',
+        icon: TrendingUp,
+        description: 'AI task completion'
+      },
+      { 
+        label: 'Pending Tasks', 
+        value: pending,
+        icon: Clock3,
+        description: 'In progress'
+      },
     ]
   }, [logs])
 
-  const activityItems = useMemo(() => logs.map((entry) => ({
-    ...entry,
-    timestamp: entry.created_at ? format(new Date(entry.created_at), 'MMM d, HH:mm') : 'Just now',
-  })), [logs])
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 p-4">
       <PageHeader
         title="AI Hub"
-        description="Command center for AI employees, approvals, knowledge updates, and verified recommendations."
+        description="Your command center for AI employees, approvals, and verified recommendations."
         actions={(
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <Badge label="AI-first" colorKey="active" />
             <Button variant="secondary" size="sm" onClick={handleRefresh} loading={refreshing}>
               <Clock3 className="h-4 w-4" />
@@ -117,68 +131,106 @@ export default function AIHub() {
         )}
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {/* Metrics Grid - More visual cards */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => (
-          <MetricCard key={metric.label} label={metric.label} value={metric.value} />
-        ))}
-      </section>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="space-y-6">
-          <Panel title="AI Employees" icon={Bot} description="Specialized AI surfaces that operate as teammates, not generic prompts.">
-            <div className="grid gap-3 md:grid-cols-3">
-              {EMPLOYEES.map((employee) => (
-                <button
-                  key={employee.id}
-                  type="button"
-                  onClick={() => navigate(employee.path)}
-                  className="rounded-2xl border border-border bg-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary-300 hover:bg-surface-muted hover:shadow-lg dark:border-border dark:bg-black/80 dark:hover:bg-white/5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-text-primary dark:text-text-primary">{employee.title}</h3>
-                      <p className="mt-1 text-xs leading-5 text-text-muted dark:text-text-secondary">{employee.description}</p>
-                    </div>
-                    <Badge label={employee.status} colorKey={employee.status === 'active' ? 'active' : 'scheduled'} />
-                  </div>
-                  <div className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-primary-600 dark:text-primary-300">
-                    Open
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel title="Pending approvals" icon={ShieldCheck} description="Work that needs a human decision before AI can continue.">
-            {loading ? (
-              <EmptyState title="Loading approvals" description="Fetching the latest AI activity." />
-            ) : logs.filter((item) => item.status !== 'success').length ? (
-              <div className="space-y-3">
-                {logs.filter((item) => item.status !== 'success').slice(0, 4).map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-border bg-surface p-4 dark:border-border dark:bg-black/80">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-text-primary dark:text-text-primary">{item.feature || 'AI action'}</div>
-                        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">
-                          {item.provider || 'System'} • {item.timestamp}
-                        </div>
-                      </div>
-                      <Badge label={item.status || 'pending'} colorKey={item.status === 'success' ? 'active' : 'pending'} />
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-text-secondary dark:text-text-secondary">
-                      {item.error_message || 'Requires review before the workflow can move forward.'}
-                    </p>
-                  </div>
-                ))}
+          <div key={metric.label} className="card p-5 bg-surface dark:bg-black/80 hover:shadow-lg transition-shadow">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">
+                  {metric.label}
+                </p>
+                <p className="mt-2 text-3xl font-semibold text-text-primary dark:text-text-primary">
+                  {metric.value}
+                </p>
+                <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">
+                  {metric.description}
+                </p>
               </div>
-            ) : (
-              <EmptyState icon={CheckCircle2} title="No pending approvals" description="AI outputs are clear to proceed." />
-            )}
-          </Panel>
+              <div className="rounded-xl bg-primary-50 p-2 dark:bg-primary-950/40">
+                <metric.icon className="h-5 w-5 text-primary-600 dark:text-primary-300" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
 
-          <Panel title="Recommendations" icon={Lightbulb} description="High-value follow-up actions based on recent AI usage.">
-            <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* AI Employees - Full width on mobile, 2 cols on large */}
+        <div className="lg:col-span-2">
+          <div className="card p-6 bg-surface dark:bg-black/85">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
+                <Bot className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary dark:text-text-primary">
+                  AI Employees
+                </h2>
+                <p className="text-sm text-text-muted dark:text-text-secondary">
+                  Specialized AI teammates at your service
+                </p>
+              </div>
+            </div>
+            
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+              {EMPLOYEES.map((employee) => {
+                const Icon = employee.icon
+                return (
+                  <button
+                    key={employee.id}
+                    type="button"
+                    onClick={() => navigate(employee.path)}
+                    className="group relative rounded-2xl border border-border bg-surface p-5 text-left transition-all hover:-translate-y-1 hover:border-primary-300 hover:bg-surface-muted hover:shadow-lg dark:border-border dark:bg-black/40 dark:hover:bg-white/5"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
+                        <Icon className="h-6 w-6" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-sm font-semibold text-text-primary dark:text-text-primary truncate">
+                            {employee.title}
+                          </h3>
+                          <Badge 
+                            label={employee.status} 
+                            colorKey={employee.status === 'active' ? 'active' : 'scheduled'} 
+                          />
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-text-muted dark:text-text-secondary line-clamp-2">
+                          {employee.description}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-primary-600 dark:text-primary-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span>Open workspace</span>
+                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions - 1 col on large */}
+        <div className="lg:col-span-1">
+          <div className="card p-6 bg-surface dark:bg-black/85 h-full">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
+                <Zap className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary dark:text-text-primary">
+                  Quick Actions
+                </h2>
+                <p className="text-sm text-text-muted dark:text-text-secondary">
+                  High-value workflows
+                </p>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
               {QUICK_ACTIONS.map((action) => {
                 const Icon = action.icon
                 return (
@@ -186,97 +238,60 @@ export default function AIHub() {
                     key={action.label}
                     type="button"
                     onClick={() => navigate(action.path)}
-                    className="rounded-2xl border border-border bg-surface p-4 text-left transition hover:-translate-y-0.5 hover:border-primary-300 hover:bg-surface-muted hover:shadow-lg dark:border-border dark:bg-black/80 dark:hover:bg-white/5"
+                    className="group flex w-full items-center gap-4 rounded-2xl border border-border bg-surface p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:bg-surface-muted hover:shadow-lg dark:border-border dark:bg-black/40 dark:hover:bg-white/5"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-semibold text-text-primary dark:text-text-primary">{action.label}</div>
-                          <div className="text-xs text-text-muted dark:text-text-secondary">Open verified workflow</div>
-                        </div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-text-muted" />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
+                      <Icon className="h-5 w-5" />
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-text-primary dark:text-text-primary">
+                        {action.label}
+                      </div>
+                      <div className="text-xs text-text-muted dark:text-text-secondary truncate">
+                        Click to open
+                      </div>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-text-muted transition-transform group-hover:translate-x-1" />
                   </button>
                 )
               })}
             </div>
-          </Panel>
-        </section>
-
-        <aside className="space-y-6">
-          <Panel title="Recent AI activity" icon={Clock3} description="Operational history from the last AI runs.">
-            {activityItems.length ? (
-              <div className="space-y-3">
-                {activityItems.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-border bg-surface p-4 dark:border-border dark:bg-black/80">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-text-primary dark:text-text-primary">{item.feature || 'AI feature'}</div>
-                        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">{item.timestamp}</div>
-                      </div>
-                      <Badge label={item.status || 'pending'} colorKey={item.status === 'success' ? 'active' : 'pending'} />
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-muted dark:text-text-secondary">
-                      <Badge label={item.provider || 'provider'} colorKey="info" />
-                      {item.model ? <Badge label={item.model} colorKey="scheduled" /> : null}
-                      {item.fallback_used ? <Badge label="Fallback" colorKey="warning" /> : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon={Clock3} title="No activity yet" description="AI activity will appear after the first workflow runs." />
-            )}
-          </Panel>
-
-          <Panel title="Knowledge updates" icon={LibraryBig} description="Signals that keep AI grounded in live workspace context.">
-            {activityItems.length ? (
-              <div className="space-y-3">
-                {activityItems.slice(0, 3).map((item) => (
-                  <div key={`${item.id}-knowledge`} className="rounded-2xl border border-border bg-surface-muted p-4 dark:border-border dark:bg-black/55">
-                    <div className="text-sm font-semibold text-text-primary dark:text-text-primary">{item.feature || 'Knowledge signal'}</div>
-                    <p className="mt-2 text-sm leading-6 text-text-secondary dark:text-text-secondary">
-                      AI context updated from the latest verified run. Use this signal to keep responses aligned with current work.
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon={LibraryBig} title="No knowledge updates" description="Create or review work to populate AI memory signals." />
-            )}
-          </Panel>
-        </aside>
-      </div>
-    </div>
-  )
-}
-
-function MetricCard({ label, value }) {
-  return (
-    <div className="card p-4 bg-surface dark:bg-black/80">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">{label}</p>
-      <p className="mt-2 text-3xl font-semibold text-text-primary dark:text-text-primary">{value}</p>
-    </div>
-  )
-}
-
-function Panel({ title, icon: Icon, description, children }) {
-  return (
-    <section className="card p-5 bg-surface dark:bg-black/85">
-      <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary dark:text-text-primary">{title}</h2>
-          <p className="mt-1 text-sm text-text-muted dark:text-text-secondary">{description}</p>
+          </div>
         </div>
       </div>
-      <div className="mt-5">{children}</div>
-    </section>
+
+      {/* Recommendations Section - Full width */}
+      <div className="card p-6 bg-surface dark:bg-black/85">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
+            <Lightbulb className="h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary dark:text-text-primary">
+              AI Recommendations
+            </h2>
+            <p className="text-sm text-text-muted dark:text-text-secondary">
+              Smart suggestions based on your recent activity
+            </p>
+          </div>
+        </div>
+        
+        <div className="grid gap-3 md:grid-cols-4">
+          {['Review pending approvals', 'Analyze campaign performance', 'Optimize content strategy', 'Generate weekly report'].map((suggestion) => (
+            <div
+              key={suggestion}
+              className="rounded-xl border border-border bg-surface p-4 transition-all hover:border-primary-300 hover:bg-surface-muted dark:border-border dark:bg-black/40 dark:hover:bg-white/5 cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <span className="text-sm text-text-primary dark:text-text-primary">{suggestion}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }

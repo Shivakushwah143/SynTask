@@ -45,6 +45,7 @@ const MainLayout = () => {
   const [assistantOpen, setAssistantOpen] = useState(false)
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
+  const isDashboardPage = location.pathname === '/dashboard' || location.pathname === '/'
   const openSearch = () => setSearchOpen(true)
   const pathSegments = location.pathname.split('/').filter(Boolean)
   const isCrmPath = pathSegments[0] === 'crm'

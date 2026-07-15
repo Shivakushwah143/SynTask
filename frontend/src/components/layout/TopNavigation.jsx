@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Bot, Menu, MessageCircle, Search, Video } from 'lucide-react'
+import { Bot, Maximize2, Menu, MessageCircle, Minimize2, Search, Video } from 'lucide-react'
 import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
 import { Button } from '../ui'
@@ -23,7 +23,20 @@ const GLOBAL_COMMUNICATION_LINKS = [
   },
 ]
 
-export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onAssistantOpen, onLogout, logoutLoading = false }) {
+export function TopNavigation({
+  title,
+  subtitle,
+  breadcrumb,
+  onMenuClick,
+  onSearchOpen,
+  onCommandOpen,
+  onAssistantOpen,
+  onLogout,
+  logoutLoading = false,
+  showAiFullscreenAction = false,
+  isFullscreen = false,
+  fullscreenLabel = 'Toggle AI briefing fullscreen',
+}) {
   const location = useLocation()
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)
@@ -100,6 +113,17 @@ export function TopNavigation({ title, subtitle, breadcrumb, onMenuClick, onSear
             <Search className="h-5 w-5" />
           </button>
           <ThemeToggle />
+          {showAiFullscreenAction ? (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('syntask:toggle-ai-briefing-fullscreen'))}
+              className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+              aria-label={fullscreenLabel}
+              title={fullscreenLabel}
+            >
+              {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+            </button>
+          ) : null}
           <NotificationBell />
           <Button variant="ghost" size="sm" onClick={onLogout} loading={logoutLoading} loadingText="Logging out" className="hidden sm:inline-flex rounded-full border border-surface-border bg-surface/95 text-text-primary hover:bg-surface-muted dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-[var(--color-app-text)]">
             Logout
