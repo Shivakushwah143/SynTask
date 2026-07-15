@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { Bell, CheckCheck, ChevronRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
 import { notificationsAPI } from '../api/notifications'
@@ -61,7 +62,10 @@ const Notifications = () => {
         setUnreadCount((current) => Math.max(0, current - 1))
       }
       if (notification.action_url) {
-        window.location.href = notification.action_url
+        const target = String(notification.action_url)
+        if (target.startsWith('/')) {
+          navigate(target)
+        }
       }
     } catch {
       toast.error('Failed to update notification')
