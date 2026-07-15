@@ -150,6 +150,7 @@ const Invoices = () => {
       total: subtotal + taxAmount
     }
   }
+  const totals = calculateTotals()
 
   const handleSubmit = async (e) => {
     e.preventDefault()

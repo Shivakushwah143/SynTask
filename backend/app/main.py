@@ -7,6 +7,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -154,7 +155,7 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.state.db_ready = False
+app.state.db_ready = True
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Middleware - Allow frontend origins

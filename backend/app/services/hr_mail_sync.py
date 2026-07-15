@@ -110,8 +110,10 @@ async def _resolve_company() -> Company | None:
     if not settings.IMAP_TARGET_COMPANY_EMAIL:
         return None
     return await Company.find_one(
-        Company.email == settings.IMAP_TARGET_COMPANY_EMAIL,
-        Company.status == CompanyStatus.ACTIVE,
+        {
+            "email": settings.IMAP_TARGET_COMPANY_EMAIL,
+            "status": CompanyStatus.ACTIVE,
+        }
     )
 
 
