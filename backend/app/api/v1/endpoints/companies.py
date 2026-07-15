@@ -43,7 +43,7 @@ async def register_company(
 
     """Register a new company (Public endpoint - requires Super Admin approval)"""
     # Check if company already exists
-    existing = await Company.find_one(Company.email == email)
+    existing = await Company.find_one({"email": email})
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -197,7 +197,7 @@ async def approve_company(
         )
     
     # Check if admin email already exists
-    existing_user = await User.find_one(User.email == admin_email)
+    existing_user = await User.find_one({"email": admin_email})
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

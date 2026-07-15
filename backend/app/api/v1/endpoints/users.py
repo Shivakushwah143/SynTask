@@ -666,7 +666,7 @@ async def create_lead(
 ):
     """Create a Lead (Company Admin only)"""
     # Check if email already exists
-    existing = await User.find_one(User.email == email)
+    existing = await User.find_one({"email": email})
     if existing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -731,7 +731,7 @@ async def create_employee(
 ):
     """Create an Employee (Company Admin or Lead)"""
     # Check if email already exists
-    existing = await User.find_one(User.email == email)
+    existing = await User.find_one({"email": email})
     if existing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -974,7 +974,7 @@ async def update_user(
         normalized_email = email.lower()
         # Only check uniqueness if changing email
         if normalized_email != user.email:
-            existing = await User.find_one(User.email == normalized_email)
+            existing = await User.find_one({"email": normalized_email})
             if existing and existing.id != user.id:
                 raise HTTPException(
                     status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -1053,7 +1053,7 @@ async def create_user_hierarchical(
         )
     
     # Check if email already exists
-    existing = await User.find_one(User.email == email.lower())
+    existing = await User.find_one({"email": email.lower()})
     if existing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
