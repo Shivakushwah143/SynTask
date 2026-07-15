@@ -7,6 +7,7 @@ import io
 from app.api.dependencies import get_current_user, require_module
 from app.models.user import User, UserRole
 from app.models.sales_category import SalesCategory
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
 
@@ -30,10 +31,10 @@ def _ensure_delete_permission(user: User):
 @router.get("/")
 async def list_categories(
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id

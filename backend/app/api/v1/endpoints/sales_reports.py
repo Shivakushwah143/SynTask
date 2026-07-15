@@ -15,6 +15,7 @@ from app.models.sales_contact import SalesContact
 from app.models.sales_product import SalesProduct
 from app.models.sales_category import SalesCategory
 from app.core.hierarchy import get_team_member_ids
+from app.api.deps import Pagination50, PaginationParams
 
 
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
@@ -57,12 +58,12 @@ async def prospect_report(
     channel: Optional[str] = None,
     interest_level: Optional[str] = None,
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     export: bool = False,
     current_user: User = Depends(get_current_user)
 ):
     """Prospect Report with comprehensive filters"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     query = await _get_user_accessible_prospects(current_user, query)
     
@@ -158,12 +159,12 @@ async def team_activity_report(
     channel: Optional[str] = None,
     team_member: Optional[str] = None,
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     export: bool = False,
     current_user: User = Depends(get_current_user)
 ):
     """Team Member Activity Report"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     query = await _get_user_accessible_prospects(current_user, query)
     
@@ -238,12 +239,12 @@ async def sales_report(
     channel: Optional[str] = None,
     team_member: Optional[str] = None,
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     export: bool = False,
     current_user: User = Depends(get_current_user)
 ):
     """Sales Report with summary metrics"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     query = await _get_user_accessible_prospects(current_user, query)
     
@@ -336,12 +337,12 @@ async def team_target_report(
     to_month: Optional[str] = None,
     team_member: Optional[str] = None,
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     export: bool = False,
     current_user: User = Depends(get_current_user)
 ):
     """Team Member Target Report"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     query = await _get_user_accessible_prospects(current_user, query)
     
@@ -414,12 +415,12 @@ async def lost_prospect_report(
     category_id: Optional[str] = None,
     product_id: Optional[str] = None,
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     export: bool = False,
     current_user: User = Depends(get_current_user)
 ):
     """Lost Prospect Report"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False, "status": ProspectStatus.LOST.value}
     query = _get_user_accessible_prospects(current_user, query)
     
@@ -494,12 +495,12 @@ async def inventory_report(
     category_id: Optional[str] = None,
     product_id: Optional[str] = None,
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     export: bool = False,
     current_user: User = Depends(get_current_user)
 ):
     """Inventory Report - Products and Categories usage"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     
     if current_user.role != UserRole.SUPER_ADMIN:

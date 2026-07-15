@@ -8,6 +8,7 @@ from app.models.changelog import ChangeLog
 from app.models.task import Task
 from app.models.user import User
 from app.api.dependencies import get_current_user, check_company_access
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -15,11 +16,11 @@ router = APIRouter()
 @router.get("/tasks/{task_id}/changelog")
 async def get_task_changelog(
     task_id: str,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """Get changelog for a task"""
+    skip, limit = pagination.skip, pagination.limit
     task = await Task.get(task_id)
     
     if not task:

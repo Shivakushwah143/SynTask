@@ -277,7 +277,7 @@ async def test_move_lead_rejects_unknown_or_invalid_stage(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_move_lead_to_won_updates_closed_fields_and_triggers_automation(monkeypatch):
-    now = datetime.now()
+    now = datetime.utcnow()
     lead = SimpleNamespace(
         id="lead-1",
         company_id="company-1",
@@ -377,7 +377,7 @@ async def test_move_lead_to_won_updates_closed_fields_and_triggers_automation(mo
 
 @pytest.mark.asyncio
 async def test_move_lead_to_lost_updates_reason_reminder_and_notification(monkeypatch):
-    now = datetime.now()
+    now = datetime.utcnow()
     lead = SimpleNamespace(
         id="lead-1",
         company_id="company-1",
@@ -453,7 +453,7 @@ async def test_move_lead_to_lost_updates_reason_reminder_and_notification(monkey
 
 @pytest.mark.asyncio
 async def test_reopen_lost_lead_resets_closed_state(monkeypatch):
-    now = datetime.now()
+    now = datetime.utcnow()
     lead = SimpleNamespace(
         id="lead-1",
         company_id="company-1",

@@ -35,10 +35,17 @@ class UserStatus(str, Enum):
     PENDING = "pending"
 
 
+class AuthProvider(str, Enum):
+    LOCAL = "local"
+    GOOGLE = "google"
+
+
 class User(Document):
     """Base User Model with Hierarchical RBAC"""
     email: Indexed(EmailStr, unique=True)
-    password_hash: str
+    password_hash: Optional[str] = None
+    provider: AuthProvider = AuthProvider.LOCAL
+    google_id: Optional[str] = None
     first_name: str
     last_name: str
     role: UserRole
@@ -82,6 +89,8 @@ class User(Document):
             "company_id",
             "role",
             "status",
+            "provider",
+            "google_id",
             "reports_to",
             "created_by",
             "ancestors",

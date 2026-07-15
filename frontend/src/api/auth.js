@@ -13,6 +13,14 @@ export const authAPI = {
     return response.data
   },
 
+  googleLogin: async (idToken, rememberMe = false) => {
+    const response = await api.post('/auth/google', {
+      id_token: idToken,
+      remember_me: rememberMe,
+    })
+    return response.data
+  },
+
   logout: async (refreshToken, accessToken) => {
     const response = await api.post('/auth/logout', refreshToken ? {
       refresh_token: refreshToken,

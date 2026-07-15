@@ -9,8 +9,10 @@ import io
 from pydantic import BaseModel
 
 from app.api.dependencies import get_current_user, require_module
+from app.core.rbac_visibility import build_visibility_query, can_view_owned_record, require_owned_record_access
 from app.models.user import User, UserRole
 from app.models.sales_contact import SalesContact, ContactSharing, ContactSharingAccess
+from app.api.deps import Pagination50, PaginationParams
 
 
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
@@ -61,25 +63,12 @@ async def list_contacts(
     channel: Optional[str] = None,
     tag: Optional[str] = None,
     created_by: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List contacts with role-based filtering"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
-    
-    # Role-based access
-    if current_user.role == UserRole.SUPER_ADMIN:
-        pass  # See all
-    elif current_user.role == UserRole.ADMIN:
-        query["company_id"] = current_user.company_id
-    elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
-        # See own + team contacts
-        query["company_id"] = current_user.company_id
-        # TODO: Add team filter logic
-    else:  # Sales Executive
-        query["created_by"] = str(current_user.id)
-        query["company_id"] = current_user.company_id
     
     # Filters
     if search:
@@ -102,6 +91,12 @@ async def list_contacts(
                 query["created_at"] = {"$gte": from_dt}
         except:
             pass
+
+    query = await build_visibility_query(
+        current_user,
+        ownership_fields=("created_by",),
+        base_query=query,
+    )
     if to_date:
         try:
             to_dt = _parse_date(to_date)
@@ -140,22 +135,24 @@ async def list_contacts(
 
 @router.get("/shared-with-me")
 async def list_shared_contacts(
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List contacts shared with current user"""
-    sharing_records = await ContactSharing.find(
-        {"shared_with_user_id": str(current_user.id)}
-    ).skip(skip).limit(limit).to_list()
+    skip, limit = pagination.skip, pagination.limit
+    sharing_query = {"shared_with_user_id": str(current_user.id)}
+    if current_user.role != UserRole.SUPER_ADMIN:
+        sharing_query["company_id"] = current_user.company_id
+    sharing_records = await ContactSharing.find(sharing_query).skip(skip).limit(limit).to_list()
     
     contact_ids = [s.contact_id for s in sharing_records]
     if not contact_ids:
         return {"total": 0, "items": []}
     
-    contacts = await SalesContact.find(
-        {"_id": {"$in": contact_ids}, "deleted": False}
-    ).to_list()
+    contact_query = {"_id": {"$in": contact_ids}, "deleted": False}
+    if current_user.role != UserRole.SUPER_ADMIN:
+        contact_query["company_id"] = current_user.company_id
+    contacts = await SalesContact.find(contact_query).to_list()
     
     return {
         "total": len(contacts),
@@ -189,17 +186,12 @@ async def get_contact(
     if not contact or contact.deleted:
         raise HTTPException(status_code=404, detail="Contact not found")
     
-    # Check access
-    if current_user.role != UserRole.SUPER_ADMIN:
-        if contact.company_id != current_user.company_id:
+    if not await can_view_owned_record(current_user, contact, ownership_fields=("created_by",)):
+        sharing = await ContactSharing.find_one(
+            {"contact_id": contact_id, "shared_with_user_id": str(current_user.id)}
+        )
+        if not sharing:
             raise HTTPException(status_code=403, detail="Access denied")
-        if current_user.role == UserRole.EMPLOYEE and contact.created_by != str(current_user.id):
-            # Check if shared
-            sharing = await ContactSharing.find_one(
-                {"contact_id": contact_id, "shared_with_user_id": str(current_user.id)}
-            )
-            if not sharing:
-                raise HTTPException(status_code=403, detail="Access denied")
     
     return {
         "id": str(contact.id),
@@ -276,7 +268,8 @@ async def create_contact(
         {
             "country_code": country_code,
             "phone": phone,
-            "deleted": False
+            "deleted": False,
+            "company_id": current_user.company_id,
         }
     )
     if existing:
@@ -338,13 +331,12 @@ async def update_contact(
         raise HTTPException(status_code=404, detail="Contact not found")
     
     # Check edit permission
-    if current_user.role == UserRole.EMPLOYEE:
-        if contact.created_by != str(current_user.id):
-            sharing = await ContactSharing.find_one(
-                {"contact_id": contact_id, "shared_with_user_id": str(current_user.id), "access_level": ContactSharingAccess.EDIT}
-            )
-            if not sharing:
-                raise HTTPException(status_code=403, detail="Edit not allowed")
+    if not await can_view_owned_record(current_user, contact, ownership_fields=("created_by",)):
+        sharing = await ContactSharing.find_one(
+            {"contact_id": contact_id, "shared_with_user_id": str(current_user.id), "access_level": ContactSharingAccess.EDIT}
+        )
+        if not sharing:
+            raise HTTPException(status_code=403, detail="Edit not allowed")
     
     if first_name:
         contact.first_name = first_name.strip()
@@ -371,6 +363,7 @@ async def delete_contact(
     contact = await SalesContact.get(contact_id)
     if not contact or contact.deleted:
         raise HTTPException(status_code=404, detail="Contact not found")
+    await require_owned_record_access(current_user, contact, ownership_fields=("created_by",))
     
     contact.deleted = True
     contact.updated_at = datetime.now()
@@ -412,7 +405,12 @@ async def bulk_upload_contacts(
             
             # Check duplicate
             existing = await SalesContact.find_one(
-                {"country_code": country_code, "phone": phone, "deleted": False}
+                {
+                    "country_code": country_code,
+                    "phone": phone,
+                    "deleted": False,
+                    "company_id": current_user.company_id,
+                }
             )
             if existing:
                 failed_rows.append({"row": idx, "error": "Duplicate phone number"})
@@ -482,10 +480,13 @@ async def share_contacts(
         contact = await SalesContact.get(contact_id)
         if not contact or contact.deleted:
             continue
-        if current_user.role != UserRole.SUPER_ADMIN and contact.company_id != current_user.company_id:
+        if not await can_view_owned_record(current_user, contact, ownership_fields=("created_by",)):
             continue
         
         for user_id in request.shared_with_user_ids:
+            target_user = await User.get(user_id)
+            if not target_user or target_user.company_id != contact.company_id:
+                continue
             existing = await ContactSharing.find_one(
                 {"contact_id": contact_id, "shared_with_user_id": user_id}
             )
@@ -512,8 +513,6 @@ async def search_contact(
 ):
     """Search existing contact by phone/email/name"""
     query = {"deleted": False}
-    if current_user.role != UserRole.SUPER_ADMIN:
-        query["company_id"] = current_user.company_id
     
     if phone:
         query["phone"] = phone
@@ -529,6 +528,12 @@ async def search_contact(
                 {"first_name": {"$regex": name, "$options": "i"}},
                 {"last_name": {"$regex": name, "$options": "i"}},
             ]
+
+    query = await build_visibility_query(
+        current_user,
+        ownership_fields=("created_by",),
+        base_query=query,
+    )
     
     contacts = await SalesContact.find(query).limit(10).to_list()
     return {
