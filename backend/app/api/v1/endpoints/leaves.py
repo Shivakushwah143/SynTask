@@ -143,7 +143,7 @@ async def get_leave_calendar(
         query["start_date"] = {"$lte": end_date}
     leaves = await LeaveRequest.find(query).sort("start_date").to_list()
     employees = await _employee_map(leaves)
-    today = datetime.utcnow()
+    today = datetime.now()
     today_items = [leave for leave in leaves if leave.start_date <= today <= leave.end_date]
     return {
         "today": [serialize_leave(leave, employees.get(leave.employee_id)) for leave in today_items],
@@ -164,9 +164,9 @@ async def approve_leave_request(
     await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=str(leave.id))
     leave.status = LeaveStatus.APPROVED
     leave.reviewed_by = str(current_user.id)
-    leave.reviewed_at = datetime.utcnow()
+    leave.reviewed_at = datetime.now()
     leave.review_comment = comment
-    leave.updated_at = datetime.utcnow()
+    leave.updated_at = datetime.now()
     await leave.save()
 
     is_wfh = leave.leave_type == LeaveType.WORK_FROM_HOME
@@ -198,9 +198,9 @@ async def reject_leave_request(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be rejected")
     leave.status = LeaveStatus.REJECTED
     leave.reviewed_by = str(current_user.id)
-    leave.reviewed_at = datetime.utcnow()
+    leave.reviewed_at = datetime.now()
     leave.review_comment = comment
-    leave.updated_at = datetime.utcnow()
+    leave.updated_at = datetime.now()
     await leave.save()
     await create_timeline_event(
         user_id=leave.employee_id,
@@ -231,8 +231,8 @@ async def cancel_leave_request(
     if leave.status != LeaveStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be cancelled")
     leave.status = LeaveStatus.CANCELLED
-    leave.cancelled_at = datetime.utcnow()
-    leave.updated_at = datetime.utcnow()
+    leave.cancelled_at = datetime.now()
+    leave.updated_at = datetime.now()
     await leave.save()
     await create_timeline_event(
         user_id=leave.employee_id,
@@ -321,3 +321,4 @@ async def _save_attachment(file: UploadFile) -> str:
     with open(path, "wb") as handle:
         handle.write(content)
     return f"/api/v1/files/leaves/{filename}"
+

@@ -203,7 +203,7 @@ async def forgot_password(
     
     # Set token with expiration (30 minutes)
     user.password_reset_token = get_password_hash(reset_token)
-    user.password_reset_token_expires_at = datetime.utcnow() + timedelta(minutes=30)
+    user.password_reset_token_expires_at = datetime.now() + timedelta(minutes=30)
     user.password_reset_token_used = False
     await user.save()
     
@@ -255,7 +255,7 @@ async def verify_reset_token(
         )
     
     # Check if token is expired
-    if not user.password_reset_token_expires_at or user.password_reset_token_expires_at < datetime.utcnow():
+    if not user.password_reset_token_expires_at or user.password_reset_token_expires_at < datetime.now():
         # Clear expired token
         user.password_reset_token = None
         user.password_reset_token_expires_at = None
@@ -302,7 +302,7 @@ async def reset_password(
         )
     
     # Check if token is expired
-    if not user.password_reset_token_expires_at or user.password_reset_token_expires_at < datetime.utcnow():
+    if not user.password_reset_token_expires_at or user.password_reset_token_expires_at < datetime.now():
         # Clear expired token
         user.password_reset_token = None
         user.password_reset_token_expires_at = None
@@ -422,7 +422,7 @@ async def update_notification_preferences(
             if key not in current_user.notification_preferences:
                 current_user.notification_preferences[key] = True
         
-        current_user.updated_at = datetime.utcnow()
+        current_user.updated_at = datetime.now()
         await current_user.save()
         
         logger.info(f"Notification preferences updated for user: {current_user.email}")
@@ -495,7 +495,7 @@ async def upload_avatar(
         # Update user avatar
         avatar_url = f"/uploads/avatars/{unique_filename}"
         current_user.avatar = avatar_url
-        current_user.updated_at = datetime.utcnow()
+        current_user.updated_at = datetime.now()
         await current_user.save()
         
         logger.info(f"Avatar uploaded for user: {current_user.email}")
@@ -535,7 +535,7 @@ async def delete_avatar(
         
         # Update user
         current_user.avatar = None
-        current_user.updated_at = datetime.utcnow()
+        current_user.updated_at = datetime.now()
         await current_user.save()
         
         logger.info(f"Avatar deleted for user: {current_user.email}")
@@ -550,3 +550,4 @@ async def delete_avatar(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete avatar: {str(e)}"
         )
+

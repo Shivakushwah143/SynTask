@@ -45,8 +45,8 @@ async def track_usage_and_enforce_limits(
             return True, 0, None
         
         # Get current month usage
-        current_month = datetime.utcnow().month
-        current_year = datetime.utcnow().year
+        current_month = datetime.now().month
+        current_year = datetime.now().year
         
         usage = await UsageTracking.find_one(
             UsageTracking.company_id == company_id,
@@ -90,12 +90,12 @@ async def track_usage_and_enforce_limits(
         # Update usage (if increment > 0)
         if increment > 0:
             setattr(usage, usage_field, current_usage + increment)
-            usage.updated_at = datetime.utcnow()
+            usage.updated_at = datetime.now()
             await usage.save()
             
             # Update subscription cache
             setattr(subscription, f"current_{usage_field}", current_usage + increment)
-            subscription.updated_at = datetime.utcnow()
+            subscription.updated_at = datetime.now()
             await subscription.save()
         
         return True, current_usage + increment, limit
@@ -168,8 +168,8 @@ async def update_usage_counts(company_id: str):
         ).count()
         
         # Get current month usage
-        current_month = datetime.utcnow().month
-        current_year = datetime.utcnow().year
+        current_month = datetime.now().month
+        current_year = datetime.now().year
         
         usage = await UsageTracking.find_one(
             UsageTracking.company_id == company_id,
@@ -192,7 +192,7 @@ async def update_usage_counts(company_id: str):
         usage.total_tasks = total_tasks
         usage.total_projects = total_projects
         usage.total_tickets = total_tickets
-        usage.updated_at = datetime.utcnow()
+        usage.updated_at = datetime.now()
         
         await usage.save()
         
@@ -208,7 +208,7 @@ async def update_usage_counts(company_id: str):
             subscription.current_tasks = total_tasks
             subscription.current_projects = total_projects
             subscription.current_tickets = total_tickets
-            subscription.updated_at = datetime.utcnow()
+            subscription.updated_at = datetime.now()
             await subscription.save()
         
         return usage
@@ -216,3 +216,4 @@ async def update_usage_counts(company_id: str):
     except Exception as e:
         logger.error(f"Error updating usage counts: {str(e)}")
         return None
+

@@ -143,11 +143,12 @@ async def update_sprint_state(
     
     sprint.state = state
     if state == "closed":
-        sprint.completed_at = datetime.utcnow()
+        sprint.completed_at = datetime.now()
     
-    sprint.updated_at = datetime.utcnow()
+    sprint.updated_at = datetime.now()
     await sprint.save()
     
     return {"message": "Sprint state updated successfully"}
+
 
 

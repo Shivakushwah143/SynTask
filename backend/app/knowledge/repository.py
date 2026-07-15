@@ -8,12 +8,12 @@ from app.models.knowledge import KnowledgeRecord, KnowledgeStatus
 
 class KnowledgeRepository:
     async def create(self, record: KnowledgeRecord) -> KnowledgeRecord:
-        record.updated_at = datetime.utcnow()
+        record.updated_at = datetime.now()
         await record.insert()
         return record
 
     async def update(self, record: KnowledgeRecord) -> KnowledgeRecord:
-        record.updated_at = datetime.utcnow()
+        record.updated_at = datetime.now()
         await record.save()
         return record
 
@@ -58,4 +58,5 @@ class KnowledgeRepository:
                 await self.update(record)
                 updated += 1
         return updated
+
 

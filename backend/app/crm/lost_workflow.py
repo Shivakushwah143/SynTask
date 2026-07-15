@@ -19,7 +19,7 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 
 async def handle_lost_workflow(current_user: User, lead: SalesProspect, reason: Optional[str]) -> Dict[str, Any]:
     company_id = str(getattr(lead, "company_id", "") or "")
-    now = datetime.utcnow()
+    now = datetime.now()
     lead.status = ProspectStatus.LOST
     lead.reason_for_lost = reason.strip() if reason else None
     lead.closed_date = now
@@ -99,3 +99,4 @@ async def handle_lost_workflow(current_user: User, lead: SalesProspect, reason: 
         "notification_id": str(notification.id),
         "message": "Lost lead moved to nurture",
     }
+

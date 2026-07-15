@@ -355,7 +355,7 @@ async def update_contact(
     if company_name is not None:
         contact.company_name = company_name.strip() if company_name else None
     
-    contact.updated_at = datetime.utcnow()
+    contact.updated_at = datetime.now()
     await contact.save()
     return {"message": "Contact updated successfully"}
 
@@ -373,7 +373,7 @@ async def delete_contact(
         raise HTTPException(status_code=404, detail="Contact not found")
     
     contact.deleted = True
-    contact.updated_at = datetime.utcnow()
+    contact.updated_at = datetime.now()
     await contact.save()
     return {"message": "Contact deleted successfully"}
 
@@ -546,4 +546,5 @@ async def search_contact(
             for c in contacts
         ]
     }
+
 

@@ -31,8 +31,8 @@ async def test_retrieval_never_returns_other_company_content():
         importance=5,
         confidence=1.0,
         freshness=1.0,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
     )
     b = SimpleNamespace(
         knowledge_id="k2",
@@ -50,8 +50,8 @@ async def test_retrieval_never_returns_other_company_content():
         importance=5,
         confidence=1.0,
         freshness=1.0,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
     )
 
     for record in [a, b]:
@@ -61,3 +61,4 @@ async def test_retrieval_never_returns_other_company_content():
     context = await retriever.retrieve(company_id="company-a", query="secret", limit=5)
 
     assert all(item.company_id == "company-a" for item in context.items)
+

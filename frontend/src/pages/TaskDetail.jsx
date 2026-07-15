@@ -15,6 +15,7 @@ import { changelogApi } from '../api/changelog'
 import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
+import { EmptyState } from '../components/ui'
 import { resolveTaskBackTarget } from './taskNavigation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -26,6 +27,7 @@ const TaskDetail = () => {
   const { user } = useAuthStore()
   const [task, setTask] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [comments, setComments] = useState([])
   const [newComment, setNewComment] = useState('')
   const [attachments, setAttachments] = useState([])
@@ -70,6 +72,7 @@ const TaskDetail = () => {
   const loadTask = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError('')
       const data = await tasksAPI.getTask(taskId)
       setTask(data)
       setTaskStatus(data.status)
@@ -154,6 +157,7 @@ const TaskDetail = () => {
       }
     } catch (error) {
       console.error('Error loading task:', error)
+      setLoadError(error.response?.data?.detail || error.message || 'Failed to load task')
       toast.error('Failed to load task')
       navigate(-1)
     } finally {
@@ -415,6 +419,26 @@ const TaskDetail = () => {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          title="Could not load task"
+          description={loadError}
+          action={(
+            <button
+              type="button"
+              onClick={loadTask}
+              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            >
+              Try again
+            </button>
+          )}
+        />
       </div>
     )
   }

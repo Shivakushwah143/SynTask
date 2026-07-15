@@ -30,7 +30,7 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now()
 
 
 def _normalize_depth(depth: str) -> str:
@@ -615,3 +615,4 @@ class CRMContextBuilder:
         stale_keys = [key for key in CRMContextBuilder._cache if key[1] == str(lead_id)]
         for key in stale_keys:
             CRMContextBuilder._cache.pop(key, None)
+

@@ -25,7 +25,7 @@ class KnowledgeEvent(BaseModel):
     project_id: Optional[str] = None
     campaign_id: Optional[str] = None
     actor_id: Optional[str] = None
-    occurred_at: datetime = Field(default_factory=datetime.utcnow)
+    occurred_at: datetime = Field(default_factory=datetime.now)
     payload: Dict[str, Any] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str
@@ -41,7 +41,7 @@ class KnowledgeCreated(BaseModel):
     source_entity_id: str
     source_event_id: str
     source_event_name: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     relationships: List[KnowledgeRelationship] = Field(default_factory=list)
 

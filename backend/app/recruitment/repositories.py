@@ -160,7 +160,7 @@ class JobRepository(TenantRepository):
 
         current_value = getattr(job.analytics_counters, counter_field, 0)
         setattr(job.analytics_counters, counter_field, current_value + delta)
-        job.updated_at = datetime.utcnow()
+        job.updated_at = datetime.now()
         await job.save()
         return job
 
@@ -427,3 +427,4 @@ class RecruitmentReportRepository:
             "time_to_hire": time_to_hire[0] if time_to_hire else {"average_days": 0, "count": 0},
             "time_to_fill": time_to_fill[0] if time_to_fill else {"average_days": 0, "count": 0},
         }
+

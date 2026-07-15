@@ -133,7 +133,7 @@ async def get_analytics_charts(
 ):
     """Get analytics data for charts"""
     # Calculate date range
-    end_date = datetime.utcnow()
+    end_date = datetime.now()
     if period == "week":
         start_date = end_date - timedelta(days=7)
     elif period == "month":
@@ -193,4 +193,5 @@ async def get_analytics_charts(
         },
         "period": period
     }
+
 

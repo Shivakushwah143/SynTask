@@ -83,7 +83,7 @@ def availability_for_leave(leave: Optional[LeaveRequest]) -> str:
 
 
 async def get_current_availability(employee_id: str, company_id: Optional[str]) -> Dict[str, Any]:
-    now = datetime.utcnow()
+    now = datetime.now()
     query: Dict[str, Any] = {
         "employee_id": employee_id,
         "status": LeaveStatus.APPROVED.value,
@@ -100,7 +100,7 @@ async def get_current_availability(employee_id: str, company_id: Optional[str]) 
 
 
 async def sync_leave_lifecycle(company_id: Optional[str] = None) -> None:
-    now = datetime.utcnow()
+    now = datetime.now()
     query: Dict[str, Any] = {"status": LeaveStatus.APPROVED.value}
     if company_id:
         query["company_id"] = company_id
@@ -175,3 +175,4 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
 
 def _leave_title(leave: LeaveRequest) -> str:
     return leave.leave_type.value.replace("_", " ").title()
+

@@ -3,12 +3,9 @@ from fastapi.testclient import TestClient
 from fastapi import HTTPException
 
 from app.api.v1.endpoints import auth as auth_module
-from app.main import app
+from app import main as main_module
 from app.models.user import UserStatus
 from app.services.file_service import FileService
-
-
-client = TestClient(app)
 
 
 class FakeUser:
@@ -69,25 +66,40 @@ class FakeUserModel:
 
 @pytest.fixture(autouse=True)
 def reset_overrides():
-    app.dependency_overrides.clear()
-    storage = getattr(app.state.limiter, "_storage", None)
+    main_module.app.dependency_overrides.clear()
+    storage = getattr(main_module.app.state.limiter, "_storage", None)
     if storage is not None and hasattr(storage, "reset"):
         storage.reset()
     yield
-    app.dependency_overrides.clear()
-    storage = getattr(app.state.limiter, "_storage", None)
+    main_module.app.dependency_overrides.clear()
+    storage = getattr(main_module.app.state.limiter, "_storage", None)
     if storage is not None and hasattr(storage, "reset"):
         storage.reset()
 
 
-def test_health_endpoint_returns_healthy():
+@pytest.fixture
+def client(monkeypatch):
+    async def fake_init_db():
+        return None
+
+    async def fake_rebuild_all_ancestors():
+        return None
+
+    monkeypatch.setattr(main_module, "init_db", fake_init_db)
+    monkeypatch.setattr(main_module, "rebuild_all_ancestors", fake_rebuild_all_ancestors)
+    main_module.app.state.db_ready = True
+    with TestClient(main_module.app) as test_client:
+        yield test_client
+
+
+def test_health_endpoint_returns_healthy(client):
     response = client.get("/health")
 
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
 
 
-def test_login_logout_and_blacklist_flow(monkeypatch):
+def test_login_logout_and_blacklist_flow(monkeypatch, client):
     fake_user = FakeUser()
     blacklisted_tokens = []
 
@@ -105,8 +117,8 @@ def test_login_logout_and_blacklist_flow(monkeypatch):
     monkeypatch.setattr(auth_module, "verify_password", lambda plain, hashed: plain == "Admin@123")
     monkeypatch.setattr(auth_module, "blacklist_token", fake_blacklist_token)
 
-    app.dependency_overrides[auth_module.get_token_from_header] = lambda: "access-token"
-    app.dependency_overrides[auth_module.get_current_user] = fake_get_current_user
+    main_module.app.dependency_overrides[auth_module.get_token_from_header] = lambda: "access-token"
+    main_module.app.dependency_overrides[auth_module.get_current_user] = fake_get_current_user
 
     login_response = client.post(
         "/api/v1/auth/login",
@@ -123,7 +135,7 @@ def test_login_logout_and_blacklist_flow(monkeypatch):
     assert blacklisted_tokens == ["access-token", "refresh-token"]
 
 
-def test_login_rate_limit_enforces_429(monkeypatch):
+def test_login_rate_limit_enforces_429(monkeypatch, client):
     fake_user = FakeUser()
 
     async def fake_find_one(*args, **kwargs):
@@ -145,7 +157,7 @@ def test_login_rate_limit_enforces_429(monkeypatch):
     assert status_codes[10] == 429
 
 
-def test_forgot_password_rate_limit_and_success(monkeypatch):
+def test_forgot_password_rate_limit_and_success(monkeypatch, client):
     fake_user = FakeUser(email="admin@demo.com", first_name="Demo")
 
     async def fake_find_one(*args, **kwargs):
@@ -171,7 +183,7 @@ def test_forgot_password_rate_limit_and_success(monkeypatch):
     assert statuses[4] == 429
 
 
-def test_cors_blocks_unknown_origin():
+def test_cors_blocks_unknown_origin(client):
     response = client.get("/health", headers={"Origin": "https://evil.example"})
 
     assert response.status_code == 200

@@ -33,7 +33,7 @@ async def build_manager_dashboard_metrics(current_user: User) -> Dict[str, Any]:
     overdue_tasks = [
         task
         for task in tasks
-        if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < datetime.utcnow()
+        if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < datetime.now()
     ]
 
     team_workload = []
@@ -138,3 +138,4 @@ async def build_manager_dashboard_metrics(current_user: User) -> Dict[str, Any]:
         "completed_tasks": workload["by_status"].get(TaskStatus.COMPLETED.value, 0),
         "total_subordinates": len(subordinates),
     }
+

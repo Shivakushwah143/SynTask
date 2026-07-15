@@ -14,7 +14,7 @@ def test_normalize_project_created_event():
         company_id="company-1",
         project_id="proj-123",
         actor_id="user-1",
-        occurred_at=datetime.utcnow(),
+        occurred_at=datetime.now(),
         payload={
             "title": "Brand Refresh",
             "summary": "New brand refresh project",
@@ -36,4 +36,5 @@ def test_normalize_project_created_event():
     assert record.title == "Brand Refresh"
     assert "brand" in record.tags
     assert record.source_event["event_name"] == "ProjectCreated"
+
 

@@ -56,7 +56,7 @@ async def create_page(
     )
     
     if page_status == PageStatus.PUBLISHED:
-        page.published_at = datetime.utcnow()
+        page.published_at = datetime.now()
     
     await page.insert()
     
@@ -197,13 +197,13 @@ async def update_page(
         try:
             page.status = PageStatus(status.lower())
             if page.status == PageStatus.PUBLISHED and not page.published_at:
-                page.published_at = datetime.utcnow()
+                page.published_at = datetime.now()
         except:
             pass
     
     page.updated_by = str(current_user.id)
     page.updated_by_name = current_user.full_name()
-    page.updated_at = datetime.utcnow()
+    page.updated_at = datetime.now()
     
     await page.save()
     
@@ -240,3 +240,4 @@ async def delete_page(
 
 
 # Board Columns Management Endpoints
+
