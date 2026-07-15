@@ -14,6 +14,7 @@ from app.crm.lost_workflow import handle_lost_workflow
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.crm_deal import CRMDeal
+from app.models.crm_proposal import CRMProposal
 from app.crm.models import ProspectStatus, SalesProspect
 from app.models.crm_company import CRMCompany
 from app.models.user import User, UserRole
@@ -206,6 +207,23 @@ def _is_allowed_transition(current_stage: str, target_stage: str) -> bool:
     if not current or not target:
         return False
     return target in ALLOWED_TRANSITIONS.get(current, set())
+
+
+async def _resolve_won_amount(company_id: str, prospect: SalesProspect) -> float:
+    if getattr(prospect, "won_amount", None):
+        return float(prospect.won_amount or 0)
+
+    deal = await CRMDeal.find_one({"company_id": company_id, "lead_id": str(prospect.id)})
+    if deal and getattr(deal, "value", 0):
+        return float(deal.value or 0)
+
+    proposals = await CRMProposal.find(
+        {"company_id": company_id, "lead_id": str(prospect.id), "archived": False}
+    ).sort("-updated_at").to_list(20)
+    for proposal in proposals:
+        if getattr(proposal, "deal_value", 0):
+            return float(proposal.deal_value or 0)
+    return 0.0
 
 
 def _serialize_lead(
@@ -448,6 +466,7 @@ class CRMPipelineService:
             prospect.closed_date = now
             prospect.closed_by = str(getattr(current_user, "id", ""))
             prospect.reason_for_lost = None
+            prospect.won_amount = await _resolve_won_amount(company_id, prospect)
         elif normalized_stage == "lost":
             lost_result = await handle_lost_workflow(current_user, prospect, reason)
             prospect = lost_result["lead"]
@@ -863,4 +882,3 @@ class CRMPipelineService:
                 for item in history_items
             ],
         }
-

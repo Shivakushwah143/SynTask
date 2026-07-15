@@ -2,13 +2,23 @@ import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { Bell, CheckCheck, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useNavigate } from 'react-router-dom'
 import { notificationsAPI } from '../api/notifications'
 import { Badge, Button, EmptyState, PageHeader, SkeletonCard } from '../components/ui'
+import { useAuthStore } from '../store/authStore'
 
 const Notifications = () => {
+  const navigate = useNavigate()
+  const clearAuth = useAuthStore((state) => state.clearAuth)
   const [loading, setLoading] = useState(true)
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
+
+  const handleAuthFailure = () => {
+    clearAuth()
+    toast.error('Session expired. Please login again.')
+    navigate('/login', { replace: true })
+  }
 
   const load = async () => {
     try {
@@ -16,7 +26,11 @@ const Notifications = () => {
       const data = await notificationsAPI.listNotifications(null, 0, 50)
       setNotifications(data.notifications || [])
       setUnreadCount(data.unread_count || 0)
-    } catch {
+    } catch (error) {
+      if ([401, 403].includes(error?.response?.status)) {
+        handleAuthFailure()
+        return
+      }
       toast.error('Failed to load notifications')
     } finally {
       setLoading(false)

@@ -6,7 +6,7 @@ from typing import Optional
 
 from beanie import Document, Indexed
 from pydantic import EmailStr, Field
-from pymongo import ASCENDING, DESCENDING, IndexModel
+from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
 
 class CRMCompany(Document):
@@ -35,5 +35,9 @@ class CRMCompany(Document):
             "primary_contact_id",
             "deleted",
             IndexModel([("company_id", ASCENDING), ("name", ASCENDING)], unique=True),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("industry", ASCENDING), ("updated_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("name", TEXT), ("email", TEXT), ("phone", TEXT), ("industry", TEXT)]),
         ]

@@ -177,6 +177,7 @@ export default function CRMPipelinePage() {
   const handleLeadMove = useCallback((lead, nextStageKey) => {
     const leadId = lead?.id || lead?._id
     if (!leadId || !nextStageKey) return
+    if (moveLeadMutation.isLoading) return
     const sourceStage = visibleBoard.stages.find((stage) => stage.leads.some((item) => (item.id || item._id) === leadId))
     const targetStage = visibleBoard.stages.find((stage) => stage.key === nextStageKey)
     if (sourceStage?.key === nextStageKey) return
