@@ -335,7 +335,7 @@ async def seed_demo_invoices(
 
     clients: List[Client] = []
     for data in demo_clients:
-        client = await Client.find_one(Client.company_id == company_id, Client.email == data["email"])
+        client = await Client.find_one({"company_id": company_id, "email": data["email"]})
         if not client:
             client = Client(company_id=company_id, created_by=str(current_user.id), **data)
             await client.insert()

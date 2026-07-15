@@ -328,9 +328,9 @@ export default function Projects() {
                 <option value="operations">Operations</option>
               </select>
             </FormField>
-            <FormField label="Lead">
-              <select className={inputClassName} value={formData.lead_id} onChange={(event) => setFormData((state) => ({ ...state, lead_id: event.target.value }))}>
-                <option value="">Select lead</option>
+            <FormField label="Assigned to">
+              <select className={inputClassName} value={formData.assigned_to} onChange={(event) => setFormData((state) => ({ ...state, assigned_to: event.target.value }))}>
+                <option value="">Select manager or lead</option>
                 {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
               </select>
             </FormField>

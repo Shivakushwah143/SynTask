@@ -45,7 +45,7 @@ const getStorageForRememberMe = (rememberMe) => {
   return getActiveStorage()
 }
 
-export const saveAuthTokens = (accessToken, refreshToken, rememberMe) => {
+export const saveAuthTokens = (_accessToken, _refreshToken, rememberMe) => {
   const targetStorage = getStorageForRememberMe(rememberMe)
   const inactiveStorage = targetStorage === getLocalStorage() ? getSessionStorage() : getLocalStorage()
 
@@ -111,6 +111,7 @@ export const getStoredAuthData = () => {
   return { token, refreshToken, user }
 }
 
-export const updateAccessToken = (accessToken) => {
+export const updateAccessToken = (_accessToken) => {
+  void _accessToken
   clearLegacyCookies()
 }

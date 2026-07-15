@@ -3,7 +3,7 @@ import { useQuery } from "react-query";
 import { Briefcase, CalendarClock, FileBarChart2, Inbox, Plus, Send, TrendingUp, UserRoundSearch } from "lucide-react";
 
 import { recruitmentApi } from "../../../api/recruitment";
-import { Badge, Button, EmptyState, SkeletonCard } from "../../../components/ui";
+import { Badge, EmptyState, SkeletonCard } from "../../../components/ui";
 import { RecruitmentStatCard } from "../../../modules/hr/recruitment/components/RecruitmentStatCard";
 import { StatusBadge } from "../../../modules/hr/recruitment/components/StatusBadge";
 import { fmtDateTime, toArray } from "../../../modules/hr/recruitment/utils/data";
@@ -52,10 +52,13 @@ export default function RecruitmentDashboard() {
           </div>
           <div className="flex flex-wrap gap-2">
             {quickActions.map((action) => (
-              <Link key={action.href} to={action.href}>
-                <Button type="button" variant="secondary" className="border-white/20 bg-white/10 text-white hover:bg-white/20">
-                  <action.icon className="h-4 w-4" /> {action.label}
-                </Button>
+              <Link
+                key={action.href}
+                to={action.href}
+                className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-none transition-colors hover:bg-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-2 focus:ring-offset-transparent"
+              >
+                <action.icon className="h-4 w-4 shrink-0" />
+                <span className="whitespace-nowrap">{action.label}</span>
               </Link>
             ))}
           </div>

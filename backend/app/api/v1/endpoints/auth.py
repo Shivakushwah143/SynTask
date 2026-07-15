@@ -157,7 +157,7 @@ async def login(
 ):
     """Login endpoint"""
     # Find user by email
-    user = await User.find_one(User.email == login_request.email.lower())
+    user = await User.find_one({"email": login_request.email.lower()})
     
     if not user:
         raise HTTPException(
@@ -382,7 +382,7 @@ async def forgot_password(
     email = email.strip().lower()
     
     # Check if user exists
-    user = await User.find_one(User.email == email)
+    user = await User.find_one({"email": email})
     
     if not user:
         # User explicitly requested to show if email is not registered

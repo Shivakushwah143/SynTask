@@ -308,13 +308,64 @@ const Tasks = () => {
         taskData.department_id = selectedDepartmentId
       }
 
-      await tasksAPI.createTask(taskData)
+      const response = await tasksAPI.createTask(taskData)
+      const createdTask = response?.task || response?.data?.task || response
+      const createdTaskId = createdTask?.id || createdTask?._id || null
+      const createdTaskStatus = createdTask?.status || taskData.status || 'todo'
+      const createdTaskPriority = createdTask?.priority || taskData.priority || 'medium'
+      const createdTaskDepartmentId = createdTask?.department_id || taskData.department_id || ''
+      const createdTaskAssignee = createdTask?.assigned_to || taskData.assigned_to || ''
+      const createdTaskDueDate = createdTask?.due_date || taskData.due_date || ''
+      const createdTaskTitle = createdTask?.title || taskData.title || ''
+
+      const matchesCurrentFilters = () => {
+        if (filters.status && createdTaskStatus !== filters.status) return false
+        if (filters.priority && createdTaskPriority !== filters.priority) return false
+        if (filters.assigned_to && String(createdTaskAssignee || '') !== String(filters.assigned_to)) return false
+        if (filters.department_id && String(createdTaskDepartmentId || '') !== String(filters.department_id)) return false
+        if (filters.due_from || filters.due_to) {
+          if (!createdTaskDueDate) return false
+          const dueDate = new Date(createdTaskDueDate)
+          if (Number.isNaN(dueDate.getTime())) return false
+          if (filters.due_from) {
+            const fromDate = new Date(filters.due_from)
+            fromDate.setHours(0, 0, 0, 0)
+            if (dueDate < fromDate) return false
+          }
+          if (filters.due_to) {
+            const toDate = new Date(filters.due_to)
+            toDate.setHours(23, 59, 59, 999)
+            if (dueDate > toDate) return false
+          }
+        }
+        if (searchQuery.trim()) {
+          const query = searchQuery.trim().toLowerCase()
+          const haystack = `${createdTaskTitle} ${createdTask?.description || ''}`.toLowerCase()
+          if (!haystack.includes(query)) return false
+        }
+        return true
+      }
+
+      if (createdTask && matchesCurrentFilters()) {
+        const normalizedTask = {
+          ...taskData,
+          ...createdTask,
+          id: createdTaskId,
+          status: createdTaskStatus,
+          priority: createdTaskPriority,
+          department_id: createdTaskDepartmentId || null,
+          assigned_to: createdTaskAssignee || null,
+          due_date: createdTaskDueDate || null,
+        }
+        setTasks((current) => [normalizedTask, ...current].slice(0, pageSize))
+        setTotalCount((current) => current + 1)
+      }
       toast.success('✅ Task created successfully!')
       setShowCreateModal(false)
       setSelectedDepartmentId('')
       setDueDateValue('')
       setEstimatedHoursValue('')
-      await fetchTasks({ isRefresh: true })
+      fetchTasks({ isRefresh: true })
       e.target.reset()
     } catch (error) {
       console.error('Error creating task:', error)
