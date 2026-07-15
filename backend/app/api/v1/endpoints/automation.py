@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.task import Task, TaskStatus
 from app.models.notification import Notification, NotificationType
 from app.api.dependencies import get_current_user, get_current_company_admin, check_company_access
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -149,7 +150,7 @@ async def update_automation_rule(
     if actions is not None:
         rule.actions = actions
     
-    rule.updated_at = datetime.utcnow()
+    rule.updated_at = datetime.now()
     await rule.save()
     
     return {"message": "Automation rule updated successfully"}
@@ -172,7 +173,7 @@ async def toggle_automation_rule(
     check_company_access(current_user, rule.company_id)
     
     rule.is_active = not rule.is_active
-    rule.updated_at = datetime.utcnow()
+    rule.updated_at = datetime.now()
     await rule.save()
     
     return {
@@ -205,11 +206,11 @@ async def delete_automation_rule(
 @router.get("/{rule_id}/executions")
 async def get_automation_executions(
     rule_id: str,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """Get automation rule execution history"""
+    skip, limit = pagination.skip, pagination.limit
     rule = await AutomationRule.get(rule_id)
     
     if not rule:
@@ -247,5 +248,6 @@ async def get_automation_executions(
         "skip": skip,
         "limit": limit
     }
+
 
 

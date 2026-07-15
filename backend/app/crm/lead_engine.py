@@ -21,6 +21,7 @@ from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
 from app.models.user import User, UserRole, UserStatus
+from app.core.rbac_visibility import require_owned_record_access, visible_user_ids
 
 
 CSV_EMAIL_ALIASES = {"email_address", "email_id", "e_mail"}
@@ -36,7 +37,7 @@ DEFAULT_SOURCE_LABELS = {
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now()
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -390,6 +391,10 @@ class AssignmentEngine:
         users = await User.find(
             query
         ).to_list()
+        scoped_user_ids = await visible_user_ids(current_user)
+        if scoped_user_ids is not None:
+            allowed_ids = set(scoped_user_ids)
+            users = [user for user in users if str(user.id) in allowed_ids]
         if not users:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No assignable users found in your company")
         return users
@@ -615,11 +620,11 @@ class LeadEngine:
         prospect = await SalesProspect.get(lead_id)
         if not prospect or prospect.deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prospect not found")
-        if current_user.role != UserRole.SUPER_ADMIN and prospect.company_id != current_user.company_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-        if current_user.role == UserRole.EMPLOYEE:
-            if prospect.assigned_to != str(current_user.id) and prospect.assigned_by != str(current_user.id):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        await require_owned_record_access(
+            current_user,
+            prospect,
+            ownership_fields=("assigned_to", "assigned_by", "created_by"),
+        )
 
         update = LeadNormalizer.normalize_form_payload(payload, source=prospect.source or "manual")
         now = _now()
@@ -934,3 +939,4 @@ class LeadEngine:
         from app.crm.pipeline import CRMPipelineService
 
         return await CRMPipelineService.move_lead(current_user, lead_id, target_stage, reason=reason)
+

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -56,7 +57,7 @@ async def create_page(
     )
     
     if page_status == PageStatus.PUBLISHED:
-        page.published_at = datetime.utcnow()
+        page.published_at = datetime.now()
     
     await page.insert()
     
@@ -70,11 +71,11 @@ async def create_page(
 async def list_pages(
     project_id: str,
     status_filter: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """List all pages in a project"""
+    skip, limit = pagination.skip, pagination.limit
     project, _ = await get_project_by_id(project_id, current_user.company_id)
     if not project:
         raise HTTPException(
@@ -197,13 +198,13 @@ async def update_page(
         try:
             page.status = PageStatus(status.lower())
             if page.status == PageStatus.PUBLISHED and not page.published_at:
-                page.published_at = datetime.utcnow()
+                page.published_at = datetime.now()
         except:
             pass
     
     page.updated_by = str(current_user.id)
     page.updated_by_name = current_user.full_name()
-    page.updated_at = datetime.utcnow()
+    page.updated_at = datetime.now()
     
     await page.save()
     
@@ -240,3 +241,4 @@ async def delete_page(
 
 
 # Board Columns Management Endpoints
+

@@ -11,6 +11,7 @@ from app.models.company_subscription import CompanySubscription, CompanySubscrip
 from app.models.subscription_plan import SubscriptionPlan as SubscriptionPlanDoc
 from app.core.security import get_password_hash
 from app.api.dependencies import get_current_user, get_current_super_admin
+from app.api.deps import Pagination20, PaginationParams
 
 
 router = APIRouter()
@@ -90,11 +91,11 @@ async def register_company(
 @router.get("/")
 async def list_companies(
     status_filter: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_super_admin)
 ):
     """List all companies (Super Admin only)"""
+    skip, limit = pagination.skip, pagination.limit
     query = {}
     if status_filter:
         query["status"] = status_filter
@@ -260,7 +261,7 @@ async def approve_company(
     # Update company
     company.status = CompanyStatus.ACTIVE
     company.admin_id = str(admin.id)
-    company.approved_at = datetime.utcnow()
+    company.approved_at = datetime.now()
     company.approved_by = str(current_user.id)
     await company.save()
     
@@ -272,7 +273,7 @@ async def approve_company(
     
     if plan_doc:
         amount = plan_doc.price_monthly if billing_cycle_val == "monthly" else plan_doc.price_yearly
-        start_date = datetime.utcnow()
+        start_date = datetime.now()
         sub = CompanySubscription(
             company_id=company_id,
             plan_id=str(plan_doc.id),
@@ -337,7 +338,7 @@ async def update_company_status(
         )
     
     company.status = new_status
-    company.updated_at = datetime.utcnow()
+    company.updated_at = datetime.now()
     await company.save()
     
     return {"message": "Company status updated successfully"}
@@ -372,3 +373,4 @@ async def delete_company(
     await company.delete()
     
     return {"message": "Company permanently deleted"} 
+

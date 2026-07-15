@@ -127,7 +127,7 @@ class CreativeReviewService:
         if not review:
             raise ValueError("Review not found")
         review.status = CreativeReviewStatus.QUEUED
-        review.queued_at = datetime.utcnow()
+        review.queued_at = datetime.now()
         review.failed_at = None
         review.error_message = None
         await self.repository.update_review(review)
@@ -210,3 +210,4 @@ class CreativeReviewService:
             campaign_review=campaign_review,
             designer_notes=designer_notes,
         )
+

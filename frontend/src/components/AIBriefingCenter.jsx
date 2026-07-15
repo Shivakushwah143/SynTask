@@ -20,8 +20,6 @@ import {
   Radar,
   Keyboard,
   Eye,
-  Maximize2,
-  Minimize2,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'

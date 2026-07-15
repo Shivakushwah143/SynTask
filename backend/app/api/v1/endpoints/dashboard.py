@@ -78,7 +78,7 @@ async def get_dashboard_metrics(
             "won_deals": await Ticket.find({**base_query, "status": "won"}).count(),
             "lost_deals": await Ticket.find({**base_query, "status": "lost"}).count(),
             "projects": await Project.find(base_query).count() if base_query else 0,
-            "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": datetime.utcnow()}}).count(),
+            "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": datetime.now()}}).count(),
             "tasks_due_today": await Task.find({**base_query}).count(),
         }
         await cache_set(cache_key, data, ttl=120)
@@ -101,7 +101,7 @@ async def get_dashboard_metrics(
             "won_deals": 0,
             "lost_deals": 0,
             "projects": await Project.find(base_query).count() if base_query else 0,
-            "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": datetime.utcnow()}}).count(),
+            "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": datetime.now()}}).count(),
             "tasks_due_today": await Task.find({"company_id": current_user.company_id, "assigned_to": {"$in": employee_ids}}).count(),
         }
         await cache_set(cache_key, data, ttl=120)
@@ -116,7 +116,7 @@ async def get_dashboard_metrics(
         "won_deals": 0,
         "lost_deals": 0,
         "projects": await Project.find(base_query).count() if base_query else 0,
-        "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": datetime.utcnow()}}).count(),
+        "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": datetime.now()}}).count(),
         "tasks_due_today": await Task.find({**base_query, "assigned_to": str(current_user.id)}).count(),
     }
     await cache_set(cache_key, data, ttl=120)
@@ -194,3 +194,4 @@ async def get_super_admin_analytics(
         "total_users": total_users,
         "users_by_role": users_by_role,
     }
+

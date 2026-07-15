@@ -5,8 +5,8 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      MONGODB_URL: mongodb://mongo:27017/alphanexis_task_management
-      REDIS_URL: redis://redis:6379/0
+      MONGODB_URL: mongodb://${MONGO_INITDB_ROOT_USERNAME:?set MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD:?set MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/alphanexis_task_management?authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
     command: sh -c "python scripts/wait_for_dependencies.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
     expose:
       - "8000"
@@ -33,8 +33,8 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      MONGODB_URL: mongodb://mongo:27017/alphanexis_task_management
-      REDIS_URL: redis://redis:6379/0
+      MONGODB_URL: mongodb://${MONGO_INITDB_ROOT_USERNAME:?set MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD:?set MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/alphanexis_task_management?authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
       BACKEND_HEALTH_URL: http://backend:8000/health
     command: sh -c "python scripts/wait_for_dependencies.py && celery -A app.worker.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4}"
     volumes:
@@ -99,10 +99,13 @@ services:
   mongo:
     image: mongo:7
     restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:?set MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?set MONGO_INITDB_ROOT_PASSWORD}
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      test: ["CMD-SHELL", "mongosh --quiet --username \"${MONGO_INITDB_ROOT_USERNAME:?set MONGO_INITDB_ROOT_USERNAME}\" --password \"${MONGO_INITDB_ROOT_PASSWORD:?set MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.runCommand({ ping: 1 }).ok\""]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -113,10 +116,13 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"${REDIS_PASSWORD:?set REDIS_PASSWORD}\" ping"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
@@ -46,7 +46,9 @@ const MainLayout = () => {
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
   const isDashboardPage = location.pathname === '/dashboard' || location.pathname === '/'
-  const openSearch = () => setSearchOpen(true)
+  const openSearch = useCallback(() => setSearchOpen(true), [])
+  const closeSearch = useCallback(() => setSearchOpen(false), [])
+  // const openSearch = () => setSearchOpen(true)
   const pathSegments = location.pathname.split('/').filter(Boolean)
   const isCrmPath = pathSegments[0] === 'crm'
   const isHrPath = pathSegments[0] === 'hr'
@@ -76,7 +78,7 @@ const MainLayout = () => {
           <Outlet />
         </main>
       </div>
-      <GlobalSearch isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+      <GlobalSearch isOpen={searchOpen} onClose={closeSearch} />
       <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   )

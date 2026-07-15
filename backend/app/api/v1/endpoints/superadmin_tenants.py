@@ -153,8 +153,8 @@ async def get_tenant(
     
     # Get usage stats
     from app.models.usage_tracking import UsageTracking
-    current_month = datetime.utcnow().month
-    current_year = datetime.utcnow().year
+    current_month = datetime.now().month
+    current_year = datetime.now().year
     usage = await UsageTracking.find_one(
         UsageTracking.company_id == company_id,
         UsageTracking.period_month == current_month,
@@ -199,7 +199,7 @@ async def approve_tenant(
     
     # Update company status
     company.status = CompanyStatus.ACTIVE
-    company.approved_at = datetime.utcnow()
+    company.approved_at = datetime.now()
     company.approved_by = str(current_user.id)
     await company.save()
     
@@ -213,7 +213,7 @@ async def approve_tenant(
         amount = plan.price_monthly if request.billing_cycle == "monthly" else plan.price_yearly
         
         # Calculate dates
-        start_date = datetime.utcnow()
+        start_date = datetime.now()
         if plan.has_trial and plan.trial_days > 0:
             trial_end = start_date.replace(day=1) + timedelta(days=plan.trial_days)
             end_date = None
@@ -304,7 +304,7 @@ async def approve_tenant(
         subscription.billing_cycle = request.billing_cycle
         subscription.status = CompanySubscriptionStatus.ACTIVE
         subscription.enabled_modules = request.enabled_modules or plan.enabled_modules
-        subscription.updated_at = datetime.utcnow()
+        subscription.updated_at = datetime.now()
         await subscription.save()
     
     return {
@@ -334,9 +334,9 @@ async def suspend_tenant(
     )
     if subscription:
         subscription.status = CompanySubscriptionStatus.SUSPENDED
-        subscription.suspended_at = datetime.utcnow()
+        subscription.suspended_at = datetime.now()
         subscription.suspension_reason = request.reason
-        subscription.updated_at = datetime.utcnow()
+        subscription.updated_at = datetime.now()
         await subscription.save()
     
     return {"message": "Company suspended", "company": company.dict()}
@@ -363,7 +363,7 @@ async def activate_tenant(
         subscription.status = CompanySubscriptionStatus.ACTIVE
         subscription.suspended_at = None
         subscription.suspension_reason = None
-        subscription.updated_at = datetime.utcnow()
+        subscription.updated_at = datetime.now()
         await subscription.save()
     
     return {"message": "Company activated", "company": company.dict()}
@@ -387,7 +387,7 @@ async def update_tenant_modules(
         raise HTTPException(status_code=404, detail="Subscription not found")
     
     subscription.enabled_modules = request.enabled_modules
-    subscription.updated_at = datetime.utcnow()
+    subscription.updated_at = datetime.now()
     await subscription.save()
     
     return {
@@ -481,7 +481,7 @@ async def update_subscription(
     if request.end_date:
         subscription.end_date = request.end_date
     
-    subscription.updated_at = datetime.utcnow()
+    subscription.updated_at = datetime.now()
     await subscription.save()
     
     # Get updated plan details
@@ -541,14 +541,14 @@ async def delete_tenant(
         )
         if subscription:
             subscription.status = CompanySubscriptionStatus.CANCELLED
-            subscription.cancelled_at = datetime.utcnow()
+            subscription.cancelled_at = datetime.now()
             subscription.cancellation_reason = "Tenant deleted by Super Admin"
-            subscription.updated_at = datetime.utcnow()
+            subscription.updated_at = datetime.now()
             await subscription.save()
         
         # Schedule data deletion after retention period
         # This would typically be handled by a background job
-        retention_date = datetime.utcnow() + timedelta(days=request.retention_days)
+        retention_date = datetime.now() + timedelta(days=request.retention_days)
         company.metadata = company.metadata or {}
         company.metadata["delete_after"] = retention_date.isoformat()
         await company.save()
@@ -557,4 +557,5 @@ async def delete_tenant(
             "message": f"Company marked for deletion. Data will be retained for {request.retention_days} days.",
             "retention_until": retention_date.isoformat()
         }
+
 

@@ -16,9 +16,12 @@ export function useUpdateTaskStatus() {
     {
       onMutate: async ({ id, status }) => {
         await queryClient.cancelQueries(['tasks'])
+        await queryClient.cancelQueries(['task', id])
 
-        const previousTasks = queryClient.getQueryData(['tasks'])
-        queryClient.setQueryData(['tasks'], (old) => {
+        const previousTasks = queryClient.getQueriesData(['tasks'])
+        const previousTask = queryClient.getQueryData(['task', id])
+
+        queryClient.setQueriesData(['tasks'], (old) => {
           if (!old?.tasks) return old
           return {
             ...old,
@@ -29,15 +32,21 @@ export function useUpdateTaskStatus() {
           }
         })
 
-        return { previousTasks }
+        queryClient.setQueryData(['task', id], (old) => (old ? { ...old, status } : old))
+
+        return { previousTasks, previousTask }
       },
       onError: (_err, _vars, context) => {
         if (context?.previousTasks) {
-          queryClient.setQueryData(['tasks'], context.previousTasks)
+          context.previousTasks.forEach(([key, value]) => queryClient.setQueryData(key, value))
+        }
+        if (context?.previousTask) {
+          queryClient.setQueryData(['task', context.previousTask.id || context.previousTask._id], context.previousTask)
         }
       },
       onSettled: () => {
         queryClient.invalidateQueries(['tasks'])
+        queryClient.invalidateQueries(['task'])
       },
     }
   )

@@ -34,25 +34,51 @@ export function DashboardSectionVisibilityPanel({
         onCollapse?.()
       }
     }
-    const handleScroll = () => {
+    const handleScroll = (event) => {
+      const target = event.target
+      if (target instanceof Node && panelRef.current?.contains(target)) return
       onCollapse?.()
     }
     document.addEventListener('pointerdown', handlePointerDown)
-    window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('scroll', handleScroll, { passive: true, capture: true })
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
-      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('scroll', handleScroll, { capture: true })
     }
   }, [collapsed, onCollapse])
 
   if (!sections.length) return null
 
+  if (collapsed) {
+    return (
+      <aside
+        ref={panelRef}
+        className="fixed bottom-4 right-4 z-40 xl:bottom-auto xl:top-24"
+        aria-label="Dashboard sections"
+      >
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-expanded="false"
+          aria-label={`Open dashboard sections, ${visibleCount} of ${sections.length} visible`}
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary-200/70 bg-[rgba(255,248,238,0.76)] px-3 py-2 text-sm font-semibold text-gray-800 opacity-75 shadow-[0_16px_42px_rgba(63,49,37,0.14)] backdrop-blur-xl transition-all duration-200 hover:bg-[rgba(255,248,238,0.98)] hover:opacity-100 hover:shadow-[0_16px_42px_rgba(63,49,37,0.2)] focus-visible:bg-[rgba(255,248,238,0.98)] focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:border-[#5a4635] dark:bg-[rgba(26,20,15,0.76)] dark:text-gray-100 dark:hover:bg-[rgba(26,20,15,0.98)] dark:focus-visible:bg-[rgba(26,20,15,0.98)]"
+        >
+          <span aria-hidden="true" className="text-base leading-none">☰</span>
+          <span>Sections</span>
+          <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs text-primary-700 dark:bg-primary-950 dark:text-primary-200">
+            {visibleCount}/{sections.length}
+          </span>
+        </button>
+      </aside>
+    )
+  }
+
   return (
-    <section
+    <aside
       ref={panelRef}
-      className={`self-end overflow-hidden rounded-2xl border border-primary-200/70 bg-[rgba(255,248,238,0.98)] shadow-[0_16px_42px_rgba(63,49,37,0.18)] transition-all duration-300 dark:border-[#5a4635] dark:bg-[rgba(26,20,15,0.98)] dark:shadow-[0_18px_42px_rgba(0,0,0,0.42)] ${
-        collapsed ? 'w-auto max-w-full' : 'w-full max-w-[26rem]'
-      }`}
+      onWheelCapture={(event) => event.stopPropagation()}
+      onTouchMoveCapture={(event) => event.stopPropagation()}
+      className="fixed bottom-4 right-4 z-40 w-[min(calc(100vw-2rem),26rem)] overflow-hidden rounded-2xl border border-primary-200/70 bg-[rgba(255,248,238,0.98)] shadow-[0_16px_42px_rgba(63,49,37,0.18)] backdrop-blur-xl transition-all duration-300 dark:border-[#5a4635] dark:bg-[rgba(26,20,15,0.98)] dark:shadow-[0_18px_42px_rgba(0,0,0,0.42)] xl:bottom-auto xl:top-24"
       aria-label="Dashboard sections"
     >
       <div className="flex items-center justify-between gap-3 border-b border-primary-200/60 px-4 py-3 dark:border-[#5a4635]">
@@ -67,8 +93,7 @@ export function DashboardSectionVisibilityPanel({
         </button>
       </div>
 
-      {!collapsed ? (
-        <div className="space-y-3 px-4 py-4">
+      <div className="space-y-3 px-4 py-4">
           <div className="relative">
             <input
               value={search}
@@ -84,25 +109,40 @@ export function DashboardSectionVisibilityPanel({
             <button type="button" onClick={onClearAll} className="rounded border px-3 py-1.5 text-sm">Deselect All</button>
           </div>
 
-          <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-[28rem] space-y-2 overflow-y-auto overscroll-contain pr-1">
             {filteredSections.length ? filteredSections.map((section, index) => {
               const isVisible = visibility[section.id] !== false
               return (
                 <div
                   key={section.id}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors ${
+                  className={`group flex items-center gap-2 rounded-xl border px-3 py-2.5 shadow-sm transition-all duration-200 ${
                     isVisible
-                      ? 'border-primary-200/80 bg-white/80 dark:border-[#5a4635] dark:bg-[#221912]'
-                      : 'border-dashed border-gray-200 bg-white/50 opacity-70 dark:border-gray-700 dark:bg-black/20'
+                      ? 'border-primary-200/80 bg-white/90 shadow-primary-100/40 hover:border-primary-300 hover:bg-primary-50/60 dark:border-[#6f553f] dark:bg-[#251b13] dark:hover:border-primary-700 dark:hover:bg-primary-950/20'
+                      : 'border-dashed border-gray-200 bg-white/55 opacity-75 hover:opacity-95 dark:border-gray-700 dark:bg-black/20'
                   }`}
                 >
                   <button
                     type="button"
                     onClick={() => onToggleSection?.(section.id)}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                    aria-pressed={isVisible}
                   >
-                    <span aria-hidden="true" className="text-gray-400">⋮⋮</span>
-                    <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{section.name}</span>
+                    <span
+                      aria-hidden="true"
+                      className={`flex h-7 w-7 flex-none items-center justify-center rounded-lg text-xs font-bold transition-colors ${
+                        isVisible
+                          ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-200'
+                          : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500'
+                      }`}
+                    >
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{section.name}</span>
+                      <span className={`mt-0.5 block text-[11px] font-medium ${isVisible ? 'text-primary-700 dark:text-primary-200' : 'text-gray-400 dark:text-gray-500'}`}>
+                        {isVisible ? 'Shown on dashboard' : 'Hidden from dashboard'}
+                      </span>
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -122,14 +162,18 @@ export function DashboardSectionVisibilityPanel({
                   >
                     ↓
                   </button>
-                  <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+                  <label className="relative inline-flex h-7 w-12 flex-none cursor-pointer items-center rounded-full">
                     <input
                       type="checkbox"
                       checked={isVisible}
                       onChange={() => onToggleSection?.(section.id)}
-                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900"
+                      className="peer sr-only"
+                      aria-label={`${isVisible ? 'Hide' : 'Show'} ${section.name}`}
                     />
-                    {isVisible ? 'Visible' : 'Hidden'}
+                    <span className="absolute inset-0 rounded-full bg-gray-200 shadow-inner transition-colors peer-checked:bg-primary-600 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary-500 dark:bg-gray-800 dark:peer-checked:bg-primary-500" />
+                    <span className="absolute left-1 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-gray-400 shadow transition-transform peer-checked:translate-x-5 peer-checked:text-primary-600">
+                      {isVisible ? '✓' : ''}
+                    </span>
                   </label>
                 </div>
               )
@@ -139,18 +183,7 @@ export function DashboardSectionVisibilityPanel({
               </div>
             )}
           </div>
-        </div>
-      ) : (
-        <div className="px-4 py-3">
-          <button
-            type="button"
-            onClick={onToggleCollapsed}
-            className="inline-flex items-center gap-2 rounded-xl border border-primary-200/70 bg-white/80 px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-white dark:border-[#5a4635] dark:bg-[#221912] dark:text-gray-100 dark:hover:bg-[#2a1f17]"
-          >
-            Open dashboard sections
-          </button>
-        </div>
-      )}
-    </section>
+      </div>
+    </aside>
   )
 }

@@ -124,7 +124,7 @@ async def create_or_update_eod_report(
     report.in_progress_task_ids = [str(task.id) for task in summary["in_progress_tasks"]]
     report.assigned_today_task_ids = [str(task.id) for task in summary["assigned_today_tasks"]]
     report.total_working_seconds = summary["total_working_seconds"]
-    report.updated_at = datetime.utcnow()
+    report.updated_at = datetime.now()
 
     if created:
         await report.insert()
@@ -170,3 +170,4 @@ def serialize_eod_report(report: EODReport, employee: Optional[User] = None) -> 
         "created_at": report.created_at,
         "updated_at": report.updated_at,
     }
+

@@ -35,6 +35,7 @@ from app.services.task_health_service import (
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.services.timeline_service import create_timeline_event
 from app.core.cache import cache_delete_pattern
+from app.api.deps import Pagination20, PaginationParams
 
 router = APIRouter()
 
@@ -162,11 +163,11 @@ async def list_tasks(
     created_by: Optional[str] = None,
     project_id: Optional[str] = None,
     department_id: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
     """List tasks with filters"""
+    skip, limit = pagination.skip, pagination.limit
     # Super Admin can see all tasks, others need company_id
     if current_user.role == UserRole.SUPER_ADMIN:
         query = {}
@@ -890,13 +891,13 @@ async def add_task_comment(
         user_id=str(current_user.id),
         user_name=f"{current_user.first_name} {current_user.last_name}",
         content=content,
-        created_at=datetime.utcnow()
+        created_at=datetime.now()
     )
 
     await comment.insert()
 
     # Update task's updated_at
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now()
     await task.save()
     await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
 
@@ -1078,7 +1079,7 @@ async def update_task(
     if estimated_hours is not None:
         task.estimated_hours = float(estimated_hours) if estimated_hours != '' else None
 
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now()
     await task.save()
     await sync_task_health(task)
 
@@ -1177,7 +1178,7 @@ async def add_task_attachment(
     # Add file URL to attachments (avoid duplicates)
     if file_url not in task.attachments:
         task.attachments.append(file_url)
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now()
         await task.save()
 
         await publish_event(

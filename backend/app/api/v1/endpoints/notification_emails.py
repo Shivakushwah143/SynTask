@@ -10,6 +10,7 @@ from app.api.dependencies import get_current_user
 from app.models.notification import Notification
 from app.models.user import User
 from app.services.notification_service import notification_service
+from app.api.deps import Pagination20, PaginationParams
 
 router = APIRouter()
 
@@ -181,10 +182,10 @@ async def list_templates(current_user: User = Depends(get_current_user)):
 
 @router.get("/history")
 async def history(
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user),
 ):
+    skip, limit = pagination.skip, pagination.limit
     query = {"company_id": current_user.company_id, "type": "mention"}
     if current_user.role.value == "super_admin":
         query = {}
@@ -215,4 +216,5 @@ async def test_email(current_user: User = Depends(get_current_user)):
         actor_id=str(current_user.id),
         company_id=current_user.company_id or "platform",
     )
-    return {"success": True, "data": result, "tested_at": datetime.utcnow().isoformat()}
+    return {"success": True, "data": result, "tested_at": datetime.now().isoformat()}
+

@@ -6,6 +6,7 @@ import { authAPI } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
 import { Button, inputClassName } from '../../components/ui'
+import GoogleLoginButton from '../../components/auth/GoogleLoginButton'
 
 const Login = () => {
   const navigate = useNavigate()
@@ -120,6 +121,8 @@ const Login = () => {
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">or</span>
         <div className="h-px flex-1 bg-surface-border" />
       </div>
+
+      <GoogleLoginButton rememberMe={formData.remember_me} onSuccess={() => navigate('/dashboard')} />
 
       <Link
         to="/admin-request"

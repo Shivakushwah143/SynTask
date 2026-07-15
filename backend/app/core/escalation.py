@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 async def check_and_escalate_tickets():
     """Check for tickets that need escalation and escalate them"""
     # Get tickets that are open or in progress and older than escalation time
-    now = datetime.utcnow()
+    now = datetime.now()
     
     # Escalation rules:
     # - Urgent: 2 hours
@@ -70,4 +70,5 @@ async def check_and_escalate_tickets():
                 logger.info(f"Escalated ticket {ticket.ticket_number}")
             except Exception as e:
                 logger.error(f"Error escalating ticket {ticket.id}: {str(e)}")
+
 

@@ -290,6 +290,11 @@ const Dashboard = () => {
     const route = entry?.payload?.route || entry?.route || fallback
     if (route) navigate(route)
   }
+  const handleCardKeyNavigation = (event, route) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    navigate(route)
+  }
 
   const healthColumns = [
     { key: 'name', header: 'Project' },
@@ -374,7 +379,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="relative flex flex-col gap-6 pb-24 pr-0 xl:pb-0 xl:pr-16">
+    <div className="relative flex flex-col gap-6 pb-24 xl:pb-0">
       <PageHeader
         title="Dashboard"
         description="Command center for work, meetings, and AI briefings."
@@ -503,7 +508,14 @@ const Dashboard = () => {
       ) : null} */}
 
       {renderDashboardSection('task-health', (
-      <section className="card p-5">
+      <section
+        role="button"
+        tabIndex={0}
+        aria-label="Open Task Health in Tasks"
+        onClick={() => navigate('/tasks')}
+        onKeyDown={(event) => handleCardKeyNavigation(event, '/tasks')}
+        className="card cursor-pointer p-5 transition hover:border-primary-300 hover:bg-primary-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/35 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
+      >
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Task Health</h2>
@@ -511,7 +523,10 @@ const Dashboard = () => {
               {role === ROLE.EMPLOYEE ? 'Your assigned task status and extension requests.' : 'Team deadline pressure and extension workflow.'}
             </p>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => navigate('/tasks')}>
+          <Button variant="secondary" size="sm" onClick={(event) => {
+            event.stopPropagation()
+            navigate('/tasks')
+          }}>
             Open Tasks
             <ArrowRight className="h-4 w-4" />
           </Button>

@@ -7,6 +7,7 @@ from datetime import datetime
 from app.notification_center.models import Notification
 from app.models.user import User
 from app.api.dependencies import get_current_user
+from app.api.deps import Pagination20, PaginationParams
 
 router = APIRouter()
 
@@ -14,11 +15,11 @@ router = APIRouter()
 @router.get("/")
 async def list_notifications(
     is_read: bool = None,
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
     """List user notifications"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"user_id": str(current_user.id)}
     
     if is_read is not None:
@@ -71,7 +72,7 @@ async def mark_notification_as_read(
         )
     
     notification.is_read = True
-    notification.read_at = datetime.utcnow()
+    notification.read_at = datetime.now()
     await notification.save()
     
     return {"message": "Notification marked as read"}
@@ -88,7 +89,7 @@ async def mark_all_notifications_as_read(
     
     for notification in notifications:
         notification.is_read = True
-        notification.read_at = datetime.utcnow()
+        notification.read_at = datetime.now()
         await notification.save()
     
     return {"message": f"{len(notifications)} notifications marked as read"}
@@ -117,3 +118,4 @@ async def delete_notification(
     await notification.delete()
     
     return {"message": "Notification deleted successfully"}
+

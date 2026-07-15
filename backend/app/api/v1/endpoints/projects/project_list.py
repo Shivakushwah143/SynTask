@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -8,11 +9,11 @@ router = APIRouter()
 @router.get("/")
 async def list_projects(
     status_filter: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """List projects for the company with role-based visibility"""
+    skip, limit = pagination.skip, pagination.limit
     cache_key = None
     if current_user.company_id:
         cache_key = f"{project_list_key(current_user.company_id)}:{current_user.role.value}:{current_user.id}:{status_filter or 'all'}:{skip}:{limit}"
@@ -102,7 +103,7 @@ async def list_projects(
         days_until_delivery = None
         priority = "normal"
         if project.delivery_date:
-            delta = project.delivery_date - datetime.utcnow()
+            delta = project.delivery_date - datetime.now()
             days_until_delivery = delta.days
             if days_until_delivery < 0:
                 priority = "overdue"
@@ -151,4 +152,5 @@ async def list_projects(
     if cache_key:
         await cache_set(cache_key, data, ttl=180)
     return data
+
 

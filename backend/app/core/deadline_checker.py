@@ -15,7 +15,7 @@ async def check_approaching_deadlines():
     """Check projects with deadlines approaching (2 days) and send notifications"""
     try:
         # Get all active projects with delivery dates
-        now = datetime.utcnow()
+        now = datetime.now()
         two_days_from_now = now + timedelta(days=2)
         
         # Find projects with delivery dates between now and 2 days from now
@@ -100,5 +100,6 @@ async def run_deadline_checker():
             logger.error(f"Error in deadline checker loop: {str(e)}")
             # Wait 1 hour before retrying on error
             await asyncio.sleep(60 * 60)
+
 
 

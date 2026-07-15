@@ -5,6 +5,53 @@ import { monitoringManager } from '../services/monitoring/MonitoringManager'
 import toast from 'react-hot-toast'
 
 const STANDARD_WORK_SECONDS = 8 * 3600 // 28800
+const START_WORK_ACK_TIMEOUT_MS = 10000
+
+export const sendWhenSocketOpen = async (
+  socketRef,
+  connectSocket,
+  buildPayload,
+  { timeoutMs = 5000 } = {},
+) => {
+  if (!socketRef.current || socketRef.current.readyState > WebSocket.OPEN) {
+    connectSocket()
+  }
+
+  const socket = socketRef.current
+  if (!socket) return false
+
+  const sendPayload = () => {
+    if (socket.readyState !== WebSocket.OPEN) return false
+    socket.send(JSON.stringify(buildPayload()))
+    return true
+  }
+
+  if (sendPayload()) return true
+  if (socket.readyState !== WebSocket.CONNECTING) return false
+
+  return await new Promise((resolve) => {
+    let settled = false
+    const cleanup = () => {
+      socket.removeEventListener?.('open', handleOpen)
+      socket.removeEventListener?.('close', handleClose)
+      socket.removeEventListener?.('error', handleClose)
+    }
+    const settle = (value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      cleanup()
+      resolve(value)
+    }
+    const handleOpen = () => settle(sendPayload())
+    const handleClose = () => settle(false)
+    const timeout = setTimeout(() => settle(false), timeoutMs)
+
+    socket.addEventListener?.('open', handleOpen, { once: true })
+    socket.addEventListener?.('close', handleClose, { once: true })
+    socket.addEventListener?.('error', handleClose, { once: true })
+  })
+}
 
 function computeWorkType(totalSeconds) {
   if (totalSeconds >= STANDARD_WORK_SECONDS + 60) {
@@ -40,6 +87,7 @@ export const useMonitoringSocket = () => {
   const socketRef = useRef(null)
   const timerRef = useRef(null)
   const heartbeatIntervalRef = useRef(null)
+  const startAckTimeoutRef = useRef(null)
   const actionPendingRef = useRef(false)
   // Keep stable refs for status to avoid stale closure issues in callbacks
   const statusRef = useRef('Offline')
@@ -48,6 +96,23 @@ export const useMonitoringSocket = () => {
   // Keep refs in sync with state
   useEffect(() => { statusRef.current = status }, [status])
   useEffect(() => { workingSecondsRef.current = workingSeconds }, [workingSeconds])
+
+  const clearStartAckTimeout = useCallback(() => {
+    if (startAckTimeoutRef.current) {
+      clearTimeout(startAckTimeoutRef.current)
+      startAckTimeoutRef.current = null
+    }
+  }, [])
+
+  const resetLocalMonitoring = useCallback(() => {
+    clearStartAckTimeout()
+    actionPendingRef.current = false
+    monitoringManager.stopCapture()
+    setCameraStream(null)
+    setScreenStream(null)
+    setCameraStatus('Denied')
+    setScreenStatus('Denied')
+  }, [clearStartAckTimeout])
 
   // ─── Tick ─────────────────────────────────────────────────────────────────
   const startTimerTick = useCallback(() => {
@@ -165,6 +230,7 @@ export const useMonitoringSocket = () => {
       try { msg = JSON.parse(event.data) } catch { return }
 
       if (msg.type === 'start_work_ack') {
+        clearStartAckTimeout()
         // Seed timers from server data (fixes stale timer on reconnect)
         const seedSeconds = Math.floor(msg.total_working_seconds ?? 0)
         const seedBreak = Math.floor(msg.break_seconds ?? 0)
@@ -215,6 +281,13 @@ export const useMonitoringSocket = () => {
           setScreenStatus(monitoringManager.getScreenStatus())
         } catch (err) {
           console.error('startCapture failed:', err)
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'stop_work' }))
+          }
+          resetLocalMonitoring()
+          setStatus('Offline')
+          statusRef.current = 'Offline'
+          toast.error('Monitoring could not start. Camera and screen sharing stopped.')
         } finally {
           actionPendingRef.current = false
         }
@@ -268,13 +341,14 @@ export const useMonitoringSocket = () => {
       setIsConnected(false)
       socketRef.current = null
       actionPendingRef.current = false
+      clearStartAckTimeout()
       if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current)
     }
 
     ws.onerror = () => {
       setIsConnected(false)
     }
-  }, [token])
+  }, [token, clearStartAckTimeout, resetLocalMonitoring])
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -287,6 +361,7 @@ export const useMonitoringSocket = () => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
       if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current)
+      clearStartAckTimeout()
       if (socketRef.current) {
         socketRef.current.close()
         socketRef.current = null
@@ -295,7 +370,7 @@ export const useMonitoringSocket = () => {
       setCameraStream(null)
       setScreenStream(null)
     }
-  }, [token, connectSocket, syncWithServer, startTimerTick])
+  }, [token, connectSocket, syncWithServer, startTimerTick, clearStartAckTimeout])
 
   // ─── Workflow Triggers ────────────────────────────────────────────────────
   useEffect(() => {
@@ -321,31 +396,37 @@ export const useMonitoringSocket = () => {
     actionPendingRef.current = true
     const granted = await monitoringManager.requestPermissions()
     if (!granted) {
-      actionPendingRef.current = false
+      resetLocalMonitoring()
       toast.error('Camera and Screen Share permissions are required to start work.')
       return
     }
 
-    const sendStart = () => {
-      if (socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.send(JSON.stringify({
+    const sent = await sendWhenSocketOpen(
+      socketRef,
+      connectSocket,
+      () => ({
           type: 'start_work',
           camera_permission: monitoringManager.getCameraStatus(),
           screen_share_permission: monitoringManager.getScreenStatus(),
-        }))
-        return true
-      }
-      return false
+      }),
+    )
+
+    if (!sent) {
+      resetLocalMonitoring()
+      monitoringManager.stopCapture()
+      toast.error('Unable to connect attendance session. Please retry.')
+      return
     }
 
-    if (!sendStart()) {
-      connectSocket()
-      setTimeout(() => {
-        if (!sendStart()) {
-          actionPendingRef.current = false
-        }
-      }, 600)
-    }
+    clearStartAckTimeout()
+    startAckTimeoutRef.current = setTimeout(() => {
+      if (!actionPendingRef.current || statusRef.current !== 'Offline') return
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({ type: 'stop_work' }))
+      }
+      resetLocalMonitoring()
+      toast.error('Attendance did not start. Camera and screen sharing stopped.')
+    }, START_WORK_ACK_TIMEOUT_MS)
   }
 
   const pauseWork = () => {
@@ -369,6 +450,7 @@ export const useMonitoringSocket = () => {
   }
 
   const stopWork = () => {
+    clearStartAckTimeout()
     setStatus('Offline')
     statusRef.current = 'Offline'
     monitoringManager.stopCapture()

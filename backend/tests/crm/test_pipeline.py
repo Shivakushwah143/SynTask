@@ -85,8 +85,8 @@ async def test_load_pipeline_groups_leads_and_uses_existing_stage_catalog(monkey
             remark=None,
             won_amount=None,
             reason_for_lost=None,
-            created_at=datetime.utcnow() - timedelta(days=4),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now() - timedelta(days=4),
+            updated_at=datetime.now(),
             stage_entered_at=None,
             stage_last_changed_at=None,
             days_in_stage=0,
@@ -107,8 +107,8 @@ async def test_load_pipeline_groups_leads_and_uses_existing_stage_catalog(monkey
             remark=None,
             won_amount=None,
             reason_for_lost=None,
-            created_at=datetime.utcnow() - timedelta(days=2),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now() - timedelta(days=2),
+            updated_at=datetime.now(),
             stage_entered_at=None,
             stage_last_changed_at=None,
             days_in_stage=0,
@@ -168,7 +168,7 @@ async def test_load_pipeline_enforces_tenant_scope_for_writes(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_move_lead_updates_stage_history_and_timeline(monkeypatch):
-    now = datetime.utcnow()
+    now = datetime.now()
     lead = SimpleNamespace(
         id="lead-1",
         company_id="company-1",
@@ -247,8 +247,8 @@ async def test_move_lead_rejects_unknown_or_invalid_stage(monkeypatch):
         status=ProspectStatus.ACTIVE,
         assigned_to="user-1",
         assigned_by="user-2",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
         stage_entered_at=None,
         stage_last_changed_at=None,
         days_in_stage=0,
@@ -561,7 +561,7 @@ async def test_get_history_returns_transition_records(monkeypatch):
             user_name="Ada Admin",
             reason="ready",
             days_in_previous_stage=3,
-            transitioned_at=datetime.utcnow(),
+            transitioned_at=datetime.now(),
             payload={"new_stage": "Qualified"},
         )
     ]
@@ -586,3 +586,4 @@ async def test_get_history_returns_transition_records(monkeypatch):
 
     assert result["lead_id"] == "lead-1"
     assert result["history"][0]["new_stage"] == "Qualified"
+

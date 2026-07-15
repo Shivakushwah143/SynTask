@@ -81,7 +81,7 @@ class ContextBuilder:
 
         serialized_tasks: list[dict[str, Any]] = []
         today = for_date
-        now = datetime.utcnow()
+        now = datetime.now()
         for task in tasks:
             due_date = task.due_date.date() if task.due_date else None
             days_until_due = (due_date - today).days if due_date else None
@@ -1070,3 +1070,4 @@ class ContextBuilder:
                 "industry": getattr(company, "industry", None),
             },
         }
+
