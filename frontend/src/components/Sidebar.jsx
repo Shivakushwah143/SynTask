@@ -191,18 +191,21 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/attendance",
       icon: UserCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Live Attendance",
       href: "/live-monitor",
       icon: MonitorCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Attendance Reports",
       href: "/attendance-reports",
       icon: FileBarChart2,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
+      module: "task",
     },
 
     {
@@ -210,24 +213,28 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/notifications",
       icon: BellRing,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Timeline",
       href: "/timeline",
       icon: CalendarClock,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Leaves",
       href: "/leaves",
       icon: CalendarCheck2,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Daily EOD",
       href: "/eod",
       icon: ClipboardCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Workspace Reports",
@@ -276,6 +283,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       match: "/crm",
       icon: TrendingUp,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "sales",
     },
     {
       name: "HR",
@@ -324,6 +332,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/users",
       icon: UserCog,
       roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
+      module: "task",
     },
     {
       name: "Workflows",
@@ -337,6 +346,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/departments",
       icon: Network,
       roles: [ROLE.ADMIN],
+      module: "task",
     },
     {
       name: "My Team",
@@ -350,24 +360,28 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/companies",
       icon: Landmark,
       roles: [ROLE.SUPER_ADMIN],
+      module: "task",
     },
     {
       name: "Subscriptions",
       href: "/subscriptions",
       icon: CreditCard,
       roles: [ROLE.ADMIN],
+      module: "task",
     },
     {
       name: "Audit Log",
       href: "/activity",
       icon: AlarmClockCheck,
       roles: [ROLE.ADMIN, ROLE.LEAD],
+      module: "task",
     },
     {
       name: "Settings",
       href: "/settings",
       icon: Settings,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
   ];
 

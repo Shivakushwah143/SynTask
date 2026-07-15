@@ -5,8 +5,10 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { CRMPage, CRMPageTitle } from '../../../components/crm'
-import { Button } from '../../../components/ui'
+import { Button, Modal, inputClassName } from '../../../components/ui'
 import { crmApi } from '../../../api/crm'
+import { salesApi } from '../../../api/sales'
+import { usersAPI } from '../../../api/users'
 import { useDebounce } from '../../../hooks/useDebounce'
 import {
   PipelineBoard,
@@ -49,17 +51,50 @@ const usePipelineSearchContext = () => {
   return context || {}
 }
 
+const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
+const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
+const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
+const getResponseItems = (data, key) => {
+  const direct = data?.[key]
+  const nested = data?.data?.[key]
+  if (Array.isArray(direct)) return direct
+  if (Array.isArray(nested)) return nested
+  if (Array.isArray(data)) return data
+  return []
+}
+
 export default function CRMPipelinePage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [localSearchValue, setLocalSearchValue] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState({
+    first_name: '',
+    last_name: '',
+    country_code: '+91',
+    phone: '',
+    email: '',
+    company_name: '',
+    category_id: '',
+    product_ids: '',
+    current_stage: '',
+    assigned_to: '',
+    interest_level: 'medium',
+    estimated_close_date: '',
+    remark: '',
+    tag: '',
+  })
   const pipelineSearchContext = usePipelineSearchContext()
   const searchValue = pipelineSearchContext.searchValue ?? localSearchValue
   const setSearchValue = pipelineSearchContext.setSearchValue || setLocalSearchValue
   const pipelineQuery = useQuery(PIPELINE_QUERY_KEY, () => crmApi.getPipeline({ limit: 500 }), {
     staleTime: 5 * 60 * 1000,
   })
+  const categoriesQuery = useQuery('crm-lead-categories', salesApi.getCategories, { staleTime: 5 * 60 * 1000 })
+  const stagesQuery = useQuery('crm-lead-stages', salesApi.getStages, { staleTime: 5 * 60 * 1000 })
+  const usersQuery = useQuery('crm-lead-users', () => usersAPI.getAssignableUsers(), { staleTime: 5 * 60 * 1000 })
+  const productsQuery = useQuery('crm-lead-products', salesApi.getProducts, { staleTime: 5 * 60 * 1000 })
   const [activeLeadId, setActiveLeadId] = useState(null)
   const [dragOverlayLead, setDragOverlayLead] = useState(null)
 
@@ -70,6 +105,10 @@ export default function CRMPipelinePage() {
 
   const rawPipeline = pipelineQuery.data
   const board = useMemo(() => buildPipelineBoard(rawPipeline || {}), [rawPipeline])
+  const categories = useMemo(() => getResponseItems(categoriesQuery.data, 'categories'), [categoriesQuery.data])
+  const stages = useMemo(() => getResponseItems(stagesQuery.data, 'stages'), [stagesQuery.data])
+  const users = useMemo(() => getResponseItems(usersQuery.data, 'users'), [usersQuery.data])
+  const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
   const filters = useMemo(() => parsePipelineFilters(searchParams), [searchParams])
   const selectedStageLabel = useMemo(() => {
     if (!filters.stage) return ''
@@ -126,6 +165,21 @@ export default function CRMPipelinePage() {
       leadIndex,
     }
   }, [board, visibleLeadIds])
+  const defaultStageId = getStageValue(stages[0])
+  const defaultCategoryId = getOptionId(categories[0])
+  const defaultProductIds = getOptionId(products[0])
+  const defaultOwnerId = getUserId(users[0])
+
+  useEffect(() => {
+    if (!createOpen) return
+    setCreateForm((state) => ({
+      ...state,
+      category_id: state.category_id || defaultCategoryId,
+      product_ids: state.product_ids || defaultProductIds,
+      current_stage: state.current_stage || defaultStageId,
+      assigned_to: state.assigned_to || defaultOwnerId,
+    }))
+  }, [createOpen, defaultCategoryId, defaultOwnerId, defaultProductIds, defaultStageId])
 
   const updateFilters = useCallback((partial) => {
     setSearchParams((current) => mergeSearchParams(current, partial), { replace: true })
@@ -139,6 +193,66 @@ export default function CRMPipelinePage() {
       return next
     }, { replace: true })
   }, [setSearchParams, setSearchValue])
+
+  const createLeadMutation = useMutation((payload) => salesApi.createLead(payload), {
+    onSuccess: () => {
+      toast.success('Lead created')
+      setCreateOpen(false)
+      setCreateForm({
+        first_name: '',
+        last_name: '',
+        country_code: '+91',
+        phone: '',
+        email: '',
+        company_name: '',
+        category_id: defaultCategoryId,
+        product_ids: defaultProductIds,
+        current_stage: defaultStageId,
+        assigned_to: '',
+        interest_level: 'medium',
+        estimated_close_date: '',
+        remark: '',
+        tag: '',
+      })
+      queryClient.invalidateQueries('crm-pipeline-board')
+      queryClient.invalidateQueries('crm-leads-entry')
+      queryClient.invalidateQueries('crm-lead-duplicates')
+      queryClient.invalidateQueries('sales-prospects')
+      queryClient.invalidateQueries('crm-all-leads')
+    },
+    onError: (error) => {
+      toast.error(error?.response?.data?.detail || 'Unable to create lead')
+    },
+  })
+
+  const submitCreateLead = useCallback((event) => {
+    event.preventDefault()
+    const payload = {
+      ...createForm,
+      first_name: createForm.first_name.trim(),
+      last_name: createForm.last_name.trim(),
+      phone: createForm.phone.trim(),
+      email: createForm.email.trim(),
+      company_name: createForm.company_name.trim(),
+      category_id: createForm.category_id || undefined,
+      product_ids: createForm.product_ids || undefined,
+      current_stage: createForm.current_stage || undefined,
+      assigned_to: createForm.assigned_to || defaultOwnerId || undefined,
+      interest_level: createForm.interest_level || 'medium',
+      estimated_close_date: createForm.estimated_close_date || undefined,
+      remark: createForm.remark.trim(),
+      tag: createForm.tag.trim(),
+    }
+    if (!payload.first_name || !payload.last_name || !payload.phone) {
+      toast.error('First name, last name, and phone are required')
+      return
+    }
+    if (!payload.assigned_to) {
+      toast.error('No valid owner found for this company')
+      return
+    }
+    createLeadMutation.mutate(payload)
+  }, [createForm, createLeadMutation, defaultOwnerId])
 
   const moveLeadMutation = useMutation(
     ({ leadId, stageKey }) => crmApi.updatePipelineStage(leadId, { stage: stageKey }),
@@ -241,7 +355,7 @@ export default function CRMPipelinePage() {
         description={selectedStageLabel ? `Showing leads in the ${selectedStageLabel} stage.` : 'Manage your leads and move them through the pipeline.'}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="primary" size="sm" onClick={() => navigate('/crm/leads')}>
+            <Button type="button" variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
               + New Lead
             </Button>
             <Button type="button" variant="secondary" size="sm" onClick={() => navigate('/crm/leads?import=1')}>
@@ -330,6 +444,106 @@ export default function CRMPipelinePage() {
           />
         </div>
       </div>
+      <Modal
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Add lead"
+        description="Capture the basic lead details first, then assign ownership and products."
+        size="lg"
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button type="button" loading={createLeadMutation.isLoading} onClick={submitCreateLead}>Save lead</Button>
+          </div>
+        )}
+      >
+        <form className="space-y-5" onSubmit={submitCreateLead}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">First name *</span>
+              <input className={inputClassName} placeholder="First name" value={createForm.first_name} onChange={(e) => setCreateForm((state) => ({ ...state, first_name: e.target.value }))} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Last name *</span>
+              <input className={inputClassName} placeholder="Last name" value={createForm.last_name} onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Country code</span>
+              <input className={inputClassName} placeholder="Country code" value={createForm.country_code} onChange={(e) => setCreateForm((state) => ({ ...state, country_code: e.target.value }))} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Phone *</span>
+              <input className={inputClassName} placeholder="Phone" value={createForm.phone} onChange={(e) => setCreateForm((state) => ({ ...state, phone: e.target.value }))} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Email</span>
+              <input className={inputClassName} placeholder="Email" value={createForm.email} onChange={(e) => setCreateForm((state) => ({ ...state, email: e.target.value }))} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Company name</span>
+              <input className={inputClassName} placeholder="Company name" value={createForm.company_name} onChange={(e) => setCreateForm((state) => ({ ...state, company_name: e.target.value }))} />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Category</span>
+              <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
+                <option value="">Select category</option>
+                {categories.map((category) => (
+                  <option key={getOptionId(category)} value={getOptionId(category)}>{category.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Product</span>
+              <select className={inputClassName} value={createForm.product_ids || defaultProductIds} onChange={(e) => setCreateForm((state) => ({ ...state, product_ids: e.target.value }))}>
+                <option value="">Select product</option>
+                {products.map((product) => (
+                  <option key={getOptionId(product)} value={getOptionId(product)}>{product.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Stage</span>
+              <select className={inputClassName} value={createForm.current_stage || defaultStageId} onChange={(e) => setCreateForm((state) => ({ ...state, current_stage: e.target.value }))}>
+                <option value="">Select stage</option>
+                {stages.map((stage) => (
+                  <option key={getStageValue(stage)} value={getStageValue(stage)}>{stage.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Owner</span>
+              <select className={inputClassName} value={createForm.assigned_to || defaultOwnerId} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
+                <option value="">Select owner</option>
+                {users.map((user) => (
+                  <option key={getUserId(user)} value={getUserId(user)}>
+                    {user.first_name} {user.last_name} {user.role ? `(${user.role})` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Interest level</span>
+              <select className={inputClassName} value={createForm.interest_level} onChange={(e) => setCreateForm((state) => ({ ...state, interest_level: e.target.value }))}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Estimated close date</span>
+              <input className={inputClassName} type="date" value={createForm.estimated_close_date} onChange={(e) => setCreateForm((state) => ({ ...state, estimated_close_date: e.target.value }))} />
+            </label>
+            <label className="space-y-1 md:col-span-2">
+              <span className="text-xs font-medium text-text-muted">Tags</span>
+              <input className={inputClassName} placeholder="Tags, pipe-separated" value={createForm.tag} onChange={(e) => setCreateForm((state) => ({ ...state, tag: e.target.value }))} />
+            </label>
+            <label className="space-y-1 md:col-span-2">
+              <span className="text-xs font-medium text-text-muted">Remark</span>
+              <textarea className={`${inputClassName} min-h-28`} placeholder="Remark" value={createForm.remark} onChange={(e) => setCreateForm((state) => ({ ...state, remark: e.target.value }))} />
+            </label>
+          </div>
+        </form>
+      </Modal>
     </CRMPage>
   )
 }

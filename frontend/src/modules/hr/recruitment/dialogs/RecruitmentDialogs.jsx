@@ -4,10 +4,10 @@ import { INTERVIEW_DECISIONS } from "../constants";
 import { JobForm } from "../forms/JobForm";
 import { InterviewForm } from "../forms/InterviewForm";
 
-export function JobDialog({ open, job, onClose, onSubmit, loading }) {
+export function JobDialog({ open, job, onClose, onSubmit, loading, departments }) {
   return (
     <Modal isOpen={open} onClose={onClose} title={job ? "Edit job" : "Create job"} size="xl">
-      <JobForm initialValue={job} onSubmit={onSubmit} loading={loading} />
+      <JobForm initialValue={job} onSubmit={onSubmit} loading={loading} departments={departments} />
     </Modal>
   );
 }
