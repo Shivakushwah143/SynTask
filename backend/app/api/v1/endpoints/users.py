@@ -688,6 +688,20 @@ async def create_employee(
     phone: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
+
+    print("\n========== CREATE EMPLOYEE API ==========")
+    print(f"[DEBUG] Email          : {email}")
+    print(f"[DEBUG] Password       : {password}")
+    print(f"[DEBUG] First Name     : {first_name}")
+    print(f"[DEBUG] Last Name      : {last_name}")
+    print(f"[DEBUG] Lead ID        : {lead_id}")
+    print(f"[DEBUG] Department ID  : {department_id}")
+    print(f"[DEBUG] Designation    : {designation}")
+    print(f"[DEBUG] Phone          : {phone}")
+    print(f"[DEBUG] Current User ID: {current_user.id}")
+    print(f"[DEBUG] Current User Email: {current_user.email}")
+    print(f"[DEBUG] Current User Role : {current_user.role}")
+    print("=========================================\n")
     """Create an Employee (Company Admin or Lead)"""
     # Check if email already exists
     existing = await User.find_one(User.email == email)

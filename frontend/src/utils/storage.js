@@ -1,7 +1,7 @@
 /**
  * Storage utilities for auth tokens
- * Uses sessionStorage for normal sessions and localStorage only when
- * "remember me" is selected.
+ * Auth tokens are intentionally not persisted in web storage. The backend
+ * sets httpOnly cookies; these helpers only keep non-sensitive user state.
  */
 
 const TOKEN_KEY = 'auth_token'
@@ -34,8 +34,8 @@ const getActiveStorage = () => {
   const session = getSessionStorage()
   const local = getLocalStorage()
 
-  if (session?.getItem(TOKEN_KEY) || session?.getItem(REFRESH_TOKEN_KEY)) return session
-  if (local?.getItem(TOKEN_KEY) || local?.getItem(REFRESH_TOKEN_KEY)) return local
+  if (session?.getItem(USER_KEY)) return session
+  if (local?.getItem(USER_KEY)) return local
   return session || local
 }
 
@@ -51,18 +51,15 @@ export const saveAuthTokens = (accessToken, refreshToken, rememberMe) => {
 
   removeFromStorage(inactiveStorage)
   clearLegacyCookies()
-
-  if (!targetStorage || !accessToken || !refreshToken) return
-
-  targetStorage.setItem(TOKEN_KEY, accessToken)
-  targetStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
-  if (typeof rememberMe === 'boolean') {
+  targetStorage?.removeItem(TOKEN_KEY)
+  targetStorage?.removeItem(REFRESH_TOKEN_KEY)
+  if (targetStorage && typeof rememberMe === 'boolean') {
     targetStorage.setItem(REMEMBER_KEY, String(rememberMe))
   }
 }
 
-export const saveUserData = (user) => {
-  const targetStorage = getActiveStorage()
+export const saveUserData = (user, rememberMe) => {
+  const targetStorage = getStorageForRememberMe(rememberMe)
   const inactiveStorage = targetStorage === getLocalStorage() ? getSessionStorage() : getLocalStorage()
 
   if (!targetStorage || !user) return
@@ -72,11 +69,11 @@ export const saveUserData = (user) => {
 }
 
 export const getAccessToken = () => {
-  return getSessionStorage()?.getItem(TOKEN_KEY) || getLocalStorage()?.getItem(TOKEN_KEY) || null
+  return null
 }
 
 export const getRefreshToken = () => {
-  return getSessionStorage()?.getItem(REFRESH_TOKEN_KEY) || getLocalStorage()?.getItem(REFRESH_TOKEN_KEY) || null
+  return null
 }
 
 export const getUserData = () => {
@@ -98,7 +95,7 @@ export const clearAuthStorage = () => {
 }
 
 export const hasAuthData = () => {
-  return !!(getAccessToken() && getRefreshToken() && getUserData())
+  return !!getUserData()
 }
 
 export const getStoredAuthData = () => {
@@ -106,8 +103,8 @@ export const getStoredAuthData = () => {
   const refreshToken = getRefreshToken()
   const user = getUserData()
 
-  if (!token || !refreshToken || !user) {
-    if (token || refreshToken || user) clearAuthStorage()
+  if (!user) {
+    if (token || refreshToken) clearAuthStorage()
     return null
   }
 
@@ -115,8 +112,5 @@ export const getStoredAuthData = () => {
 }
 
 export const updateAccessToken = (accessToken) => {
-  const targetStorage = getActiveStorage()
-  if (!targetStorage || !accessToken) return
-  targetStorage.setItem(TOKEN_KEY, accessToken)
   clearLegacyCookies()
 }

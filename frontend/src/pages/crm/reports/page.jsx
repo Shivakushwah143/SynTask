@@ -6,19 +6,7 @@ import { format } from 'date-fns'
 import { crmApi } from '../../../api/crm'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
-
-const formatCurrency = (value, currency = 'INR') => {
-  const numericValue = Number(value || 0)
-  try {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(numericValue)
-  } catch {
-    return `Rs ${numericValue.toLocaleString('en-IN')}`
-  }
-}
+import { formatCurrency } from '../pipeline/utils'
 
 const toCsvValue = (value) => {
   const text = value === null || value === undefined ? '' : String(value)

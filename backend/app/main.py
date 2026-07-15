@@ -5,7 +5,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 import logging
 import time
 from pathlib import Path
@@ -93,8 +92,8 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(), geolocation=(), payment=(), usb=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-    # Allow cross-origin access to uploaded files (images, documents)
-    if request.url.path.startswith("/uploads/") or request.url.path.startswith("/api/v1/files/"):
+    # Public avatars are the only upload-derived asset intentionally exposed cross-origin.
+    if request.url.path.startswith("/api/v1/uploads/avatars/") or request.url.path.startswith("/uploads/avatars/"):
         response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
     else:
         response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
@@ -282,15 +281,13 @@ async def debug_backend():
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
 
-# Serve static files (uploads)
-uploads_dir = Path("uploads")
-uploads_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
 # CORS-enabled avatar endpoint
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pathlib import Path
 from fastapi.responses import FileResponse
+from app.api.dependencies import get_current_user
+from app.api.v1.endpoints.files import UPLOAD_DIR, serve_upload_file
+from app.models.user import User
 
 avatar_router = APIRouter()
 
@@ -303,6 +300,19 @@ async def serve_avatar(filename: str):
     return FileResponse(avatar_path, headers={"Access-Control-Allow-Origin": "*"})
 
 app.include_router(avatar_router, prefix="/api/v1", include_in_schema=False)
+app.include_router(avatar_router, include_in_schema=False)
+
+uploads_router = APIRouter()
+
+@uploads_router.get("/uploads/{file_path:path}")
+async def serve_authenticated_upload(
+    file_path: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Serve uploaded files through authenticated API access."""
+    return serve_upload_file(UPLOAD_DIR, file_path)
+
+app.include_router(uploads_router, prefix="/api/v1", include_in_schema=False)
 
 # Root endpoint
 @app.get("/", tags=["Root"])

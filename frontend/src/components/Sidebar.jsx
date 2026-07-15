@@ -6,6 +6,7 @@ import {
   Bot,
   Briefcase,
   CalendarCheck2,
+  CalendarClock,
   CalendarDays,
   CalendarRange,
   ChevronDown,
@@ -40,7 +41,6 @@ import {
   UserCog,
   UserRoundSearch,
   X,
-  CalendarClock,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
@@ -57,6 +57,12 @@ const Sidebar = ({ isOpen, onClose }) => {
   const userRole = normalizeRole(user?.role);
   const hasModule = (module) =>
     !module || user?.modules?.includes(module) || isSuperAdminRole(userRole);
+  const userCapabilities = new Set(user?.capabilities || user?.permissions || []);
+  const userDepartment = String(user?.department || user?.department_key || '').toLowerCase();
+  const hasCapability = (capability) =>
+    !capability || userCapabilities.has(capability) || isSuperAdminRole(userRole);
+  const hasDepartment = (department) =>
+    !department || !userDepartment || String(department).toLowerCase() === userDepartment || isSuperAdminRole(userRole);
   const [favorites, setFavorites] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('syntask-sidebar-favorites') || '[]')
@@ -358,7 +364,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   ];
 
   const filteredNavigation = navigation.filter(
-    (item) => item.roles.includes(userRole) && hasModule(item.module),
+    (item) => item.roles.includes(userRole) && hasModule(item.module) && hasCapability(item.capability) && hasDepartment(item.department),
   );
   const toggleFavorite = (href) => {
     setFavorites((current) => (
@@ -419,10 +425,10 @@ const Sidebar = ({ isOpen, onClose }) => {
   ];
 
   const filteredCrmNavigation = crmNavigation
-    .filter((item) => item && !['/crm/pipeline', '/crm/leads'].includes(item.href) && (item.roles ? item.roles.includes(userRole) : true));
+    .filter((item) => item && !['/crm/pipeline', '/crm/leads'].includes(item.href) && (item.roles ? item.roles.includes(userRole) : true) && hasCapability(item.capability) && hasDepartment(item.department));
 
   const hrNavigation = HR_MODULES
-    .filter((module) => module.roles.includes(userRole) && (hasModule(module.module) || module.key === "recruitment"))
+    .filter((module) => module.roles.includes(userRole) && (hasModule(module.module) || module.key === "recruitment") && hasCapability(module.capability) && hasDepartment(module.department))
     .flatMap((module) => module.navigation.map((item) => ({ ...item, match: item.href === module.basePath ? module.basePath : undefined })));
 
   const itemByName = filteredNavigation.reduce((acc, item) => {

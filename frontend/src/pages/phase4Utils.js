@@ -1,3 +1,6 @@
+import { format } from 'date-fns'
+import { formatCurrency } from './crm/pipeline/utils'
+
 export const asArray = (value, keys = []) => {
   if (Array.isArray(value)) return value
   if (!value || typeof value !== 'object') return []
@@ -16,18 +19,18 @@ export const formatDate = (value) => {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return String(value)
-  return date.toLocaleDateString()
+  return format(date, 'MMM d, yyyy')
 }
 
 export const formatDateTime = (value) => {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return String(value)
-  return date.toLocaleString()
+  return format(date, 'MMM d, yyyy h:mm a')
 }
 
 export const formatMoney = (value) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0))
+  formatCurrency(value || 0)
 
 export const toFormData = (data) => {
   const formData = new FormData()

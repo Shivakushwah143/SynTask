@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from cryptography.fernet import Fernet
 import secrets
@@ -16,7 +16,7 @@ from app.core.config import settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer token
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -81,9 +81,23 @@ async def decode_token_with_blacklist_check(token: str) -> Dict[str, Any]:
     return decode_token(token)
 
 
-def get_token_from_header(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """Extract token from Authorization header"""
-    return credentials.credentials
+def get_token_from_header(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> str:
+    """Extract token from Authorization header or httpOnly access cookie."""
+    if credentials:
+        return credentials.credentials
+
+    token = request.cookies.get("access_token")
+    if token:
+        return token
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 def verify_token_type(token: str, expected_type: str) -> Dict[str, Any]:

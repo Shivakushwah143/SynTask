@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { format } from 'date-fns'
 import { Building2, Check, X, Plus, RefreshCw } from 'lucide-react'
 import { companiesAPI } from '../api/companies'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -275,7 +276,7 @@ const Companies = () => {
                     <p className="text-sm text-gray-500">{company.email}</p>
                     {company.created_at && (
                       <p className="text-xs text-gray-400 mt-1">
-                        Registered: {new Date(company.created_at).toLocaleDateString()}
+                        Registered: {format(new Date(company.created_at), 'MMM d, yyyy')}
                       </p>
                     )}
                   </div>

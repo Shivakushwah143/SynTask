@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { ClipboardCheck, Edit3, Search, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -21,7 +21,7 @@ export default function EODReports() {
   const [reports, setReports] = useState([])
   const [pending, setPending] = useState([])
 
-  const loadMine = async () => {
+  const loadMine = useCallback(async () => {
     const data = await eodAPI.today()
     setMine(data)
     setForm({
@@ -29,9 +29,9 @@ export default function EODReports() {
       blockers: data.report?.blockers || '',
       tomorrow_plan: data.report?.tomorrow_plan || '',
     })
-  }
+  }, [])
 
-  const loadReview = async () => {
+  const loadReview = useCallback(async () => {
     if (!canReview) return
     const [reportData, pendingData] = await Promise.all([
       eodAPI.list({ start_date: filters.report_date, end_date: filters.report_date, search: filters.search || undefined, team: filters.team || undefined }),
@@ -39,7 +39,7 @@ export default function EODReports() {
     ])
     setReports(reportData.reports || [])
     setPending(pendingData.pending || [])
-  }
+  }, [canReview, filters.report_date, filters.search, filters.team])
 
   useEffect(() => {
     let active = true
@@ -58,13 +58,13 @@ export default function EODReports() {
     return () => {
       active = false
     }
-  }, [canReview])
+  }, [canReview, loadMine, loadReview])
 
   useEffect(() => {
     loadReview().catch((error) => console.error(error))
-  }, [filters.report_date])
+  }, [filters.report_date, loadReview])
 
-  const autoSummary = mine?.auto_summary || {}
+  const autoSummary = useMemo(() => mine?.auto_summary || {}, [mine?.auto_summary])
   const status = mine?.status || 'not_submitted'
   const statusLabel = status === 'not_submitted' ? 'Not Submitted' : status === 'leave' ? 'Leave' : 'Submitted'
   const isLeave = status === 'leave'

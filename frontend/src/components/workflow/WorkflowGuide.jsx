@@ -1,7 +1,7 @@
 import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-export function WorkflowGuide({ className = '', title, description, nextStep, primaryAction, secondaryAction, bullets = [] }) {
+export function WorkflowGuide({ className = '', title, description, primaryAction, secondaryAction }) {
   return (
     <section className={`rounded-3xl border border-surface-border bg-gradient-to-br from-surface to-surface-muted p-5 shadow-sm dark:border-border dark:from-black dark:via-black/95 dark:to-black/90 ${className}`}>
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">

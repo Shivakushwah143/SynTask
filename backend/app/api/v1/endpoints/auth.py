@@ -1,7 +1,7 @@
 """
 Authentication Endpoints
 """
-from fastapi import APIRouter, HTTPException, status, Depends, Form, Query, Body, File, UploadFile, Request
+from fastapi import APIRouter, HTTPException, status, Depends, Form, Query, Body, File, UploadFile, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Optional, Dict
 from datetime import datetime, timedelta
@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 ALLOWED_AVATAR_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+ACCESS_COOKIE_NAME = "access_token"
+REFRESH_COOKIE_NAME = "refresh_token"
 
 
 class GoogleLoginRequest(BaseModel):
@@ -88,6 +90,41 @@ def _auth_response(user: User, remember_me: bool = False) -> Dict:
     }
 
 
+def _set_auth_cookies(response: Response, auth_payload: Dict, remember_me: bool = False) -> None:
+    access_max_age = int((timedelta(days=30) if remember_me else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)).total_seconds())
+    refresh_max_age = int(timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS).total_seconds())
+    cookie_options = {
+        "httponly": True,
+        "secure": settings.AUTH_COOKIE_SECURE,
+        "samesite": settings.AUTH_COOKIE_SAMESITE,
+        "domain": settings.AUTH_COOKIE_DOMAIN,
+        "path": "/",
+    }
+    response.set_cookie(
+        ACCESS_COOKIE_NAME,
+        auth_payload["access_token"],
+        max_age=access_max_age,
+        **cookie_options,
+    )
+    response.set_cookie(
+        REFRESH_COOKIE_NAME,
+        auth_payload["refresh_token"],
+        max_age=refresh_max_age,
+        **cookie_options,
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    cookie_options = {
+        "secure": settings.AUTH_COOKIE_SECURE,
+        "samesite": settings.AUTH_COOKIE_SAMESITE,
+        "domain": settings.AUTH_COOKIE_DOMAIN,
+        "path": "/",
+    }
+    response.delete_cookie(ACCESS_COOKIE_NAME, **cookie_options)
+    response.delete_cookie(REFRESH_COOKIE_NAME, **cookie_options)
+
+
 def _reject_blocked_account(user: User) -> None:
     if user.status in {UserStatus.INACTIVE, UserStatus.SUSPENDED}:
         raise HTTPException(
@@ -115,6 +152,7 @@ async def find_user_by_reset_token(token: str) -> Optional[User]:
 @limiter.limit("10/minute")
 async def login(
     request: Request,
+    response: Response,
     login_request: LoginRequest
 ):
     """Login endpoint"""
@@ -141,13 +179,16 @@ async def login(
             detail="Account is not active"
         )
     
-    return _auth_response(user, login_request.remember_me)
+    auth_payload = _auth_response(user, login_request.remember_me)
+    _set_auth_cookies(response, auth_payload, login_request.remember_me)
+    return auth_payload
 
 
 @router.post("/google")
 @limiter.limit("10/minute")
 async def google_login(
     request: Request,
+    response: Response,
     google_request: GoogleLoginRequest
 ):
     """Login or link account with a backend-verified Google ID token."""
@@ -215,7 +256,9 @@ async def google_login(
             user.last_login = datetime.utcnow()
             user.updated_at = datetime.utcnow()
             await user.save()
-            return _auth_response(user, google_request.remember_me)
+            auth_payload = _auth_response(user, google_request.remember_me)
+            _set_auth_cookies(response, auth_payload, google_request.remember_me)
+            return auth_payload
 
         first_name, last_name = _split_google_name(name, email)
         user = User(
@@ -234,7 +277,9 @@ async def google_login(
             last_login=datetime.utcnow(),
         )
         await user.insert()
-        return _auth_response(user, google_request.remember_me)
+        auth_payload = _auth_response(user, google_request.remember_me)
+        _set_auth_cookies(response, auth_payload, google_request.remember_me)
+        return auth_payload
     except HTTPException:
         raise
     except Exception as exc:
@@ -249,16 +294,24 @@ async def google_login(
 @limiter.limit("30/minute")
 async def refresh_token(
     request: Request,
-    refresh_request: RefreshTokenRequest
+    response: Response,
+    refresh_request: Optional[RefreshTokenRequest] = Body(None)
 ):
     """Refresh access token"""
     try:
-        if await is_token_blacklisted(refresh_request.refresh_token):
+        refresh_token_value = refresh_request.refresh_token if refresh_request else None
+        refresh_token_value = refresh_token_value or request.cookies.get(REFRESH_COOKIE_NAME)
+        if not refresh_token_value:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token"
             )
-        payload = decode_refresh_token(refresh_request.refresh_token)
+        if await is_token_blacklisted(refresh_token_value):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token"
+            )
+        payload = decode_refresh_token(refresh_token_value)
         user_id = payload.get("sub")
         
         user = await User.get(user_id)
@@ -277,6 +330,16 @@ async def refresh_token(
                 "active_module": getattr(user, "active_module", "task"),
             }
         )
+        response.set_cookie(
+            ACCESS_COOKIE_NAME,
+            access_token,
+            max_age=int(timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES).total_seconds()),
+            httponly=True,
+            secure=settings.AUTH_COOKIE_SECURE,
+            samesite=settings.AUTH_COOKIE_SAMESITE,
+            domain=settings.AUTH_COOKIE_DOMAIN,
+            path="/",
+        )
         
         return {
             "access_token": access_token,
@@ -293,14 +356,18 @@ async def refresh_token(
 
 @router.post("/logout")
 async def logout(
+    request: Request,
+    response: Response,
     token: str = Depends(get_token_from_header),
     refresh_token: Optional[str] = Body(None, embed=True),
     current_user: User = Depends(get_current_user)
 ):
     """Logout by revoking the current access token and optional refresh token."""
     await blacklist_token(token)
-    if refresh_token:
-        await blacklist_token(refresh_token)
+    refresh_token_value = refresh_token or request.cookies.get(REFRESH_COOKIE_NAME)
+    if refresh_token_value:
+        await blacklist_token(refresh_token_value)
+    _clear_auth_cookies(response)
     return {"success": True, "message": "Logged out successfully"}
 
 
