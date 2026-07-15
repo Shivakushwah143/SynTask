@@ -87,6 +87,7 @@ logger = logging.getLogger(__name__)
 
 # Global MongoDB client
 client: AsyncIOMotorClient = None
+MONGODB_TIMEOUT_MS = 5000
 
 
 async def init_db():
@@ -108,15 +109,15 @@ async def init_db():
             # For mongodb+srv://, don't set tls explicitly - it's automatic
             client = AsyncIOMotorClient(
                 mongodb_url,
-                serverSelectionTimeoutMS=30000,  # 30 seconds timeout
-                connectTimeoutMS=20000,  # 20 seconds connection timeout
+                serverSelectionTimeoutMS=MONGODB_TIMEOUT_MS,
+                connectTimeoutMS=MONGODB_TIMEOUT_MS,
             )
         else:
-            # For regular mongodb:// connections, configure TLS if needed
+            # For regular mongodb:// connections, fail fast in dev/QA.
             client = AsyncIOMotorClient(
                 mongodb_url,
-                serverSelectionTimeoutMS=30000,
-                connectTimeoutMS=20000,
+                serverSelectionTimeoutMS=MONGODB_TIMEOUT_MS,
+                connectTimeoutMS=MONGODB_TIMEOUT_MS,
             )
         
         # Ping the database to verify connection

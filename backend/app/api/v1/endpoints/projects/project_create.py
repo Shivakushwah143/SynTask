@@ -137,7 +137,7 @@ async def create_project(
         "lead_id": lead_id,
         "assigned_to": assigned_to,
         "assigned_by": str(current_user.id) if assigned_to else None,
-        "assigned_at": datetime.utcnow() if assigned_to else None,
+        "assigned_at": datetime.now() if assigned_to else None,
         "start_date": start_date_obj,
         "delivery_date": delivery_date_obj,
         "created_by": str(current_user.id),
@@ -197,7 +197,7 @@ async def create_project(
         client_project_ids = [str(item) for item in (client.project_ids or [])]
         if str(project.id) not in client_project_ids:
             client.project_ids = client_project_ids + [str(project.id)]
-        client.updated_at = datetime.utcnow()
+        client.updated_at = datetime.now()
         await client.save()
     
     # Immediately refresh and verify user-provided project_id was saved correctly
@@ -308,3 +308,4 @@ async def create_project(
     if background_warnings:
         response["warnings"] = background_warnings
     return response
+

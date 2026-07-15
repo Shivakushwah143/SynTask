@@ -70,11 +70,11 @@ async def bulk_merge_prospects(payload: BulkLeadMergeRequest, current_user: User
         merged_products = list({*(target.product_ids or []), *(source.product_ids or [])})
         target.tag = merged_tags
         target.product_ids = merged_products
-        target.updated_at = datetime.utcnow()
+        target.updated_at = datetime.now()
         await target.save()
 
         source.deleted = True
-        source.updated_at = datetime.utcnow()
+        source.updated_at = datetime.now()
         await source.save()
 
         total_merged += 1
@@ -544,7 +544,7 @@ async def create_prospect(
             "category_id": category_id,
             "product_ids": _parse_multi_value(product_ids) if product_ids else [],
             "interest_level": interest_level or "medium",
-            "estimated_close_date": estimated_close_date or datetime.utcnow().date().isoformat(),
+            "estimated_close_date": estimated_close_date or datetime.now().date().isoformat(),
             "assigned_to": assigned_to,
             "current_stage": current_stage or "new",
             "email": email,
@@ -658,3 +658,4 @@ async def preview_bulk_upload_prospects(
 @router.post("/imports/{job_id}/retry")
 async def retry_import_job(job_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
     return await LeadEngine.retry_import_job(current_user, job_id)
+

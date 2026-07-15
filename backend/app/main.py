@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 import logging
 import time
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 # Configure logging early so optional imports can report failures safely.
 logging.basicConfig(
@@ -49,6 +50,99 @@ except (ImportError, ModuleNotFoundError) as e:
     logger.warning(f"Semantic module not available: {e}")
     SEMANTIC_AVAILABLE = False
 
+async def _startup_tasks() -> None:
+    logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
+    logger.info(f"Environment: {settings.ENVIRONMENT}")
+    if settings.ENVIRONMENT == "production":
+        assert len(settings.SECRET_KEY) >= 32, "SECRET_KEY too short for production"
+        assert "changeme" not in settings.SECRET_KEY.lower(), "SECRET_KEY is default value"
+        assert "changeme" not in settings.SUPER_ADMIN_PASSWORD.lower(), "SUPER_ADMIN_PASSWORD is default"
+
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+        await rebuild_all_ancestors()
+        app.state.db_ready = True
+    except Exception as db_err:
+        logger.error(f"Database connection failed on startup: {db_err}")
+        app.state.db_ready = False
+        if settings.ENVIRONMENT == "production":
+            raise
+        logger.warning(
+            "DEVELOPMENT MODE: Backend started WITHOUT database. "
+            "Most API endpoints will fail. Fix MongoDB connection and restart."
+        )
+    register_knowledge_subscribers()
+    register_recruitment_subscribers()
+    logger.info("Knowledge subscribers registered")
+    from app.models.user import User, UserRole
+    from app.models.attendance import Attendance, AttendanceStatus
+    try:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        async for att in Attendance.find({"date": today_str, "status": AttendanceStatus.WORKING.value}):
+            user = await User.get(str(att.employee_id))
+            if user and user.role == UserRole.MANAGER:
+                att.status = AttendanceStatus.OFFLINE
+                now = datetime.now()
+                att.logout_time = now
+                att.monitoring_end_time = now
+                wt = compute_work_type(att.total_working_hours)
+                att.work_type = wt["work_type"]
+                att.overtime_seconds = wt["overtime_seconds"]
+                await att.save()
+                logger.info(f"Manager {user.email} attendance reset to Offline on startup.")
+    except Exception as attendance_err:
+        logger.warning(f"Attendance startup cleanup skipped: {attendance_err}")
+    if SEMANTIC_AVAILABLE:
+        register_semantic_subscribers()
+        logger.info("Semantic subscribers registered")
+    else:
+        logger.info("Semantic subscribers skipped (dependencies not available)")
+    try:
+        await get_redis()
+    except Exception as redis_err:
+        app.state.db_ready = False if not app.state.db_ready else app.state.db_ready
+        logger.warning(f"Redis startup check skipped or failed: {redis_err}")
+
+    import asyncio
+    from app.core.deadline_checker import run_deadline_checker
+    from app.services.hr_mail_sync import run_imap_recruitment_sync_loop
+    try:
+        asyncio.create_task(run_deadline_checker())
+        logger.info("Deadline checker background task started")
+    except Exception as deadline_err:
+        logger.warning(f"Deadline checker startup skipped: {deadline_err}")
+    try:
+        asyncio.create_task(run_imap_recruitment_sync_loop())
+        logger.info("IMAP recruitment sync background task started")
+    except Exception as imap_err:
+        logger.warning(f"IMAP recruitment sync startup skipped: {imap_err}")
+
+
+async def _shutdown_tasks() -> None:
+    logger.info("Shutting down application")
+    await close_redis()
+    await close_db()
+    logger.info("Database connections closed")
+
+
+async def startup_event():
+    await _startup_tasks()
+
+
+async def shutdown_event():
+    await _shutdown_tasks()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await _startup_tasks()
+    try:
+        yield
+    finally:
+        await _shutdown_tasks()
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -57,9 +151,11 @@ app = FastAPI(
     docs_url="/api/docs" if settings.ENVIRONMENT != "production" else None,
     redoc_url="/api/redoc" if settings.ENVIRONMENT != "production" else None,
     openapi_url="/api/openapi.json" if settings.ENVIRONMENT != "production" else None,
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
+app.state.db_ready = False
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Middleware - Allow frontend origins
@@ -197,73 +293,20 @@ async def rebuild_all_ancestors():
         logger.error(f"Failed to rebuild hierarchy ancestors: {str(e)}")
 
 
-# Startup event
-@app.on_event("startup")
-async def startup_event():
-    logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
-    logger.info(f"Environment: {settings.ENVIRONMENT}")
-    if settings.ENVIRONMENT == "production":
-        assert len(settings.SECRET_KEY) >= 32, "SECRET_KEY too short for production"
-        assert "changeme" not in settings.SECRET_KEY.lower(), "SECRET_KEY is default value"
-        assert "changeme" not in settings.SUPER_ADMIN_PASSWORD.lower(), "SUPER_ADMIN_PASSWORD is default"
-
-    await init_db()
-    logger.info("Database initialized successfully")
-    await rebuild_all_ancestors()
-    register_knowledge_subscribers()
-    register_recruitment_subscribers()
-    logger.info("Knowledge subscribers registered")
-    # Cleanup lingering manager Working sessions on server start to prevent auto-start after restart
-    from datetime import datetime
-    from app.models.user import User, UserRole
-    from app.models.attendance import Attendance, AttendanceStatus
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
-    async for att in Attendance.find({"date": today_str, "status": AttendanceStatus.WORKING.value}):
-        user = await User.get(str(att.employee_id))
-        if user and user.role == UserRole.MANAGER:
-            # Transition to offline state
-            att.status = AttendanceStatus.OFFLINE
-            now = datetime.utcnow()
-            att.logout_time = now
-            att.monitoring_end_time = now
-            # Compute work type based on accumulated hours
-            wt = compute_work_type(att.total_working_hours)
-            att.work_type = wt["work_type"]
-            att.overtime_seconds = wt["overtime_seconds"]
-            await att.save()
-            logger.info(f"Manager {user.email} attendance reset to Offline on startup.")
-    if SEMANTIC_AVAILABLE:
-        register_semantic_subscribers()
-        logger.info("Semantic subscribers registered")
-    else:
-        logger.info("Semantic subscribers skipped (dependencies not available)")
-    await get_redis()
-    
-    # Start background task for deadline checking
-    import asyncio
-    from app.core.deadline_checker import run_deadline_checker
-    from app.services.hr_mail_sync import run_imap_recruitment_sync_loop
-    asyncio.create_task(run_deadline_checker())
-    logger.info("Deadline checker background task started")
-    asyncio.create_task(run_imap_recruitment_sync_loop())
-    logger.info("IMAP recruitment sync background task started")
-
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Shutting down application")
-    await close_redis()
-    await close_db()
-    logger.info("Database connections closed")
-
 # Health check endpoint
 @app.get("/health", tags=["Health"])
-async def health_check():
-    return {
-        "status": "healthy",
-        "version": settings.VERSION,
-        "environment": settings.ENVIRONMENT
-    }
+async def health_check(request: Request):
+    db_ready = getattr(request.app.state, "db_ready", False)
+    status = "healthy" if db_ready else "degraded"
+    return JSONResponse(
+        status_code=200 if db_ready else 503,
+        content={
+            "status": status,
+            "version": settings.VERSION,
+            "environment": settings.ENVIRONMENT,
+            "database": "connected" if db_ready else "unavailable",
+        },
+    )
 
 
 # Debug endpoint: confirm backend is running new code (user-provided project_id)
@@ -313,3 +356,4 @@ async def root():
         "company": "SynTask",
         "copyright": "© 2025 SynTask. All Rights Reserved."
     }
+

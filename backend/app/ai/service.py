@@ -355,7 +355,7 @@ class AIService:
             prompt_version=resolution.prompt_version,
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(),
             context=context,
         )
 
@@ -541,7 +541,7 @@ class AIService:
             prompt_version=resolution.prompt_version,
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(),
             context=context,
         )
 
@@ -566,7 +566,7 @@ class AIService:
             prompt_role_key=f"chat-{resolution.role_key}",
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(),
             context=context,
         )
 
@@ -664,7 +664,7 @@ class AIService:
             prompt_version=resolution.prompt_version,
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(),
             context=context,
         )
 
@@ -729,7 +729,7 @@ class AIService:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -865,7 +865,7 @@ class AIService:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1026,7 +1026,7 @@ class AIService:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1181,7 +1181,7 @@ class AIService:
                 prompt_role_key=prompt_package.prompt_role_key,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1377,7 +1377,7 @@ class AIService:
                 prompt_role_key=prompt_package.prompt_role_key,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1474,7 +1474,7 @@ class AIService:
                 prompt_role_key="marketing_chat-fallback",
                 fallback_chain=[],
                 fallback_used=True,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(),
                 context={},
             )
             
@@ -1541,3 +1541,4 @@ class AIService:
             )
             for log in logs
         ]
+

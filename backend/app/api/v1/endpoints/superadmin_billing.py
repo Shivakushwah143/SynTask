@@ -66,9 +66,9 @@ async def get_revenue_analytics(
 ):
     """Get revenue analytics (MRR, ARR, Total Revenue)"""
     if not start_date:
-        start_date = datetime.utcnow().replace(day=1)
+        start_date = datetime.now().replace(day=1)
     if not end_date:
-        end_date = datetime.utcnow()
+        end_date = datetime.now()
     
     # Get all paid transactions in the period
     transactions = await BillingTransaction.find(
@@ -91,7 +91,7 @@ async def get_revenue_analytics(
     arr = sum(t.total_amount for t in arr_transactions) * 12
     
     # Get current month revenue
-    current_month_start = datetime.utcnow().replace(day=1)
+    current_month_start = datetime.now().replace(day=1)
     current_month_revenue = sum(
         t.total_amount for t in transactions 
         if t.payment_date >= current_month_start
@@ -143,7 +143,7 @@ async def generate_invoice(
 ):
     """Generate invoice for a company"""
     # Generate invoice number
-    invoice_number = f"INV-{datetime.utcnow().strftime('%Y%m%d')}-{datetime.utcnow().microsecond}"
+    invoice_number = f"INV-{datetime.now().strftime('%Y%m%d')}-{datetime.now().microsecond}"
     
     # Calculate amounts
     tax_amount = (request.amount * request.tax_rate) / 100
@@ -154,8 +154,8 @@ async def generate_invoice(
         company_id=request.company_id,
         subscription_id=request.subscription_id,
         invoice_number=invoice_number,
-        invoice_date=datetime.utcnow(),
-        due_date=datetime.utcnow() + timedelta(days=15),
+        invoice_date=datetime.now(),
+        due_date=datetime.now() + timedelta(days=15),
         amount=request.amount,
         tax_amount=tax_amount,
         total_amount=total_amount,
@@ -235,7 +235,7 @@ async def razorpay_webhook(
             )
             if transaction:
                 transaction.payment_status = PaymentStatus.PAID
-                transaction.payment_date = datetime.utcnow()
+                transaction.payment_date = datetime.now()
                 transaction.payment_method = PaymentMethod.RAZORPAY
                 await transaction.save()
                 
@@ -243,7 +243,7 @@ async def razorpay_webhook(
                 if transaction.subscription_id:
                     subscription = await CompanySubscription.get(transaction.subscription_id)
                     if subscription:
-                        subscription.last_payment_date = datetime.utcnow()
+                        subscription.last_payment_date = datetime.now()
                         subscription.last_payment_amount = transaction.total_amount
                         subscription.last_payment_status = "paid"
                         subscription.status = CompanySubscriptionStatus.ACTIVE
@@ -272,18 +272,18 @@ async def razorpay_webhook(
                 CompanySubscription.razorpay_subscription_id == subscription_id
             )
             if subscription:
-                subscription.last_payment_date = datetime.utcnow()
+                subscription.last_payment_date = datetime.now()
                 subscription.status = CompanySubscriptionStatus.ACTIVE
                 await subscription.save()
         
         webhook.status = WebhookStatus.PROCESSED
-        webhook.processed_at = datetime.utcnow()
+        webhook.processed_at = datetime.now()
     except Exception as e:
         webhook.status = WebhookStatus.FAILED
         webhook.error_message = str(e)
         webhook.retry_count += 1
     
-    webhook.updated_at = datetime.utcnow()
+    webhook.updated_at = datetime.now()
     await webhook.save()
     
     return {"status": "success"}
@@ -293,7 +293,7 @@ async def razorpay_webhook(
 async def export_billing_data(
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
-    format: str = Query("csv", regex="^(csv|excel)$"),
+    format: str = Query("csv", pattern="^(csv|excel)$"),
     current_user: User = Depends(get_current_super_admin)
 ):
     """Export billing data to CSV/Excel"""
@@ -332,6 +332,7 @@ async def export_billing_data(
         "data": export_data,
         "count": len(export_data)
     }
+
 
 
 

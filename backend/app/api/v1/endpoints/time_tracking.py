@@ -39,7 +39,7 @@ async def log_time(
     total_hours = hours + (minutes / 60.0 if minutes else 0)
     
     # Parse date
-    log_date = datetime.utcnow()
+    log_date = datetime.now()
     if date:
         try:
             log_date = datetime.fromisoformat(date.replace('Z', '+00:00'))
@@ -80,8 +80,8 @@ async def log_time(
     if is_billable:
         summary.total_billable_hours += total_hours
     summary.total_entries += 1
-    summary.last_logged_at = datetime.utcnow()
-    summary.updated_at = datetime.utcnow()
+    summary.last_logged_at = datetime.now()
+    summary.updated_at = datetime.now()
     await summary.save()
     
     # Update task actual hours
@@ -217,7 +217,7 @@ async def delete_time_log(
         if time_log.is_billable:
             summary.total_billable_hours -= time_log.hours
         summary.total_entries -= 1
-        summary.updated_at = datetime.utcnow()
+        summary.updated_at = datetime.now()
         await summary.save()
     
     # Update task
@@ -288,4 +288,5 @@ async def get_user_time_logs(
         "skip": skip,
         "limit": limit
     }
+
 

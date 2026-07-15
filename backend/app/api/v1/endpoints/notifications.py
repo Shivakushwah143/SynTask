@@ -71,7 +71,7 @@ async def mark_notification_as_read(
         )
     
     notification.is_read = True
-    notification.read_at = datetime.utcnow()
+    notification.read_at = datetime.now()
     await notification.save()
     
     return {"message": "Notification marked as read"}
@@ -88,7 +88,7 @@ async def mark_all_notifications_as_read(
     
     for notification in notifications:
         notification.is_read = True
-        notification.read_at = datetime.utcnow()
+        notification.read_at = datetime.now()
         await notification.save()
     
     return {"message": f"{len(notifications)} notifications marked as read"}
@@ -117,3 +117,4 @@ async def delete_notification(
     await notification.delete()
     
     return {"message": "Notification deleted successfully"}
+

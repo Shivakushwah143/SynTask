@@ -20,7 +20,7 @@ router = APIRouter()
 
 async def generate_ticket_number(company_id: str) -> str:
     """Generate unique ticket number: TKT-YYYY-XXXX"""
-    year = datetime.utcnow().year
+    year = datetime.now().year
     # Get count of tickets for this company this year
     prefix = f"TKT-{year}-"
     # Find the highest number for this year
@@ -144,7 +144,7 @@ async def create_ticket(
                 )
         # Leads and Admins can assign to anyone in the company
         assigned_by = str(current_user.id)
-        assigned_at = datetime.utcnow()
+        assigned_at = datetime.now()
     
     # Generate ticket number
     ticket_number = await generate_ticket_number(current_user.company_id)
@@ -384,15 +384,15 @@ async def update_ticket_status(
     
     # Update ticket
     ticket.status = status_enum
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = datetime.now()
     
     # Handle resolution
     if status_enum in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
         ticket.resolution = resolution
-        ticket.resolved_at = datetime.utcnow()
+        ticket.resolved_at = datetime.now()
         ticket.resolved_by = str(current_user.id)
         if status_enum == TicketStatus.CLOSED:
-            ticket.closed_at = datetime.utcnow()
+            ticket.closed_at = datetime.now()
     elif status_enum == TicketStatus.REOPENED:
         ticket.resolution = None
         ticket.resolved_at = None
@@ -458,8 +458,8 @@ async def assign_ticket(
     # Update ticket
     ticket.assigned_to = assigned_to
     ticket.assigned_by = str(current_user.id) if assigned_to else None
-    ticket.assigned_at = datetime.utcnow() if assigned_to else None
-    ticket.updated_at = datetime.utcnow()
+    ticket.assigned_at = datetime.now() if assigned_to else None
+    ticket.updated_at = datetime.now()
     
     await ticket.save()
     await cache_delete_pattern(f"dashboard:stats:{ticket.company_id}:*")
@@ -590,7 +590,7 @@ async def update_ticket(
                 detail=f"Invalid priority. Must be one of: {[p.value for p in TicketPriority]}"
             )
     
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = datetime.now()
     await ticket.save()
     
     return {
@@ -715,7 +715,7 @@ async def add_ticket_comment(
     await comment.save()
     
     # Update ticket's updated_at
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = datetime.now()
     await ticket.save()
     
     return {
@@ -727,3 +727,4 @@ async def add_ticket_comment(
         "is_internal": comment.is_internal,
         "created_at": comment.created_at,
     }
+

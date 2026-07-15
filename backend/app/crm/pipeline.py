@@ -215,7 +215,7 @@ def _serialize_lead(
     company_map: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     stage_entered_at = prospect.stage_entered_at or prospect.created_at
-    now = datetime.utcnow()
+    now = datetime.now()
     days_in_stage = prospect.days_in_stage
     if stage_entered_at:
         days_in_stage = max((now - stage_entered_at).days, 0)
@@ -266,7 +266,7 @@ def _build_pipeline_summary(prospects: List[SalesProspect]) -> Dict[str, Any]:
     lost = 0
     total_days = 0
     staged_count = 0
-    now = datetime.utcnow()
+    now = datetime.now()
 
     for prospect in prospects:
         if prospect.status == ProspectStatus.ACTIVE:
@@ -431,7 +431,7 @@ class CRMPipelineService:
                 detail=f"Illegal transition {current_stage} -> {resolved_stage}",
             )
 
-        now = datetime.utcnow()
+        now = datetime.now()
         previous_entered_at = prospect.stage_entered_at or prospect.created_at or now
         days_in_previous_stage = max((now - previous_entered_at).days, 0)
 
@@ -529,7 +529,7 @@ class CRMPipelineService:
             automation_result: Dict[str, Any] = {"status": "skipped"}
             try:
                 if deal:
-                    now = datetime.utcnow()
+                    now = datetime.now()
                     deal.stage = "won"
                     deal.updated_by = str(getattr(current_user, "id", ""))
                     deal.updated_by_name = _user_display_name(current_user)
@@ -580,7 +580,7 @@ class CRMPipelineService:
         reopened_stage = _resolve_stage_name("New", stage_index) or "New"
         previous_stage = _resolve_stage_name(prospect.current_stage, stage_index) or prospect.current_stage or "Lost"
 
-        now = datetime.utcnow()
+        now = datetime.now()
         days_in_previous_stage = max((now - (prospect.stage_entered_at or prospect.created_at or now)).days, 0)
 
         prospect.current_stage = reopened_stage
@@ -692,7 +692,7 @@ class CRMPipelineService:
         if prospect.status != ProspectStatus.LOST:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reminders can only be created for lost leads")
 
-        now = datetime.utcnow()
+        now = datetime.now()
         activity = CRMActivity(
             company_id=company_id,
             entity_type="lead",
@@ -771,7 +771,7 @@ class CRMPipelineService:
         if prospect.status != ProspectStatus.LOST:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nurture can only be started for lost leads")
 
-        now = datetime.utcnow()
+        now = datetime.now()
         prospect.updated_at = now
         prospect.remark = prospect.remark if prospect.remark else None
         await prospect.save()
@@ -863,3 +863,4 @@ class CRMPipelineService:
                 for item in history_items
             ],
         }
+

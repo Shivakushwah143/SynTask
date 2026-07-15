@@ -23,7 +23,7 @@ async def get_activity_timeline(
     current_user: User = Depends(get_current_user)
 ):
     """Get activity timeline for user's company"""
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now() - timedelta(days=days)
     activities = []
     
     # Get task activities
@@ -131,4 +131,5 @@ async def get_activity_timeline(
         "skip": skip,
         "limit": limit
     }
+
 

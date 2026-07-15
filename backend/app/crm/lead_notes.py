@@ -129,7 +129,7 @@ class CRMLeadNotesService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Note content is required")
 
         company_id = _company_id_for_lead(current_user, prospect)
-        now = datetime.utcnow()
+        now = datetime.now()
         note = SalesLeadNote(
             lead_id=str(prospect.id),
             company_id=company_id,
@@ -174,7 +174,7 @@ class CRMLeadNotesService:
         if not content_clean:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Note content is required")
 
-        now = datetime.utcnow()
+        now = datetime.now()
         note.content = content_clean
         note.is_edited = True
         note.edited_at = now
@@ -210,7 +210,7 @@ class CRMLeadNotesService:
     @staticmethod
     async def delete_note(current_user: User, lead_id: str, note_id: str) -> Dict[str, Any]:
         prospect, note, company_id = await _load_note(current_user, lead_id, note_id)
-        now = datetime.utcnow()
+        now = datetime.now()
         note.deleted = True
         note.deleted_at = now
         note.deleted_by = str(getattr(current_user, "id", ""))
@@ -242,3 +242,4 @@ class CRMLeadNotesService:
             "message": "Note deleted successfully",
             "note": _serialize_note(note, user_map),
         }
+

@@ -70,7 +70,7 @@ class AutomationEngine:
             
             # Update rule statistics
             rule.run_count += 1
-            rule.last_run_at = datetime.utcnow()
+            rule.last_run_at = datetime.now()
             await rule.save()
             
             return len(actions_failed) == 0
@@ -155,7 +155,7 @@ class AutomationEngine:
         if task:
             task.assigned_to = assignee_id
             task.assigned_by = trigger_data.get("user_id")
-            task.updated_at = datetime.utcnow()
+            task.updated_at = datetime.now()
             await task.save()
     
     @staticmethod
@@ -171,9 +171,9 @@ class AutomationEngine:
             task = await Task.get(task_id)
             if task:
                 task.status = TaskStatus(new_status.lower())
-                task.updated_at = datetime.utcnow()
+                task.updated_at = datetime.now()
                 if new_status.lower() == "completed":
-                    task.completed_at = datetime.utcnow()
+                    task.completed_at = datetime.now()
                 await task.save()
         except:
             pass
@@ -191,7 +191,7 @@ class AutomationEngine:
             task = await Task.get(task_id)
             if task:
                 task.priority = TaskPriority(priority.lower())
-                task.updated_at = datetime.utcnow()
+                task.updated_at = datetime.now()
                 await task.save()
         except:
             pass
@@ -253,11 +253,12 @@ class AutomationEngine:
         task = await Task.get(task_id)
         if task and hasattr(task, field):
             setattr(task, field, value)
-            task.updated_at = datetime.utcnow()
+            task.updated_at = datetime.now()
             await task.save()
 
 
 # Global instance
 automation_engine = AutomationEngine()
+
 
 

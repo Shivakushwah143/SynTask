@@ -96,7 +96,7 @@ class CRMLeadFilesService:
     async def upload_file(current_user: User, lead_id: str, file: UploadFile) -> Dict[str, Any]:
         prospect = await _load_lead(lead_id, current_user)
         stored = await FileService.store_uploaded_file(file, upload_dir=FileService.resolve_upload_dir(), url_prefix="/api/v1/files")
-        now = datetime.utcnow()
+        now = datetime.now()
         file_record = SalesLeadFile(
             lead_id=str(prospect.id),
             company_id=str(prospect.company_id),
@@ -151,7 +151,7 @@ class CRMLeadFilesService:
         if file_record.company_id != str(prospect.company_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-        now = datetime.utcnow()
+        now = datetime.now()
         file_record.deleted = True
         file_record.deleted_at = now
         file_record.deleted_by = str(getattr(current_user, "id", ""))
@@ -185,3 +185,4 @@ class CRMLeadFilesService:
             "message": "File deleted successfully",
             "file": _file_metadata(file_record),
         }
+

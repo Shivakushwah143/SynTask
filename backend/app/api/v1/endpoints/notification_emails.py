@@ -215,4 +215,5 @@ async def test_email(current_user: User = Depends(get_current_user)):
         actor_id=str(current_user.id),
         company_id=current_user.company_id or "platform",
     )
-    return {"success": True, "data": result, "tested_at": datetime.utcnow().isoformat()}
+    return {"success": True, "data": result, "tested_at": datetime.now().isoformat()}
+
