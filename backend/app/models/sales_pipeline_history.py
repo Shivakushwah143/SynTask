@@ -31,4 +31,6 @@ class SalesPipelineHistory(Document):
             "user_id",
             "transitioned_at",
             IndexModel([("company_id", ASCENDING), ("lead_id", ASCENDING), ("transitioned_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("transitioned_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("new_stage", ASCENDING), ("transitioned_at", DESCENDING)]),
         ]

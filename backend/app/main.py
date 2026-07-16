@@ -189,8 +189,12 @@ async def add_security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(self), display-capture=(self), microphone=(), geolocation=(), payment=(), usb=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-    # Public avatars are the only upload-derived asset intentionally exposed cross-origin.
-    if request.url.path.startswith("/api/v1/uploads/avatars/") or request.url.path.startswith("/uploads/avatars/"):
+    # Allow cross-origin access to uploaded files (images, documents)
+    if (
+        request.url.path.startswith("/uploads/")
+        or request.url.path.startswith("/api/v1/files/")
+        or request.url.path.startswith("/api/v1/uploads/")
+    ):
         response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
     else:
         response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")

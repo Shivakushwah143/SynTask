@@ -88,7 +88,7 @@ export default function CRMPipelinePage() {
   const pipelineSearchContext = usePipelineSearchContext()
   const searchValue = pipelineSearchContext.searchValue ?? localSearchValue
   const setSearchValue = pipelineSearchContext.setSearchValue || setLocalSearchValue
-  const pipelineQuery = useQuery(PIPELINE_QUERY_KEY, () => crmApi.getPipeline({ limit: 500 }), {
+  const pipelineQuery = useQuery(PIPELINE_QUERY_KEY, () => crmApi.getPipeline(), {
     staleTime: 5 * 60 * 1000,
   })
   const categoriesQuery = useQuery('crm-lead-categories', salesApi.getCategories, { staleTime: 5 * 60 * 1000 })
@@ -291,6 +291,7 @@ export default function CRMPipelinePage() {
   const handleLeadMove = useCallback((lead, nextStageKey) => {
     const leadId = lead?.id || lead?._id
     if (!leadId || !nextStageKey) return
+    if (moveLeadMutation.isLoading) return
     const sourceStage = visibleBoard.stages.find((stage) => stage.leads.some((item) => (item.id || item._id) === leadId))
     const targetStage = visibleBoard.stages.find((stage) => stage.key === nextStageKey)
     if (sourceStage?.key === nextStageKey) return

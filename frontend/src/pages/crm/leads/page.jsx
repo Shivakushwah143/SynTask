@@ -29,6 +29,7 @@ import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealVal
 const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
 const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
 const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
+const isValidLeadOwner = (item) => ['lead', 'employee'].includes(normalizeRole(item?.role))
 const getResponseItems = (data, key) => {
   const direct = data?.[key]
   const nested = data?.data?.[key]
@@ -175,6 +176,7 @@ export default function CRMLeadsPage() {
   
   const categories = useMemo(() => getResponseItems(categoriesQuery.data, 'categories'), [categoriesQuery.data])
   const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
+  const leadOwnerOptions = useMemo(() => assignableUsers.filter(isValidLeadOwner), [assignableUsers])
   
   const userNameById = useMemo(() => {
     const map = new Map()
@@ -189,7 +191,7 @@ export default function CRMLeadsPage() {
   const defaultStageId = getStageValue(stages[0])
   const defaultCategoryId = getOptionId(categories[0])
   const defaultProductIds = getOptionId(products[0])
-  const defaultOwnerId = getUserId(assignableUsers[0]) || currentUserId
+  const defaultOwnerId = getUserId(leadOwnerOptions[0]) || (isValidLeadOwner(user) ? currentUserId : '')
 
   useEffect(() => {
     if (!createOpen) return
@@ -1120,12 +1122,12 @@ export default function CRMLeadsPage() {
                 <span className="text-xs font-medium text-text-muted">Owner</span>
                 <select className={inputClassName} value={createForm.assigned_to || defaultOwnerId} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
                   <option value="">Select owner</option>
-                  {assignableUsers.map((userOption) => (
+                  {leadOwnerOptions.map((userOption) => (
                     <option key={getUserId(userOption)} value={getUserId(userOption)}>
                       {userOption.first_name} {userOption.last_name} {userOption.role ? `(${userOption.role})` : ''}
                     </option>
                   ))}
-                  {!assignableUsers.length && defaultOwnerId ? (
+                  {!leadOwnerOptions.length && defaultOwnerId ? (
                     <option value={defaultOwnerId}>{user?.first_name} {user?.last_name} ({user?.role || 'owner'})</option>
                   ) : null}
                 </select>

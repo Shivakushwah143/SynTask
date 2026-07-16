@@ -17,6 +17,7 @@ const Clients = () => {
   const { confirm, showUndoNotification } = useConfirmation()
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedClient, setSelectedClient] = useState(null)
@@ -72,18 +73,25 @@ const Clients = () => {
   const loadClients = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError(null)
       const params = {}
       if (statusFilter) params.status_filter = statusFilter
       const data = await clientsAPI.listClients(params)
       setClients(data.clients || [])
     } catch (error) {
       console.error('Error loading clients:', error)
+      const message = error.response?.status === 403
+        ? 'You do not have permission to view clients. Please contact your administrator.'
+        : error.response?.status === 401
+          ? 'Please login to view clients'
+          : 'Failed to load clients'
+      setLoadError(message)
       if (error.response?.status === 403) {
-        toast.error('You do not have permission to view clients. Please contact your administrator.')
+        toast.error(message)
       } else if (error.response?.status === 401) {
-        toast.error('Please login to view clients')
+        toast.error(message)
       } else {
-        toast.error('Failed to load clients')
+        toast.error(message)
       }
       setClients([])
     } finally {
@@ -567,7 +575,18 @@ const Clients = () => {
       </div>
 
       {/* Clients Table */}
-      {filteredClients.length === 0 ? (
+      {loadError ? (
+        <EmptyState
+          icon={Briefcase}
+          title="Clients unavailable"
+          description={loadError}
+          action={(
+            <button type="button" onClick={loadClients} className="btn btn-primary">
+              Retry
+            </button>
+          )}
+        />
+      ) : filteredClients.length === 0 ? (
         <EmptyState
           icon={Briefcase}
           title="No clients found"

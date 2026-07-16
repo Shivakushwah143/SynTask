@@ -14,6 +14,7 @@ const Invoices = () => {
   const { confirm, showUndoNotification } = useConfirmation()
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [clients, setClients] = useState([])
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
@@ -47,6 +48,7 @@ const Invoices = () => {
   const loadInvoices = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError(null)
       const params = {}
       if (invoiceTypeFilter) params.invoice_type = invoiceTypeFilter
       if (statusFilter) params.status = statusFilter
@@ -54,7 +56,13 @@ const Invoices = () => {
       setInvoices(data.invoices || [])
     } catch (error) {
       console.error('Error loading invoices:', error)
-      toast.error('Failed to load invoices')
+      const message = error.response?.status === 403
+        ? 'You do not have permission to view invoices. Please contact your administrator.'
+        : error.response?.status === 401
+          ? 'Please login to view invoices'
+          : 'Failed to load invoices'
+      setLoadError(message)
+      toast.error(message)
       setInvoices([])
     } finally {
       setLoading(false)
@@ -67,6 +75,10 @@ const Invoices = () => {
       setClients(data.clients || [])
     } catch (error) {
       console.error('Error loading clients:', error)
+      if (error.response?.status === 403) {
+        setLoadError('You do not have permission to load clients for invoices. Please contact your administrator.')
+      }
+      setClients([])
     }
   }, [])
 
@@ -413,7 +425,16 @@ const Invoices = () => {
       </div>
 
       {/* Invoices Table */}
-      {filteredInvoices.length === 0 ? (
+      {loadError ? (
+        <div className="card text-center py-12">
+          <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-900 font-semibold">Invoices unavailable</p>
+          <p className="mt-1 text-sm text-gray-600">{loadError}</p>
+          <button onClick={loadInvoices} className="btn btn-primary mt-4">
+            Retry
+          </button>
+        </div>
+      ) : filteredInvoices.length === 0 ? (
         <div className="card text-center py-12">
           <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-600">No invoices found</p>

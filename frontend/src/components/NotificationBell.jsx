@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
 const NotificationBell = () => {
-  const { user } = useAuthStore()
+  const { user, isAuthenticated, clearAuth } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
   const dropdownRef = useRef(null)
@@ -20,6 +20,7 @@ const NotificationBell = () => {
   const lastFetchTimeRef = useRef(null) // Track when we last fetched to detect new notifications
   const lastNotificationIdsRef = useRef(new Set()) // Track notification IDs we've already shown popups for
   const isMountedRef = useRef(false) // Track if component is mounted
+  const authFailureHandledRef = useRef(false)
 
   const emitTaskRefresh = useCallback((notification) => {
     const relatedType = String(notification?.related_type || '').toLowerCase()
@@ -159,6 +160,8 @@ const NotificationBell = () => {
   }, [handleNotificationClick])
 
   const fetchNotifications = useCallback(async (isInitialLoad = false, skipPopups = false) => {
+    if (!user || !isAuthenticated || authFailureHandledRef.current) return
+
     try {
       const data = await notificationsAPI.listNotifications(null, 0, 10)
       const newNotifications = data.notifications || []
@@ -227,19 +230,32 @@ const NotificationBell = () => {
         Array.from(lastNotificationIdsRef.current).filter(id => idsToKeep.has(id))
       )
     } catch (error) {
+      const status = error?.response?.status
+      if (status === 401 || status === 403) {
+        authFailureHandledRef.current = true
+        isMountedRef.current = false
+        setNotifications([])
+        setUnreadCount(0)
+        clearAuth()
+        toast.error('Session expired. Please login again.')
+        navigate('/login', { replace: true })
+        return
+      }
+
       // Only log error if it's not a connection refused error (server not running)
       if (error.code !== 'ERR_NETWORK' && error.code !== 'ERR_CONNECTION_REFUSED') {
         console.error('Error fetching notifications:', error)
       }
       // Silently fail if server is not running - don't spam console
     }
-  }, [emitTaskRefresh, showNotificationPopup])
+  }, [clearAuth, emitTaskRefresh, isAuthenticated, navigate, showNotificationPopup, user])
 
   useEffect(() => {
     // Only reset and show initial popups when user actually changes (login)
     if (user && !isMountedRef.current) {
       // First time mounting with a user (login)
       isMountedRef.current = true
+      authFailureHandledRef.current = false
       hasShownInitialPopupsRef.current = false
       lastNotificationIdsRef.current.clear()
       lastFetchTimeRef.current = null
@@ -249,6 +265,7 @@ const NotificationBell = () => {
     } else if (!user) {
       // User logged out - reset everything
       isMountedRef.current = false
+      authFailureHandledRef.current = false
       hasShownInitialPopupsRef.current = false
       lastNotificationIdsRef.current.clear()
       lastFetchTimeRef.current = null
