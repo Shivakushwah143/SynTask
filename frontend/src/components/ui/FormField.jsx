@@ -3,7 +3,7 @@ export function FormField({ label, error, helperText, children, htmlFor, require
     <label className={`block space-y-1.5 ${className}`} htmlFor={htmlFor}>
       {label ? (
         <span className="block text-sm font-medium text-gray-700 dark:text-[var(--color-app-text-secondary)]">
-          {label}
+          {label} 
           {required ? <span className="ml-1 text-red-600" aria-hidden="true">*</span> : null}
         </span>
       ) : null}

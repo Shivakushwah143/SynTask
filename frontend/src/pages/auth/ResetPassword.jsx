@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { Lock, Loader2, ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff, Shield } from 'lucide-react'
+import { Lock, Loader2, ArrowLeft, CheckCircle2, AlertCircle, Shield } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { authAPI } from '../../api/auth'
-import { Button, inputClassName } from '../../components/ui'
+import { Button, PasswordInput, inputClassName } from '../../components/ui'
 
 const ResetPassword = () => {
   const navigate = useNavigate()
@@ -16,8 +16,6 @@ const ResetPassword = () => {
   const [tokenError, setTokenError] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
   const [resetSuccess, setResetSuccess] = useState(false)
 
   useEffect(() => {
@@ -194,48 +192,27 @@ const ResetPassword = () => {
       </div>
 
       <form onSubmit={handleResetPassword} className="space-y-4">
-        <div className="relative">
-          <Lock className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
-          <input
-            type={showPassword ? 'text' : 'password'}
+        <PasswordInput
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             required
             minLength={8}
-            className={`${inputClassName} pl-11 pr-11`}
+            className={inputClassName}
             placeholder="Enter new password"
+            leftIcon={<Lock className="h-5 w-5" aria-hidden="true" />}
           />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute inset-y-0 right-0 flex items-center px-4 text-gray-500 transition-colors hover:text-gray-700 dark:hover:text-gray-300"
-            aria-label={showPassword ? 'Hide password' : 'Show password'}
-          >
-            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-          </button>
-        </div>
         <p className="text-xs text-gray-500 dark:text-gray-400">Password must be at least 8 characters long.</p>
 
-        <div className="relative">
-          <Lock className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
-          <input
-            type={showConfirm ? 'text' : 'password'}
+        <PasswordInput
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
             minLength={8}
-            className={`${inputClassName} pl-11 pr-11`}
+            className={inputClassName}
             placeholder="Confirm new password"
+            leftIcon={<Lock className="h-5 w-5" aria-hidden="true" />}
+            toggleLabel="password confirmation"
           />
-          <button
-            type="button"
-            onClick={() => setShowConfirm(!showConfirm)}
-            className="absolute inset-y-0 right-0 flex items-center px-4 text-gray-500 transition-colors hover:text-gray-700 dark:hover:text-gray-300"
-            aria-label={showConfirm ? 'Hide password confirmation' : 'Show password confirmation'}
-          >
-            {showConfirm ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-          </button>
-        </div>
         {confirmPassword && newPassword !== confirmPassword ? (
           <p className="text-xs text-red-500 dark:text-red-400">Passwords do not match.</p>
         ) : null}

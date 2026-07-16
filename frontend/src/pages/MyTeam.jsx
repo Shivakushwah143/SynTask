@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { ROLE, normalizeRole } from '../utils/roles'
+import { PasswordInput, PhoneInput } from '../components/ui'
 
 const allowedTeamRoles = [ROLE.LEAD, ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN]
 
@@ -408,8 +409,7 @@ const MyTeam = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Password {editingMember ? '(leave blank to keep current)' : '*'}
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   name="password"
                   required={!editingMember}
                   minLength={8}
@@ -422,11 +422,10 @@ const MyTeam = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Phone
                 </label>
-                <input
-                  type="tel"
+                <PhoneInput
                   name="phone"
                   className="input"
-                  placeholder="+1 234 567 8900"
+                  placeholder="+919876543210"
                   defaultValue={editingMember?.phone || ''}
                 />
               </div>
