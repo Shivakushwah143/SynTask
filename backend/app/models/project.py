@@ -49,8 +49,10 @@ class Project(Document):
     
     # Assignment
     assigned_to: Optional[str] = None  # Assigned user (can be Lead or Employee)
+    assigned_user_ids: List[str] = Field(default_factory=list)  # Managers/Leads assigned to project
     assigned_by: Optional[str] = None  # User who assigned the project
     assigned_at: Optional[datetime] = None
+    assignment_history: List[Dict[str, Any]] = Field(default_factory=list)
     
     # Team
     team_member_ids: List[str] = []  # User IDs in the project
@@ -94,6 +96,7 @@ class Project(Document):
             "lead_id",
             "created_by",
             "assigned_to",
+            "assigned_user_ids",
             "delivery_date",
             "team_member_ids",
             IndexModel([("company_id", ASCENDING), ("key", ASCENDING)], unique=True),
@@ -102,6 +105,7 @@ class Project(Document):
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("lead_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("assigned_user_ids", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("delivery_date", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)]),
