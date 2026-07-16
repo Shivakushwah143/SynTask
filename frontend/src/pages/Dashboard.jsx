@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { ArrowRight, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
@@ -96,75 +96,89 @@ const Dashboard = () => {
   const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
   const [sectionSearch, setSectionSearch] = useState('')
 
-  useEffect(() => {
-    let active = true
-    const load = async () => {
-      try {
-        setLoading(true)
-        const statsData = await dashboardAPI.getStats().catch(() => null)
-        const [tasksData, meetingsData, projectsData] = await Promise.all([
-          tasksAPI.listTasks({ limit: 8 }),
-          meetingsApi.list({ limit: 6 }),
-          projectsApi.getProjects({ limit: 8 }),
-        ])
-        const [metricsData] = await Promise.all([
-          dashboardAPI.getMetrics().catch(() => null),
-        ])
-        const dashboardRole = normalizeRole(statsData?.role || user?.role)
-        const [healthData, extensionData, teamData] = await Promise.all([
-          dashboardRole === ROLE.EMPLOYEE ? tasksAPI.getMyTaskHealth().catch(() => null) : tasksAPI.getTaskHealthSummary().catch(() => null),
-          tasksAPI.getExtensionRequestSummary().catch(() => null),
-          dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null),
-        ])
+  const refreshDashboard = useCallback(async (isMounted = () => true) => {
+    try {
+      setLoading(true)
+      const statsData = await dashboardAPI.getStats().catch(() => null)
+      const [tasksData, meetingsData, projectsData] = await Promise.all([
+        tasksAPI.listTasks({ limit: 8 }),
+        meetingsApi.list({ limit: 6 }),
+        projectsApi.getProjects({ limit: 8 }),
+      ])
+      const [metricsData] = await Promise.all([
+        dashboardAPI.getMetrics().catch(() => null),
+      ])
+      const dashboardRole = normalizeRole(statsData?.role || user?.role)
+      const [healthData, extensionData, teamData] = await Promise.all([
+        dashboardRole === ROLE.EMPLOYEE ? tasksAPI.getMyTaskHealth().catch(() => null) : tasksAPI.getTaskHealthSummary().catch(() => null),
+        tasksAPI.getExtensionRequestSummary().catch(() => null),
+        dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null),
+      ])
 
-        let ticketsData = { tickets: [] }
-        if (dashboardRole === ROLE.EMPLOYEE) {
-          ticketsData = await ticketsAPI.listTickets({ limit: 8 })
-        }
-
-        if (!active) return
-        setStats(statsData || { role: dashboardRole || 'employee' })
-        setMetrics(metricsData)
-        setRecentTasks(tasksData.tasks || [])
-        setRecentTickets(ticketsData.tickets || [])
-        setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
-        setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
-        setTaskHealth(healthData)
-        setTaskExtensions(extensionData)
-        setTeamCompletion(teamData)
-
-        if (dashboardRole === ROLE.EMPLOYEE) {
-          try {
-            const attTodayRes = await attendanceAPI.getTodayAttendance()
-            if (attTodayRes && attTodayRes.data) {
-              setAttendanceToday(attTodayRes.data)
-            }
-            const eodTodayRes = await eodAPI.today()
-            setEodToday(eodTodayRes)
-          } catch (e) {
-            console.error(e)
-          }
-        } else {
-          try {
-            const attStatsRes = await attendanceAPI.getDashboardStats()
-            if (attStatsRes && attStatsRes.data) {
-              setAttendanceStats(attStatsRes.data)
-            }
-          } catch (e) {
-            console.error(e)
-          }
-        }
-      } catch (error) {
-        console.error('Error loading dashboard:', error)
-      } finally {
-        if (active) setLoading(false)
+      let ticketsData = { tickets: [] }
+      if (dashboardRole === ROLE.EMPLOYEE) {
+        ticketsData = await ticketsAPI.listTickets({ limit: 8 })
       }
-    }
-    load()
-    return () => {
-      active = false
+
+      if (!isMounted()) return
+      setStats(statsData || { role: dashboardRole || 'employee' })
+      setMetrics(metricsData)
+      setRecentTasks(tasksData.tasks || [])
+      setRecentTickets(ticketsData.tickets || [])
+      setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
+      setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
+      setTaskHealth(healthData)
+      setTaskExtensions(extensionData)
+      setTeamCompletion(teamData)
+
+      if (dashboardRole === ROLE.EMPLOYEE) {
+        try {
+          const attTodayRes = await attendanceAPI.getTodayAttendance()
+          if (attTodayRes && attTodayRes.data) {
+            setAttendanceToday(attTodayRes.data)
+          }
+          const eodTodayRes = await eodAPI.today()
+          setEodToday(eodTodayRes)
+        } catch (e) {
+          console.error(e)
+        }
+      } else {
+        try {
+          const attStatsRes = await attendanceAPI.getDashboardStats()
+          if (attStatsRes && attStatsRes.data) {
+            setAttendanceStats(attStatsRes.data)
+          }
+        } catch (e) {
+          console.error(e)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading dashboard:', error)
+    } finally {
+      if (isMounted()) setLoading(false)
     }
   }, [user?.role])
+
+  useEffect(() => {
+    let active = true
+    const run = async () => {
+      if (!active) return
+      await refreshDashboard(() => active)
+    }
+    run()
+    const interval = window.setInterval(run, 30 * 1000)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') run()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [refreshDashboard])
 
   useEffect(() => {
     try {
