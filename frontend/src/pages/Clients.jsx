@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
-import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, SkeletonTable, inputClassName } from '../components/ui'
+import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal, QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
@@ -775,8 +775,7 @@ const Clients = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Contact</label>
-                    <input
-                      type="text"
+                    <PhoneInput
                       value={formData.contact}
                       onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
                       className="input"
@@ -784,8 +783,7 @@ const Clients = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Alternate Contact</label>
-                    <input
-                      type="text"
+                    <PhoneInput
                       value={formData.alternate_contact}
                       onChange={(e) => setFormData({ ...formData, alternate_contact: e.target.value })}
                       className="input"
