@@ -83,7 +83,10 @@ class SalesContact(Document):
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("crm_company_id", ASCENDING), ("updated_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("country_code", ASCENDING), ("phone", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("email", ASCENDING)]),
-            IndexModel([("first_name", TEXT), ("last_name", TEXT), ("company_name", TEXT), ("email", TEXT), ("phone", TEXT)]),
+            IndexModel(
+                [("first_name", TEXT), ("last_name", TEXT), ("company_name", TEXT), ("email", TEXT), ("phone", TEXT)],
+                language_override="_text_language",
+            ),
         ]
 
     def unique_key(self) -> str:
