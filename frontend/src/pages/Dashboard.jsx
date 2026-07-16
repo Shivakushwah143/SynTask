@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowRight, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
+import { ArrowRight, Building2, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -37,7 +37,18 @@ import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthDat
 import { DashboardSectionVisibilityPanel } from './DashboardSectionVisibilityPanelView.jsx'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const PROJECT_STATUS_COLORS = { active: '#4285F4', planning: '#7C6FE0', completed: '#2FB47C', on_hold: '#FFB020' }
+const PROJECT_STATUS_COLORS = {
+  created: '#94A3B8',
+  planning: '#7C6FE0',
+  active: '#4285F4',
+  kickoff: '#06B6D4',
+  execution: '#2563EB',
+  review: '#F59E0B',
+  completed: '#2FB47C',
+  reporting: '#14B8A6',
+  on_hold: '#FFB020',
+  archived: '#64748B',
+}
 const DASHBOARD_SECTION_VISIBILITY_KEY = 'syntask-dashboard-section-visibility'
 const DASHBOARD_SECTION_ORDER_KEY = 'syntask-dashboard-section-order'
 
@@ -96,75 +107,80 @@ const Dashboard = () => {
   const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
   const [sectionSearch, setSectionSearch] = useState('')
 
+  const refreshDashboard = useCallback(async (isMounted = () => true) => {
+    try {
+      setLoading(true)
+      const statsData = await dashboardAPI.getStats().catch(() => null)
+      const [tasksData, meetingsData, projectsData] = await Promise.all([
+        tasksAPI.listTasks({ limit: 8 }),
+        meetingsApi.list({ limit: 6 }),
+        projectsApi.getProjects({ limit: 8 }),
+      ])
+      const [metricsData] = await Promise.all([
+        dashboardAPI.getMetrics().catch(() => null),
+      ])
+      const dashboardRole = normalizeRole(statsData?.role || user?.role)
+      const [healthData, extensionData, teamData] = await Promise.all([
+        dashboardRole === ROLE.EMPLOYEE ? tasksAPI.getMyTaskHealth().catch(() => null) : tasksAPI.getTaskHealthSummary().catch(() => null),
+        tasksAPI.getExtensionRequestSummary().catch(() => null),
+        dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null),
+      ])
+
+      let ticketsData = { tickets: [] }
+      if (dashboardRole === ROLE.EMPLOYEE) {
+        ticketsData = await ticketsAPI.listTickets({ limit: 8 })
+      }
+
+      if (!isMounted()) return
+      setStats(statsData || { role: dashboardRole || 'employee' })
+      setMetrics(metricsData)
+      setRecentTasks(tasksData.tasks || [])
+      setRecentTickets(ticketsData.tickets || [])
+      setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
+      setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
+      setTaskHealth(healthData)
+      setTaskExtensions(extensionData)
+      setTeamCompletion(teamData)
+
+      if (dashboardRole === ROLE.EMPLOYEE) {
+        try {
+          const attTodayRes = await attendanceAPI.getTodayAttendance()
+          if (attTodayRes && attTodayRes.data) {
+            setAttendanceToday(attTodayRes.data)
+          }
+          const eodTodayRes = await eodAPI.today()
+          setEodToday(eodTodayRes)
+        } catch (e) {
+          console.error(e)
+        }
+      } else {
+        try {
+          const attStatsRes = await attendanceAPI.getDashboardStats()
+          if (attStatsRes && attStatsRes.data) {
+            setAttendanceStats(attStatsRes.data)
+          }
+        } catch (e) {
+          console.error(e)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading dashboard:', error)
+    } finally {
+      if (isMounted()) setLoading(false)
+    }
+  }, [user?.role])
+
   useEffect(() => {
     let active = true
-    const load = async () => {
-      try {
-        setLoading(true)
-        const statsData = await dashboardAPI.getStats().catch(() => null)
-        const [tasksData, meetingsData, projectsData] = await Promise.all([
-          tasksAPI.listTasks({ limit: 8 }),
-          meetingsApi.list({ limit: 6 }),
-          projectsApi.getProjects({ limit: 8 }),
-        ])
-        const [metricsData] = await Promise.all([
-          dashboardAPI.getMetrics().catch(() => null),
-        ])
-        const dashboardRole = normalizeRole(statsData?.role || user?.role)
-        const [healthData, extensionData, teamData] = await Promise.all([
-          dashboardRole === ROLE.EMPLOYEE ? tasksAPI.getMyTaskHealth().catch(() => null) : tasksAPI.getTaskHealthSummary().catch(() => null),
-          tasksAPI.getExtensionRequestSummary().catch(() => null),
-          dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null),
-        ])
-
-        let ticketsData = { tickets: [] }
-        if (dashboardRole === ROLE.EMPLOYEE) {
-          ticketsData = await ticketsAPI.listTickets({ limit: 8 })
-        }
-
-        if (!active) return
-        setStats(statsData || { role: dashboardRole || 'employee' })
-        setMetrics(metricsData)
-        setRecentTasks(tasksData.tasks || [])
-        setRecentTickets(ticketsData.tickets || [])
-        setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
-        setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
-        setTaskHealth(healthData)
-        setTaskExtensions(extensionData)
-        setTeamCompletion(teamData)
-
-        if (dashboardRole === ROLE.EMPLOYEE) {
-          try {
-            const attTodayRes = await attendanceAPI.getTodayAttendance()
-            if (attTodayRes && attTodayRes.data) {
-              setAttendanceToday(attTodayRes.data)
-            }
-            const eodTodayRes = await eodAPI.today()
-            setEodToday(eodTodayRes)
-          } catch (e) {
-            console.error(e)
-          }
-        } else {
-          try {
-            const attStatsRes = await attendanceAPI.getDashboardStats()
-            if (attStatsRes && attStatsRes.data) {
-              setAttendanceStats(attStatsRes.data)
-            }
-          } catch (e) {
-            console.error(e)
-          }
-        }
-      } catch (error) {
-        console.error('Error loading dashboard:', error)
-      } finally {
-        if (active) setLoading(false)
-      }
+    const run = async () => {
+      if (!active) return
+      await refreshDashboard(() => active)
     }
-    load()
+    run()
     return () => {
       active = false
     }
-  }, [user?.role])
+  }, [refreshDashboard])
 
   useEffect(() => {
     try {
@@ -216,43 +232,39 @@ const Dashboard = () => {
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
   const taskSource = recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
-  // ---- Chart datasets (replace the old static / zero-filled placeholders) ----
-
-  // Pipeline funnel -> donut with legend + percentages, styled like "Top Expenses"
   const funnelData = canSeeSalesWidgets
-    ? [
+    ? (metrics?.pipeline_funnel?.length ? metrics.pipeline_funnel : [
         { name: 'New Leads', value: metrics?.new_leads ?? 0 },
         { name: 'Qualified', value: metrics?.qualified_leads ?? 0 },
         { name: 'Active Deals', value: metrics?.active_deals ?? 0 },
         { name: 'Won', value: metrics?.won_deals ?? 0 },
         { name: 'Lost', value: metrics?.lost_deals ?? 0 },
-      ]
+      ])
     : []
 
-  // Revenue trend -> monthly bars, current month carries the live revenue figure
   const currentMonthIndex = new Date().getMonth()
   const revenueTrend = canSeeSalesWidgets
-    ? MONTH_LABELS.slice(0, currentMonthIndex + 1).map((label, i) => ({
+    ? (metrics?.revenue_trend?.length ? metrics.revenue_trend : MONTH_LABELS.slice(0, currentMonthIndex + 1).map((label, i) => ({
         label,
         primary: i === currentMonthIndex ? metrics?.revenue ?? 0 : 0,
         secondary: i === currentMonthIndex ? metrics?.won_deals ?? 0 : 0,
-      }))
+      })))
     : []
 
   const conversionData = canSeeSalesWidgets
-    ? [
+    ? (metrics?.conversion_trend?.length ? metrics.conversion_trend : [
         { name: 'Lead', value: metrics?.total_leads ?? 0, route: '/crm/leads' },
         { name: 'Qualified', value: metrics?.qualified_leads ?? 0, route: '/crm/pipeline' },
         { name: 'Won', value: metrics?.won_deals ?? 0, route: '/crm/pipeline' },
-      ]
+      ])
     : []
 
   const monthlyPerformance = canSeeSalesWidgets
-    ? [
+    ? (metrics?.monthly_performance?.length ? metrics.monthly_performance : [
         { name: 'Leads', value: metrics?.new_leads ?? 0, route: '/crm/leads' },
         { name: 'Deals', value: metrics?.active_deals ?? 0, route: '/crm/pipeline' },
         { name: 'Projects', value: metrics?.projects ?? projects.length, route: '/projects' },
-      ]
+      ])
     : []
 
   // Team attendance snapshot -> donut instead of a plain number strip
@@ -264,15 +276,16 @@ const Dashboard = () => {
       ]
     : []
 
-  const taskDuePriorityData = buildTaskDuePriorityData(recentTasks)
-  const projectHealthChartData = buildProjectHealthData(projects)
+  const taskDuePriorityData = metrics?.task_due_priority_chart?.length ? metrics.task_due_priority_chart : buildTaskDuePriorityData(recentTasks)
+  const projectHealthChartData = metrics?.project_status_chart?.length ? metrics.project_status_chart : buildProjectHealthData(projects)
+  const reportTotals = metrics?.report_totals || {}
   const reportMetricCards = [
-    { label: 'Active Tasks', value: recentTasks.length, route: '/tasks' },
-    { label: 'Projects', value: projects.length, route: '/projects' },
-    { label: 'Meetings', value: upcomingMeetings.length, route: '/meetings' },
-    { label: role === ROLE.EMPLOYEE ? 'Requests' : 'Priority Items', value: role === ROLE.EMPLOYEE ? recentTickets.length : priorityTasks.length, route: role === ROLE.EMPLOYEE ? '/tickets' : '/tasks' },
+    { label: 'Total Tasks', value: reportTotals.tasks ?? recentTasks.length, route: '/tasks' },
+    { label: 'Projects', value: reportTotals.projects ?? projects.length, route: '/projects' },
+    { label: 'Meetings', value: reportTotals.meetings ?? upcomingMeetings.length, route: '/meetings' },
+    { label: role === ROLE.EMPLOYEE ? 'Requests' : 'Priority Items', value: role === ROLE.EMPLOYEE ? recentTickets.length : (reportTotals.high_priority ?? priorityTasks.length), route: role === ROLE.EMPLOYEE ? '/tickets' : '/tasks' },
   ]
-  const reportGraphData = [
+  const reportGraphData = metrics?.report_graph?.length ? metrics.report_graph : [
     { name: 'Tasks', value: recentTasks.length, route: '/tasks' },
     { name: 'Projects', value: projects.length, route: '/projects' },
     { name: 'Meetings', value: upcomingMeetings.length, route: '/meetings' },
@@ -385,6 +398,12 @@ const Dashboard = () => {
         description="Command center for work, meetings, and AI briefings."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
+            {role === ROLE.SUPER_ADMIN ? (
+              <Button size="sm" onClick={() => navigate('/companies')}>
+                <Building2 className="h-4 w-4" />
+                Create Company
+              </Button>
+            ) : null}
             <Button variant="secondary" size="sm" onClick={() => navigate('/projects')}>
               <FolderKanban className="h-4 w-4" />
               Projects
@@ -559,17 +578,17 @@ const Dashboard = () => {
           <IncomeExpenseBarChart
             title="Revenue and Deals"
             data={revenueTrend}
-            primaryLabel="Revenue"
-            secondaryLabel="Won Deals"
+            primaryLabel="Closed Revenue"
+            secondaryLabel="Pipeline Value"
             primaryTotal={`₹${(metrics?.revenue ?? 0).toLocaleString('en-IN')}`}
-            secondaryTotal={metrics?.won_deals ?? 0}
+            secondaryTotal={`₹${revenueTrend.reduce((sum, item) => sum + (Number(item.secondary) || 0), 0).toLocaleString('en-IN')}`}
             toggleOptions={['Accrual', 'Cash']}
             activeToggle={revenueMode}
             onToggle={setRevenueMode}
-            footnote="Revenue and deal values shown for the current fiscal year."
+            footnote="Closed revenue and pipeline value use CRM lead/deal records for the last 12 months."
             onBarClick={() => navigate('/crm/pipeline')}
           />
-          <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline' }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
+          <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.route || (item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline') }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
         </section>
       ) : (
         <section className="card p-5">
@@ -583,15 +602,15 @@ const Dashboard = () => {
       <section className="grid gap-6 xl:grid-cols-2">
         {canSeeSalesWidgets ? (
           <>
-            <ChartCard title="Conversion Rate">
+            <ChartCard title="Stage Conversion">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={conversionData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/crm/pipeline')}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
                     <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                    <ChartTooltip />
-                    <Line type="monotone" dataKey="value" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 5, fill: '#FF8A4C', cursor: 'pointer' }} activeDot={{ r: 7, onClick: (_, item) => navigateFromChart(item, '/crm/pipeline') }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={(value) => `${value}%`} />
+                    <ChartTooltip valueFormatter={(value) => `${value}%`} />
+                    <Line type="monotone" dataKey="value" name="Conversion" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 5, fill: '#FF8A4C', cursor: 'pointer' }} activeDot={{ r: 7, onClick: (_, item) => navigateFromChart(item, '/crm/pipeline') }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -603,8 +622,8 @@ const Dashboard = () => {
                     <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
                     <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                     <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                    <ChartTooltip />
-                    <Bar dataKey="value" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} className="cursor-pointer" />
+                    <ChartTooltip valueFormatter={(value, key, item) => key === 'value' && item?.payload?.total !== undefined ? `${value} current / ${item.payload.total} total` : value} />
+                    <Bar dataKey="value" name="Current" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} className="cursor-pointer" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -765,7 +784,7 @@ const Dashboard = () => {
                   <BarChart data={taskDuePriorityData} barCategoryGap="24%" margin={{ top: 10, right: 12, left: 0, bottom: 18 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/tasks')}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
                     <XAxis
-                      dataKey="shortName"
+                      dataKey={taskDuePriorityData?.[0]?.count !== undefined ? 'name' : 'shortName'}
                       interval={0}
                       tickLine={false}
                       axisLine={false}
@@ -777,12 +796,12 @@ const Dashboard = () => {
                       tickLine={false}
                       axisLine={false}
                       tick={{ fontSize: 11, fill: '#9ca3af' }}
-                      label={{ value: 'Days remaining', angle: -90, position: 'insideLeft', style: { fill: '#9ca3af', fontSize: 11 } }}
+                      label={{ value: taskDuePriorityData?.[0]?.count !== undefined ? 'Tasks' : 'Days remaining', angle: -90, position: 'insideLeft', style: { fill: '#9ca3af', fontSize: 11 } }}
                     />
                     <ChartTooltip labelFormatter={(_, point) => point.name} valueFormatter={(value, key) => key === 'daysRemaining' ? `${value} day${value === 1 ? '' : 's'}` : value} />
-                    <Bar dataKey="daysRemaining" name="Days Remaining" radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer">
+                    <Bar dataKey={taskDuePriorityData?.[0]?.count !== undefined ? 'count' : 'daysRemaining'} name={taskDuePriorityData?.[0]?.count !== undefined ? 'Tasks' : 'Days Remaining'} radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer">
                       {taskDuePriorityData.map((entry) => (
-                        <Cell key={entry.id || entry.name} fill={entry.fill} />
+                        <Cell key={entry.id || entry.name} fill={entry.fill || TASK_PRIORITY_COLORS[entry.priorityKey] || '#2FB47C'} />
                       ))}
                     </Bar>
                   </BarChart>

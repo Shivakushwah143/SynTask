@@ -105,7 +105,10 @@ class SalesProspect(Document):
                 ("company_id", ASCENDING),
                 ("email", ASCENDING),
             ], unique=True, partialFilterExpression={"email": {"$type": "string"}}),
-            IndexModel([("prospect_name", TEXT), ("company_name", TEXT), ("email", TEXT), ("phone", TEXT)]),
+            IndexModel(
+                [("prospect_name", TEXT), ("company_name", TEXT), ("email", TEXT), ("phone", TEXT)],
+                language_override="_text_language",
+            ),
             "crm_company_id",
         ]
 

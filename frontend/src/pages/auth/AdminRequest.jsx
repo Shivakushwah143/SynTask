@@ -9,7 +9,6 @@ import {
   Loader2,
   Mail,
   MapPin,
-  Phone,
   Sparkles,
   ShieldCheck,
   User,
@@ -17,7 +16,7 @@ import {
 import toast from 'react-hot-toast'
 import { companiesAPI } from '../../api/companies'
 import { subscriptionsAPI } from '../../api/subscriptions'
-import { Button, FormField, inputClassName } from '../../components/ui'
+import { Button, FormField, PhoneInput, inputClassName } from '../../components/ui'
 import GoogleLoginButton from '../../components/auth/GoogleLoginButton'
 
 const paymentOptions = [
@@ -281,7 +280,9 @@ const AdminRequest = () => {
           <div className="grid gap-4 md:grid-cols-2">
             <TextInput label="Company name" name="name" value={formData.name} onChange={handleChange} required />
             <TextInput label="Work email" name="email" type="email" value={formData.email} onChange={handleChange} icon={Mail} required />
-            <TextInput label="Phone" name="phone" type="tel" value={formData.phone} onChange={handleChange} icon={Phone} required />
+            <FormField label="Phone" htmlFor="phone" required>
+              <PhoneInput id="phone" name="phone" value={formData.phone} onChange={handleChange} required />
+            </FormField>
             <TextInput label="Website" name="website" type="url" value={formData.website} onChange={handleChange} icon={Globe} />
             <TextInput label="Registration number" name="registration_number" value={formData.registration_number} onChange={handleChange} />
             <TextInput label="Tax ID" name="tax_id" value={formData.tax_id} onChange={handleChange} />

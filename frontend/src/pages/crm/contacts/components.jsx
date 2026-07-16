@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react'
-import { FormField, Modal, inputClassName } from '../../../components/ui'
+import { FormField, Modal, PhoneInput, inputClassName, isValidLocalPhone } from '../../../components/ui'
 
 const CONTACT_TEMPLATE = {
   first_name: '',
@@ -50,11 +50,14 @@ export const ContactFormModal = memo(function ContactFormModal({
         <FormField label="Last name" required>
           <input className={inputClassName} value={form.last_name} onChange={(event) => update('last_name', event.target.value)} />
         </FormField>
-        <FormField label="Country code" required>
-          <input className={inputClassName} value={form.country_code} onChange={(event) => update('country_code', event.target.value)} />
-        </FormField>
-        <FormField label="Phone" required>
-          <input className={inputClassName} value={form.phone} onChange={(event) => update('phone', event.target.value)} />
+        <FormField label="Phone" required className="md:col-span-2">
+          <PhoneInput
+            countryCode={form.country_code}
+            phoneNumber={form.phone}
+            onCountryCodeChange={(value) => update('country_code', value)}
+            onPhoneNumberChange={(value) => update('phone', value)}
+            required
+          />
         </FormField>
         <FormField label="Email">
           <input className={inputClassName} value={form.email} onChange={(event) => update('email', event.target.value)} />
@@ -87,7 +90,7 @@ export const ContactFormModal = memo(function ContactFormModal({
           <input className={inputClassName} value={form.owner_name} onChange={(event) => update('owner_name', event.target.value)} />
         </FormField>
         <FormField label="Owner contact">
-          <input className={inputClassName} value={form.owner_contact_no} onChange={(event) => update('owner_contact_no', event.target.value)} />
+          <PhoneInput className={inputClassName} value={form.owner_contact_no} onChange={(event) => update('owner_contact_no', event.target.value)} />
         </FormField>
         <FormField label="Tags" className="md:col-span-2">
           <input className={inputClassName} value={form.tag} onChange={(event) => update('tag', event.target.value)} placeholder="Comma separated tags" />
@@ -116,7 +119,7 @@ export const ContactFormModal = memo(function ContactFormModal({
               .map((item) => item.trim())
               .filter(Boolean),
           })}
-          disabled={!form.first_name || !form.last_name || !form.phone || !form.crm_company_id}
+          disabled={!form.first_name || !form.last_name || !isValidLocalPhone(form.phone) || !form.crm_company_id}
         >
           Save contact
         </button>

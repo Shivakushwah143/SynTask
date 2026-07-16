@@ -3,7 +3,7 @@ import { Bell, Inbox, Lock, Mail, Shield, User } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { authAPI } from '../api/auth'
 import toast from 'react-hot-toast'
-import { Badge, Button, FormField, PageHeader, inputClassName } from '../components/ui'
+import { Badge, Button, FormField, PageHeader, PasswordInput, inputClassName } from '../components/ui'
 
 const Settings = () => {
   const { user } = useAuthStore()
@@ -125,13 +125,13 @@ const Settings = () => {
           </div>
           <form onSubmit={handleChangePassword} className="space-y-4">
               <FormField label="Current Password" required>
-                <input type="password" name="old_password" required className={inputClassName} />
+                <PasswordInput name="old_password" required className={inputClassName} toggleLabel="current password" />
               </FormField>
               <FormField label="New Password" required>
-                <input type="password" name="new_password" required minLength={8} className={inputClassName} />
+                <PasswordInput name="new_password" required minLength={8} className={inputClassName} toggleLabel="new password" />
               </FormField>
               <FormField label="Confirm New Password" required>
-                <input type="password" name="confirm_password" required minLength={8} className={inputClassName} />
+                <PasswordInput name="confirm_password" required minLength={8} className={inputClassName} toggleLabel="password confirmation" />
               </FormField>
               <Button type="submit" loading={changingPassword}>Change Password</Button>
             </form>
@@ -213,7 +213,7 @@ const Settings = () => {
               <input className={inputClassName} value={mailSync.username} onChange={(e) => setMailSync((current) => ({ ...current, username: e.target.value }))} placeholder="hr@company.com" />
             </FormField>
             <FormField label="IMAP Password">
-              <input className={inputClassName} type="password" value={mailSync.password} onChange={(e) => setMailSync((current) => ({ ...current, password: e.target.value }))} placeholder="App password" />
+              <PasswordInput className={inputClassName} value={mailSync.password} onChange={(e) => setMailSync((current) => ({ ...current, password: e.target.value }))} placeholder="App password" toggleLabel="IMAP password" />
             </FormField>
             <FormField label="Mailbox Folder">
               <input className={inputClassName} value={mailSync.folder} onChange={(e) => setMailSync((current) => ({ ...current, folder: e.target.value }))} placeholder="INBOX" />

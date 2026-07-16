@@ -1,18 +1,17 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Mail, Lock, Eye, EyeOff, Shield } from 'lucide-react'
+import { Mail, Lock, Shield } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { authAPI } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
-import { Button, inputClassName } from '../../components/ui'
+import { Button, PasswordInput, inputClassName } from '../../components/ui'
 import GoogleLoginButton from '../../components/auth/GoogleLoginButton'
 
 const Login = () => {
   const navigate = useNavigate()
   const { setAuth } = useAuthStore()
   const [loading, setLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -69,26 +68,15 @@ const Login = () => {
           />
         </div>
 
-        <div className="relative">
-          <Lock className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-gray-400" />
-          <input
-            type={showPassword ? 'text' : 'password'}
+        <PasswordInput
             name="password"
             value={formData.password}
             onChange={handleChange}
             required
-            className={`${inputClassName} pl-11 pr-11`}
+            className={inputClassName}
             placeholder="Enter your password"
+            leftIcon={<Lock className="h-5 w-5" aria-hidden="true" />}
           />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute inset-y-0 right-0 flex items-center px-4 text-gray-500 transition-colors hover:text-gray-700 dark:hover:text-gray-300"
-            aria-label={showPassword ? 'Hide password' : 'Show password'}
-          >
-            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-          </button>
-        </div>
 
         <div className="flex items-center justify-between gap-4">
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">

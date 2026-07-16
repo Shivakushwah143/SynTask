@@ -6,6 +6,8 @@ import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import { EmailComposer } from '../components/EmailComposer'
+import { CreatableSelectField } from '../components/ui'
+import { QuickCreateClientModal } from '../components/relatedRecords/QuickCreateModals'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
@@ -23,6 +25,7 @@ const Invoices = () => {
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
+  const [showQuickClientModal, setShowQuickClientModal] = useState(false)
   
   const [formData, setFormData] = useState({
     invoice_type: 'proforma',
@@ -597,11 +600,14 @@ const Invoices = () => {
                 {/* Client Selection */}
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Select Client *</label>
-                  <select
+                  <CreatableSelectField
                     value={formData.client_id}
-                    onChange={(e) => handleClientSelect(e.target.value)}
+                    onChange={handleClientSelect}
                     className="input"
                     required
+                    createLabel="Create client"
+                    onCreate={() => setShowQuickClientModal(true)}
+                    canCreate={isCompanyAdmin || isLead}
                   >
                     <option value="">Select a client...</option>
                     {clients.map(client => (
@@ -609,7 +615,7 @@ const Invoices = () => {
                         {client.name} {client.company_name ? `(${client.company_name})` : ''}
                       </option>
                     ))}
-                  </select>
+                  </CreatableSelectField>
                 </div>
 
                 {/* Auto-filled Client Details */}
@@ -816,6 +822,16 @@ const Invoices = () => {
           </div>
         </div>
       )}
+
+      <QuickCreateClientModal
+        isOpen={showQuickClientModal}
+        onClose={() => setShowQuickClientModal(false)}
+        existing={clients}
+        onCreated={async (created) => {
+          await loadClients()
+          await handleClientSelect(created.id)
+        }}
+      />
 
       {/* Invoice Detail Modal */}
       {showDetailModal && selectedInvoice && (
