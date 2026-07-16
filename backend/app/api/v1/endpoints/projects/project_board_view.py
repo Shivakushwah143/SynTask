@@ -109,6 +109,16 @@ async def get_project_board(
         {"id": "completed", "label": "COMPLETED", "color": "bg-green-100", "order": 3},
     ]
     sorted_columns = sorted(board_columns, key=lambda x: x.get("order", 0))
+    assigned_ids = project_assignee_ids(project)
+    assigned_users = []
+    for user_id in assigned_ids:
+        assigned_user = await User.get(user_id)
+        if assigned_user:
+            assigned_users.append({
+                "id": str(assigned_user.id),
+                "name": assigned_user.full_name(),
+                "role": assigned_user.role.value,
+            })
     
     return {
         "project": {
@@ -121,6 +131,8 @@ async def get_project_board(
             "status": project.status.value,
             "lead_id": project.lead_id,
             "assigned_to": project.assigned_to,
+            "assigned_user_ids": getattr(project, "assigned_user_ids", []) or ([project.assigned_to] if project.assigned_to else []),
+            "assigned_users": assigned_users,
             "created_by": project.created_by,
             "start_date": project.start_date.isoformat() if project.start_date else None,
             "delivery_date": project.delivery_date.isoformat() if project.delivery_date else None,

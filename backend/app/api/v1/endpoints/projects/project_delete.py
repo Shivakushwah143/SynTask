@@ -10,9 +10,9 @@ router = APIRouter()
 @router.delete("/{project_id}")
 async def delete_project(
     project_id: str,
-    current_user: User = Depends(get_current_company_admin),
+    current_user: User = Depends(get_current_user),
 ):
-    """Delete project (only Company Admin). Path project_id can be custom ID or MongoDB _id."""
+    """Delete project. Admin full control; Manager only scoped projects."""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
     if not project:
         raise HTTPException(
@@ -20,6 +20,11 @@ async def delete_project(
             detail="Project not found"
         )
     check_company_access(current_user, project.company_id)
+    if not await can_manage_project(project, current_user):
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete this project",
+        )
     
     # Check if project has tasks - use user-provided project_id, fallback to MongoDB _id
     project_id_for_query = project.project_id if project.project_id else str(project.id)

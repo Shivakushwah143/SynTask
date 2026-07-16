@@ -40,6 +40,76 @@ from app.api.deps import Pagination20, PaginationParams
 router = APIRouter()
 
 
+async def _get_user_scope_ids(current_user: User) -> list[str]:
+    ids = {str(current_user.id)}
+    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+        subordinates = await current_user.get_all_subordinates()
+        ids.update(str(user.id) for user in subordinates)
+    return list(ids)
+
+
+async def _can_access_project_for_task(current_user: User, project) -> bool:
+    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        return True
+    assignee_ids = set(getattr(project, "assigned_user_ids", None) or [])
+    if getattr(project, "assigned_to", None):
+        assignee_ids.add(str(project.assigned_to))
+    if getattr(project, "lead_id", None):
+        assignee_ids.add(str(project.lead_id))
+    if current_user.role == UserRole.MANAGER:
+        scoped_ids = set(await _get_user_scope_ids(current_user))
+        return project.created_by == str(current_user.id) or bool(assignee_ids.intersection(scoped_ids))
+    if current_user.role == UserRole.LEAD:
+        return str(current_user.id) in assignee_ids
+    return False
+
+
+async def _assert_task_view(current_user: User, task: Task) -> None:
+    check_company_access(current_user, task.company_id)
+    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        return
+    if current_user.role == UserRole.EMPLOYEE:
+        if task.assigned_to == str(current_user.id):
+            return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+        scope_ids = set(await _get_user_scope_ids(current_user))
+        if task.created_by == str(current_user.id) or (task.assigned_to and task.assigned_to in scope_ids):
+            return
+        if task.project_id:
+            from app.api.dependencies import get_project_by_id
+            project, _ = await get_project_by_id(task.project_id, current_user.company_id)
+            if project and await _can_access_project_for_task(current_user, project):
+                return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+
+async def _assert_task_manage(current_user: User, task: Task) -> None:
+    if current_user.role == UserRole.EMPLOYEE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    await _assert_task_view(current_user, task)
+
+
+async def _assert_can_assign_task(current_user: User, assignee: Optional[User]) -> None:
+    if not assignee:
+        return
+    if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+        if assignee.role not in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid assignee role")
+        return
+    if current_user.role == UserRole.MANAGER:
+        scope_ids = set(await _get_user_scope_ids(current_user))
+        if assignee.role not in {UserRole.LEAD, UserRole.EMPLOYEE} or str(assignee.id) not in scope_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager can assign tasks only to scoped Leads or Employees")
+        return
+    if current_user.role == UserRole.LEAD:
+        scope_ids = set(await _get_user_scope_ids(current_user))
+        if assignee.role != UserRole.EMPLOYEE or str(assignee.id) not in scope_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Lead can assign tasks only to Employees")
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot assign tasks")
+
+
 def _parse_task_datetime(value: str, field_name: str = "date") -> datetime:
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -181,25 +251,19 @@ async def list_tasks(
 
     # Role-based task visibility
     if current_user.role == UserRole.EMPLOYEE:
-        # Employee: Only see tasks assigned to them
         query["assigned_to"] = str(current_user.id)
     elif current_user.role == UserRole.LEAD:
-        # Lead: See tasks assigned to them and their employees
-        employees = await User.find(
-            User.reports_to == str(current_user.id),
-            User.role == UserRole.EMPLOYEE
-        ).to_list()
-        employee_ids = [str(emp.id) for emp in employees]
-        employee_ids.append(str(current_user.id))
-        # Use MongoDB $in operator
-        query["assigned_to"] = {"$in": employee_ids}
+        scope_ids = await _get_user_scope_ids(current_user)
+        query["$or"] = [
+            {"assigned_to": {"$in": scope_ids}},
+            {"created_by": str(current_user.id)},
+        ]
     elif current_user.role == UserRole.MANAGER:
-        # Manager: See tasks assigned to them and all subordinates
-        subordinates = await current_user.get_all_subordinates()
-        subordinate_ids = [str(sub.id) for sub in subordinates]
-        subordinate_ids.append(str(current_user.id))
-        # Use MongoDB $in operator
-        query["assigned_to"] = {"$in": subordinate_ids}
+        scope_ids = await _get_user_scope_ids(current_user)
+        query["$or"] = [
+            {"assigned_to": {"$in": scope_ids}},
+            {"created_by": str(current_user.id)},
+        ]
     # Admin and Super Admin see all tasks (no additional filter)
 
     if status_filter:
@@ -207,7 +271,11 @@ async def list_tasks(
     if priority:
         query["priority"] = priority
     if assigned_to and current_user.role != UserRole.EMPLOYEE:
-        query["assigned_to"] = assigned_to
+        if "$or" in query:
+            scoped_or = query.pop("$or")
+            query["$and"] = [{"$or": scoped_or}, {"assigned_to": assigned_to}]
+        else:
+            query["assigned_to"] = assigned_to
     if created_by:
         query["created_by"] = created_by
     if project_id:
@@ -264,7 +332,7 @@ async def create_task(
     department_id: Optional[str] = Form(None),
     story_points: Optional[int] = Form(None),
     estimated_hours: Optional[float] = Form(None),
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Create a new task.
@@ -276,6 +344,11 @@ async def create_task(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User must belong to a company"
+        )
+    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to create tasks",
         )
 
     # Validate priority
@@ -329,6 +402,7 @@ async def create_task(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Assigned user must be from the same company"
             )
+        await _assert_can_assign_task(current_user, assignee)
 
     # Validate project if provided - use helper function to find by user-provided project_id or MongoDB _id
     project = None
@@ -350,6 +424,11 @@ async def create_task(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this project"
+            )
+        if not await _can_access_project_for_task(current_user, project):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot create tasks in this project",
             )
 
         # Task must store same project_id so we can fetch tasks by project. Prefer:
@@ -566,8 +645,7 @@ async def get_task(
             detail="Task not found"
         )
 
-    # Check access permissions
-    check_company_access(current_user, task.company_id)
+    await _assert_task_view(current_user, task)
     await sync_task_health(task)
 
     # Get assigned user details
@@ -617,17 +695,7 @@ async def delete_task(
             detail="Task not found"
         )
 
-    check_company_access(current_user, task.company_id)
-
-    can_delete = (
-        current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]
-        or task.created_by == str(current_user.id)
-    )
-    if not can_delete:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to delete this task"
-        )
+    await _assert_task_manage(current_user, task)
 
     await task.delete()
     await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
@@ -666,7 +734,7 @@ async def get_task_execution(
             detail="Task not found"
         )
 
-    check_company_access(current_user, task.company_id)
+    await _assert_task_view(current_user, task)
 
     return {
         "id": str(task.id),
@@ -699,7 +767,7 @@ async def update_task_status(
             detail="Task not found"
         )
 
-    check_company_access(current_user, task.company_id)
+    await _assert_task_view(current_user, task)
 
     # Validate new status
     try:
@@ -797,7 +865,7 @@ async def update_task_execution(
             detail="Task not found"
         )
 
-    check_company_access(current_user, task.company_id)
+    await _assert_task_view(current_user, task)
 
     payload: dict[str, object] = {}
     if progress_percentage is not None:
@@ -843,7 +911,7 @@ async def get_task_comments(
             detail="Task not found"
         )
 
-    check_company_access(current_user, task.company_id)
+    await _assert_task_view(current_user, task)
 
     # Find all comments for this task
     task_comments = await TaskComment.find(
@@ -882,7 +950,7 @@ async def add_task_comment(
             detail="Task not found"
         )
 
-    check_company_access(current_user, task.company_id)
+    await _assert_task_view(current_user, task)
 
     # Create new comment document
     comment = TaskComment(
@@ -987,7 +1055,7 @@ async def update_task(
             detail="Task not found"
         )
 
-    check_company_access(current_user, task.company_id)
+    await _assert_task_manage(current_user, task)
 
     previous_assigned_to = task.assigned_to
 
@@ -1022,6 +1090,8 @@ async def update_task(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Assigned user must be from the same company"
                 )
+            if assigned_to != previous_assigned_to:
+                await _assert_can_assign_task(current_user, assigned_user)
             task.assigned_to = assigned_to
             task.assigned_by = str(current_user.id)
     if due_date is not None:
@@ -1169,7 +1239,7 @@ async def add_task_attachment(
             detail="Task not found"
         )
 
-    check_company_access(current_user, task.company_id)
+    await _assert_task_view(current_user, task)
 
     # Initialize attachments list if it doesn't exist
     if not hasattr(task, 'attachments') or task.attachments is None:

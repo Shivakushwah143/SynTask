@@ -28,7 +28,7 @@ import { versionsApi } from '../api/versions'
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { useAuthStore } from '../store/authStore'
 import { useMediaQuery } from '../hooks/useMediaQuery'
-import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
+import { canCreateTask, canManageProject, hasCompanyAdminAccess, isLeadRole, normalizeRole } from '../utils/roles'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 
@@ -101,8 +101,7 @@ export default function ProjectBoard() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const isMobile = useMediaQuery('(max-width: 767px)')
-  const canManageColumns = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role)
-  const canAssignProject = hasCompanyAdminAccess(user?.role)
+  const userRole = normalizeRole(user?.role)
   const [activeTab, setActiveTab] = useState('board')
   const [loading, setLoading] = useState(true)
   const [loadingSummary, setLoadingSummary] = useState(false)
@@ -341,6 +340,10 @@ export default function ProjectBoard() {
   const unassignedTasks = allProjectTasks.filter((task) => !task.assigned_to).length
   const totalEstimatedHours = allProjectTasks.reduce((sum, task) => sum + Number(task.estimated_hours || 0), 0)
   const projectRecord = projectInfo || boardData?.project || {}
+  const canManageCurrentProject = canManageProject(user?.role, projectRecord, user?.id)
+  const canManageColumns = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role) || canManageCurrentProject
+  const canAssignProject = hasCompanyAdminAccess(user?.role) || (userRole === 'manager' && canManageCurrentProject)
+  const canCreateProjectTask = canCreateTask(user?.role)
   const activeProject = projectInfo?.name || boardData?.project?.name || 'Project'
   const projectDescription = projectRecord.description || 'No project description available.'
   const projectStatus = projectRecord.status || 'active'
@@ -414,8 +417,31 @@ export default function ProjectBoard() {
       [item.first_name, item.last_name].filter(Boolean).join(' ') || item.email || 'Team member',
     ]))
   }, [assignableUsers])
-  const projectOwnerId = projectRecord.lead_id || projectRecord.assigned_to || projectRecord.created_by
-  const projectOwner = projectRecord.lead_name || projectRecord.owner_name || projectRecord.assigned_to_name || projectRecord.created_by_name || userNameById[String(projectOwnerId)] || 'Unassigned'
+  const projectAssignmentOptions = useMemo(
+    () => assignableUsers.filter((item) => {
+      const role = normalizeRole(item.role)
+      if (userRole === 'manager') return role === 'lead'
+      return role === 'manager' || role === 'lead'
+    }),
+    [assignableUsers, userRole],
+  )
+  const assignedProjectUsers = Array.isArray(projectRecord.assigned_users) ? projectRecord.assigned_users : []
+  const assignedProjectIds = projectRecord.assigned_user_ids || (projectRecord.assigned_to ? [projectRecord.assigned_to] : [])
+  const projectManagers = assignedProjectUsers
+    .filter((item) => normalizeRole(item.role) === 'manager')
+    .map((item) => item.name)
+  const projectLeaders = assignedProjectUsers
+    .filter((item) => normalizeRole(item.role) === 'lead')
+    .map((item) => item.name)
+  assignedProjectIds.forEach((id) => {
+    const match = assignableUsers.find((item) => String(item.id || item._id) === String(id))
+    if (!match) return
+    const name = userNameById[String(id)]
+    if (normalizeRole(match.role) === 'manager' && !projectManagers.includes(name)) projectManagers.push(name)
+    if (normalizeRole(match.role) === 'lead' && !projectLeaders.includes(name)) projectLeaders.push(name)
+  })
+  const managerValue = projectManagers.length ? projectManagers.join(', ') : 'Unassigned'
+  const leaderValue = projectLeaders.length ? projectLeaders.join(', ') : 'Unassigned'
   const statusChartData = statuses.map((status) => ({
     id: status.id,
     name: status.label || status.id.replace(/_/g, ' '),
@@ -448,7 +474,7 @@ export default function ProjectBoard() {
               <Filter className="h-4 w-4" />
               Filters
             </Button>
-            {canManageColumns ? (
+            {canCreateProjectTask ? (
               <Button size="sm" onClick={() => { setSelectedStatus('todo'); setShowCreateModal(true) }}>
                 <Plus className="h-4 w-4" />
                 Create task
@@ -501,12 +527,12 @@ export default function ProjectBoard() {
           <aside className="border-t border-primary-200/60 bg-white/40 p-5 dark:border-[#5a4635] dark:bg-black/25 xl:border-l xl:border-t-0">
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-text-primary dark:text-text-primary">Project signals</h3>
-              <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">Owner, delivery, and build context.</p>
+              <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">Manager, leader, delivery, and build context.</p>
             </div>
             <div className="grid gap-3 text-sm text-text-secondary dark:text-text-secondary">
               <ProjectOverviewLine
-                label="Owner"
-                value={projectOwner}
+                label="Manager"
+                value={managerValue}
                 action={canAssignProject ? (
                   <Button variant="secondary" size="sm" onClick={openAssignProjectModal}>
                     <UserPlus className="h-4 w-4" />
@@ -514,6 +540,7 @@ export default function ProjectBoard() {
                   </Button>
                 ) : null}
               />
+              <ProjectOverviewLine label="Leader" value={leaderValue} />
               <ProjectOverviewLine label="Start" value={formatProjectDate(projectRecord.start_date)} />
               <ProjectOverviewLine label="Delivery" value={formatProjectDate(projectRecord.delivery_date)} />
               <ProjectOverviewLine label="Assets" value={`${projectFiles.length} files / ${pages.length} pages`} />
@@ -628,7 +655,7 @@ export default function ProjectBoard() {
                   tasks={filteredBoard[status.id] || []}
                   statuses={statuses}
                   updatingTaskId={updatingTaskId}
-                  canManageColumns={canManageColumns}
+                  canManageColumns={canCreateProjectTask}
                   onAddTask={() => { setSelectedStatus(status.id); setShowCreateModal(true) }}
                   onOpenTask={(taskId) => navigate(`/tasks/${taskId}`)}
                   onOpenProjectTask={(taskId) => navigate(`/projects/${projectId}/tasks/${taskId}`)}
@@ -695,7 +722,7 @@ export default function ProjectBoard() {
               canCreate={canAssignProject}
             >
               <option value="">Unassigned</option>
-              {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              {projectAssignmentOptions.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name} ({item.role})</option>)}
             </CreatableSelectField>
           </FormField>
           <div className="flex justify-end gap-2 pt-2">
@@ -718,7 +745,7 @@ export default function ProjectBoard() {
         }}
       />
 
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create task">
+      <Modal isOpen={canCreateProjectTask && showCreateModal} onClose={() => setShowCreateModal(false)} title="Create task">
         <form onSubmit={handleCreateTask} className="space-y-4">
           <FormField label="Title" required>
             <input name="title" required className={inputClassName} />

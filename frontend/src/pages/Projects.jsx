@@ -7,7 +7,7 @@ import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
-import { hasCompanyAdminAccess } from '../utils/roles'
+import { canCreateProject, canManageProject, normalizeRole } from '../utils/roles'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import {
@@ -33,7 +33,8 @@ const PROJECT_WORKFLOW = {
 export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const canCreateProjects = hasCompanyAdminAccess(user?.role)
+  const canCreateProjects = canCreateProject(user?.role)
+  const userRole = normalizeRole(user?.role)
   const [loading, setLoading] = useState(true)
   const [projects, setProjects] = useState([])
   const [projectPage, setProjectPage] = useState(1)
@@ -106,6 +107,14 @@ export default function Projects() {
   const uniqueAssignableUsers = useMemo(
     () => Array.from(new Map(assignableUsers.map((item) => [item.id, item])).values()),
     [assignableUsers],
+  )
+  const projectAssigneeOptions = useMemo(
+    () => uniqueAssignableUsers.filter((item) => {
+      const role = normalizeRole(item.role)
+      if (userRole === 'manager') return role === 'lead'
+      return role === 'manager' || role === 'lead'
+    }),
+    [uniqueAssignableUsers, userRole],
   )
 
   const summary = useMemo(() => ({
@@ -303,10 +312,14 @@ export default function Projects() {
           const match = projectCards.find((item) => item.id === project.id)
           if (match) navigate(`/projects/${match.id}/board`)
         }}
-        onAssignProject={canCreateProjects ? (project) => {
+        canAssignProject={(project) => {
           const match = projectCards.find((item) => item.id === project.id)
-          if (match) openAssignmentModal(match)
-        } : null}
+          return Boolean(match && canManageProject(user?.role, match, user?.id))
+        }}
+        onAssignProject={(project) => {
+          const match = projectCards.find((item) => item.id === project.id)
+          if (match && canManageProject(user?.role, match, user?.id)) openAssignmentModal(match)
+        }}
       />
 
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New project" size="xl">
@@ -369,7 +382,7 @@ export default function Projects() {
                 canCreate={canCreateProjects}
               >
                 <option value="">Select manager or lead</option>
-                {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+                {projectAssigneeOptions.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name} ({item.role})</option>)}
               </CreatableSelectField>
             </FormField>
             <FormField label="Start date">
@@ -402,7 +415,7 @@ export default function Projects() {
               canCreate={canCreateProjects}
             >
               <option value="">Unassigned</option>
-              {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              {projectAssigneeOptions.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name} ({item.role})</option>)}
             </CreatableSelectField>
           </FormField>
           <div className="flex justify-end gap-2 pt-2">
@@ -417,7 +430,7 @@ export default function Projects() {
         onClose={() => setShowQuickEmployeeModal(false)}
         existing={assignableUsers}
         leads={uniqueAssignableUsers.filter((item) => item.role === 'lead')}
-        canCreateLead={canCreateProjects}
+        canCreateLead={userRole !== 'manager'}
         onCreated={async (created) => {
           await loadAssignableUsers()
           setAssignmentUserId(created.id)
@@ -441,7 +454,7 @@ export default function Projects() {
   )
 }
 
-function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject, onAssignProject }) {
+function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject, canAssignProject, onAssignProject }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
@@ -507,7 +520,7 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
               </div>
               <StackedBudgetBar completed={project.completedTasks} remaining={project.remainingTasks} total={project.totalTasks} />
             </div>
-            {onAssignProject ? (
+            {onAssignProject && canAssignProject?.(project) ? (
               <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-800">
                 <Button variant="secondary" size="sm" onClick={() => onAssignProject(project)}>
                   <UserPlus className="h-4 w-4" />

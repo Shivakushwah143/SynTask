@@ -12,7 +12,7 @@ import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../compone
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
 import { useViewStore } from '../store/viewStore'
-import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
+import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
 
@@ -22,7 +22,7 @@ const Tasks = () => {
   const { user } = useAuthStore()
   const { view, setView } = useViewStore()
   const userRole = normalizeRole(user?.role)
-  const canManageTasks = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
+  const canManageTasks = canCreateTask(userRole)
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -752,7 +752,7 @@ const Tasks = () => {
                   <option value="">Unassigned</option>
                   {uniqueAssignableUsers.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.first_name} {u.last_name} ({u.role === 'lead' ? 'Lead' : 'Employee'})
+                      {u.first_name} {u.last_name} ({u.role || 'user'})
                     </option>
                   ))}
                 </CreatableSelectField>
@@ -761,9 +761,9 @@ const Tasks = () => {
                 )}
                 {!loadingUsers && visibleAssignableUsers.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">
-                    {userRole === ROLE.ADMIN 
-                      ? 'No leads or employees available yet.'
-                      : 'No employees available yet.'}
+                    {userRole === 'admin' || userRole === 'super_admin'
+                      ? 'No managers, leads, or employees available yet.'
+                      : 'No assignable users available yet.'}
                   </p>
                 )}
               </div>
