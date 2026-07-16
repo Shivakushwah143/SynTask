@@ -162,7 +162,7 @@ class MarketingTools:
                             "project_id": project.project_id,
                             "campaign_name": project.name,
                             "status": project.status.value,
-                            "type": project.type.value,
+                            "type": getattr(project.type, "value", project.type),
                             "lead_id": project.lead_id,
                             "start_date": project.start_date.isoformat() if project.start_date else None,
                             "delivery_date": project.delivery_date.isoformat() if project.delivery_date else None,

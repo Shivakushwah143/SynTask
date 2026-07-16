@@ -43,7 +43,7 @@ class Project(Document):
     client_id: Optional[str] = None  # Linked client workspace record, if any
     
     # Project Details
-    type: ProjectType = ProjectType.SOFTWARE
+    type: str = ProjectType.SOFTWARE.value
     status: ProjectStatus = ProjectStatus.ACTIVE
     lead_id: Optional[str] = None  # Project lead/manager
     
