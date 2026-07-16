@@ -113,7 +113,13 @@ async def get_project(
         "status": project.status.value,
         "client_id": project.client_id,
         "lead_id": project.lead_id,
+        "assigned_to": project.assigned_to,
+        "assigned_by": project.assigned_by,
+        "assigned_at": project.assigned_at,
         "team_member_ids": project.team_member_ids,
+        "start_date": project.start_date,
+        "delivery_date": project.delivery_date,
+        "end_date": project.end_date,
         "task_count": task_count,
         "statistics": {
             "tasks_by_status": tasks_by_status,

@@ -36,6 +36,48 @@ const TASK_PRIORITY_STYLES = {
   low: 'border-emerald-200 bg-emerald-50/70 hover:border-emerald-300 dark:border-emerald-700/55 dark:bg-[rgb(22_38_30_/_0.96)] dark:hover:border-emerald-500/75',
 }
 
+const normalizeStatusId = (value) => String(value || '').trim().toLowerCase()
+
+const normalizeBoardColumns = (columns) => {
+  const source = Array.isArray(columns) && columns.length ? columns : DEFAULT_STATUSES
+  return source.map((column) => ({
+    ...column,
+    id: normalizeStatusId(column.id || column.status || column.key),
+    label: column.label || column.name || String(column.id || column.status || column.key || '').replace(/_/g, ' '),
+  })).filter((column) => column.id)
+}
+
+const normalizeBoardPayload = (payload) => {
+  const data = payload?.data?.data || payload?.data || payload || {}
+  const boardColumns = normalizeBoardColumns(data.board_columns || data.columns || data.statuses)
+  const sourceTasksByStatus = data.tasks_by_status || data.tasksByStatus || data.board || {}
+  const tasksByStatus = Object.fromEntries(boardColumns.map((column) => [column.id, []]))
+
+  if (Array.isArray(data.tasks)) {
+    data.tasks.forEach((task) => {
+      const status = normalizeStatusId(task.status || task.status_id)
+      if (!tasksByStatus[status]) tasksByStatus[status] = []
+      tasksByStatus[status].push({ ...task, status })
+    })
+  } else {
+    Object.entries(sourceTasksByStatus).forEach(([status, tasks]) => {
+      const normalizedStatus = normalizeStatusId(status)
+      if (!tasksByStatus[normalizedStatus]) tasksByStatus[normalizedStatus] = []
+      tasksByStatus[normalizedStatus].push(...(Array.isArray(tasks) ? tasks : []).map((task) => ({
+        ...task,
+        id: task.id || task._id,
+        status: normalizeStatusId(task.status || normalizedStatus),
+      })))
+    })
+  }
+
+  return {
+    ...data,
+    board_columns: boardColumns,
+    tasks_by_status: tasksByStatus,
+  }
+}
+
 export default function ProjectBoard() {
   const { projectId } = useParams()
   const navigate = useNavigate()
@@ -97,8 +139,9 @@ export default function ProjectBoard() {
     try {
       setLoading(true)
       const response = await projectsApi.getProjectBoard(projectId)
-      setBoardData(response.data)
-      setStatuses(response.data.board_columns?.length ? response.data.board_columns : DEFAULT_STATUSES)
+      const normalizedBoard = normalizeBoardPayload(response)
+      setBoardData(normalizedBoard)
+      setStatuses(normalizedBoard.board_columns)
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to load project board')
     } finally {
@@ -157,7 +200,7 @@ export default function ProjectBoard() {
     if (!boardData?.tasks_by_status) return {}
     const query = searchQuery.trim().toLowerCase()
     return Object.entries(boardData.tasks_by_status).reduce((acc, [status, tasks]) => {
-      acc[status] = (tasks || []).filter((task) => {
+      acc[normalizeStatusId(status)] = (tasks || []).filter((task) => {
         const matchesQuery = !query || [task.title, task.description, task.id].filter(Boolean).some((value) => String(value).toLowerCase().includes(query))
         const matchesPriority = !filters.priority || (task.priority || '').toLowerCase() === filters.priority
         const matchesAssignee = !filters.assignee || task.assigned_to === filters.assignee
@@ -220,6 +263,27 @@ export default function ProjectBoard() {
   const allProjectTasks = Object.values(boardData?.tasks_by_status || {}).flat()
   const completedTasks = allProjectTasks.filter((task) => ['completed', 'done'].includes((task.status || '').toLowerCase())).length
   const completionPercentage = allProjectTasks.length ? Math.round((completedTasks / allProjectTasks.length) * 100) : 0
+  const overdueTasks = allProjectTasks.filter((task) => {
+    if (!task.due_date) return false
+    try {
+      return new Date(task.due_date).getTime() < Date.now() && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
+    } catch {
+      return false
+    }
+  }).length
+  const dueSoonTasks = allProjectTasks.filter((task) => {
+    if (!task.due_date) return false
+    try {
+      const dueAt = new Date(task.due_date).getTime()
+      const now = Date.now()
+      const inThreeDays = now + (3 * 24 * 60 * 60 * 1000)
+      return dueAt >= now && dueAt <= inThreeDays && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
+    } catch {
+      return false
+    }
+  }).length
+  const unassignedTasks = allProjectTasks.filter((task) => !task.assigned_to).length
+  const totalEstimatedHours = allProjectTasks.reduce((sum, task) => sum + Number(task.estimated_hours || 0), 0)
   const projectRecord = projectInfo || boardData?.project || {}
   const activeProject = projectInfo?.name || boardData?.project?.name || 'Project'
   const projectDescription = projectRecord.description || 'No project description available.'
@@ -232,18 +296,29 @@ export default function ProjectBoard() {
       return 'Not set'
     }
   }
-  const projectOwner = projectRecord.lead_name || projectRecord.owner_name || projectRecord.assigned_to_name || projectRecord.created_by_name || 'Unassigned'
+  const userNameById = useMemo(() => {
+    return Object.fromEntries(assignableUsers.map((item) => [
+      String(item.id || item._id),
+      [item.first_name, item.last_name].filter(Boolean).join(' ') || item.email || 'Team member',
+    ]))
+  }, [assignableUsers])
+  const projectOwnerId = projectRecord.lead_id || projectRecord.assigned_to || projectRecord.created_by
+  const projectOwner = projectRecord.lead_name || projectRecord.owner_name || projectRecord.assigned_to_name || projectRecord.created_by_name || userNameById[String(projectOwnerId)] || 'Unassigned'
   const statusChartData = statuses.map((status) => ({
     id: status.id,
     name: status.label || status.id.replace(/_/g, ' '),
-    value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === status.id).length,
+    value: allProjectTasks.filter((task) => normalizeStatusId(task.status) === status.id).length,
     color: STATUS_COLORS[status.id] || '#4285F4',
   })).filter((item) => item.value > 0)
   const overviewCards = [
-    { title: 'Tasks', value: allProjectTasks.length, color: '#4285F4', helper: 'Total scope' },
-    { title: 'Complete', value: completedTasks, color: '#2FB47C', helper: 'Closed work' },
-    { title: 'In progress', value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === 'in_progress').length, color: '#FF8A4C', helper: 'Active now' },
-    { title: 'Completion', value: `${projectRecord.statistics?.completion_percentage ?? completionPercentage}%`, color: '#7C6FE0', helper: 'Delivery health' },
+    { title: 'Tasks', value: allProjectTasks.length, color: '#4285F4', helper: 'Live total tasks' },
+    { title: 'Complete', value: completedTasks, color: '#2FB47C', helper: 'Tasks finished' },
+    { title: 'Overdue', value: overdueTasks, color: '#EF4444', helper: 'Past due items' },
+    { title: 'Due soon', value: dueSoonTasks, color: '#FF8A4C', helper: 'Next 3 days' },
+    { title: 'Unassigned', value: unassignedTasks, color: '#7C6FE0', helper: 'Needs ownership' },
+    { title: 'Est. hours', value: totalEstimatedHours, color: '#0EA5E9', helper: 'Task effort' },
+    { title: 'In progress', value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === 'in_progress').length, color: '#A855F7', helper: 'Active now' },
+    { title: 'Completion', value: `${completionPercentage}%`, color: '#7C6FE0', helper: 'Derived from live tasks' },
   ]
 
   return (
@@ -286,17 +361,17 @@ export default function ProjectBoard() {
                 <div className="mt-4">
                   <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
                     <span>Completion</span>
-                    <span>{projectRecord.statistics?.completion_percentage ?? completionPercentage}%</span>
+                    <span>{completionPercentage}%</span>
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-white/70 dark:bg-black/55">
                     <div
                       className="h-full rounded-full bg-[linear-gradient(90deg,#2FB47C,#FF8A4C,#7C6FE0)] transition-all duration-300"
-                      style={{ width: `${Math.max(0, Math.min(100, projectRecord.statistics?.completion_percentage ?? completionPercentage))}%` }}
+                      style={{ width: `${Math.max(0, Math.min(100, completionPercentage))}%` }}
                     />
                   </div>
                 </div>
               </div>
-              <ProjectStatusDonut data={statusChartData} completion={projectRecord.statistics?.completion_percentage ?? completionPercentage} />
+              <ProjectStatusDonut data={statusChartData} completion={completionPercentage} />
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {overviewCards.map((card) => (
@@ -564,27 +639,35 @@ function ProjectOverviewLine({ label, value }) {
 
 function ProjectStatusDonut({ data, completion }) {
   const hasData = data.length > 0
+  if (!hasData) {
+    return (
+      <div className="flex h-full min-h-40 flex-col justify-center rounded-2xl border border-dashed border-primary-200/70 bg-white/60 p-4 shadow-sm dark:border-white/10 dark:bg-black/30">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">Task mix</p>
+        <p className="mt-2 text-sm font-medium text-text-primary dark:text-text-primary">No tasks yet</p>
+        <p className="mt-1 text-xs leading-5 text-text-secondary dark:text-text-secondary">
+          Status chart will appear after the first task is created for this project.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-2xl border border-white/70 bg-white/65 p-3 shadow-sm dark:border-white/10 dark:bg-black/30">
       <div className="relative h-40">
-        {hasData ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={data} dataKey="value" nameKey="name" innerRadius={48} outerRadius={68} paddingAngle={3} stroke="none">
-                {data.map((entry) => <Cell key={entry.id} fill={entry.color} />)}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="flex h-full items-center justify-center rounded-full border border-dashed border-border text-xs text-text-muted">No tasks</div>
-        )}
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius={48} outerRadius={68} paddingAngle={3} stroke="none">
+              {data.map((entry) => <Cell key={entry.id} fill={entry.color} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-2xl font-semibold tabular-nums text-text-primary dark:text-text-primary">{completion}%</span>
           <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Done</span>
         </div>
       </div>
       <div className="mt-2 grid gap-1.5">
-        {(hasData ? data : [{ id: 'empty', name: 'No tasks', value: 0, color: '#9ca3af' }]).slice(0, 4).map((item) => (
+        {data.slice(0, 4).map((item) => (
           <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
             <span className="inline-flex min-w-0 items-center gap-2 text-text-secondary dark:text-text-secondary">
               <span className="h-2 w-2 flex-none rounded-full" style={{ backgroundColor: item.color }} />
