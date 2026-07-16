@@ -26,6 +26,8 @@ export function buildProjectGraphRows(projects, limit = 6) {
       name: project.name || 'Untitled project',
       key: project.key || project.project_id || '',
       owner: getOwner(project),
+      assigned_to: project.assigned_to || '',
+      lead_id: project.lead_id || '',
       progress,
       completedTasks,
       totalTasks,

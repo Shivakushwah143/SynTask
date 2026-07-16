@@ -1,7 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowLeft, ArrowRight, Filter, Plus, Search } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, UserPlus } from 'lucide-react'
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import toast from 'react-hot-toast'
 import { projectsApi } from '../api/projects'
 import { tasksAPI } from '../api/tasks'
@@ -12,7 +29,8 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { useAuthStore } from '../store/authStore'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
-import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
+import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
+import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 
 const DEFAULT_STATUSES = [
   { id: 'todo', label: 'To Do' },
@@ -36,12 +54,55 @@ const TASK_PRIORITY_STYLES = {
   low: 'border-emerald-200 bg-emerald-50/70 hover:border-emerald-300 dark:border-emerald-700/55 dark:bg-[rgb(22_38_30_/_0.96)] dark:hover:border-emerald-500/75',
 }
 
+const normalizeStatusId = (value) => String(value || '').trim().toLowerCase()
+
+const normalizeBoardColumns = (columns) => {
+  const source = Array.isArray(columns) && columns.length ? columns : DEFAULT_STATUSES
+  return source.map((column) => ({
+    ...column,
+    id: normalizeStatusId(column.id || column.status || column.key),
+    label: column.label || column.name || String(column.id || column.status || column.key || '').replace(/_/g, ' '),
+  })).filter((column) => column.id)
+}
+
+const normalizeBoardPayload = (payload) => {
+  const data = payload?.data?.data || payload?.data || payload || {}
+  const boardColumns = normalizeBoardColumns(data.board_columns || data.columns || data.statuses)
+  const sourceTasksByStatus = data.tasks_by_status || data.tasksByStatus || data.board || {}
+  const tasksByStatus = Object.fromEntries(boardColumns.map((column) => [column.id, []]))
+
+  if (Array.isArray(data.tasks)) {
+    data.tasks.forEach((task) => {
+      const status = normalizeStatusId(task.status || task.status_id)
+      if (!tasksByStatus[status]) tasksByStatus[status] = []
+      tasksByStatus[status].push({ ...task, status })
+    })
+  } else {
+    Object.entries(sourceTasksByStatus).forEach(([status, tasks]) => {
+      const normalizedStatus = normalizeStatusId(status)
+      if (!tasksByStatus[normalizedStatus]) tasksByStatus[normalizedStatus] = []
+      tasksByStatus[normalizedStatus].push(...(Array.isArray(tasks) ? tasks : []).map((task) => ({
+        ...task,
+        id: task.id || task._id,
+        status: normalizeStatusId(task.status || normalizedStatus),
+      })))
+    })
+  }
+
+  return {
+    ...data,
+    board_columns: boardColumns,
+    tasks_by_status: tasksByStatus,
+  }
+}
+
 export default function ProjectBoard() {
   const { projectId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const canManageColumns = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role)
+  const canAssignProject = hasCompanyAdminAccess(user?.role)
   const [activeTab, setActiveTab] = useState('board')
   const [loading, setLoading] = useState(true)
   const [loadingSummary, setLoadingSummary] = useState(false)
@@ -58,10 +119,25 @@ export default function ProjectBoard() {
   const [filters, setFilters] = useState({ priority: '', assignee: '', label: '' })
   const [showFilters, setShowFilters] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showAssignModal, setShowAssignModal] = useState(false)
+  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
+  const [assignmentUserId, setAssignmentUserId] = useState('')
+  const [taskAssigneeId, setTaskAssigneeId] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('todo')
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES)
   const [submitting, setSubmitting] = useState(false)
+  const [assigningProject, setAssigningProject] = useState(false)
   const [updatingTaskId, setUpdatingTaskId] = useState(null)
+  const [activeTaskId, setActiveTaskId] = useState(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   const loadProjectInfo = useCallback(async () => {
     try {
@@ -97,8 +173,9 @@ export default function ProjectBoard() {
     try {
       setLoading(true)
       const response = await projectsApi.getProjectBoard(projectId)
-      setBoardData(response.data)
-      setStatuses(response.data.board_columns?.length ? response.data.board_columns : DEFAULT_STATUSES)
+      const normalizedBoard = normalizeBoardPayload(response)
+      setBoardData(normalizedBoard)
+      setStatuses(normalizedBoard.board_columns)
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to load project board')
     } finally {
@@ -157,7 +234,7 @@ export default function ProjectBoard() {
     if (!boardData?.tasks_by_status) return {}
     const query = searchQuery.trim().toLowerCase()
     return Object.entries(boardData.tasks_by_status).reduce((acc, [status, tasks]) => {
-      acc[status] = (tasks || []).filter((task) => {
+      acc[normalizeStatusId(status)] = (tasks || []).filter((task) => {
         const matchesQuery = !query || [task.title, task.description, task.id].filter(Boolean).some((value) => String(value).toLowerCase().includes(query))
         const matchesPriority = !filters.priority || (task.priority || '').toLowerCase() === filters.priority
         const matchesAssignee = !filters.assignee || task.assigned_to === filters.assignee
@@ -199,7 +276,7 @@ export default function ProjectBoard() {
         title: formData.get('title'),
         description: formData.get('description') || '',
         priority: formData.get('priority') || 'medium',
-        assigned_to: formData.get('assigned_to') || null,
+        assigned_to: taskAssigneeId || null,
         due_date: formData.get('due_date'),
         estimated_hours: formData.get('estimated_hours'),
         project_id: projectId,
@@ -208,11 +285,33 @@ export default function ProjectBoard() {
       toast.success('Task created successfully')
       setShowCreateModal(false)
       event.target.reset()
+      setTaskAssigneeId('')
       await loadBoardData()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create task')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const openAssignProjectModal = () => {
+    setAssignmentUserId(projectRecord.assigned_to || projectRecord.lead_id || '')
+    setShowAssignModal(true)
+  }
+
+  const handleAssignProject = async (event) => {
+    event.preventDefault()
+    if (assigningProject) return
+    try {
+      setAssigningProject(true)
+      await projectsApi.updateProject(projectId, { assigned_to: assignmentUserId })
+      toast.success(assignmentUserId ? 'Project assigned' : 'Project unassigned')
+      setShowAssignModal(false)
+      await Promise.all([loadProjectInfo(), loadBoardData()])
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update project assignment')
+    } finally {
+      setAssigningProject(false)
     }
   }
 
@@ -253,11 +352,74 @@ export default function ProjectBoard() {
       return 'Not set'
     }
   }
-  const projectOwner = projectRecord.lead_name || projectRecord.owner_name || projectRecord.assigned_to_name || projectRecord.created_by_name || 'Unassigned'
+
+  const updateTaskInBoard = useCallback((taskId, nextStatus) => {
+    setBoardData((current) => {
+      if (!current?.tasks_by_status) return current
+      let movedTask = null
+      const tasksByStatus = Object.fromEntries(
+        Object.entries(current.tasks_by_status).map(([status, tasks]) => [
+          status,
+          (tasks || []).filter((task) => {
+            if (String(task.id) === String(taskId)) {
+              movedTask = { ...task, status: nextStatus }
+              return false
+            }
+            return true
+          }),
+        ])
+      )
+
+      if (!movedTask) return current
+      if (!tasksByStatus[nextStatus]) tasksByStatus[nextStatus] = []
+      tasksByStatus[nextStatus] = [movedTask, ...tasksByStatus[nextStatus]]
+      return { ...current, tasks_by_status: tasksByStatus }
+    })
+  }, [])
+
+  const handleDragStart = (event) => {
+    setActiveTaskId(event.active.id)
+  }
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event
+    setActiveTaskId(null)
+
+    if (!over || updatingTaskId) return
+
+    const activeTask = allProjectTasks.find((task) => String(task.id) === String(active.id))
+    if (!activeTask) return
+
+    const destinationStatus = normalizeStatusId(over.data?.current?.sortable?.containerId || over.id)
+    const currentStatus = normalizeStatusId(activeTask.status)
+    if (!destinationStatus || destinationStatus === currentStatus) return
+    if (!statuses.some((status) => status.id === destinationStatus)) return
+
+    try {
+      setUpdatingTaskId(active.id)
+      updateTaskInBoard(active.id, destinationStatus)
+      await tasksAPI.updateTaskStatus(active.id, destinationStatus)
+      toast.success('Task status updated')
+      await loadBoardData()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update task status')
+      await loadBoardData()
+    } finally {
+      setUpdatingTaskId(null)
+    }
+  }
+  const userNameById = useMemo(() => {
+    return Object.fromEntries(assignableUsers.map((item) => [
+      String(item.id || item._id),
+      [item.first_name, item.last_name].filter(Boolean).join(' ') || item.email || 'Team member',
+    ]))
+  }, [assignableUsers])
+  const projectOwnerId = projectRecord.lead_id || projectRecord.assigned_to || projectRecord.created_by
+  const projectOwner = projectRecord.lead_name || projectRecord.owner_name || projectRecord.assigned_to_name || projectRecord.created_by_name || userNameById[String(projectOwnerId)] || 'Unassigned'
   const statusChartData = statuses.map((status) => ({
     id: status.id,
     name: status.label || status.id.replace(/_/g, ' '),
-    value: allProjectTasks.filter((task) => (task.status || '').toLowerCase() === status.id).length,
+    value: allProjectTasks.filter((task) => normalizeStatusId(task.status) === status.id).length,
     color: STATUS_COLORS[status.id] || '#4285F4',
   })).filter((item) => item.value > 0)
   const overviewCards = [
@@ -342,7 +504,16 @@ export default function ProjectBoard() {
               <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">Owner, delivery, and build context.</p>
             </div>
             <div className="grid gap-3 text-sm text-text-secondary dark:text-text-secondary">
-              <ProjectOverviewLine label="Owner" value={projectOwner} />
+              <ProjectOverviewLine
+                label="Owner"
+                value={projectOwner}
+                action={canAssignProject ? (
+                  <Button variant="secondary" size="sm" onClick={openAssignProjectModal}>
+                    <UserPlus className="h-4 w-4" />
+                    {projectRecord.assigned_to ? 'Change' : 'Assign'}
+                  </Button>
+                ) : null}
+              />
               <ProjectOverviewLine label="Start" value={formatProjectDate(projectRecord.start_date)} />
               <ProjectOverviewLine label="Delivery" value={formatProjectDate(projectRecord.delivery_date)} />
               <ProjectOverviewLine label="Assets" value={`${projectFiles.length} files / ${pages.length} pages`} />
@@ -440,60 +611,39 @@ export default function ProjectBoard() {
         ) : <EmptyState title="No summary data" description="Summary data will appear once project activity is available." />
       ) : activeTab === 'board' ? (
         loading ? <SkeletonKanban cols={Math.max(3, statuses.length)} /> : (
-          <div
-            className="grid gap-4"
-            style={{ gridTemplateColumns: isMobile ? '1fr' : `repeat(${Math.min(statuses.length, 4)}, minmax(0, 1fr))` }}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
           >
-            {statuses.map((status) => {
-              const tasks = filteredBoard[status.id] || []
-              const statusColor = STATUS_COLORS[status.id] || '#4285F4'
-              return (
-                <section key={status.id} className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-primary-200/50 bg-[linear-gradient(180deg,rgba(255,250,244,0.96),rgba(255,255,255,0.86))] shadow-[0_14px_34px_rgba(63,49,37,0.06)] dark:border-[#4a3b2e] dark:bg-[linear-gradient(180deg,rgba(36,28,20,0.96),rgba(16,13,10,0.92))] dark:shadow-[0_18px_42px_rgba(0,0,0,0.22)]">
-                  <div className="h-1.5 w-full" style={{ backgroundColor: statusColor }} />
-                  <div className="flex min-h-0 flex-1 flex-col p-4">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{status.label || status.id}</h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{tasks.length} tasks</p>
-                    </div>
-                    <Badge label={status.label || status.id} colorKey={status.id} />
-                  </div>
-                  <div className="space-y-3 overflow-y-auto">
-                    {tasks.length ? tasks.map((task) => (
-                      <article key={task.id} className={`rounded-2xl border p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md dark:shadow-[0_12px_28px_rgba(0,0,0,0.22)] ${TASK_PRIORITY_STYLES[(task.priority || 'medium').toLowerCase()] || TASK_PRIORITY_STYLES.medium}`}>
-                        <div className="mb-3 h-1 rounded-full shadow-[0_0_14px_rgba(255,138,76,0.24)]" style={{ backgroundColor: statusColor }} />
-                        <button type="button" onClick={() => navigate(`/tasks/${task.id}`)} className="w-full text-left">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900 dark:text-[#fff7ed]">{task.title}</p>
-                              <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-[#d8cbbb]">{task.description || 'No description.'}</p>
-                            </div>
-                            <Badge label={task.priority || 'medium'} colorKey={task.priority || 'medium'} />
-                          </div>
-                        </button>
-                        <div className="mt-4 flex flex-wrap items-center gap-2">
-                          {task.due_date ? <Badge label={format(new Date(task.due_date), 'MMM d')} colorKey="scheduled" /> : null}
-                          {task.assigned_to_name ? <Badge label={task.assigned_to_name} colorKey="scheduled" /> : <Badge label="Unassigned" colorKey="scheduled" />}
-                        </div>
-                        <div className="mt-4 flex items-center justify-between gap-2">
-                          <select className={`${inputClassName} text-xs`} value={task.status} disabled={Boolean(updatingTaskId)} onChange={(event) => handleTaskStatusChange(task.id, event.target.value)} aria-label={updatingTaskId === task.id ? `Moving ${task.title}` : `Move ${task.title}`} aria-busy={updatingTaskId === task.id || undefined}>
-                            {statuses.map((option) => <option key={option.id} value={option.id}>{option.label || option.id}</option>)}
-                          </select>
-                          <Button variant="ghost" size="sm" onClick={() => navigate(`/projects/${projectId}/tasks/${task.id}`)}>
-                            Open
-                            <ArrowRight className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </article>
-                    )) : (
-                      <EmptyState title="No tasks in this column" description="Move work here or create a new task." action={canManageColumns ? <Button size="sm" onClick={() => { setSelectedStatus(status.id); setShowCreateModal(true) }}><Plus className="h-4 w-4" /> Add task</Button> : null} />
-                    )}
-                  </div>
-                  </div>
-                </section>
-              )
-            })}
-          </div>
+            <div
+              className="grid gap-4"
+              style={{ gridTemplateColumns: isMobile ? '1fr' : `repeat(${Math.min(statuses.length, 4)}, minmax(0, 1fr))` }}
+            >
+              {statuses.map((status) => (
+                <ProjectBoardColumn
+                  key={status.id}
+                  status={status}
+                  tasks={filteredBoard[status.id] || []}
+                  statuses={statuses}
+                  updatingTaskId={updatingTaskId}
+                  canManageColumns={canManageColumns}
+                  onAddTask={() => { setSelectedStatus(status.id); setShowCreateModal(true) }}
+                  onOpenTask={(taskId) => navigate(`/tasks/${taskId}`)}
+                  onOpenProjectTask={(taskId) => navigate(`/projects/${projectId}/tasks/${taskId}`)}
+                  onStatusChange={handleTaskStatusChange}
+                />
+              ))}
+            </div>
+            <DragOverlay>
+              {activeTaskId ? (
+                <div className="rounded-xl border border-primary-200 bg-white px-4 py-3 text-sm font-semibold text-text-primary shadow-xl dark:border-primary-800 dark:bg-gray-950 dark:text-gray-100">
+                  Moving task
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         )
       ) : (
         loadingPages ? <SkeletonTable rows={4} cols={3} /> : (
@@ -529,6 +679,45 @@ export default function ProjectBoard() {
         )
       )}
 
+      <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign project">
+        <form onSubmit={handleAssignProject} className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Project</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{activeProject}</p>
+          </div>
+          <FormField label="Assigned to">
+            <CreatableSelectField
+              value={assignmentUserId}
+              onChange={setAssignmentUserId}
+              className={inputClassName}
+              createLabel="Create user"
+              onCreate={() => setShowQuickEmployeeModal(true)}
+              canCreate={canAssignProject}
+            >
+              <option value="">Unassigned</option>
+              {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+            </CreatableSelectField>
+          </FormField>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowAssignModal(false)}>Cancel</Button>
+            <Button type="submit" loading={assigningProject} loadingText="Saving">Save assignment</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <QuickCreateEmployeeModal
+        isOpen={showQuickEmployeeModal}
+        onClose={() => setShowQuickEmployeeModal(false)}
+        existing={assignableUsers}
+        leads={assignableUsers.filter((item) => item.role === 'lead')}
+        canCreateLead={canAssignProject}
+        onCreated={async (created) => {
+          await loadAssignableUsers()
+          setAssignmentUserId(created.id)
+          setTaskAssigneeId(created.id)
+        }}
+      />
+
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Create task">
         <form onSubmit={handleCreateTask} className="space-y-4">
           <FormField label="Title" required>
@@ -554,10 +743,18 @@ export default function ProjectBoard() {
             </FormField>
           </div>
           <FormField label="Assign to">
-            <select name="assigned_to" className={inputClassName}>
+            <CreatableSelectField
+              name="assigned_to"
+              value={taskAssigneeId}
+              onChange={setTaskAssigneeId}
+              className={inputClassName}
+              createLabel="Create user"
+              onCreate={() => setShowQuickEmployeeModal(true)}
+              canCreate={canManageColumns}
+            >
               <option value="">Unassigned</option>
               {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
-            </select>
+            </CreatableSelectField>
           </FormField>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
@@ -566,6 +763,107 @@ export default function ProjectBoard() {
         </form>
       </Modal>
     </div>
+  )
+}
+
+function ProjectBoardColumn({ status, tasks, statuses, updatingTaskId, canManageColumns, onAddTask, onOpenTask, onOpenProjectTask, onStatusChange }) {
+  const { setNodeRef, isOver } = useDroppable({ id: status.id })
+  const statusColor = STATUS_COLORS[status.id] || '#4285F4'
+
+  return (
+    <section
+      ref={setNodeRef}
+      className={`flex min-h-[420px] flex-col overflow-hidden rounded-2xl border bg-[linear-gradient(180deg,rgba(255,250,244,0.96),rgba(255,255,255,0.86))] shadow-[0_14px_34px_rgba(63,49,37,0.06)] transition-colors duration-150 dark:bg-[linear-gradient(180deg,rgba(36,28,20,0.96),rgba(16,13,10,0.92))] dark:shadow-[0_18px_42px_rgba(0,0,0,0.22)] ${isOver ? 'border-primary-400 ring-2 ring-primary-200/80 dark:border-primary-500 dark:ring-primary-900/70' : 'border-primary-200/50 dark:border-[#4a3b2e]'}`}
+    >
+      <div className="h-1.5 w-full" style={{ backgroundColor: statusColor }} />
+      <div className="flex min-h-0 flex-1 flex-col p-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{status.label || status.id}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{tasks.length} tasks</p>
+          </div>
+          <Badge label={status.label || status.id} colorKey={status.id} />
+        </div>
+        <SortableContext id={status.id} items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+          <div className={`min-h-[260px] flex-1 space-y-3 overflow-y-auto rounded-xl transition-colors ${isOver ? 'bg-primary-50/60 p-2 dark:bg-primary-950/20' : ''}`}>
+            {tasks.length ? tasks.map((task) => (
+              <SortableProjectTaskCard
+                key={task.id}
+                task={task}
+                statuses={statuses}
+                statusColor={statusColor}
+                updatingTaskId={updatingTaskId}
+                onOpenTask={onOpenTask}
+                onOpenProjectTask={onOpenProjectTask}
+                onStatusChange={onStatusChange}
+              />
+            )) : (
+              <EmptyState title="No tasks in this column" description="Drop a task here or create a new one." action={canManageColumns ? <Button size="sm" onClick={onAddTask}><Plus className="h-4 w-4" /> Add task</Button> : null} />
+            )}
+          </div>
+        </SortableContext>
+      </div>
+    </section>
+  )
+}
+
+function SortableProjectTaskCard({ task, statuses, statusColor, updatingTaskId, onOpenTask, onOpenProjectTask, onStatusChange }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.45 : 1,
+  }
+
+  return (
+    <article
+      ref={setNodeRef}
+      style={style}
+      className={`rounded-2xl border p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md dark:shadow-[0_12px_28px_rgba(0,0,0,0.22)] ${TASK_PRIORITY_STYLES[(task.priority || 'medium').toLowerCase()] || TASK_PRIORITY_STYLES.medium}`}
+    >
+      <div className="mb-3 h-1 rounded-full shadow-[0_0_14px_rgba(255,138,76,0.24)]" style={{ backgroundColor: statusColor }} />
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          aria-label={`Drag ${task.title}`}
+          className="mt-0.5 cursor-grab rounded-lg p-1.5 text-text-muted transition hover:bg-white/75 hover:text-primary-600 active:cursor-grabbing dark:hover:bg-black/30"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <button type="button" onClick={() => onOpenTask(task.id)} className="min-w-0 flex-1 text-left">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-900 dark:text-[#fff7ed]">{task.title}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-[#d8cbbb]">{task.description || 'No description.'}</p>
+            </div>
+            <Badge label={task.priority || 'medium'} colorKey={task.priority || 'medium'} />
+          </div>
+        </button>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {task.due_date ? <Badge label={format(new Date(task.due_date), 'MMM d')} colorKey="scheduled" /> : null}
+        {task.assigned_to_name ? <Badge label={task.assigned_to_name} colorKey="scheduled" /> : <Badge label="Unassigned" colorKey="scheduled" />}
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <select className={`${inputClassName} text-xs`} value={task.status} disabled={Boolean(updatingTaskId)} onChange={(event) => onStatusChange(task.id, event.target.value)} aria-label={updatingTaskId === task.id ? `Moving ${task.title}` : `Move ${task.title}`} aria-busy={updatingTaskId === task.id || undefined}>
+          {statuses.map((option) => <option key={option.id} value={option.id}>{option.label || option.id}</option>)}
+        </select>
+        <Button variant="ghost" size="sm" onClick={() => onOpenProjectTask(task.id)}>
+          Open
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </article>
   )
 }
 
@@ -578,69 +876,55 @@ function BoardMetric({ title, value }) {
   )
 }
 
-function ProjectOverviewLine({ label, value }) {
+function ProjectOverviewLine({ label, value, action = null }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-white/70 bg-white/70 px-3 py-2 dark:border-white/10 dark:bg-black/35">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-white/70 bg-white/70 px-3 py-2 dark:border-white/10 dark:bg-black/35">
       <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{label}</span>
-      <span className="min-w-0 truncate text-right font-medium text-text-primary dark:text-text-primary">{value}</span>
+      <span className="ml-auto min-w-0 truncate text-right font-medium text-text-primary dark:text-text-primary">{value}</span>
+      {action ? <span className="flex-none">{action}</span> : null}
     </div>
   )
 }
 
 function ProjectStatusDonut({ data, completion }) {
   const hasData = data.length > 0
+  if (!hasData) {
+    return (
+      <div className="flex h-full min-h-40 flex-col justify-center rounded-2xl border border-dashed border-primary-200/70 bg-white/60 p-4 shadow-sm dark:border-white/10 dark:bg-black/30">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">Task mix</p>
+        <p className="mt-2 text-sm font-medium text-text-primary dark:text-text-primary">No tasks yet</p>
+        <p className="mt-1 text-xs leading-5 text-text-secondary dark:text-text-secondary">
+          Status chart will appear after the first task is created for this project.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-2xl border border-white/70 bg-white/65 p-3 shadow-sm dark:border-white/10 dark:bg-black/30">
       <div className="relative h-40">
-        {hasData ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={data} dataKey="value" nameKey="name" innerRadius={48} outerRadius={68} paddingAngle={3} stroke="none">
-                {data.map((entry) => <Cell key={entry.id} fill={entry.color} />)}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <div className="relative flex h-28 w-28 items-center justify-center rounded-full border border-dashed border-primary-200 bg-gradient-to-br from-primary-50 via-white to-amber-50 text-center shadow-[0_10px_30px_rgba(252,165,17,0.08)] dark:border-primary-900/60 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900">
-              <div className="absolute inset-4 rounded-full bg-[conic-gradient(from_180deg,rgba(59,130,246,0.08),rgba(249,115,22,0.08),rgba(34,197,94,0.08),rgba(59,130,246,0.08))] blur-[1px]" />
-              <div className="relative">
-                <p className="text-lg font-semibold tabular-nums text-text-primary dark:text-text-primary">0%</p>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">No tasks</p>
-              </div>
-            </div>
-          </div>
-        )}
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius={48} outerRadius={68} paddingAngle={3} stroke="none">
+              {data.map((entry) => <Cell key={entry.id} fill={entry.color} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-2xl font-semibold tabular-nums text-text-primary dark:text-text-primary">{completion}%</span>
           <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">Done</span>
         </div>
       </div>
       <div className="mt-2 grid gap-1.5">
-        {hasData ? (
-          data.slice(0, 4).map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
-              <span className="inline-flex min-w-0 items-center gap-2 text-text-secondary dark:text-text-secondary">
-                <span className="h-2 w-2 flex-none rounded-full" style={{ backgroundColor: item.color }} />
-                <span className="truncate capitalize">{item.name}</span>
-              </span>
-              <span className="font-semibold tabular-nums text-text-primary dark:text-text-primary">{item.value}</span>
-            </div>
-          ))
-        ) : (
-          <>
-            <div className="rounded-xl border border-dashed border-primary-200/70 bg-primary-50/70 px-3 py-2 text-xs text-text-secondary dark:border-primary-900/60 dark:bg-gray-900/40 dark:text-text-secondary">
-              No tasks have been added to this project yet.
-            </div>
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="inline-flex min-w-0 items-center gap-2 text-text-secondary dark:text-text-secondary">
-                <span className="h-2 w-2 flex-none rounded-full bg-gray-300 dark:bg-gray-600" />
-                <span className="truncate">Awaiting first task</span>
-              </span>
-              <span className="font-semibold tabular-nums text-text-primary dark:text-text-primary">0</span>
-            </div>
-          </>
-        )}
+        {data.slice(0, 4).map((item) => (
+          <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
+            <span className="inline-flex min-w-0 items-center gap-2 text-text-secondary dark:text-text-secondary">
+              <span className="h-2 w-2 flex-none rounded-full" style={{ backgroundColor: item.color }} />
+              <span className="truncate capitalize">{item.name}</span>
+            </span>
+            <span className="font-semibold tabular-nums text-text-primary dark:text-text-primary">{item.value}</span>
+          </div>
+        ))}
       </div>
     </div>
   )
