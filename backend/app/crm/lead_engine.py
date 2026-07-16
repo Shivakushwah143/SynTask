@@ -34,6 +34,26 @@ DEFAULT_SOURCE_LABELS = {
     "api": "api",
     "website": "website_form",
 }
+DEFAULT_STAGE_LOOKUP = {
+    "new": "New",
+    "lead": "New",
+    "contacted": "Contacted",
+    "follow up": "Contacted",
+    "follow up call": "Contacted",
+    "qualified": "Qualified",
+    "discovery": "Discovery",
+    "discovery scheduled": "Discovery",
+    "discovery completed": "Discovery",
+    "discovery done": "Discovery",
+    "meeting completed": "Discovery",
+    "proposal": "Proposal",
+    "proposal sent": "Proposal",
+    "negotiation": "Negotiation",
+    "won": "Won",
+    "closed won": "Won",
+    "lost": "Lost",
+    "closed lost": "Lost",
+}
 
 
 def _now() -> datetime:
@@ -176,7 +196,14 @@ def _parse_tabular_upload(file_name: str, file_bytes: bytes) -> tuple[list[str],
 
 
 def _parse_stage_lookup(stage_documents: list[SalesStage]) -> dict[str, str]:
-    lookup: dict[str, str] = {}
+    lookup: dict[str, str] = {
+        _normalize_text(alias).lower(): canonical
+        for alias, canonical in DEFAULT_STAGE_LOOKUP.items()
+    }
+    for canonical in set(DEFAULT_STAGE_LOOKUP.values()):
+        normalized = _normalize_text(canonical)
+        lookup[normalized.lower()] = normalized
+        lookup[normalized.lower().replace(" ", "-")] = normalized
     for stage in stage_documents:
         canonical = _normalize_text(stage.name)
         lookup[canonical.lower()] = canonical
@@ -487,6 +514,10 @@ class LeadEngine:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
         normalized = LeadNormalizer.normalize_form_payload(payload, source=source)
         LeadValidator.validate_lead_payload(normalized)
+        normalized["current_stage"] = LeadValidator.validate_stage(
+            normalized.get("current_stage") or "new",
+            _parse_stage_lookup([]),
+        )
         normalized["company_id"] = normalized.get("company_id") or current_user.company_id
         normalized["created_by"] = str(getattr(current_user, "id", ""))
         normalized["assigned_by"] = str(getattr(current_user, "id", ""))
@@ -939,4 +970,3 @@ class LeadEngine:
         from app.crm.pipeline import CRMPipelineService
 
         return await CRMPipelineService.move_lead(current_user, lead_id, target_stage, reason=reason)
-

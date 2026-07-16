@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
-import { Button, EmptyState, FormField, LoadingSpinner, Modal, SkeletonTable, inputClassName } from '../components/ui'
+import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, SkeletonTable, inputClassName } from '../components/ui'
+import { QuickCreateEmployeeModal, QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
@@ -17,6 +18,7 @@ const Clients = () => {
   const { confirm, showUndoNotification } = useConfirmation()
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedClient, setSelectedClient] = useState(null)
@@ -43,6 +45,8 @@ const Clients = () => {
   const [editingClient, setEditingClient] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
+  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
+  const [showQuickProjectModal, setShowQuickProjectModal] = useState(false)
   const [assignableUsers, setAssignableUsers] = useState([])
   const [projectForm, setProjectForm] = useState({
     project_id: '',
@@ -72,18 +76,25 @@ const Clients = () => {
   const loadClients = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError(null)
       const params = {}
       if (statusFilter) params.status_filter = statusFilter
       const data = await clientsAPI.listClients(params)
       setClients(data.clients || [])
     } catch (error) {
       console.error('Error loading clients:', error)
+      const message = error.response?.status === 403
+        ? 'You do not have permission to view clients. Please contact your administrator.'
+        : error.response?.status === 401
+          ? 'Please login to view clients'
+          : 'Failed to load clients'
+      setLoadError(message)
       if (error.response?.status === 403) {
-        toast.error('You do not have permission to view clients. Please contact your administrator.')
+        toast.error(message)
       } else if (error.response?.status === 401) {
-        toast.error('Please login to view clients')
+        toast.error(message)
       } else {
-        toast.error('Failed to load clients')
+        toast.error(message)
       }
       setClients([])
     } finally {
@@ -567,7 +578,18 @@ const Clients = () => {
       </div>
 
       {/* Clients Table */}
-      {filteredClients.length === 0 ? (
+      {loadError ? (
+        <EmptyState
+          icon={Briefcase}
+          title="Clients unavailable"
+          description={loadError}
+          action={(
+            <button type="button" onClick={loadClients} className="btn btn-primary">
+              Retry
+            </button>
+          )}
+        />
+      ) : filteredClients.length === 0 ? (
         <EmptyState
           icon={Briefcase}
           title="No clients found"
@@ -789,10 +811,13 @@ const Clients = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Assigned To</label>
-                    <select
+                    <CreatableSelectField
                       value={formData.assigned_to}
-                      onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
+                      onChange={(value) => setFormData({ ...formData, assigned_to: value })}
                       className="input"
+                      createLabel="Create user"
+                      onCreate={() => setShowQuickEmployeeModal(true)}
+                      canCreate={isCompanyAdmin || isLead}
                     >
                       <option value="">Select Lead/Admin</option>
                       {leads.map(lead => (
@@ -800,7 +825,7 @@ const Clients = () => {
                           {lead.first_name} {lead.last_name}
                         </option>
                       ))}
-                    </select>
+                    </CreatableSelectField>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
@@ -1136,13 +1161,16 @@ const Clients = () => {
               </FormField>
 
               <FormField label="Project" htmlFor="client-project-select" required>
-                <select
+                <CreatableSelectField
                   id="client-project-select"
                   value={selectedProjectId}
-                  onChange={(event) => setSelectedProjectId(event.target.value)}
+                  onChange={setSelectedProjectId}
                   className={inputClassName}
-                  disabled={assigningProject || filteredAvailableProjects.length === 0}
+                  disabled={assigningProject}
                   required
+                  createLabel="Create project"
+                  onCreate={() => setShowQuickProjectModal(true)}
+                  canCreate={isCompanyAdmin}
                 >
                   <option value="">
                     {filteredAvailableProjects.length ? 'Select a project' : 'No matching projects'}
@@ -1152,7 +1180,7 @@ const Clients = () => {
                       {project.name} ({project.key}){project.project_id ? ` - ${project.project_id}` : ''}
                     </option>
                   ))}
-                </select>
+                </CreatableSelectField>
               </FormField>
 
               {filteredAvailableProjects.length === 0 ? (
@@ -1178,6 +1206,31 @@ const Clients = () => {
           </div>
         </form>
       </Modal>
+
+      <QuickCreateEmployeeModal
+        isOpen={showQuickEmployeeModal}
+        onClose={() => setShowQuickEmployeeModal(false)}
+        existing={[...leads, ...assignableUsers]}
+        leads={leads}
+        canCreateLead={isCompanyAdmin}
+        onCreated={async (created) => {
+          await Promise.all([loadLeads(), loadAssignableUsers()])
+          setFormData((state) => ({ ...state, assigned_to: created.id }))
+          setProjectForm((state) => ({ ...state, assigned_to: created.id }))
+        }}
+      />
+
+      <QuickCreateProjectModal
+        isOpen={showQuickProjectModal}
+        onClose={() => setShowQuickProjectModal(false)}
+        existing={availableProjects}
+        assignedTo={projectForm.assigned_to}
+        clientId={selectedClient?.id}
+        onCreated={async (created) => {
+          await loadAvailableProjects()
+          setSelectedProjectId(created.id)
+        }}
+      />
 
       {/* Create Project Modal */}
       {showCreateProjectModal && selectedClient && (

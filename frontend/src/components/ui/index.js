@@ -1,6 +1,7 @@
 export * from './Badge'
 export * from './Button'
 export * from './ConfirmDialog'
+export * from './CreatableSelectField'
 export * from './EmptyState'
 export * from './FormField'
 export * from './LoadingSpinner'

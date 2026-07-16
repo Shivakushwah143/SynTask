@@ -6,6 +6,7 @@ from typing import Optional, List
 from beanie import Document, Indexed
 from pydantic import Field
 from enum import Enum
+from pymongo import ASCENDING, DESCENDING, IndexModel
 
 
 class MeetingStatus(str, Enum):
@@ -59,5 +60,11 @@ class Meeting(Document):
             "created_by",
             "meeting_date",
             "status",
+            "host_id",
+            "participant_ids",
+            IndexModel([("company_id", ASCENDING), ("meeting_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("meeting_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("created_by", ASCENDING), ("meeting_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("host_id", ASCENDING), ("meeting_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("participant_ids", ASCENDING), ("meeting_date", DESCENDING)]),
         ]
-

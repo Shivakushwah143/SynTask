@@ -512,6 +512,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   const nextStage = useMemo(() => stages.find((candidate) => candidate.key === stage.nextStageKey), [stage.nextStageKey, stages])
   const canMovePrevious = previousStage ? allowedStageKeys.has(previousStage.key) : false
   const canMoveNext = nextStage ? allowedStageKeys.has(nextStage.key) : false
+  const nextStageLabel = nextStage?.name || nextStage?.label || nextStage?.title || 'next stage'
 
   useEffect(() => {
     if (!menuOpen) return undefined
@@ -680,6 +681,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
             variant="ghost"
             size="sm"
             className="px-2"
+            aria-label={`Open actions for ${lead.company_name || contactLabel}`}
             onClick={() => setMenuOpen((open) => !open)}
           >
             <MoreHorizontal className="h-4 w-4" />
@@ -688,6 +690,18 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           </Button>
           {menuNode}
         </div>
+        {canMoveNext ? (
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            className="min-w-0 flex-1 justify-center px-2 text-xs"
+            aria-label={`Move ${lead.company_name || contactLabel} to ${nextStageLabel}`}
+            onClick={() => onMoveLeadToStage?.(lead, stage.nextStageKey)}
+          >
+            Next: {nextStageLabel}
+          </Button>
+        ) : null}
         <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-text-muted dark:text-gray-500">
           {stage.name}
         </span>

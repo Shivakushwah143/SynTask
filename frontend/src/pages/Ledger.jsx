@@ -9,6 +9,7 @@ import { Button, Modal, Table } from '../components/ui'
 const Ledger = () => {
   const [ledgerData, setLedgerData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showTDSModal, setShowTDSModal] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState(null)
@@ -33,6 +34,7 @@ const Ledger = () => {
   const loadLedger = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError(null)
       const params = {}
       if (filters.invoice_id) params.invoice_id = filters.invoice_id
       if (filters.client_name) params.client_name = filters.client_name
@@ -42,7 +44,14 @@ const Ledger = () => {
       setLedgerData(data)
     } catch (error) {
       console.error('Error loading ledger:', error)
-      toast.error('Failed to load ledger data')
+      const message = error.response?.status === 403
+        ? 'You do not have permission to view ledger data. Please contact your administrator.'
+        : error.response?.status === 401
+          ? 'Please login to view ledger data'
+          : 'Failed to load ledger data'
+      setLoadError(message)
+      setLedgerData(null)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -212,6 +221,23 @@ const Ledger = () => {
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
           <p className="text-text-secondary">Loading ledger data...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (loadError && !ledgerData) {
+    return (
+      <div className="min-h-screen bg-surface-muted p-6 text-text-primary dark:bg-black dark:text-text-primary">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-text-primary">Ledger</h1>
+        </div>
+        <div className="rounded-lg bg-surface/95 p-8 text-center shadow dark:bg-black/85 dark:border dark:border-border">
+          <div className="font-semibold text-text-primary">Ledger unavailable</div>
+          <div className="mt-1 text-sm text-text-secondary">{loadError}</div>
+          <Button type="button" onClick={loadLedger} className="mt-4">
+            Retry
+          </Button>
         </div>
       </div>
     )

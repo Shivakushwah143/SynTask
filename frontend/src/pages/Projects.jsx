@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock3, Plus, Receipt, Search } from 'lucide-react'
+import { Clock3, Plus, Receipt, Search, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { projectsApi } from '../api/projects'
@@ -8,7 +8,8 @@ import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
 import { hasCompanyAdminAccess } from '../utils/roles'
-import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
+import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
+import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import {
   buildProjectGraphRows,
   buildProjectGraphSummary,
@@ -49,6 +50,10 @@ export default function Projects() {
   const [versions, setVersions] = useState([])
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [assignmentProject, setAssignmentProject] = useState(null)
+  const [assignmentUserId, setAssignmentUserId] = useState('')
+  const [assigningProject, setAssigningProject] = useState(false)
+  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
   const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
   const [formErrors, setFormErrors] = useState({})
 
@@ -164,6 +169,28 @@ export default function Projects() {
     }
   }
 
+  const openAssignmentModal = (project) => {
+    setAssignmentProject(project)
+    setAssignmentUserId(project.assigned_to || project.lead_id || '')
+  }
+
+  const handleProjectAssignment = async (event) => {
+    event.preventDefault()
+    if (!assignmentProject || assigningProject) return
+    try {
+      setAssigningProject(true)
+      await projectsApi.updateProject(assignmentProject.id, { assigned_to: assignmentUserId })
+      toast.success(assignmentUserId ? 'Project assigned' : 'Project unassigned')
+      setAssignmentProject(null)
+      setAssignmentUserId('')
+      await loadProjects()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update project assignment')
+    } finally {
+      setAssigningProject(false)
+    }
+  }
+
   const validateCreateForm = () => {
     const nextErrors = {}
     if (!formData.name.trim()) nextErrors.name = 'Project name is required.'
@@ -276,6 +303,10 @@ export default function Projects() {
           const match = projectCards.find((item) => item.id === project.id)
           if (match) navigate(`/projects/${match.id}/board`)
         }}
+        onAssignProject={canCreateProjects ? (project) => {
+          const match = projectCards.find((item) => item.id === project.id)
+          if (match) openAssignmentModal(match)
+        } : null}
       />
 
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New project" size="xl">
@@ -329,10 +360,17 @@ export default function Projects() {
               </select>
             </FormField>
             <FormField label="Assigned to">
-              <select className={inputClassName} value={formData.assigned_to} onChange={(event) => setFormData((state) => ({ ...state, assigned_to: event.target.value }))}>
+              <CreatableSelectField
+                value={formData.assigned_to}
+                onChange={(value) => setFormData((state) => ({ ...state, assigned_to: value }))}
+                className={inputClassName}
+                createLabel="Create user"
+                onCreate={() => setShowQuickEmployeeModal(true)}
+                canCreate={canCreateProjects}
+              >
                 <option value="">Select manager or lead</option>
                 {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
-              </select>
+              </CreatableSelectField>
             </FormField>
             <FormField label="Start date">
               <input type="datetime-local" className={inputClassName} value={formData.start_date} onChange={(event) => setFormData((state) => ({ ...state, start_date: event.target.value }))} />
@@ -347,6 +385,45 @@ export default function Projects() {
           </div>
         </form>
       </Modal>
+
+      <Modal isOpen={Boolean(assignmentProject)} onClose={() => setAssignmentProject(null)} title="Assign project">
+        <form onSubmit={handleProjectAssignment} className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Project</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{assignmentProject?.name}</p>
+          </div>
+          <FormField label="Assigned to">
+            <CreatableSelectField
+              value={assignmentUserId}
+              onChange={setAssignmentUserId}
+              className={inputClassName}
+              createLabel="Create user"
+              onCreate={() => setShowQuickEmployeeModal(true)}
+              canCreate={canCreateProjects}
+            >
+              <option value="">Unassigned</option>
+              {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+            </CreatableSelectField>
+          </FormField>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setAssignmentProject(null)}>Cancel</Button>
+            <Button type="submit" loading={assigningProject} loadingText="Saving">Save assignment</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <QuickCreateEmployeeModal
+        isOpen={showQuickEmployeeModal}
+        onClose={() => setShowQuickEmployeeModal(false)}
+        existing={assignableUsers}
+        leads={uniqueAssignableUsers.filter((item) => item.role === 'lead')}
+        canCreateLead={canCreateProjects}
+        onCreated={async (created) => {
+          await loadAssignableUsers()
+          setAssignmentUserId(created.id)
+          setFormData((state) => ({ ...state, assigned_to: created.id }))
+        }}
+      />
 
       <ProjectDetailsPanel
         isOpen={showDetails && false}
@@ -364,7 +441,7 @@ export default function Projects() {
   )
 }
 
-function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject }) {
+function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject, onAssignProject }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
@@ -405,14 +482,13 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
         ) : rows.length ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map((project) => (
-          <button
+          <article
             key={project.id}
-            type="button"
-            onClick={() => onOpenProject(project)}
             title={`${project.name}: ${project.progress}% complete, ${project.remainingTasks} tasks remaining`}
             className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-700 dark:hover:bg-gray-950"
           >
-            <div className="flex items-start gap-3">
+            <button type="button" onClick={() => onOpenProject(project)} className="w-full text-left">
+              <div className="flex items-start gap-3">
               <ProgressRing value={project.progress} />
               <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold leading-5 text-primary-600 dark:text-primary-400">{project.name}</p>
@@ -422,7 +498,8 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
                 <Badge label={project.status.replace(/_/g, ' ')} colorKey={project.status} />
               </div>
               </div>
-            </div>
+              </div>
+            </button>
             <div className="mt-3">
               <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                 <span>Task Budget</span>
@@ -430,7 +507,15 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
               </div>
               <StackedBudgetBar completed={project.completedTasks} remaining={project.remainingTasks} total={project.totalTasks} />
             </div>
-          </button>
+            {onAssignProject ? (
+              <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+                <Button variant="secondary" size="sm" onClick={() => onAssignProject(project)}>
+                  <UserPlus className="h-4 w-4" />
+                  {project.assigned_to ? 'Change assignee' : 'Assign project'}
+                </Button>
+              </div>
+            ) : null}
+          </article>
           ))}
           </div>
         ) : (

@@ -11,6 +11,7 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 
 class NotificationType(str, Enum):
     TASK_ASSIGNED = "task_assigned"
+    TASK_UPDATE = "task_update"
     TASK_UPDATED = "task_updated"
     TASK_COMPLETED = "task_completed"
     TASK_COMMENT = "task_comment"
@@ -18,6 +19,7 @@ class NotificationType(str, Enum):
     TICKET_UPDATED = "ticket_updated"
     TICKET_RESOLVED = "ticket_resolved"
     TICKET_COMMENT = "ticket_comment"
+    TICKET_ESCALATED = "ticket_escalated"
     PROJECT_ASSIGNED = "project_assigned"
     DEADLINE_APPROACHING = "deadline_approaching"
     MENTION = "mention"
@@ -73,4 +75,3 @@ class Notification(Document):
             IndexModel([("user_id", ASCENDING), ("is_read", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("related_id", ASCENDING), ("related_type", ASCENDING), ("type", ASCENDING), ("created_at", DESCENDING)]),
         ]
-
