@@ -32,42 +32,22 @@ async def list_projects(
             )
         query = {"company_id": current_user.company_id}
     
-    # Apply role-based filtering with hierarchical visibility
-    # Super Admin and Admin see all projects in their scope
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-        # For Manager, Lead, Employee - show projects assigned to anyone in their hierarchy
         if current_user.role == UserRole.MANAGER:
-            # Manager sees projects assigned to:
-            # 1. Themselves
-            # 2. Any of their subordinates (Managers, Leads, Employees under them)
-            subordinates = await current_user.get_all_subordinates()
-            subordinate_ids = [str(sub.id) for sub in subordinates]
-            subordinate_ids.append(str(current_user.id))  # Include self
-            query["assigned_to"] = {"$in": subordinate_ids}
+            scoped_ids = await scoped_user_ids(current_user)
+            query["$or"] = [
+                {"created_by": str(current_user.id)},
+                {"assigned_to": {"$in": scoped_ids}},
+                {"assigned_user_ids": {"$in": scoped_ids}},
+            ]
         elif current_user.role == UserRole.LEAD:
-            # Lead sees projects assigned to:
-            # 1. Themselves
-            # 2. Their manager(s) - upward hierarchy
-            # 3. Their employees - downward hierarchy
-            managers = await current_user.get_all_managers()
-            manager_ids = [str(mgr.id) for mgr in managers]
-            
-            subordinates = await current_user.get_all_subordinates()
-            subordinate_ids = [str(sub.id) for sub in subordinates]
-            
-            # Combine: self + managers + subordinates
-            visible_ids = [str(current_user.id)] + manager_ids + subordinate_ids
-            query["assigned_to"] = {"$in": visible_ids}
+            query["$or"] = [
+                {"assigned_to": str(current_user.id)},
+                {"assigned_user_ids": str(current_user.id)},
+                {"team_member_ids": str(current_user.id)},
+            ]
         elif current_user.role == UserRole.EMPLOYEE:
-            # Employee sees projects assigned to:
-            # 1. Themselves
-            # 2. Their manager(s) - upward hierarchy (Lead, Manager)
-            managers = await current_user.get_all_managers()
-            manager_ids = [str(mgr.id) for mgr in managers]
-            
-            # Combine: self + managers
-            visible_ids = [str(current_user.id)] + manager_ids
-            query["assigned_to"] = {"$in": visible_ids}
+            query["team_member_ids"] = str(current_user.id)
     
     if status_filter:
         try:
@@ -92,12 +72,12 @@ async def list_projects(
             "company_id": project.company_id
         }).count()
         
-        # Get assigned user info
-        assigned_to_name = None
-        if project.assigned_to:
-            assigned_user = await User.get(project.assigned_to)
+        assigned_ids = project_assignee_ids(project)
+        assigned_users = []
+        for user_id in assigned_ids:
+            assigned_user = await User.get(user_id)
             if assigned_user:
-                assigned_to_name = assigned_user.full_name()
+                assigned_users.append({"id": str(assigned_user.id), "name": assigned_user.full_name(), "role": assigned_user.role.value})
         
         # Calculate days until delivery
         days_until_delivery = None
@@ -125,7 +105,9 @@ async def list_projects(
             "client_id": project.client_id,
             "lead_id": project.lead_id,
             "assigned_to": project.assigned_to,
-            "assigned_to_name": assigned_to_name,
+            "assigned_user_ids": getattr(project, "assigned_user_ids", []) or ([project.assigned_to] if project.assigned_to else []),
+            "assigned_users": assigned_users,
+            "assigned_to_name": assigned_users[0]["name"] if assigned_users else None,
             "start_date": project.start_date,
             "delivery_date": project.delivery_date,
             "days_until_delivery": days_until_delivery,
