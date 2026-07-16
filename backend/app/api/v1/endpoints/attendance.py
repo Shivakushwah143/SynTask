@@ -1045,15 +1045,50 @@ async def get_dashboard_statistics(current_user: User = Depends(get_current_user
     """Fetch aggregated counters for dashboard widgets"""
     company_id = current_user.company_id
     if not company_id and current_user.role != UserRole.SUPER_ADMIN:
-        return {"success": True, "data": {}}
+        logger.info(
+            "attendance.dashboard_stats.no_company user_id=%s role=%s",
+            getattr(current_user, "id", None),
+            getattr(current_user, "role", None),
+        )
+        return {
+            "success": True,
+            "data": {
+                "total_employees": 0,
+                "present_today": 0,
+                "working_now": 0,
+                "on_break": 0,
+                "offline": 0,
+                "late_today": 0,
+            },
+        }
 
     today_str = datetime.now().strftime("%Y-%m-%d")
 
-    user_query = {}
+    user_query = {"role": UserRole.EMPLOYEE.value}
     if current_user.role != UserRole.SUPER_ADMIN:
         user_query["company_id"] = company_id
 
-    total_employees = await User.find(user_query, User.role == UserRole.EMPLOYEE).count()
+    logger.info(
+        "attendance.dashboard_stats.start user_id=%s role=%s company_id=%s date=%s",
+        getattr(current_user, "id", None),
+        getattr(current_user, "role", None),
+        company_id,
+        today_str,
+    )
+
+    try:
+        total_employees = await User.find(user_query).count()
+    except Exception as exc:
+        logger.exception(
+            "attendance.dashboard_stats.user_count_failed user_id=%s company_id=%s query=%s",
+            getattr(current_user, "id", None),
+            company_id,
+            user_query,
+        )
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Attendance dashboard employee count is temporarily unavailable",
+        ) from exc
 
     working_now = 0
     on_break = 0
@@ -1064,18 +1099,40 @@ async def get_dashboard_statistics(current_user: User = Depends(get_current_user
     if current_user.role != UserRole.SUPER_ADMIN:
         attendance_query["company_id"] = company_id
 
-    today_records = await Attendance.find(attendance_query).to_list()
+    try:
+        attendance_collection = Attendance.get_pymongo_collection()
+        present_today = await attendance_collection.count_documents(attendance_query)
+        working_now = await attendance_collection.count_documents({
+            **attendance_query,
+            "status": AttendanceStatus.WORKING.value,
+        })
+        on_break = await attendance_collection.count_documents({
+            **attendance_query,
+            "status": AttendanceStatus.ON_BREAK.value,
+        })
+        late_today = await attendance_collection.count_documents({
+            **attendance_query,
+            "is_late": True,
+        })
+    except Exception as exc:
+        logger.exception(
+            "attendance.dashboard_stats.attendance_query_failed user_id=%s company_id=%s query=%s",
+            getattr(current_user, "id", None),
+            company_id,
+            attendance_query,
+        )
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Attendance dashboard records are temporarily unavailable",
+        ) from exc
 
-    for record in today_records:
-        present_today += 1
-
-        if record.status == AttendanceStatus.WORKING:
-            working_now += 1
-        elif record.status == AttendanceStatus.ON_BREAK:
-            on_break += 1
-
-        if record.is_late:
-            late_today += 1
+    logger.info(
+        "attendance.dashboard_stats.success user_id=%s company_id=%s total_employees=%s records=%s",
+        getattr(current_user, "id", None),
+        company_id,
+        total_employees,
+        present_today,
+    )
 
     return {
         "success": True,
