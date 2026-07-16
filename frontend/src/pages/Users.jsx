@@ -5,7 +5,7 @@ import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole, normalizeRole, getRoleLabel } from '../utils/roles'
-import { EmptyState } from '../components/ui'
+import { EmptyState, PasswordInput, PhoneInput, phoneValidationMessage } from '../components/ui'
 import toast from 'react-hot-toast'
 
 const Users = () => {
@@ -136,10 +136,8 @@ const Users = () => {
     // Phone validation (optional but must be valid if provided)
     const phone = formData.get('phone')?.trim()
     if (phone) {
-      const phoneRegex = /^\+?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/
-      if (!phoneRegex.test(phone)) {
-        errors.phone = 'Please enter a valid phone number'
-      }
+      const phoneError = phoneValidationMessage(phone)
+      if (phoneError) errors.phone = phoneError
     }
     
     // Lead ID validation (if provided)
@@ -692,8 +690,7 @@ const Users = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Password {editingUser ? '(leave blank to keep current)' : '*'}
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   name="password"
                   required={!editingUser}
                   minLength={8}
@@ -719,13 +716,11 @@ const Users = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
                   Phone
                 </label>
-                <input
-                  type="tel"
+                <PhoneInput
                   name="phone"
-                  autoComplete="off"
                   defaultValue={editingUser?.phone || ''}
                   className={`input ${formErrors.phone ? 'border-red-500' : ''}`}
-                  placeholder="+1 234 567 8900"
+                  placeholder="+919876543210"
                   onChange={() => {
                     if (formErrors.phone) {
                       setFormErrors({ ...formErrors, phone: '' })

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Button, FormField, Modal, inputClassName } from '../ui'
+import { Button, FormField, Modal, PasswordInput, PhoneInput, inputClassName } from '../ui'
 import { usersAPI } from '../../api/users'
 import { departmentsAPI } from '../../api/departments'
 import { projectsApi } from '../../api/projects'
@@ -112,7 +112,7 @@ export function QuickCreateEmployeeModal({
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField label="Email" required><input required type="email" className={inputClassName} value={form.email} onChange={(event) => update('email', event.target.value)} /></FormField>
-          <FormField label="Temporary password" required><input required className={inputClassName} value={form.password} onChange={(event) => update('password', event.target.value)} /></FormField>
+          <FormField label="Temporary password" required><PasswordInput required className={inputClassName} value={form.password} onChange={(event) => update('password', event.target.value)} toggleLabel="temporary password" /></FormField>
         </div>
         {departments.length > 0 && (
           <FormField label="Department">
@@ -137,7 +137,7 @@ export function QuickCreateEmployeeModal({
             <FormField label="Designation"><input className={inputClassName} value={form.designation} onChange={(event) => update('designation', event.target.value)} /></FormField>
           </div>
         )}
-        <FormField label="Phone"><input className={inputClassName} value={form.phone} onChange={(event) => update('phone', event.target.value)} /></FormField>
+        <FormField label="Phone"><PhoneInput className={inputClassName} value={form.phone} onChange={(event) => update('phone', event.target.value)} /></FormField>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit" loading={saving} loadingText="Creating">Create</Button>
@@ -268,7 +268,7 @@ export function QuickCreateClientModal({ isOpen, onClose, onCreated, existing = 
       <form onSubmit={submit} className="space-y-4">
         <FormField label="Client name" required><input required className={inputClassName} value={form.name} onChange={(event) => update('name', event.target.value)} /></FormField>
         <FormField label="Email"><input type="email" className={inputClassName} value={form.email} onChange={(event) => update('email', event.target.value)} /></FormField>
-        <FormField label="Phone"><input className={inputClassName} value={form.phone} onChange={(event) => update('phone', event.target.value)} /></FormField>
+        <FormField label="Phone"><PhoneInput className={inputClassName} value={form.phone} onChange={(event) => update('phone', event.target.value)} /></FormField>
         <FormField label="Company"><input className={inputClassName} value={form.company_name} onChange={(event) => update('company_name', event.target.value)} /></FormField>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>

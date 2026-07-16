@@ -6,7 +6,7 @@ import Papa from 'papaparse'
 import toast from 'react-hot-toast'
 import { salesApi } from '../../api/sales'
 import { usersAPI } from '../../api/users'
-import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
+import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, PhoneInput, SkeletonTable, Table } from '../../components/ui'
 import { asArray, formatDate, getId } from '../phase4Utils'
 
 const normalizeLeadCsvHeader = (header = '') => {
@@ -391,7 +391,8 @@ function LeadModal({ isOpen, onClose, onDone }) {
     const nextErrors = {}
     if (!form.first_name.trim()) nextErrors.first_name = 'First name is required'
     if (!form.last_name.trim()) nextErrors.last_name = 'Last name is required'
-    if (!form.phone.trim()) nextErrors.phone = 'Phone is required'
+    if (!/^\+\d{1,4}$/.test(form.country_code.trim())) nextErrors.phone = 'Country code must start with + and contain 1 to 4 digits'
+    if (!/^\d{10}$/.test(form.phone.trim())) nextErrors.phone = 'Phone must be exactly 10 digits'
     if (!form.category_id) nextErrors.category_id = 'Category is required'
     if (!form.current_stage) nextErrors.current_stage = 'Stage is required'
     if (!form.assigned_to) nextErrors.assigned_to = 'Owner is required'
@@ -427,8 +428,15 @@ function LeadModal({ isOpen, onClose, onDone }) {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <FormField label="First name" required error={errors.first_name}><input className={inputClassName} value={form.first_name} onChange={(event) => { update('first_name', event.target.value); if (errors.first_name) setErrors((state) => ({ ...state, first_name: '' })) }} /></FormField>
             <FormField label="Last name" required error={errors.last_name}><input className={inputClassName} value={form.last_name} onChange={(event) => { update('last_name', event.target.value); if (errors.last_name) setErrors((state) => ({ ...state, last_name: '' })) }} /></FormField>
-            <FormField label="Country code"><input className={inputClassName} value={form.country_code} onChange={(event) => update('country_code', event.target.value)} /></FormField>
-            <FormField label="Phone" required error={errors.phone}><input className={inputClassName} value={form.phone} onChange={(event) => { update('phone', event.target.value); if (errors.phone) setErrors((state) => ({ ...state, phone: '' })) }} /></FormField>
+            <FormField label="Phone" required error={errors.phone} className="sm:col-span-2">
+              <PhoneInput
+                countryCode={form.country_code}
+                phoneNumber={form.phone}
+                onCountryCodeChange={(value) => update('country_code', value)}
+                onPhoneNumberChange={(value) => { update('phone', value); if (errors.phone) setErrors((state) => ({ ...state, phone: '' })) }}
+                required
+              />
+            </FormField>
             <FormField label="Email"><input className={inputClassName} type="email" value={form.email} onChange={(event) => update('email', event.target.value)} /></FormField>
             <FormField label="Company"><input className={inputClassName} value={form.company_name} onChange={(event) => update('company_name', event.target.value)} /></FormField>
           </div>

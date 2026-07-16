@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowRight, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
+import { ArrowRight, Building2, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -399,6 +399,12 @@ const Dashboard = () => {
         description="Command center for work, meetings, and AI briefings."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
+            {role === ROLE.SUPER_ADMIN ? (
+              <Button size="sm" onClick={() => navigate('/companies')}>
+                <Building2 className="h-4 w-4" />
+                Create Company
+              </Button>
+            ) : null}
             <Button variant="secondary" size="sm" onClick={() => navigate('/projects')}>
               <FolderKanban className="h-4 w-4" />
               Projects

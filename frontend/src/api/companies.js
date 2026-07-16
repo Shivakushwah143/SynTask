@@ -67,9 +67,8 @@ export const companiesAPI = {
 
   // Update company status
   updateCompanyStatus: async (companyId, newStatus) => {
-    const response = await api.patch(`/companies/${companyId}/status`, {
-      new_status: newStatus
-    })
+    const params = new URLSearchParams({ new_status: newStatus })
+    const response = await api.patch(`/companies/${companyId}/status?${params.toString()}`)
     return response.data
   },
 }

@@ -5,7 +5,7 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { CRMPage, CRMPageTitle } from '../../../components/crm'
-import { Button, Modal, inputClassName } from '../../../components/ui'
+import { Button, Modal, PhoneInput, inputClassName } from '../../../components/ui'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
@@ -247,6 +247,10 @@ export default function CRMPipelinePage() {
       toast.error('First name, last name, and phone are required')
       return
     }
+    if (!/^\+\d{1,4}$/.test(String(payload.country_code || '')) || !/^\d{10}$/.test(payload.phone)) {
+      toast.error('Use a + country code and exactly 10 phone digits')
+      return
+    }
     if (!payload.assigned_to) {
       toast.error('No valid owner found for this company')
       return
@@ -468,13 +472,15 @@ export default function CRMPipelinePage() {
               <span className="text-xs font-medium text-text-muted">Last name *</span>
               <input className={inputClassName} placeholder="Last name" value={createForm.last_name} onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))} />
             </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Country code</span>
-              <input className={inputClassName} placeholder="Country code" value={createForm.country_code} onChange={(e) => setCreateForm((state) => ({ ...state, country_code: e.target.value }))} />
-            </label>
-            <label className="space-y-1">
+            <label className="space-y-1 md:col-span-2">
               <span className="text-xs font-medium text-text-muted">Phone *</span>
-              <input className={inputClassName} placeholder="Phone" value={createForm.phone} onChange={(e) => setCreateForm((state) => ({ ...state, phone: e.target.value }))} />
+              <PhoneInput
+                countryCode={createForm.country_code}
+                phoneNumber={createForm.phone}
+                onCountryCodeChange={(value) => setCreateForm((state) => ({ ...state, country_code: value }))}
+                onPhoneNumberChange={(value) => setCreateForm((state) => ({ ...state, phone: value }))}
+                required
+              />
             </label>
             <label className="space-y-1">
               <span className="text-xs font-medium text-text-muted">Email</span>
