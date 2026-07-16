@@ -1,4 +1,4 @@
-export function Table({ columns, data, rowKey = 'id', emptyMessage = 'No records found' }) {
+export function Table({ columns, data, rowKey = 'id', emptyMessage = 'No records found', onRowClick }) {
   return (
     <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-surface-border bg-surface/95 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
       <div className="viewport-scroll-x">
@@ -15,7 +15,14 @@ export function Table({ columns, data, rowKey = 'id', emptyMessage = 'No records
           <tbody className="divide-y divide-surface-border bg-surface/95 dark:divide-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
             {data?.length ? (
               data.map((row, index) => (
-                <tr key={row[rowKey] || row._id || index} className="transition-colors hover:bg-surface-muted/80 dark:hover:bg-[var(--color-app-surface-muted)]">
+                <tr
+                  key={row[rowKey] || row._id || index}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  role={onRowClick ? 'button' : undefined}
+                  onKeyDown={onRowClick ? (event) => { if (event.key === 'Enter' || event.key === ' ') onRowClick(row) } : undefined}
+                  className={`transition-colors ${onRowClick ? 'cursor-pointer hover:bg-surface-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/35 dark:hover:bg-[var(--color-app-surface-muted)]' : 'hover:bg-surface-muted/80 dark:hover:bg-[var(--color-app-surface-muted)]'}`}
+                >
                   {columns.map((column) => (
                     <td key={column.key} className="whitespace-nowrap px-5 py-4 text-sm leading-6 text-text-primary dark:text-[var(--color-app-text-secondary)]">
                       {column.render ? column.render(row) : row[column.key]}

@@ -16,6 +16,7 @@ import {
 } from 'recharts'
 import { useAuthStore } from '../store/authStore'
 import { dashboardAPI } from '../api/dashboard'
+import { crmApi } from '../api/crm'
 import { reportsAPI } from '../api/reports'
 import { tasksAPI } from '../api/tasks'
 import { ticketsAPI } from '../api/tickets'
@@ -87,6 +88,7 @@ const Dashboard = () => {
   const [eodToday, setEodToday] = useState(null)
   const [attendanceStats, setAttendanceStats] = useState(null)
   const [metrics, setMetrics] = useState(null)
+  const [crmDashboard, setCrmDashboard] = useState(null)
   const [taskHealth, setTaskHealth] = useState(null)
   const [taskExtensions, setTaskExtensions] = useState(null)
   const [teamCompletion, setTeamCompletion] = useState(null)
@@ -100,6 +102,8 @@ const Dashboard = () => {
     try {
       setLoading(true)
       const statsData = await dashboardAPI.getStats().catch(() => null)
+      const dashboardRole = normalizeRole(statsData?.role || user?.role)
+      const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
       const [tasksData, meetingsData, projectsData] = await Promise.all([
         tasksAPI.listTasks({ limit: 8 }),
         meetingsApi.list({ limit: 6 }),
@@ -108,7 +112,9 @@ const Dashboard = () => {
       const [metricsData] = await Promise.all([
         dashboardAPI.getMetrics().catch(() => null),
       ])
-      const dashboardRole = normalizeRole(statsData?.role || user?.role)
+      const crmDashboardData = shouldLoadCrmDashboard
+        ? await crmApi.getDashboard().then((response) => response?.data || null).catch(() => null)
+        : null
       const [healthData, extensionData, teamData] = await Promise.all([
         dashboardRole === ROLE.EMPLOYEE ? tasksAPI.getMyTaskHealth().catch(() => null) : tasksAPI.getTaskHealthSummary().catch(() => null),
         tasksAPI.getExtensionRequestSummary().catch(() => null),
@@ -123,6 +129,7 @@ const Dashboard = () => {
       if (!isMounted()) return
       setStats(statsData || { role: dashboardRole || 'employee' })
       setMetrics(metricsData)
+      setCrmDashboard(crmDashboardData)
       setRecentTasks(tasksData.tasks || [])
       setRecentTickets(ticketsData.tickets || [])
       setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
@@ -230,43 +237,66 @@ const Dashboard = () => {
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
   const taskSource = recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
-  // ---- Chart datasets (replace the old static / zero-filled placeholders) ----
+  const salesSummary = crmDashboard?.sales || {}
+  const salesAnalytics = crmDashboard?.analytics || {}
+  const revenueTimeline = Array.isArray(salesSummary?.closed_vs_target?.months) ? salesSummary.closed_vs_target.months : []
+  const closedSeries = Array.isArray(salesSummary?.closed_vs_target?.closed) ? salesSummary.closed_vs_target.closed : []
+  const targetSeries = Array.isArray(salesSummary?.closed_vs_target?.target) ? salesSummary.closed_vs_target.target : []
+  // ---- Chart datasets built from live dashboard payloads ----
 
   // Pipeline funnel -> donut with legend + percentages, styled like "Top Expenses"
   const funnelData = canSeeSalesWidgets
-    ? [
-        { name: 'New Leads', value: metrics?.new_leads ?? 0 },
-        { name: 'Qualified', value: metrics?.qualified_leads ?? 0 },
-        { name: 'Active Deals', value: metrics?.active_deals ?? 0 },
-        { name: 'Won', value: metrics?.won_deals ?? 0 },
-        { name: 'Lost', value: metrics?.lost_deals ?? 0 },
-      ]
+    ? (Array.isArray(salesSummary?.pipeline?.stage_breakdown) && salesSummary.pipeline.stage_breakdown.length
+      ? salesSummary.pipeline.stage_breakdown.map((item) => ({
+          name: item.stage,
+          value: item.count ?? 0,
+          route: item.stage === 'Lead' ? '/crm/leads' : '/crm/pipeline',
+        }))
+      : [
+          { name: 'New Leads', value: metrics?.new_leads ?? 0, route: '/crm/leads' },
+          { name: 'Qualified', value: metrics?.qualified_leads ?? 0, route: '/crm/pipeline' },
+          { name: 'Active Deals', value: metrics?.active_deals ?? 0, route: '/crm/pipeline' },
+          { name: 'Won', value: metrics?.won_deals ?? 0, route: '/crm/pipeline' },
+          { name: 'Lost', value: metrics?.lost_deals ?? 0, route: '/crm/pipeline' },
+        ])
     : []
 
-  // Revenue trend -> monthly bars, current month carries the live revenue figure
-  const currentMonthIndex = new Date().getMonth()
-  const revenueTrend = canSeeSalesWidgets
-    ? MONTH_LABELS.slice(0, currentMonthIndex + 1).map((label, i) => ({
+  const revenueTrendData = revenueTimeline.length
+    ? revenueTimeline.map((label, index) => ({
         label,
-        primary: i === currentMonthIndex ? metrics?.revenue ?? 0 : 0,
-        secondary: i === currentMonthIndex ? metrics?.won_deals ?? 0 : 0,
+        primary: revenueMode === 'Accrual' ? Number(closedSeries[index] || 0) : Number(targetSeries[index] || 0),
+        secondary: revenueMode === 'Accrual' ? Number(targetSeries[index] || 0) : Number(closedSeries[index] || 0),
       }))
+    : MONTH_LABELS.slice(0, new Date().getMonth() + 1).map((label, index) => ({
+        label,
+        primary: index === new Date().getMonth() ? Number(metrics?.revenue || 0) : 0,
+        secondary: index === new Date().getMonth() ? Number(metrics?.won_deals || 0) : 0,
+      }))
+
+  const revenueTrend = canSeeSalesWidgets
+    ? revenueTrendData
     : []
 
   const conversionData = canSeeSalesWidgets
-    ? [
-        { name: 'Lead', value: metrics?.total_leads ?? 0, route: '/crm/leads' },
-        { name: 'Qualified', value: metrics?.qualified_leads ?? 0, route: '/crm/pipeline' },
-        { name: 'Won', value: metrics?.won_deals ?? 0, route: '/crm/pipeline' },
-      ]
+    ? (Array.isArray(salesAnalytics?.kpis?.stage_conversion) && salesAnalytics.kpis.stage_conversion.length
+        ? salesAnalytics.kpis.stage_conversion.map((item) => ({
+            name: `${item.from} → ${item.to}`,
+            value: item.conversion_percent ?? 0,
+            route: '/crm/pipeline',
+          }))
+        : [
+            { name: 'Lead', value: metrics?.total_leads ?? 0, route: '/crm/leads' },
+            { name: 'Qualified', value: metrics?.qualified_leads ?? 0, route: '/crm/pipeline' },
+            { name: 'Won', value: metrics?.won_deals ?? 0, route: '/crm/pipeline' },
+          ])
     : []
 
   const monthlyPerformance = canSeeSalesWidgets
-    ? [
-        { name: 'Leads', value: metrics?.new_leads ?? 0, route: '/crm/leads' },
-        { name: 'Deals', value: metrics?.active_deals ?? 0, route: '/crm/pipeline' },
-        { name: 'Projects', value: metrics?.projects ?? projects.length, route: '/projects' },
-      ]
+    ? revenueTrendData.map((item) => ({
+        name: item.label,
+        value: item.primary,
+        route: '/crm/dashboard',
+      }))
     : []
 
   // Team attendance snapshot -> donut instead of a plain number strip
