@@ -7,7 +7,8 @@ import toast from 'react-hot-toast'
 import { calendarApi } from '../api/calendar'
 import { contentCalendarApi } from '../api/contentCalendar'
 import { projectsApi } from '../api/projects'
-import { Badge, Button, EmptyState, FormField, Modal, PageHeader, Skeleton } from '../components/ui'
+import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, Skeleton } from '../components/ui'
+import { QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
 import { CRMSection, CRMStatCard } from '../components/crm'
 import { asArray, formatDateTime } from './phase4Utils'
 
@@ -62,6 +63,7 @@ export default function Calendar() {
   const [typeFilter, setTypeFilter] = useState('')
   const [detailItem, setDetailItem] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [showQuickProjectModal, setShowQuickProjectModal] = useState(false)
   const [form, setForm] = useState({
     title: '',
     project_id: '',
@@ -210,10 +212,10 @@ export default function Calendar() {
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Project</span>
-            <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+            <CreatableSelectField value={projectId} onChange={setProjectId} className="input" createLabel="Create project" onCreate={() => setShowQuickProjectModal(true)}>
               <option value="">All projects</option>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
+            </CreatableSelectField>
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Status</span>
@@ -289,10 +291,10 @@ export default function Calendar() {
           })
         }} className="space-y-4">
           <FormField label="Project" required>
-            <select className="input" value={form.project_id || projectId} onChange={(event) => setForm((state) => ({ ...state, project_id: event.target.value }))}>
+            <CreatableSelectField value={form.project_id || projectId} onChange={(value) => setForm((state) => ({ ...state, project_id: value }))} className="input" createLabel="Create project" onCreate={() => setShowQuickProjectModal(true)}>
               <option value="">Select project</option>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
+            </CreatableSelectField>
           </FormField>
           <FormField label="Title" required>
             <input className="input" value={form.title} onChange={(event) => setForm((state) => ({ ...state, title: event.target.value }))} />
@@ -336,6 +338,17 @@ export default function Calendar() {
           </div>
         </form>
       </Modal>
+
+      <QuickCreateProjectModal
+        isOpen={showQuickProjectModal}
+        onClose={() => setShowQuickProjectModal(false)}
+        existing={projects}
+        onCreated={async (created) => {
+          await projectsQuery.refetch()
+          setProjectId(created.id)
+          setForm((state) => ({ ...state, project_id: created.id }))
+        }}
+      />
 
       <Modal isOpen={Boolean(detailItem)} onClose={() => setDetailItem(null)} title="Calendar item">
         {detailItem ? (

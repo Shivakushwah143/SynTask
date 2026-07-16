@@ -7,7 +7,8 @@ import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { EmptyState, SkeletonKanban } from '../components/ui'
+import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/ui'
+import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
 import { useViewStore } from '../store/viewStore'
@@ -44,6 +45,9 @@ const Tasks = () => {
   const [departments, setDepartments] = useState([])
   const [loadingDepartments, setLoadingDepartments] = useState(false)
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState('')
+  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
+  const [showQuickDepartmentModal, setShowQuickDepartmentModal] = useState(false)
   const [dueDateValue, setDueDateValue] = useState('')
   const [estimatedHoursValue, setEstimatedHoursValue] = useState('')
   const [totalCount, setTotalCount] = useState(0)
@@ -254,6 +258,7 @@ const Tasks = () => {
     if (submitting) return
     setShowCreateModal(false)
     setSelectedDepartmentId('')
+    setSelectedAssigneeId('')
     setDueDateValue('')
     setEstimatedHoursValue('')
   }
@@ -298,7 +303,7 @@ const Tasks = () => {
       const taskData = {
         title: formData.get('title'),
         description: formData.get('description') || '',
-        assigned_to: formData.get('assigned_to') || '',
+        assigned_to: selectedAssigneeId || '',
         priority: formData.get('priority') || 'medium',
         due_date: formData.get('due_date') || dueDateValue || '',
         estimated_hours: formData.get('estimated_hours') || estimatedHoursValue || '',
@@ -733,13 +738,16 @@ const Tasks = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                  Assignee
-                </label>
-                <select
+                <CreatableSelectField
                   name="assigned_to"
+                  label="Assignee"
+                  value={selectedAssigneeId}
+                  onChange={setSelectedAssigneeId}
                   className="input"
                   disabled={loadingUsers}
+                  createLabel="Create user"
+                  onCreate={() => setShowQuickEmployeeModal(true)}
+                  canCreate={canManageTasks}
                 >
                   <option value="">Unassigned</option>
                   {uniqueAssignableUsers.map((u) => (
@@ -747,7 +755,7 @@ const Tasks = () => {
                       {u.first_name} {u.last_name} ({u.role === 'lead' ? 'Lead' : 'Employee'})
                     </option>
                   ))}
-                </select>
+                </CreatableSelectField>
                 {loadingUsers && (
                   <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">Loading users...</p>
                 )}
@@ -761,15 +769,16 @@ const Tasks = () => {
               </div>
               {isCompanyAdmin && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                    Department
-                  </label>
-                  <select
+                  <CreatableSelectField
                     name="department_id"
+                    label="Department"
                     value={selectedDepartmentId}
-                    onChange={(event) => setSelectedDepartmentId(event.target.value)}
+                    onChange={setSelectedDepartmentId}
                     className="input"
                     disabled={loadingDepartments}
+                    createLabel="Create department"
+                    onCreate={() => setShowQuickDepartmentModal(true)}
+                    canCreate={isCompanyAdmin}
                   >
                     <option value="">No department</option>
                     {uniqueDepartments.map((department) => (
@@ -777,7 +786,7 @@ const Tasks = () => {
                         {department.name}
                       </option>
                     ))}
-                  </select>
+                  </CreatableSelectField>
                   {loadingDepartments && (
                     <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">Loading departments...</p>
                   )}
@@ -842,6 +851,30 @@ const Tasks = () => {
           </div>
         </div>
       )}
+
+      <QuickCreateEmployeeModal
+        isOpen={showQuickEmployeeModal}
+        onClose={() => setShowQuickEmployeeModal(false)}
+        existing={assignableUsers}
+        departments={uniqueDepartments}
+        leads={assignableUsers.filter((item) => item.role === 'lead')}
+        departmentId={selectedDepartmentId}
+        canCreateLead={isCompanyAdmin}
+        onCreated={async (created) => {
+          await loadAssignableUsers()
+          setSelectedAssigneeId(created.id)
+        }}
+      />
+
+      <QuickCreateDepartmentModal
+        isOpen={showQuickDepartmentModal}
+        onClose={() => setShowQuickDepartmentModal(false)}
+        existing={departments}
+        onCreated={async (created) => {
+          await loadDepartments()
+          setSelectedDepartmentId(created.id || created._id)
+        }}
+      />
 
     </div>
   )

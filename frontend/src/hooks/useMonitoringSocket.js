@@ -413,7 +413,6 @@ export const useMonitoringSocket = () => {
 
     if (!sent) {
       resetLocalMonitoring()
-      monitoringManager.stopCapture()
       toast.error('Unable to connect attendance session. Please retry.')
       return
     }
