@@ -56,7 +56,7 @@ def can_approve_leave(current_user: User, employee: User, leave: LeaveRequest) -
     current_user_id = str(current_user.id)
     if current_user_id == str(employee.id) or current_user_id == leave.employee_id:
         return False
-    if leave.status != LeaveStatus.PENDING:
+    if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
         return False
     if current_user.role not in APPROVER_ROLES:
         return False
@@ -82,6 +82,13 @@ async def assert_leave_manage_access(current_user: User, employee: User, leave: 
 def assert_leave_mutable(leave: LeaveRequest) -> None:
     if leave.status in TERMINAL_LEAVE_STATUSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalized leave requests cannot be modified")
+
+
+def require_action_comment(comment: Optional[str], label: str) -> str:
+    cleaned = (comment or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{label} is required")
+    return cleaned
 
 
 async def nearest_manager(employee: User) -> Optional[User]:
@@ -139,16 +146,8 @@ async def assert_forward_target(current_user: User, leave: LeaveRequest, employe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot forward leave to requester")
     if target_user.company_id != leave.company_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forward target outside company")
-    if target_user.role not in {UserRole.MANAGER, UserRole.ADMIN}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Forward target must be Manager or Admin")
-    if target_user.role == UserRole.MANAGER and str(target_user.id) == str(current_user.id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot forward leave to yourself")
-    if target_user.role == UserRole.MANAGER and not is_direct_or_indirect_report(target_user, employee):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Target manager is outside requester hierarchy")
-        return
-    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
-        return
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if target_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Forward target must be Admin")
 
 
 def parse_leave_date(value: str, *, end_of_day: bool = False) -> datetime:
@@ -280,9 +279,12 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
         "reviewed_by": leave.reviewed_by,
         "reviewed_at": leave.reviewed_at,
         "review_comment": leave.review_comment,
+        "pending_with_user_ids": [str(item) for item in (getattr(leave, "pending_with_user_ids", []) or [])],
         "forwarded_by": leave.forwarded_by,
+        "forwarded_to_user_id": getattr(leave, "forwarded_to_user_id", None),
         "forwarded_at": leave.forwarded_at,
         "forwarded_to_admin": leave.forwarded_to_admin,
+        "approval_history": getattr(leave, "approval_history", []) or [],
         "cancelled_at": leave.cancelled_at,
         "created_at": leave.created_at,
         "updated_at": leave.updated_at,

@@ -26,6 +26,7 @@ from app.services.leave_service import (
     leave_visibility_query,
     notify_user,
     parse_leave_date,
+    require_action_comment,
     serialize_leave,
     sync_leave_lifecycle,
 )
@@ -168,6 +169,28 @@ async def get_leave_calendar(
     }
 
 
+@router.get("/forward-targets")
+async def get_leave_forward_targets(current_user: User = Depends(get_current_user)):
+    if current_user.role != UserRole.MANAGER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only managers can forward leave requests")
+    if not current_user.company_id:
+        return {"users": []}
+    admins = await User.find({"company_id": current_user.company_id, "role": UserRole.ADMIN.value}).to_list()
+    return {
+        "users": [
+            {
+                "id": str(admin.id),
+                "email": admin.email,
+                "first_name": admin.first_name,
+                "last_name": admin.last_name,
+                "role": admin.role.value,
+            }
+            for admin in admins
+            if str(admin.id) != str(current_user.id)
+        ]
+    }
+
+
 @router.post("/{leave_id}/approve")
 async def approve_leave_request(
     leave_id: str,
@@ -217,6 +240,7 @@ async def reject_leave_request(
     leave, employee = await _load_manageable_leave(leave_id, current_user)
     if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending or forwarded requests can be rejected")
+    comment = require_action_comment(comment, "Rejection reason")
     leave.status = LeaveStatus.REJECTED
     leave.reviewed_by = str(current_user.id)
     leave.reviewed_at = datetime.now()
@@ -253,6 +277,9 @@ async def forward_leave_request(
 ):
     leave, employee = await _load_manageable_leave(leave_id, current_user)
     assert_leave_mutable(leave)
+    if leave.status != LeaveStatus.PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be forwarded")
+    comment = require_action_comment(comment, "Forwarding reason")
     target_user = await User.get(target_user_id)
     if not target_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Forward target not found")
@@ -261,6 +288,7 @@ async def forward_leave_request(
     leave.forwarded_to_user_id = str(target_user.id)
     leave.forwarded_by = str(current_user.id)
     leave.forwarded_at = datetime.now()
+    leave.forwarded_to_admin = True
     leave.forward_comment = comment
     leave.approval_history = [
         *(getattr(leave, "approval_history", []) or []),
@@ -327,11 +355,10 @@ async def _base_query(current_user: User, employee_id: Optional[str]) -> dict:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
         await assert_leave_view_access(current_user, employee)
         return {"employee_id": str(employee.id), "company_id": employee.company_id}
-    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+    if current_user.role == UserRole.MANAGER:
         subordinates = await current_user.get_all_subordinates()
         visible_roles = {UserRole.EMPLOYEE}
-        if current_user.role == UserRole.MANAGER:
-            visible_roles.add(UserRole.LEAD)
+        visible_roles.add(UserRole.LEAD)
         visible_ids = [
             str(user.id)
             for user in subordinates
@@ -343,6 +370,8 @@ async def _base_query(current_user: User, employee_id: Optional[str]) -> dict:
             "company_id": current_user.company_id,
             "employee_id": {"$in": visible_ids},
         }
+    if current_user.role == UserRole.LEAD:
+        return {"company_id": current_user.company_id, "employee_id": "__none__"}
     query = leave_visibility_query(current_user, employee_id)
     return query
 
