@@ -15,5 +15,6 @@ export const leavesAPI = {
   availability: (params = {}) => api.get('/leaves/availability', { params }),
   approve: (id, comment = '') => api.post(`/leaves/${id}/approve`, toFormData({ comment })),
   reject: (id, comment = '') => api.post(`/leaves/${id}/reject`, toFormData({ comment })),
+  forward: (id, comment = '') => api.post(`/leaves/${id}/forward`, toFormData({ comment })),
   cancel: (id) => api.post(`/leaves/${id}/cancel`),
 }

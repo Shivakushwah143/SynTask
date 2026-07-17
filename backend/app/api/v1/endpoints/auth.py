@@ -25,7 +25,7 @@ from app.core.token_blacklist import blacklist_token, is_token_blacklisted
 from app.middleware.rate_limiter import limiter
 from app.api.dependencies import get_current_user
 from app.schemas.auth import RefreshTokenRequest, LoginRequest, ChangePasswordRequest
-from app.core.email import send_password_reset_email
+from app.core.email import send_password_reset_email as _send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,11 @@ REFRESH_COOKIE_NAME = "refresh_token"
 class GoogleLoginRequest(BaseModel):
     id_token: str
     remember_me: bool = False
+
+
+async def send_password_reset_email(email: str, reset_token: str, user_name: Optional[str] = None) -> bool:
+    """Module-level seam so tests can monkeypatch the password reset mailer."""
+    return await _send_password_reset_email(email=email, reset_token=reset_token, user_name=user_name)
 
 
 def _split_google_name(name: str, email: str) -> tuple[str, str]:

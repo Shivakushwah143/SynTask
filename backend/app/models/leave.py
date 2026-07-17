@@ -21,6 +21,7 @@ class LeaveType(str, Enum):
 
 class LeaveStatus(str, Enum):
     PENDING = "pending"
+    FORWARDED = "forwarded"
     APPROVED = "approved"
     REJECTED = "rejected"
     CANCELLED = "cancelled"
@@ -39,6 +40,9 @@ class LeaveRequest(Document):
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     review_comment: Optional[str] = None
+    forwarded_by: Optional[str] = None
+    forwarded_at: Optional[datetime] = None
+    forwarded_to_admin: bool = False
     cancelled_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

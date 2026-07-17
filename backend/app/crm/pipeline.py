@@ -18,6 +18,7 @@ from app.models.crm_proposal import CRMProposal
 from app.crm.models import ProspectStatus, SalesProspect
 from app.models.crm_company import CRMCompany
 from app.models.user import User, UserRole
+from beanie.exceptions import CollectionWasNotInitialized
 
 
 APPROVED_PIPELINE_STAGES: List[Dict[str, Any]] = [
@@ -217,9 +218,12 @@ async def _resolve_won_amount(company_id: str, prospect: SalesProspect) -> float
     if deal and getattr(deal, "value", 0):
         return float(deal.value or 0)
 
-    proposals = await CRMProposal.find(
-        {"company_id": company_id, "lead_id": str(prospect.id), "archived": False}
-    ).sort("-updated_at").to_list(20)
+    try:
+        proposals = await CRMProposal.find(
+            {"company_id": company_id, "lead_id": str(prospect.id), "archived": False}
+        ).sort("-updated_at").to_list(20)
+    except CollectionWasNotInitialized:
+        return 0.0
     for proposal in proposals:
         if getattr(proposal, "deal_value", 0):
             return float(proposal.deal_value or 0)

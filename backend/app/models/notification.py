@@ -28,6 +28,7 @@ class NotificationType(str, Enum):
     SUBSCRIPTION_EXPIRING = "subscription_expiring"
     SUBSCRIPTION_EXPIRED = "subscription_expired"
     LEAVE_REQUESTED = "leave_requested"
+    LEAVE_FORWARDED = "leave_forwarded"
     LEAVE_APPROVED = "leave_approved"
     LEAVE_REJECTED = "leave_rejected"
     SYSTEM = "system"

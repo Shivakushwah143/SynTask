@@ -45,7 +45,7 @@ async def assert_leave_manage_access(current_user: User, employee: User) -> None
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     if current_user.role == UserRole.ADMIN:
         return
-    if employee.reports_to == str(current_user.id) or str(current_user.id) in (employee.ancestors or []):
+    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
@@ -152,6 +152,14 @@ async def notify_user(user_id: str, company_id: Optional[str], notification_type
         logger.error("Failed to create leave notification: %s", exc)
 
 
+async def notify_admins(company_id: Optional[str], notification_type: NotificationType, title: str, message: str, leave_id: str) -> None:
+    if not company_id:
+        return
+    admins = await User.find({"company_id": company_id, "role": UserRole.ADMIN.value}).to_list()
+    for admin in admins:
+        await notify_user(str(admin.id), company_id, notification_type, title, message, leave_id)
+
+
 def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dict[str, Any]:
     return {
         "id": str(leave.id),
@@ -167,6 +175,9 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
         "reviewed_by": leave.reviewed_by,
         "reviewed_at": leave.reviewed_at,
         "review_comment": leave.review_comment,
+        "forwarded_by": leave.forwarded_by,
+        "forwarded_at": leave.forwarded_at,
+        "forwarded_to_admin": leave.forwarded_to_admin,
         "cancelled_at": leave.cancelled_at,
         "created_at": leave.created_at,
         "updated_at": leave.updated_at,
