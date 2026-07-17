@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Check, Clock, Home, Paperclip, Plus, X } from 'lucide-react'
+import { CalendarDays, Check, Clock, Home, Paperclip, Plus, Send, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { leavesAPI } from '../api/leaves'
 import { usersAPI } from '../api/users'
-import { PageHeader, Button, Badge } from '../components/ui'
+import { PageHeader, Button, Badge, FormField, Modal, inputClassName } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
-import { hasCompanyAdminAccess, isLeadRole, isManagerRole } from '../utils/roles'
+import { ROLE, hasCompanyAdminAccess, isLeadRole, isManagerRole, normalizeRole } from '../utils/roles'
 
 const LEAVE_TYPES = [
   ['full_day', 'Full Day'],
@@ -29,9 +29,26 @@ const defaultForm = {
 
 export const canSubmitLeaveRequest = (role) => !hasCompanyAdminAccess(role)
 
+export const canReviewLeaveRequest = (leave, user) => {
+  const userId = String(user?.id || '')
+  const userRole = normalizeRole(user?.role)
+  const employeeRole = normalizeRole(leave?.employee_role)
+  if (!leave || leave.status !== 'pending' || !userId || String(leave.employee_id) === userId) return false
+  if (!(leave.pending_with_user_ids || []).map(String).includes(userId)) return false
+  if (userRole === ROLE.MANAGER) return [ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole)
+  if (userRole === ROLE.ADMIN) return employeeRole === ROLE.MANAGER || Boolean(leave.forwarded_by)
+  return false
+}
+
+export const canForwardLeaveRequest = (leave, user) => {
+  const userRole = normalizeRole(user?.role)
+  const employeeRole = normalizeRole(leave?.employee_role)
+  return userRole === ROLE.MANAGER && [ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole) && canReviewLeaveRequest(leave, user)
+}
+
 export default function Leaves() {
   const { user } = useAuthStore()
-  const canManage = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role) || isManagerRole(user?.role)
+  const canManage = hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role) || isLeadRole(user?.role)
   const canRequestLeave = canSubmitLeaveRequest(user?.role)
   const contentGridClassName = canRequestLeave ? 'grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]' : 'grid gap-6'
   const [form, setForm] = useState(defaultForm)
@@ -42,11 +59,24 @@ export default function Leaves() {
   const [filters, setFilters] = useState({ status: '', leave_type: '', employee_id: '', start_date: '', end_date: '' })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [forwarding, setForwarding] = useState(false)
+  const [forwardLeave, setForwardLeave] = useState(null)
+  const [forwardForm, setForwardForm] = useState({ target_user_id: '', comment: '' })
 
   const selectedEmployeeName = useMemo(() => {
     const item = users.find((entry) => String(entry.id) === String(filters.employee_id))
     return item ? `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email : 'All employees'
   }, [filters.employee_id, users])
+
+  const forwardTargets = useMemo(() => {
+    const currentUserId = String(user?.id || '')
+    const requesterId = String(forwardLeave?.employee_id || '')
+    return users.filter((item) => {
+      const role = normalizeRole(item.role)
+      const id = String(item.id)
+      return [ROLE.MANAGER, ROLE.ADMIN].includes(role) && id !== currentUserId && id !== requesterId
+    })
+  }, [forwardLeave?.employee_id, user?.id, users])
 
   const loadData = useCallback(async () => {
     try {
@@ -129,6 +159,32 @@ export default function Leaves() {
     }
   }
 
+  const openForwardModal = (leave) => {
+    setForwardLeave(leave)
+    setForwardForm({ target_user_id: '', comment: '' })
+  }
+
+  const submitForward = async (event) => {
+    event.preventDefault()
+    if (!forwardLeave) return
+    if (!forwardForm.target_user_id) {
+      toast.error('Select who should review this leave request')
+      return
+    }
+    try {
+      setForwarding(true)
+      await leavesAPI.forward(forwardLeave.id, forwardForm)
+      toast.success('Leave request forwarded')
+      setForwardLeave(null)
+      setForwardForm({ target_user_id: '', comment: '' })
+      await loadData()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Unable to forward leave')
+    } finally {
+      setForwarding(false)
+    }
+  }
+
   const cancelLeave = async (id) => {
     try {
       await leavesAPI.cancel(id)
@@ -159,25 +215,25 @@ export default function Leaves() {
               <Plus className="h-5 w-5 text-primary-600" />
               <h2 className="section-header">New Request</h2>
             </div>
-            <Field label="Leave type">
-              <select className="input" value={form.leave_type} onChange={(event) => setForm({ ...form, leave_type: event.target.value })}>
+            <FormField label="Leave type" required>
+              <select className={inputClassName} value={form.leave_type} onChange={(event) => setForm({ ...form, leave_type: event.target.value })}>
                 {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
-            </Field>
+            </FormField>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Start date">
-                <input className="input" type="date" required value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} />
-              </Field>
-              <Field label="End date">
-                <input className="input" type="date" required value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} />
-              </Field>
+              <FormField label="Start date" required>
+                <input className={inputClassName} type="date" required value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} />
+              </FormField>
+              <FormField label="End date" required>
+                <input className={inputClassName} type="date" required value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} />
+              </FormField>
             </div>
-            <Field label="Reason">
-              <textarea className="input min-h-28" required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
-            </Field>
-            <Field label="Attachment">
-              <input className="input" type="file" onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} />
-            </Field>
+            <FormField label="Reason" required>
+              <textarea className={`${inputClassName} min-h-28 resize-y`} required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
+            </FormField>
+            <FormField label="Attachment">
+              <input className={inputClassName} type="file" onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} />
+            </FormField>
             <Button type="submit" loading={submitting} className="w-full">Submit Request</Button>
           </form>
         ) : null}
@@ -219,10 +275,11 @@ export default function Leaves() {
                   <LeaveRow
                     key={leave.id}
                     leave={leave}
-                    canManage={canManage}
                     currentUserId={user?.id}
+                    currentUser={user}
                     onApprove={approveLeave}
                     onReject={rejectLeave}
+                    onForward={openForwardModal}
                     onCancel={cancelLeave}
                   />
                 ))}
@@ -241,12 +298,43 @@ export default function Leaves() {
           </div>
         </section>
       </div>
+
+      <Modal
+        isOpen={Boolean(forwardLeave)}
+        onClose={() => setForwardLeave(null)}
+        title="Forward Leave Request"
+        description="Send this request to another manager in the hierarchy or to an admin with a review note."
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setForwardLeave(null)}>Cancel</Button>
+            <Button type="submit" form="forward-leave-form" loading={forwarding}><Send className="h-4 w-4" /> Forward</Button>
+          </div>
+        )}
+      >
+        <form id="forward-leave-form" onSubmit={submitForward} className="space-y-4">
+          <FormField label="Forward to" required>
+            <select className={inputClassName} required value={forwardForm.target_user_id} onChange={(event) => setForwardForm({ ...forwardForm, target_user_id: event.target.value })}>
+              <option value="">Select reviewer</option>
+              {forwardTargets.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email} ({normalizeRole(item.role)?.replace(/_/g, ' ')})
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Comment">
+            <textarea className={`${inputClassName} min-h-24 resize-y`} value={forwardForm.comment} onChange={(event) => setForwardForm({ ...forwardForm, comment: event.target.value })} />
+          </FormField>
+        </form>
+      </Modal>
     </div>
   )
 }
 
-function LeaveRow({ leave, canManage, currentUserId, onApprove, onReject, onCancel }) {
+function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onForward, onCancel }) {
   const canCancel = leave.status === 'pending' && String(leave.employee_id) === String(currentUserId)
+  const canReview = canReviewLeaveRequest(leave, currentUser)
+  const canForward = canForwardLeaveRequest(leave, currentUser)
   return (
     <div className="rounded-2xl border border-surface-border bg-surface-muted/70 p-4 dark:bg-[var(--color-app-surface-muted)]">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -266,11 +354,14 @@ function LeaveRow({ leave, canManage, currentUserId, onApprove, onReject, onCanc
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {canManage && leave.status === 'pending' ? (
+          {canReview ? (
             <>
               <Button size="sm" onClick={() => onApprove(leave.id)}><Check className="h-4 w-4" /> Approve</Button>
               <Button size="sm" variant="danger" onClick={() => onReject(leave.id)}><X className="h-4 w-4" /> Reject</Button>
             </>
+          ) : null}
+          {canForward ? (
+            <Button size="sm" variant="secondary" onClick={() => onForward(leave)}><Send className="h-4 w-4" /> Forward</Button>
           ) : null}
           {canCancel ? (
             <Button size="sm" variant="secondary" onClick={() => onCancel(leave.id)}>Cancel</Button>
@@ -312,15 +403,6 @@ function StatusCard({ icon: Icon, label, value, colorKey }) {
       </div>
       <span className="sr-only">{colorKey}</span>
     </div>
-  )
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="text-xs font-semibold text-text-secondary">{label}</span>
-      {children}
-    </label>
   )
 }
 

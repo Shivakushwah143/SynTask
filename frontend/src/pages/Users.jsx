@@ -27,9 +27,27 @@ const DESIGNATION_OPTIONS = [
   'Marketing Executive',
   'Customer Support Executive',
   'HR Executive',
+  'HR Manager',
+  'Recruiter',
+  'Talent Acquisition Specialist',
   'Accountant',
+  'Finance Executive',
+  'Finance Manager',
   'Operations Executive',
+  'Operations Manager',
   'Data Analyst',
+  'Product Manager',
+  'Project Manager',
+  'Scrum Master',
+  'Team Lead',
+  'Technical Lead',
+  'SEO Specialist',
+  'Social Media Manager',
+  'Digital Marketing Specialist',
+  'Business Development Executive',
+  'Customer Success Executive',
+  'Support Engineer',
+  'Office Administrator',
   'Content Writer',
   'Intern',
 ]
@@ -52,6 +70,11 @@ const Users = () => {
   const [newDepartmentManagerId, setNewDepartmentManagerId] = useState('')
   const [departmentSubmitting, setDepartmentSubmitting] = useState(false)
   const [departmentError, setDepartmentError] = useState('')
+  const [customDesignations, setCustomDesignations] = useState([])
+  const [selectedDesignation, setSelectedDesignation] = useState('')
+  const [showDesignationCreate, setShowDesignationCreate] = useState(false)
+  const [newDesignationName, setNewDesignationName] = useState('')
+  const [designationError, setDesignationError] = useState('')
   const [showBulkModal, setShowBulkModal] = useState(false)
   const [bulkRows, setBulkRows] = useState([])
   const [bulkErrors, setBulkErrors] = useState([])
@@ -62,6 +85,7 @@ const Users = () => {
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isManager = normalizeRole(user?.role) === 'manager'
   const isEmployee = normalizeRole(user?.role) === 'employee'
+  const canReadDepartments = isCompanyAdmin || isManager || isLead
   const allowedBulkRoles = useMemo(() => {
     if (isCompanyAdmin) return ['manager', 'lead', 'employee']
     if (isManager) return ['lead', 'employee']
@@ -72,13 +96,18 @@ const Users = () => {
     () => users.filter((item) => item.status === 'active'),
     [users],
   )
+  const leadOptions = useMemo(
+    () => users.filter((item) => normalizeRole(item.role) === 'lead' && item.status === 'active'),
+    [users],
+  )
   const designationOptions = useMemo(() => {
     const currentDesignation = editingUser?.designation?.trim()
-    if (currentDesignation && !DESIGNATION_OPTIONS.includes(currentDesignation)) {
-      return [currentDesignation, ...DESIGNATION_OPTIONS]
+    const combined = [...customDesignations, ...DESIGNATION_OPTIONS]
+    if (currentDesignation && !combined.includes(currentDesignation)) {
+      combined.unshift(currentDesignation)
     }
-    return DESIGNATION_OPTIONS
-  }, [editingUser?.designation])
+    return Array.from(new Set(combined)).sort((a, b) => a.localeCompare(b))
+  }, [customDesignations, editingUser?.designation])
   const departmentNameById = useMemo(
     () => departments.reduce((lookup, department) => {
       lookup[department.id] = department.name
@@ -113,22 +142,23 @@ const Users = () => {
   }, [])
 
   const fetchDepartments = useCallback(async () => {
-    if (!isCompanyAdmin) return
+    if (!canReadDepartments) return
     try {
       const data = await departmentsAPI.listDepartments()
-      setDepartments(Array.isArray(data) ? data : [])
+      const list = Array.isArray(data) ? data : []
+      setDepartments([...list].sort((a, b) => (a.name || '').localeCompare(b.name || '')))
     } catch (error) {
       console.error('Error loading departments:', error)
       setDepartments([])
     }
-  }, [isCompanyAdmin])
+  }, [canReadDepartments])
 
   useEffect(() => {
     fetchUsers()
-    if (isCompanyAdmin) {
+    if (canReadDepartments) {
       fetchDepartments()
     }
-  }, [fetchUsers, fetchDepartments, isCompanyAdmin])
+  }, [fetchUsers, fetchDepartments, canReadDepartments])
 
   if (isEmployee) {
     return (
@@ -228,7 +258,7 @@ const Users = () => {
         phone: formData.get('phone')?.trim() || '',
       }
 
-      if (isCompanyAdmin) {
+      if (canReadDepartments) {
         const departmentId = formData.get('department_id')?.trim() || ''
         const selectedDepartment = departments.find((department) => department.id === departmentId)
         userData.department_id = departmentId
@@ -245,9 +275,8 @@ const Users = () => {
         userData.team_name = formData.get('team_name') || ''
         await usersAPI.createLead(userData)
       } else {
-        // Only set lead_id if provided (for Company Admin)
-        // For Leads, lead_id is automatically set by backend
-        if (isCompanyAdmin) {
+        // Admins and Managers choose the Lead; Leads are assigned by backend.
+        if (isCompanyAdmin || isManager) {
           userData.lead_id = formData.get('lead_id') || ''
         }
         userData.designation = formData.get('designation') || ''
@@ -292,6 +321,10 @@ const Users = () => {
     setNewDepartmentName('')
     setNewDepartmentManagerId('')
     setDepartmentError('')
+    setSelectedDesignation(userToEdit.designation || '')
+    setShowDesignationCreate(false)
+    setNewDesignationName('')
+    setDesignationError('')
     const normalizedRole = normalizeRole(userToEdit.role)
     setUserType(normalizedRole === 'manager' ? 'manager' : normalizedRole === 'lead' ? 'lead' : 'employee')
     setShowAddModal(true)
@@ -307,6 +340,10 @@ const Users = () => {
     setNewDepartmentName('')
     setNewDepartmentManagerId('')
     setDepartmentError('')
+    setSelectedDesignation('')
+    setShowDesignationCreate(false)
+    setNewDesignationName('')
+    setDesignationError('')
     const form = document.querySelector('form')
     if (form) form.reset()
   }
@@ -343,6 +380,26 @@ const Users = () => {
     }
   }
 
+  const handleCreateDesignation = () => {
+    const name = newDesignationName.trim()
+    if (!name) {
+      setDesignationError('Designation is required')
+      return
+    }
+
+    const exists = designationOptions.some((item) => item.toLowerCase() === name.toLowerCase())
+    if (exists) {
+      setDesignationError('Designation already exists')
+      return
+    }
+
+    setCustomDesignations((current) => [...current, name])
+    setSelectedDesignation(name)
+    setNewDesignationName('')
+    setDesignationError('')
+    setShowDesignationCreate(false)
+  }
+
   // Handle update user
   const handleUpdateUser = async (e) => {
     e.preventDefault()
@@ -356,7 +413,7 @@ const Users = () => {
       phone: formData.get('phone') || '',
     }
 
-    if (isCompanyAdmin) {
+    if (canReadDepartments) {
       const departmentId = formData.get('department_id')?.trim() || ''
       const selectedDepartment = departments.find((department) => department.id === departmentId)
       if (departmentId) {
@@ -644,6 +701,10 @@ const Users = () => {
                 setNewDepartmentName('')
                 setNewDepartmentManagerId('')
                 setDepartmentError('')
+                setSelectedDesignation('')
+                setShowDesignationCreate(false)
+                setNewDesignationName('')
+                setDesignationError('')
                 // Keep manual creation aligned with role hierarchy.
                 if (isLead) {
                   setUserType('employee')
@@ -1077,33 +1138,33 @@ const Users = () => {
                   <p className="text-red-500 text-xs mt-1">{formErrors.phone}</p>
                 )}
               </div>
-              {isCompanyAdmin ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                    Department
-                  </label>
-                  <select
-                    name="department_id"
-                    value={selectedDepartmentId}
-                    onChange={(event) => {
-                      if (event.target.value === '__create_department__') {
-                        setShowDepartmentCreate(true)
-                        setDepartmentError('')
-                        return
-                      }
-                      setSelectedDepartmentId(event.target.value)
-                      setShowDepartmentCreate(false)
-                    }}
-                    className="input"
-                  >
-                    <option value="">No department</option>
-                    {departments.map((department) => (
-                      <option key={department.id} value={department.id}>
-                        {department.name}
-                      </option>
-                    ))}
-                    <option value="__create_department__">+ Create new department</option>
-                  </select>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
+                  Department
+                </label>
+                <select
+                  name="department_id"
+                  value={selectedDepartmentId}
+                  onChange={(event) => {
+                    if (event.target.value === '__create_department__') {
+                      setShowDepartmentCreate(true)
+                      setDepartmentError('')
+                      return
+                    }
+                    setSelectedDepartmentId(event.target.value)
+                    setShowDepartmentCreate(false)
+                  }}
+                  className="input"
+                >
+                  <option value="">No department</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                  {isCompanyAdmin ? <option value="__create_department__">+ Create new department</option> : null}
+                </select>
+                {isCompanyAdmin ? (
                   <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-primary-200/70 bg-primary-50/80 px-3 py-2.5 text-xs text-primary-800 shadow-sm dark:border-primary-500/25 dark:bg-primary-500/10 dark:text-primary-100">
                     <span className="font-medium">Missing department?</span>
                     <button
@@ -1118,22 +1179,10 @@ const Users = () => {
                       Create here
                     </button>
                   </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                    Department
-                  </label>
-                  <input
-                    type="text"
-                    name="department"
-                    autoComplete="off"
-                    defaultValue={editingUser?.department || ''}
-                    className="input"
-                    placeholder="Enter department name"
-                  />
-                </div>
-              )}
+                ) : departments.length === 0 ? (
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-200">No departments found. Ask admin to create departments.</p>
+                ) : null}
+              </div>
 
               {/* Lead-specific fields */}
               {userType === 'lead' && (
@@ -1161,7 +1210,17 @@ const Users = () => {
                     <select
                       name="designation"
                       className="input"
-                      defaultValue={editingUser?.designation || ''}
+                      value={selectedDesignation}
+                      onChange={(event) => {
+                        if (event.target.value === '__create_designation__') {
+                          setShowDesignationCreate(true)
+                          setDesignationError('')
+                          return
+                        }
+                        setSelectedDesignation(event.target.value)
+                        setShowDesignationCreate(false)
+                        setDesignationError('')
+                      }}
                     >
                       <option value="">Select designation</option>
                       {designationOptions.map((designation) => (
@@ -1169,28 +1228,65 @@ const Users = () => {
                           {designation}
                         </option>
                       ))}
+                      <option value="__create_designation__">+ Add designation</option>
                     </select>
+                    {showDesignationCreate && (
+                      <div className="mt-2 rounded-xl border border-primary-200/70 bg-primary-50/80 p-3 dark:border-primary-500/25 dark:bg-primary-500/10">
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <input
+                            type="text"
+                            value={newDesignationName}
+                            onChange={(event) => {
+                              setNewDesignationName(event.target.value)
+                              if (designationError) setDesignationError('')
+                            }}
+                            className={`input min-h-10 flex-1 ${designationError ? 'border-red-500' : ''}`}
+                            placeholder="Enter designation"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleCreateDesignation}
+                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add
+                          </button>
+                        </div>
+                        {designationError && (
+                          <p className="mt-1 text-xs text-red-500" role="alert">{designationError}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {/* Only show Lead ID field for Company Admin, not for Leads */}
-                  {isCompanyAdmin && (
+                  {/* Admins and Managers choose the Lead; Leads are assigned automatically. */}
+                  {(isCompanyAdmin || isManager) && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                        Lead ID (Optional)
+                        Lead {isManager ? '*' : '(Optional)'}
                       </label>
-                      <input
-                        type="text"
+                      <select
                         name="lead_id"
+                        required={isManager}
                         autoComplete="off"
                         className={`input ${formErrors.lead_id ? 'border-red-500' : ''}`}
-                        placeholder="Enter Lead ID if assigned to a lead"
                         onChange={() => {
                           if (formErrors.lead_id) {
                             setFormErrors({ ...formErrors, lead_id: '' })
                           }
                         }}
-                      />
+                      >
+                        <option value="">Select lead</option>
+                        {leadOptions.map((lead) => (
+                          <option key={lead.id} value={lead.id}>
+                            {lead.first_name} {lead.last_name}
+                          </option>
+                        ))}
+                      </select>
                       {formErrors.lead_id && (
                         <p className="text-red-500 text-xs mt-1">{formErrors.lead_id}</p>
+                      )}
+                      {isManager && leadOptions.length === 0 && (
+                        <p className="mt-1 text-xs text-amber-600 dark:text-amber-200">Create a lead before adding employees.</p>
                       )}
                     </div>
                   )}

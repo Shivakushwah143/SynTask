@@ -92,8 +92,6 @@ async def create_project(
     for raw in [assigned_to, assigned_user_ids]:
         if isinstance(raw, str) and raw:
             requested_assignees.extend([item.strip() for item in raw.split(",") if item.strip()])
-    if getattr(current_user, "role", None) == UserRole.MANAGER and str(current_user.id) not in requested_assignees:
-        requested_assignees.insert(0, str(current_user.id))
     assigned_users = await validate_project_assignees(current_user, current_user.company_id, requested_assignees) if requested_assignees else []
     assigned_ids = [str(user.id) for user in assigned_users]
     primary_assigned_to = assigned_ids[0] if assigned_ids else None

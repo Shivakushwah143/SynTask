@@ -33,6 +33,8 @@ const NotificationBell = () => {
             notificationId: notification?.id || null,
             relatedId: notification?.related_id || null,
             relatedType: notification?.related_type || null,
+            type: notification?.type || null,
+            metadata: notification?.metadata || null,
           },
         })
       )

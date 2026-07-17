@@ -31,11 +31,53 @@ const getUserId = (item) => String(item?.id || item?._id || item?.user_id || ite
 const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
 const isValidLeadOwner = (item) => ['lead', 'employee'].includes(normalizeRole(item?.role))
 const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || '').trim())
+const PRODUCT_LOCATION_OPTIONS = [
+  { state: 'Andaman and Nicobar Islands', cities: ['Port Blair', 'Diglipur', 'Mayabunder', 'Rangat'] },
+  { state: 'Andhra Pradesh', cities: ['Visakhapatnam', 'Vijayawada', 'Guntur', 'Nellore', 'Kurnool', 'Tirupati'] },
+  { state: 'Arunachal Pradesh', cities: ['Itanagar', 'Naharlagun', 'Pasighat', 'Tawang'] },
+  { state: 'Assam', cities: ['Guwahati', 'Dibrugarh', 'Silchar', 'Jorhat', 'Tezpur'] },
+  { state: 'Bihar', cities: ['Patna', 'Gaya', 'Bhagalpur', 'Muzaffarpur', 'Darbhanga'] },
+  { state: 'Chandigarh', cities: ['Chandigarh'] },
+  { state: 'Chhattisgarh', cities: ['Raipur', 'Bhilai', 'Bilaspur', 'Korba', 'Durg'] },
+  { state: 'Dadra and Nagar Haveli and Daman and Diu', cities: ['Daman', 'Diu', 'Silvassa'] },
+  { state: 'Delhi', cities: ['New Delhi', 'Dwarka', 'Rohini', 'Saket', 'Karol Bagh', 'Laxmi Nagar'] },
+  { state: 'Goa', cities: ['Panaji', 'Margao', 'Vasco da Gama', 'Mapusa'] },
+  { state: 'Gujarat', cities: ['Ahmedabad', 'Surat', 'Vadodara', 'Rajkot'] },
+  { state: 'Haryana', cities: ['Gurugram', 'Faridabad', 'Panipat', 'Ambala', 'Hisar'] },
+  { state: 'Himachal Pradesh', cities: ['Shimla', 'Dharamshala', 'Solan', 'Mandi'] },
+  { state: 'Jammu and Kashmir', cities: ['Srinagar', 'Jammu', 'Anantnag', 'Baramulla'] },
+  { state: 'Jharkhand', cities: ['Ranchi', 'Jamshedpur', 'Dhanbad', 'Bokaro', 'Deoghar'] },
+  { state: 'Karnataka', cities: ['Bengaluru', 'Mysuru', 'Mangaluru', 'Hubballi', 'Belagavi', 'Kalaburagi'] },
+  { state: 'Kerala', cities: ['Thiruvananthapuram', 'Kochi', 'Kozhikode', 'Thrissur', 'Kollam'] },
+  { state: 'Ladakh', cities: ['Leh', 'Kargil'] },
+  { state: 'Lakshadweep', cities: ['Kavaratti', 'Agatti', 'Amini'] },
+  { state: 'Madhya Pradesh', cities: ['Indore', 'Bhopal', 'Jabalpur', 'Gwalior', 'Ujjain'] },
+  { state: 'Maharashtra', cities: ['Mumbai', 'Pune', 'Nagpur', 'Nashik', 'Thane', 'Aurangabad'] },
+  { state: 'Manipur', cities: ['Imphal', 'Thoubal', 'Bishnupur', 'Churachandpur'] },
+  { state: 'Meghalaya', cities: ['Shillong', 'Tura', 'Jowai', 'Nongpoh'] },
+  { state: 'Mizoram', cities: ['Aizawl', 'Lunglei', 'Champhai', 'Serchhip'] },
+  { state: 'Nagaland', cities: ['Kohima', 'Dimapur', 'Mokokchung', 'Wokha'] },
+  { state: 'Odisha', cities: ['Bhubaneswar', 'Cuttack', 'Rourkela', 'Puri', 'Sambalpur'] },
+  { state: 'Puducherry', cities: ['Puducherry', 'Karaikal', 'Mahe', 'Yanam'] },
+  { state: 'Punjab', cities: ['Ludhiana', 'Amritsar', 'Jalandhar', 'Patiala', 'Mohali'] },
+  { state: 'Rajasthan', cities: ['Jaipur', 'Jodhpur', 'Udaipur', 'Kota'] },
+  { state: 'Sikkim', cities: ['Gangtok', 'Namchi', 'Gyalshing', 'Mangan'] },
+  { state: 'Tamil Nadu', cities: ['Chennai', 'Coimbatore', 'Madurai', 'Salem', 'Tiruchirappalli'] },
+  { state: 'Telangana', cities: ['Hyderabad', 'Warangal', 'Nizamabad', 'Karimnagar'] },
+  { state: 'Tripura', cities: ['Agartala', 'Udaipur', 'Dharmanagar', 'Kailashahar'] },
+  { state: 'Uttar Pradesh', cities: ['Lucknow', 'Noida', 'Kanpur', 'Ghaziabad', 'Varanasi', 'Agra'] },
+  { state: 'Uttarakhand', cities: ['Dehradun', 'Haridwar', 'Roorkee', 'Haldwani', 'Rishikesh'] },
+  { state: 'West Bengal', cities: ['Kolkata', 'Howrah', 'Durgapur', 'Siliguri'] },
+]
 const getResponseItems = (data, key) => {
   const direct = data?.[key]
   const nested = data?.data?.[key]
+  const directItems = data?.items
+  const nestedItems = data?.data?.items
   if (Array.isArray(direct)) return direct
   if (Array.isArray(nested)) return nested
+  if (Array.isArray(directItems)) return directItems
+  if (Array.isArray(nestedItems)) return nestedItems
   if (Array.isArray(data)) return data
   return []
 }
@@ -175,8 +217,8 @@ export default function CRMLeadsPage() {
     return []
   }, [usersQuery.data])
   
-  const categories = useMemo(() => getResponseItems(categoriesQuery.data, 'categories'), [categoriesQuery.data])
-  const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
+  const categories = useMemo(() => getSalesCollection(categoriesQuery.data, 'categories'), [categoriesQuery.data])
+  const products = useMemo(() => getSalesCollection(productsQuery.data, 'products'), [productsQuery.data])
   const leadOwnerOptions = useMemo(() => assignableUsers.filter(isValidLeadOwner), [assignableUsers])
   
   const userNameById = useMemo(() => {
@@ -255,24 +297,18 @@ export default function CRMLeadsPage() {
   const createCategoryMutation = useMutation(
     (payload) => salesApi.createCategory(payload),
     {
-      onSuccess: (response) => {
-        const createdCategory = response?.data?.category || response?.data || response
+      onSuccess: (response, payload) => {
+        const createdCategory = normalizeCreatedSalesOption(response?.data?.category || response?.data || response, payload)
         if (createdCategory) {
           queryClient.setQueryData('crm-lead-categories', (current) => {
-            const currentCategories = getResponseItems(current, 'categories')
-            const nextCategories = currentCategories.some((item) => getOptionId(item) === getOptionId(createdCategory))
-              ? currentCategories
-              : [...currentCategories, createdCategory]
-            if (Array.isArray(current)) return nextCategories
-            if (current && typeof current === 'object') return { ...current, categories: nextCategories }
-            return { categories: nextCategories }
+            return mergeSalesCollectionItem(current, 'categories', createdCategory)
           })
           setCreateForm((state) => ({ ...state, category_id: getOptionId(createdCategory) || state.category_id }))
+          setProductForm((state) => ({ ...state, category_id: getOptionId(createdCategory) || state.category_id }))
         }
         toast.success('Category created')
         queryClient.invalidateQueries('crm-lead-categories', { exact: true })
         queryClient.invalidateQueries('sales-categories', { exact: true })
-        queryClient.refetchQueries('crm-lead-categories', { exact: true })
         setCreateCategoryOpen(false)
         setCategoryForm({ name: '' })
       },
@@ -285,24 +321,17 @@ export default function CRMLeadsPage() {
   const createProductMutation = useMutation(
     (payload) => salesApi.createProduct(payload),
     {
-      onSuccess: (response) => {
-        const createdProduct = Array.isArray(response?.data) ? response.data[0] : (response?.data?.product || response?.data || response)
+      onSuccess: (response, payload) => {
+        const createdProduct = normalizeCreatedProduct(response?.data, payload)
         if (createdProduct) {
           queryClient.setQueryData('crm-lead-products', (current) => {
-            const currentProducts = getResponseItems(current, 'products')
-            const nextProducts = currentProducts.some((item) => getOptionId(item) === getOptionId(createdProduct))
-              ? currentProducts
-              : [...currentProducts, createdProduct]
-            if (Array.isArray(current)) return nextProducts
-            if (current && typeof current === 'object') return { ...current, products: nextProducts }
-            return { products: nextProducts }
+            return mergeSalesCollectionItem(current, 'products', createdProduct)
           })
           setCreateForm((state) => ({ ...state, product_ids: getOptionId(createdProduct) || state.product_ids }))
         }
         toast.success('Product created')
         queryClient.invalidateQueries('crm-lead-products', { exact: true })
         queryClient.invalidateQueries('sales-products', { exact: true })
-        queryClient.refetchQueries('crm-lead-products', { exact: true })
         setCreateProductOpen(false)
         setProductForm({ name: '', category_id: '', rate: '', unit: '', state: '', city: '' })
       },
@@ -1214,6 +1243,10 @@ export default function CRMLeadsPage() {
                   toast.error('Product name is required')
                   return
                 }
+                if (!productForm.category_id) {
+                  toast.error('Category is required')
+                  return
+                }
                 createProductMutation.mutate({
                   name: productForm.name.trim(),
                   category_id: productForm.category_id || undefined,
@@ -1229,13 +1262,16 @@ export default function CRMLeadsPage() {
           </div>
         )}
       >
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-1 md:col-span-2">
             <span className="text-xs font-medium text-text-muted">Product name</span>
             <input className={inputClassName} value={productForm.name} onChange={(e) => setProductForm((state) => ({ ...state, name: e.target.value }))} placeholder="New product name" />
           </label>
-          <label className="space-y-1">
-            <span className="text-xs font-medium text-text-muted">Category</span>
+          <label className="space-y-1 md:col-span-2">
+            <span className="flex items-center justify-between gap-2 text-xs font-medium text-text-muted">
+              <span>Category *</span>
+              <button type="button" className="text-primary-600 hover:underline" onClick={() => setCreateCategoryOpen(true)}>+ New category</button>
+            </span>
             <select className={inputClassName} value={productForm.category_id} onChange={(e) => setProductForm((state) => ({ ...state, category_id: e.target.value }))}>
               <option value="">Select category</option>
               {categories.map((category) => (
@@ -1253,11 +1289,21 @@ export default function CRMLeadsPage() {
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-text-muted">State</span>
-            <input className={inputClassName} value={productForm.state} onChange={(e) => setProductForm((state) => ({ ...state, state: e.target.value }))} placeholder="State" />
+            <select className={inputClassName} value={productForm.state} onChange={(e) => setProductForm((state) => ({ ...state, state: e.target.value, city: '' }))}>
+              <option value="">Select state</option>
+              {PRODUCT_LOCATION_OPTIONS.map((item) => (
+                <option key={item.state} value={item.state}>{item.state}</option>
+              ))}
+            </select>
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-text-muted">City</span>
-            <input className={inputClassName} value={productForm.city} onChange={(e) => setProductForm((state) => ({ ...state, city: e.target.value }))} placeholder="City" />
+            <select className={inputClassName} value={productForm.city} onChange={(e) => setProductForm((state) => ({ ...state, city: e.target.value }))} disabled={!productForm.state}>
+              <option value="">{productForm.state ? 'Select city' : 'Select state first'}</option>
+              {getProductCities(productForm.state).map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
           </label>
         </div>
       </Modal>
@@ -1343,6 +1389,54 @@ export function getSalesCollection(data, legacyKey) {
   if (Array.isArray(data?.data?.[legacyKey])) return data.data[legacyKey]
   if (Array.isArray(data?.data?.items)) return data.data.items
   return []
+}
+
+export function getProductCities(state) {
+  return PRODUCT_LOCATION_OPTIONS.find((item) => item.state === state)?.cities || []
+}
+
+export function getProductStates() {
+  return PRODUCT_LOCATION_OPTIONS.map((item) => item.state)
+}
+
+export function normalizeCreatedSalesOption(responseData, fallback = {}) {
+  const item = Array.isArray(responseData) ? responseData[0] : responseData
+  if (!item || typeof item !== 'object') return null
+  const id = getOptionId(item) || getOptionId(fallback)
+  const name = String(item.name || fallback.name || '').trim()
+  if (!id && !name) return null
+  return { ...fallback, ...item, id: id || name, name }
+}
+
+export function normalizeCreatedProduct(responseData, fallback = {}) {
+  const product = normalizeCreatedSalesOption(
+    responseData?.product || (Array.isArray(responseData) ? responseData[0] : responseData),
+    fallback
+  )
+  const createdId = responseData?.ids?.[0] || responseData?.id || responseData?._id || getOptionId(product)
+  if (!product && !createdId) return null
+  return {
+    ...fallback,
+    ...(product || {}),
+    id: String(createdId || getOptionId(product)).trim(),
+    name: String(product?.name || fallback.name || '').trim(),
+  }
+}
+
+export function mergeSalesCollectionItem(current, legacyKey, createdItem) {
+  if (!createdItem) return current
+  const currentItems = getSalesCollection(current, legacyKey)
+  const createdId = getOptionId(createdItem)
+  const nextItems = currentItems.some((item) => getOptionId(item) === createdId)
+    ? currentItems.map((item) => (getOptionId(item) === createdId ? { ...item, ...createdItem } : item))
+    : [...currentItems, createdItem]
+
+  if (Array.isArray(current)) return nextItems
+  if (current?.data && typeof current.data === 'object') {
+    return { ...current, data: { ...current.data, items: nextItems, [legacyKey]: nextItems } }
+  }
+  if (current && typeof current === 'object') return { ...current, items: nextItems, [legacyKey]: nextItems }
+  return { items: nextItems, [legacyKey]: nextItems }
 }
 
 export function getOwnerName(lead, userNameById = new Map()) {

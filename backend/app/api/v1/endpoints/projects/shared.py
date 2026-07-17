@@ -73,9 +73,7 @@ async def can_manage_project(project: Project, current_user: User) -> bool:
     if current_user.company_id != project.company_id:
         return False
     if current_user.role == UserRole.MANAGER:
-        scope_ids = await scoped_user_ids(current_user)
-        project_ids = set(project_assignee_ids(project))
-        return str(current_user.id) == project.created_by or bool(project_ids.intersection(scope_ids))
+        return True
     return False
 
 
@@ -95,21 +93,14 @@ async def validate_project_assignees(
             clean_ids.append(user_id)
 
     users = []
-    scope_ids = set(await scoped_user_ids(current_user))
     for user_id in clean_ids:
         assignee = await User.get(user_id)
         if not assignee or assignee.company_id != company_id:
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project assignee")
-        if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+        if current_user.role in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
             allowed_roles = {UserRole.MANAGER, UserRole.LEAD}
             if assignee.role not in allowed_roles:
-                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Admin can assign projects to Managers or Leads")
-        elif current_user.role == UserRole.MANAGER:
-            if str(assignee.id) == str(current_user.id):
-                users.append(assignee)
-                continue
-            if assignee.role != UserRole.LEAD or str(assignee.id) not in scope_ids:
-                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Manager can assign projects only to scoped Leads")
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Projects can be assigned to Managers or Leads")
         else:
             raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Cannot assign projects")
         users.append(assignee)
@@ -122,17 +113,16 @@ async def check_project_access(project: Project, current_user: User) -> bool:
     
     Returns True if user can access the project, False otherwise
     """
-    # Super Admin and Admin can access all projects in their company
-    if current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
+    # Super Admin, Admin, and Manager can access all projects in their company.
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return True
+    if current_user.company_id != project.company_id:
+        return False
+    if current_user.role in [UserRole.ADMIN, UserRole.MANAGER]:
         return True
     
     assignee_ids = set(project_assignee_ids(project))
-
-    if current_user.role == UserRole.MANAGER:
-        scope_ids = set(await scoped_user_ids(current_user))
-        return str(current_user.id) == project.created_by or bool(assignee_ids.intersection(scope_ids))
-    
-    elif current_user.role == UserRole.LEAD:
+    if current_user.role == UserRole.LEAD:
         return str(current_user.id) in assignee_ids
     
     elif current_user.role == UserRole.EMPLOYEE:

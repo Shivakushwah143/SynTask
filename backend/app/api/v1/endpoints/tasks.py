@@ -49,18 +49,22 @@ async def _get_user_scope_ids(current_user: User) -> list[str]:
 
 
 async def _can_access_project_for_task(current_user: User, project) -> bool:
-    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER}:
         return True
     assignee_ids = set(getattr(project, "assigned_user_ids", None) or [])
     if getattr(project, "assigned_to", None):
         assignee_ids.add(str(project.assigned_to))
     if getattr(project, "lead_id", None):
         assignee_ids.add(str(project.lead_id))
+    if getattr(project, "created_by", None):
+        assignee_ids.add(str(project.created_by))
+    team_member_ids = set(getattr(project, "team_member_ids", None) or [])
     if current_user.role == UserRole.MANAGER:
-        scoped_ids = set(await _get_user_scope_ids(current_user))
-        return project.created_by == str(current_user.id) or bool(assignee_ids.intersection(scoped_ids))
+        return True
     if current_user.role == UserRole.LEAD:
-        return str(current_user.id) in assignee_ids
+        return str(current_user.id) in assignee_ids or str(current_user.id) in team_member_ids
+    if current_user.role == UserRole.EMPLOYEE:
+        return str(current_user.id) in team_member_ids
     return False
 
 
@@ -68,13 +72,30 @@ async def _assert_task_view(current_user: User, task: Task) -> None:
     check_company_access(current_user, task.company_id)
     if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
         return
-    if current_user.role == UserRole.EMPLOYEE:
-        if task.assigned_to == str(current_user.id):
+    current_user_id = str(current_user.id)
+    if task.created_by == current_user_id or task.assigned_to == current_user_id:
+        return
+    try:
+        from app.models.watchers import Watcher
+        watcher = await Watcher.find_one(
+            Watcher.task_id == str(task.id),
+            Watcher.user_id == current_user_id,
+            Watcher.company_id == task.company_id,
+        )
+        if watcher:
             return
+    except Exception:
+        pass
+    if current_user.role == UserRole.EMPLOYEE:
+        if task.project_id:
+            from app.api.dependencies import get_project_by_id
+            project, _ = await get_project_by_id(task.project_id, current_user.company_id)
+            if project and await _can_access_project_for_task(current_user, project):
+                return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
         scope_ids = set(await _get_user_scope_ids(current_user))
-        if task.created_by == str(current_user.id) or (task.assigned_to and task.assigned_to in scope_ids):
+        if task.created_by in scope_ids or (task.assigned_to and task.assigned_to in scope_ids):
             return
         if task.project_id:
             from app.api.dependencies import get_project_by_id
@@ -98,9 +119,8 @@ async def _assert_can_assign_task(current_user: User, assignee: Optional[User]) 
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid assignee role")
         return
     if current_user.role == UserRole.MANAGER:
-        scope_ids = set(await _get_user_scope_ids(current_user))
-        if assignee.role not in {UserRole.LEAD, UserRole.EMPLOYEE} or str(assignee.id) not in scope_ids:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager can assign tasks only to scoped Leads or Employees")
+        if assignee.role not in {UserRole.LEAD, UserRole.EMPLOYEE}:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager can assign tasks only to Leads or Employees")
         return
     if current_user.role == UserRole.LEAD:
         scope_ids = set(await _get_user_scope_ids(current_user))
@@ -108,6 +128,88 @@ async def _assert_can_assign_task(current_user: User, assignee: Optional[User]) 
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Lead can assign tasks only to Employees")
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot assign tasks")
+
+
+async def _task_comment_recipient_ids(task: Task, current_user: User) -> list[str]:
+    recipients = {str(task.created_by)}
+    if task.assigned_to:
+        recipients.add(str(task.assigned_to))
+
+    if task.project_id:
+        try:
+            from app.api.dependencies import get_project_by_id
+            project, _ = await get_project_by_id(task.project_id, current_user.company_id)
+            if project:
+                for user_id in getattr(project, "assigned_user_ids", None) or []:
+                    recipients.add(str(user_id))
+                for user_id in getattr(project, "team_member_ids", None) or []:
+                    recipients.add(str(user_id))
+                if getattr(project, "assigned_to", None):
+                    recipients.add(str(project.assigned_to))
+                if getattr(project, "lead_id", None):
+                    recipients.add(str(project.lead_id))
+                if getattr(project, "created_by", None):
+                    recipients.add(str(project.created_by))
+        except Exception:
+            pass
+
+    try:
+        from app.models.watchers import Watcher
+        watchers = await Watcher.find({
+            "task_id": str(task.id),
+            "company_id": task.company_id,
+        }).to_list()
+        recipients.update(str(watcher.user_id) for watcher in watchers)
+    except Exception:
+        pass
+
+    try:
+        admins = await User.find({
+            "company_id": task.company_id,
+            "role": {"$in": [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]},
+        }).to_list()
+        recipients.update(str(admin.id) for admin in admins)
+    except Exception:
+        pass
+
+    recipients.discard(str(current_user.id))
+    return [user_id for user_id in recipients if user_id]
+
+
+async def _notify_task_comment(task: Task, comment, current_user: User) -> None:
+    try:
+        from app.models.notification import Notification, NotificationType
+
+        actor_name = current_user.full_name() if hasattr(current_user, "full_name") else f"{current_user.first_name} {current_user.last_name}".strip()
+        message_preview = (comment.content or "").strip()
+        if len(message_preview) > 120:
+            message_preview = f"{message_preview[:117]}..."
+
+        notifications = []
+        for user_id in await _task_comment_recipient_ids(task, current_user):
+            notifications.append(
+                Notification(
+                    company_id=task.company_id,
+                    user_id=user_id,
+                    type=NotificationType.TASK_COMMENT,
+                    title=f"New comment on {task.title}",
+                    message=f"{actor_name}: {message_preview}" if message_preview else f"{actor_name} commented on a task.",
+                    related_id=str(task.id),
+                    related_type="task",
+                    action_url=f"/projects/{task.project_id}/tasks/{task.id}" if task.project_id else f"/tasks/{task.id}",
+                    metadata={
+                        "task_id": str(task.id),
+                        "comment_id": str(comment.id),
+                        "event": "task_comment_added",
+                    },
+                )
+            )
+
+        if notifications:
+            await Notification.insert_many(notifications)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to create task comment notifications")
 
 
 def _parse_task_datetime(value: str, field_name: str = "date") -> datetime:
@@ -913,10 +1015,13 @@ async def get_task_comments(
 
     await _assert_task_view(current_user, task)
 
-    # Find all comments for this task
-    task_comments = await TaskComment.find(
-        TaskComment.task_id == task_id
-    ).sort("-created_at").to_list()
+    # Find all comments for this task. Keep route-id fallback for comments saved
+    # before task comments were normalized to the canonical Mongo task id.
+    task_comment_ids = list(dict.fromkeys([str(task.id), str(task_id)]))
+    task_comments = await TaskComment.find({
+        "task_id": {"$in": task_comment_ids},
+        "company_id": task.company_id,
+    }).sort("-created_at").to_list()
 
     return {
         "comments": [
@@ -954,7 +1059,7 @@ async def add_task_comment(
 
     # Create new comment document
     comment = TaskComment(
-        task_id=task_id,
+        task_id=str(task.id),
         company_id=current_user.company_id,
         user_id=str(current_user.id),
         user_name=f"{current_user.first_name} {current_user.last_name}",
@@ -968,6 +1073,7 @@ async def add_task_comment(
     task.updated_at = datetime.now()
     await task.save()
     await cache_delete_pattern(f"dashboard:stats:{task.company_id}:*")
+    await _notify_task_comment(task, comment, current_user)
 
     await publish_event(
         build_domain_event(

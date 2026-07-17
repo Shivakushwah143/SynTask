@@ -22,7 +22,7 @@ def _ensure_create_permission(user: User):
 
 
 def _ensure_delete_permission(user: User):
-    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    if user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Delete not allowed for your role"

@@ -32,22 +32,38 @@ const normalizePriority = (priority) => {
   return TASK_GRAPH_PRIORITY_COLORS[value] ? value : 'medium'
 }
 
-const getAssigneeName = (task) => (
+const displayName = (user) => (
+  user
+    ? [user.first_name, user.last_name].filter(Boolean).join(' ') || user.name || user.email || ''
+    : ''
+)
+
+const buildUserNameLookup = (users = []) => users.reduce((lookup, user) => {
+  const id = String(user?.id || user?._id || '')
+  if (id && !lookup[id]) lookup[id] = displayName(user)
+  return lookup
+}, {})
+
+const getAssigneeName = (task, userNameById = {}) => (
   task.assigned_to_name
   || task.assignee_name
   || task.user_name
   || task.assigned_user?.name
+  || userNameById[String(task.assigned_to || '')]
   || 'Unassigned'
 )
 
-export function buildTaskGraphRows(tasks, limit = 8) {
+export function buildTaskGraphRows(tasks, usersOrLimit = [], maybeLimit = 8) {
+  const users = Array.isArray(usersOrLimit) ? usersOrLimit : []
+  const limit = Array.isArray(usersOrLimit) ? maybeLimit : usersOrLimit
+  const userNameById = buildUserNameLookup(users)
   return tasks.slice(0, limit).map((task) => {
     const statusKey = normalizeStatus(task.status)
     const priorityKey = normalizePriority(task.priority)
     return {
       id: task.id || task._id,
       title: task.title || 'Untitled task',
-      assignee: getAssigneeName(task),
+      assignee: getAssigneeName(task, userNameById),
       statusKey,
       statusLabel: STATUS_LABELS[statusKey] || statusKey.replace(/_/g, ' '),
       progress: STATUS_PROGRESS[statusKey] ?? 12,

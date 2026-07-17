@@ -3,7 +3,7 @@ Leave management models.
 """
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from beanie import Document, Indexed
 from pydantic import Field
@@ -28,6 +28,7 @@ class LeaveStatus(str, Enum):
 
 class LeaveRequest(Document):
     employee_id: Indexed(str)
+    employee_role: Optional[str] = None
     company_id: Indexed(str)
     leave_type: LeaveType
     start_date: datetime
@@ -39,6 +40,12 @@ class LeaveRequest(Document):
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     review_comment: Optional[str] = None
+    pending_with_user_ids: List[str] = Field(default_factory=list)
+    forwarded_to_user_id: Optional[str] = None
+    forwarded_by: Optional[str] = None
+    forwarded_at: Optional[datetime] = None
+    forward_comment: Optional[str] = None
+    approval_history: List[Dict[str, Any]] = Field(default_factory=list)
     cancelled_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -48,11 +55,14 @@ class LeaveRequest(Document):
         indexes = [
             "employee_id",
             "company_id",
+            "employee_role",
             "status",
             "leave_type",
             "start_date",
             "end_date",
+            "pending_with_user_ids",
             IndexModel([("company_id", ASCENDING), ("employee_id", ASCENDING), ("start_date", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("start_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("pending_with_user_ids", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("start_date", ASCENDING), ("end_date", ASCENDING)]),
         ]

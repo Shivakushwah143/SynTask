@@ -505,7 +505,7 @@ async def get_prospect(
     }
 
 
-@router.post("/", dependencies=[Depends(require_capability("import_leads"))])
+@router.post("/")
 async def create_prospect(
     first_name: str = Form(...),
     last_name: str = Form(...),

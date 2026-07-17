@@ -42,8 +42,6 @@ async def update_project(
         for raw in [assigned_to, assigned_user_ids]:
             if raw:
                 requested_assignees.extend([item.strip() for item in raw.split(",") if item.strip()])
-        if current_user.role == UserRole.MANAGER and str(current_user.id) not in requested_assignees:
-            requested_assignees.insert(0, str(current_user.id))
         assignees = await validate_project_assignees(current_user, current_user.company_id, requested_assignees)
         parsed_assignee_ids = [str(user.id) for user in assignees]
     if status_filter:
