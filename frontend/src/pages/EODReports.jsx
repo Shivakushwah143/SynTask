@@ -9,10 +9,14 @@ import { useAuthStore } from '../store/authStore'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
+export const canReviewEODReports = (role) => [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(normalizeRole(role))
+
+export const canSubmitOwnEODReport = (role) => ![ROLE.SUPER_ADMIN, ROLE.ADMIN].includes(normalizeRole(role))
+
 export default function EODReports() {
   const { user } = useAuthStore()
-  const role = normalizeRole(user?.role)
-  const canReview = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(role)
+  const canReview = canReviewEODReports(user?.role)
+  const canSubmitOwnReport = canSubmitOwnEODReport(user?.role)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [mine, setMine] = useState(null)
@@ -46,7 +50,7 @@ export default function EODReports() {
     const load = async () => {
       try {
         setLoading(true)
-        await loadMine()
+        if (canSubmitOwnReport) await loadMine()
         if (active) await loadReview()
       } catch (error) {
         console.error(error)
@@ -58,7 +62,7 @@ export default function EODReports() {
     return () => {
       active = false
     }
-  }, [canReview, loadMine, loadReview])
+  }, [canReview, canSubmitOwnReport, loadMine, loadReview])
 
   useEffect(() => {
     loadReview().catch((error) => console.error(error))
@@ -105,64 +109,66 @@ export default function EODReports() {
     <div className="space-y-6">
       <PageHeader
         title="Daily Work Report"
-        description="Submit one simple end-of-day summary for today."
-        actions={<Badge label={statusLabel} colorKey={status === 'leave' ? 'pending' : status === 'submitted' ? 'submitted' : 'draft'} />}
+        description={canSubmitOwnReport ? 'Submit one simple end-of-day summary for today.' : 'Review submitted and pending end-of-day reports for your company.'}
+        actions={canSubmitOwnReport ? <Badge label={statusLabel} colorKey={status === 'leave' ? 'pending' : status === 'submitted' ? 'submitted' : 'draft'} /> : null}
       />
 
-      <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="card p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-text-primary">Today&apos;s EOD</h2>
-              <p className="mt-1 text-sm text-text-muted">{format(new Date(), 'EEEE, MMM d, yyyy')}</p>
-            </div>
-            {status === 'submitted' ? <Edit3 className="h-5 w-5 text-primary-600" /> : <ClipboardCheck className="h-5 w-5 text-primary-600" />}
-          </div>
-
-          {isLeave ? (
-            <EmptyState title="Leave" description="You are on approved leave today, so an EOD report is not required." />
-          ) : (
-            <form onSubmit={submit} className="mt-5 space-y-4">
-              <FormField label="What did you work on today?" required>
-                <textarea className={`${inputClassName} min-h-32 resize-y`} value={form.worked_on} onChange={(event) => setForm({ ...form, worked_on: event.target.value })} />
-              </FormField>
-              <FormField label="Any blockers?">
-                <textarea className={`${inputClassName} min-h-24 resize-y`} value={form.blockers} onChange={(event) => setForm({ ...form, blockers: event.target.value })} />
-              </FormField>
-              <FormField label="Plan for tomorrow">
-                <textarea className={`${inputClassName} min-h-24 resize-y`} value={form.tomorrow_plan} onChange={(event) => setForm({ ...form, tomorrow_plan: event.target.value })} />
-              </FormField>
-              <Button type="submit" loading={saving} disabled={!canSubmit}>
-                <Send className="h-4 w-4" />
-                {status === 'submitted' ? "Edit Today's EOD" : "Submit Today's EOD"}
-              </Button>
-            </form>
-          )}
-        </div>
-
-        <div className="card p-5">
-          <h2 className="text-base font-semibold text-text-primary">Auto Summary</h2>
-          <p className="mt-1 text-sm text-text-muted">Pulled from tasks and attendance.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <SummaryStat label="Working Hours" value={formatSeconds(autoSummary.total_working_seconds)} />
-            {taskGroups.map(([label, tasks]) => <SummaryStat key={label} label={label} value={tasks.length} />)}
-          </div>
-          <div className="mt-5 space-y-4">
-            {taskGroups.map(([label, tasks]) => (
-              <div key={label}>
-                <p className="text-sm font-medium text-text-secondary">{label}</p>
-                <div className="mt-2 space-y-2">
-                  {tasks.length ? tasks.slice(0, 5).map((task) => (
-                    <div key={task.id} className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text-primary">
-                      {task.title}
-                    </div>
-                  )) : <p className="text-sm text-text-muted">No tasks found.</p>}
-                </div>
+      {canSubmitOwnReport ? (
+        <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+          <div className="card p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-text-primary">Today&apos;s EOD</h2>
+                <p className="mt-1 text-sm text-text-muted">{format(new Date(), 'EEEE, MMM d, yyyy')}</p>
               </div>
-            ))}
+              {status === 'submitted' ? <Edit3 className="h-5 w-5 text-primary-600" /> : <ClipboardCheck className="h-5 w-5 text-primary-600" />}
+            </div>
+
+            {isLeave ? (
+              <EmptyState title="Leave" description="You are on approved leave today, so an EOD report is not required." />
+            ) : (
+              <form onSubmit={submit} className="mt-5 space-y-4">
+                <FormField label="What did you work on today?" required>
+                  <textarea className={`${inputClassName} min-h-32 resize-y`} value={form.worked_on} onChange={(event) => setForm({ ...form, worked_on: event.target.value })} />
+                </FormField>
+                <FormField label="Any blockers?">
+                  <textarea className={`${inputClassName} min-h-24 resize-y`} value={form.blockers} onChange={(event) => setForm({ ...form, blockers: event.target.value })} />
+                </FormField>
+                <FormField label="Plan for tomorrow">
+                  <textarea className={`${inputClassName} min-h-24 resize-y`} value={form.tomorrow_plan} onChange={(event) => setForm({ ...form, tomorrow_plan: event.target.value })} />
+                </FormField>
+                <Button type="submit" loading={saving} disabled={!canSubmit}>
+                  <Send className="h-4 w-4" />
+                  {status === 'submitted' ? "Edit Today's EOD" : "Submit Today's EOD"}
+                </Button>
+              </form>
+            )}
           </div>
-        </div>
-      </section>
+
+          <div className="card p-5">
+            <h2 className="text-base font-semibold text-text-primary">Auto Summary</h2>
+            <p className="mt-1 text-sm text-text-muted">Pulled from tasks and attendance.</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <SummaryStat label="Working Hours" value={formatSeconds(autoSummary.total_working_seconds)} />
+              {taskGroups.map(([label, tasks]) => <SummaryStat key={label} label={label} value={tasks.length} />)}
+            </div>
+            <div className="mt-5 space-y-4">
+              {taskGroups.map(([label, tasks]) => (
+                <div key={label}>
+                  <p className="text-sm font-medium text-text-secondary">{label}</p>
+                  <div className="mt-2 space-y-2">
+                    {tasks.length ? tasks.slice(0, 5).map((task) => (
+                      <div key={task.id} className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text-primary">
+                        {task.title}
+                      </div>
+                    )) : <p className="text-sm text-text-muted">No tasks found.</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {canReview ? (
         <section className="card p-5">
