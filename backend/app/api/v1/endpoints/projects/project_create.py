@@ -68,11 +68,7 @@ async def create_project(
     final_project_id = project_id
     logger.info(f"User provided project_id: {final_project_id} - This will be used throughout")
     
-    # Validate project type
-    try:
-        project_type = ProjectType(type.lower())
-    except:
-        project_type = ProjectType.SOFTWARE
+    project_type = normalize_project_type(type)
     
     # Validate lead if provided
     if lead_id:

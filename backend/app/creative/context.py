@@ -90,7 +90,7 @@ class CreativeContextBuilder:
                 "key": project.key,
                 "description": project.description,
                 "status": project.status.value,
-                "type": project.type.value,
+                "type": getattr(project.type, "value", project.type),
                 "category": project.category,
             },
             campaign=campaign_payload,

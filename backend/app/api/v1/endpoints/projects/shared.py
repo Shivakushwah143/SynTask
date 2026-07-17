@@ -48,6 +48,17 @@ def project_assignee_ids(project: Project) -> list[str]:
     return list(ids)
 
 
+def enum_or_string_value(value, default: Optional[str] = None) -> Optional[str]:
+    if value is None:
+        return default
+    return getattr(value, "value", value)
+
+
+def normalize_project_type(value: str | None) -> str:
+    normalized = (value or ProjectType.SOFTWARE.value).strip().lower().replace(" ", "_")
+    return normalized or ProjectType.SOFTWARE.value
+
+
 async def scoped_user_ids(current_user: User) -> list[str]:
     ids = {str(current_user.id)}
     if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:

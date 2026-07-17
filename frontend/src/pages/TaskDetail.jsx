@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
   ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
@@ -16,12 +16,12 @@ import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
 import { EmptyState } from '../components/ui'
-import { resolveTaskBackTarget } from './taskNavigation'
+import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } from './taskNavigation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
 const TaskDetail = () => {
-  const { taskId } = useParams()
+  const { projectId, taskId } = useParams()
   const navigate = useNavigate()
   const { confirm } = useConfirmation()
   const { user } = useAuthStore()
@@ -57,9 +57,13 @@ const TaskDetail = () => {
   const [extensionForm, setExtensionForm] = useState({ requested_due_date: '', reason: '' })
   const [submittingExtension, setSubmittingExtension] = useState(false)
   const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const pageRef = useRef(null)
+  const detailsRef = useRef(null)
+  const historyRef = useRef(null)
 
   const navigateBack = useCallback(() => {
-    const fallbackPath = '/tasks'
+    const fallbackPath = resolveTaskCloseFallback(projectId || task?.project_id)
     const historyState = window.history.state || {}
     const target = resolveTaskBackTarget(historyState, fallbackPath)
     if (target) {
@@ -67,7 +71,7 @@ const TaskDetail = () => {
       return
     }
     navigate(-1)
-  }, [navigate])
+  }, [navigate, projectId, task?.project_id])
 
   const loadTask = useCallback(async () => {
     try {
@@ -399,6 +403,43 @@ const TaskDetail = () => {
     }
   }
 
+  const focusDetails = useCallback(() => {
+    setDetailsExpanded(true)
+    detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  const focusHistory = useCallback(() => {
+    setActiveTab('history')
+    setHeaderMenuOpen(false)
+    historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  const handleShareTask = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(buildTaskShareUrl(window.location.href))
+      toast.success('Task link copied')
+    } catch (error) {
+      toast.error('Could not copy task link')
+    }
+  }, [])
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
+        await pageRef.current?.requestFullscreen()
+      }
+    } catch (error) {
+      toast.error('Fullscreen is not available')
+    }
+  }, [])
+
+  const openProjectBoard = useCallback(() => {
+    const targetProjectId = projectId || task?.project_id
+    if (targetProjectId) navigate(`/projects/${targetProjectId}/board`)
+  }, [navigate, projectId, task?.project_id])
+
   const priorities = {
     low: { label: 'Low', color: 'text-gray-600 bg-gray-100' },
     medium: { label: 'Medium', color: 'text-blue-600 bg-blue-100' },
@@ -453,7 +494,7 @@ const TaskDetail = () => {
 
   return (
     <>
-    <div className="h-full flex flex-col bg-white -m-6" style={{ minHeight: 'calc(100vh - 96px)' }}>
+    <div ref={pageRef} className="h-full flex flex-col bg-white -m-6" style={{ minHeight: 'calc(100vh - 96px)' }}>
       {/* Top Header */}
       <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between bg-white">
         <div className="flex items-center gap-4">
@@ -465,7 +506,13 @@ const TaskDetail = () => {
           </button>
           {projectInfo && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span>{projectInfo.name}</span>
+              <button
+                type="button"
+                onClick={openProjectBoard}
+                className="font-medium text-gray-700 hover:text-primary-700 hover:underline"
+              >
+                {projectInfo.name}
+              </button>
               <span>/</span>
               <CheckSquare className="h-4 w-4" />
               <span className="font-mono">{task.id?.slice(0, 6)}</span>
@@ -474,35 +521,85 @@ const TaskDetail = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setComposerOpen(true)}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <Mail className="inline-block h-4 w-4 mr-1" />
             Send Email
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded">
+          <button
+            type="button"
+            onClick={focusDetails}
+            className="p-2 hover:bg-gray-100 rounded"
+            aria-label="Open task details"
+            title="Open task details"
+          >
             <Lock className="h-5 w-5 text-gray-600" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded relative">
-            <Eye className="h-5 w-5 text-gray-600" />
+          <button
+            type="button"
+            onClick={handleToggleWatch}
+            disabled={updatingWatch}
+            className={`p-2 hover:bg-gray-100 rounded relative disabled:opacity-60 ${isWatching ? 'bg-primary-50' : ''}`}
+            aria-label={isWatching ? 'Stop watching task' : 'Watch task'}
+            title={isWatching ? 'Stop watching task' : 'Watch task'}
+          >
+            <Eye className={`h-5 w-5 ${isWatching ? 'text-primary-700' : 'text-gray-600'}`} />
             {watchers.length > 0 && (
               <span className="absolute top-0 right-0 bg-primary-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                 {watchers.length}
               </span>
             )}
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded">
+          <button
+            type="button"
+            onClick={handleShareTask}
+            className="p-2 hover:bg-gray-100 rounded"
+            aria-label="Copy task link"
+            title="Copy task link"
+          >
             <Share2 className="h-5 w-5 text-gray-600" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded">
-            <MoreVertical className="h-5 w-5 text-gray-600" />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setHeaderMenuOpen((open) => !open)}
+              className="p-2 hover:bg-gray-100 rounded"
+              aria-label="Open task actions"
+              aria-expanded={headerMenuOpen}
+              title="Open task actions"
+            >
+              <MoreVertical className="h-5 w-5 text-gray-600" />
+            </button>
+            {headerMenuOpen ? (
+              <div className="absolute right-0 z-20 mt-2 w-44 rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                <button type="button" onClick={focusHistory} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
+                  <History className="h-4 w-4" />
+                  View history
+                </button>
+                <button type="button" onClick={handleDelete} disabled={deleting} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-60">
+                  <Trash2 className="h-4 w-4" />
+                  {deleting ? 'Deleting...' : 'Delete task'}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="p-2 hover:bg-gray-100 rounded"
+            aria-label="Toggle fullscreen"
+            title="Toggle fullscreen"
+          >
             <Maximize2 className="h-5 w-5 text-gray-600" />
           </button>
           <button
+            type="button"
             onClick={navigateBack}
             className="p-2 hover:bg-gray-100 rounded"
+            aria-label="Close task detail"
+            title="Close task detail"
           >
             <X className="h-5 w-5 text-gray-600" />
           </button>
@@ -680,7 +777,7 @@ const TaskDetail = () => {
           </div>
 
           {/* Attachments */}
-          <div className="mb-6">
+          <div ref={historyRef} className="mb-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Attachments ({attachments.length})</h3>
             {attachments.length > 0 && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
@@ -923,7 +1020,7 @@ const TaskDetail = () => {
             </div>
 
             {/* Details Section */}
-            <div>
+            <div ref={detailsRef}>
               <button
                 onClick={() => setDetailsExpanded(!detailsExpanded)}
                 className="w-full flex items-center justify-between text-sm font-semibold text-gray-900 mb-2"
