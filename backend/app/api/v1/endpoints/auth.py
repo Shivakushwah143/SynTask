@@ -25,7 +25,7 @@ from app.core.token_blacklist import blacklist_token, is_token_blacklisted
 from app.middleware.rate_limiter import limiter
 from app.api.dependencies import get_current_user
 from app.schemas.auth import RefreshTokenRequest, LoginRequest, ChangePasswordRequest
-from app.worker.tasks.email_tasks import send_password_reset_email_task
+from app.core.email import send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -404,11 +404,15 @@ async def forgot_password(
     frontend_url = getattr(settings, 'FRONTEND_URL', None) or (settings.ALLOWED_ORIGINS[0] if settings.ALLOWED_ORIGINS else "http://localhost:3000")
     reset_link = f"{frontend_url}/reset-password?token={reset_token}"
     
-    send_password_reset_email_task.delay(user.email, reset_token, user.first_name)
-    logger.info(f"Password reset email queued for {email}")
+    email_sent = await send_password_reset_email(user.email, reset_token, user.first_name)
+    if email_sent:
+        logger.info(f"Password reset email sent for {email}")
+    else:
+        logger.error(f"Password reset email not sent for {email}")
     
     response_data = {
-        "message": "Password reset link has been sent to your email."
+        "message": "Password reset link has been sent to your email." if email_sent else "Password reset link was created, but email delivery is not configured.",
+        "email_sent": email_sent,
     }
     
     # Only include reset_link in development mode if email wasn't sent

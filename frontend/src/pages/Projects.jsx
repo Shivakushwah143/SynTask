@@ -30,6 +30,34 @@ const PROJECT_WORKFLOW = {
   archived: [],
 }
 
+const DEFAULT_PROJECT_TYPES = [
+  { value: 'software', label: 'Software' },
+  { value: 'business', label: 'Business' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'operations', label: 'Operations' },
+]
+
+const PROJECT_TYPE_STORAGE_KEY = 'syntask_project_type_options'
+
+const formatProjectTypeLabel = (value) => (value || '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+const slugifyProjectType = (value) => (value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_+|_+$/g, '')
+
+const loadStoredProjectTypes = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROJECT_TYPE_STORAGE_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.value && item?.label) : []
+  } catch {
+    return []
+  }
+}
+
 export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
@@ -55,6 +83,14 @@ export default function Projects() {
   const [assignmentUserId, setAssignmentUserId] = useState('')
   const [assigningProject, setAssigningProject] = useState(false)
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
+  const [showProjectTypeModal, setShowProjectTypeModal] = useState(false)
+  const [projectTypeName, setProjectTypeName] = useState('')
+  const [projectTypeError, setProjectTypeError] = useState('')
+  const [projectTypeOptions, setProjectTypeOptions] = useState(() => {
+    const merged = new Map(DEFAULT_PROJECT_TYPES.map((item) => [item.value, item]))
+    loadStoredProjectTypes().forEach((item) => merged.set(item.value, item))
+    return Array.from(merged.values())
+  })
   const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
   const [formErrors, setFormErrors] = useState({})
 
@@ -90,6 +126,24 @@ export default function Projects() {
   useEffect(() => {
     loadAssignableUsers()
   }, [loadAssignableUsers])
+
+  useEffect(() => {
+    const merged = new Map(projectTypeOptions.map((item) => [item.value, item]))
+    projects.forEach((project) => {
+      const value = slugifyProjectType(project.type)
+      if (value && !merged.has(value)) {
+        merged.set(value, { value, label: formatProjectTypeLabel(project.type) })
+      }
+    })
+    if (merged.size !== projectTypeOptions.length) {
+      setProjectTypeOptions(Array.from(merged.values()))
+    }
+  }, [projectTypeOptions, projects])
+
+  useEffect(() => {
+    const customTypes = projectTypeOptions.filter((item) => !DEFAULT_PROJECT_TYPES.some((base) => base.value === item.value))
+    localStorage.setItem(PROJECT_TYPE_STORAGE_KEY, JSON.stringify(customTypes))
+  }, [projectTypeOptions])
 
   useEffect(() => {
     const projectId = sessionStorage.getItem('open_project_id')
@@ -248,6 +302,30 @@ export default function Projects() {
     }
   }
 
+  const handleCreateProjectType = (event) => {
+    event.preventDefault()
+    const label = projectTypeName.trim()
+    const value = slugifyProjectType(label)
+    if (!label || !value) {
+      setProjectTypeError('Enter a valid project type.')
+      return
+    }
+    const duplicate = projectTypeOptions.find((item) => item.value === value || item.label.toLowerCase() === label.toLowerCase())
+    if (duplicate) {
+      setFormData((state) => ({ ...state, type: duplicate.value }))
+      setProjectTypeName('')
+      setProjectTypeError('')
+      setShowProjectTypeModal(false)
+      return
+    }
+    const nextOption = { value, label: formatProjectTypeLabel(label) }
+    setProjectTypeOptions((state) => [...state, nextOption])
+    setFormData((state) => ({ ...state, type: nextOption.value }))
+    setProjectTypeName('')
+    setProjectTypeError('')
+    setShowProjectTypeModal(false)
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -281,10 +359,7 @@ export default function Projects() {
             </select>
             <select className={inputClassName} value={filters.type} onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}>
               <option value="">All types</option>
-              <option value="software">Software</option>
-              <option value="marketing">Marketing</option>
-              <option value="business">Business</option>
-              <option value="operations">Operations</option>
+              {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <select className={inputClassName} value={filters.owner} onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}>
               <option value="">All owners</option>
@@ -365,12 +440,16 @@ export default function Projects() {
           </FormField>
           <div className="grid gap-4 lg:grid-cols-2">
             <FormField label="Type">
-              <select className={inputClassName} value={formData.type} onChange={(event) => setFormData((state) => ({ ...state, type: event.target.value }))}>
-                <option value="software">Software</option>
-                <option value="business">Business</option>
-                <option value="marketing">Marketing</option>
-                <option value="operations">Operations</option>
-              </select>
+              <CreatableSelectField
+                value={formData.type}
+                onChange={(value) => setFormData((state) => ({ ...state, type: value }))}
+                className={inputClassName}
+                createLabel="Add project type"
+                onCreate={() => setShowProjectTypeModal(true)}
+                canCreate={canCreateProjects}
+              >
+                {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </CreatableSelectField>
             </FormField>
             <FormField label="Assigned to">
               <CreatableSelectField
@@ -395,6 +474,27 @@ export default function Projects() {
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
             <Button type="submit" loading={submitting} loadingText="Creating">Create</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={showProjectTypeModal} onClose={() => setShowProjectTypeModal(false)} title="Add project type">
+        <form onSubmit={handleCreateProjectType} className="space-y-4">
+          <FormField label="Type name" error={projectTypeError} required>
+            <input
+              autoFocus
+              className={inputClassName}
+              value={projectTypeName}
+              onChange={(event) => {
+                setProjectTypeName(event.target.value)
+                setProjectTypeError('')
+              }}
+              placeholder="Research, design, support"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" type="button" onClick={() => setShowProjectTypeModal(false)}>Cancel</Button>
+            <Button type="submit">Add type</Button>
           </div>
         </form>
       </Modal>

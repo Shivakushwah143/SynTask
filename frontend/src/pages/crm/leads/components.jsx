@@ -34,6 +34,64 @@ const leadTone = (value) => {
 }
 
 const LEAD_STAGE_STEPS = ['New', 'Contacted', 'Qualified', 'Discovery', 'Proposal', 'Negotiation', 'Won']
+const LEAD_STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'won', label: 'Won' },
+  { value: 'lost', label: 'Lost' },
+  { value: 'closed', label: 'Closed' },
+]
+const LEAD_PRIORITY_OPTIONS = [
+  { value: 'cold', label: 'Cold' },
+  { value: 'warm', label: 'Warm' },
+  { value: 'hot', label: 'Hot' },
+]
+
+const formatUserName = (user) => `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.email || user?.id || ''
+
+const findOptionLabel = (options, value, fallback = '-') => options.find((option) => String(option.value) === String(value))?.label || fallback
+
+export const buildLeadEditFields = (lead = {}, stages = [], users = []) => {
+  const stageValue = getCanonicalPipelineStageKey(lead.current_stage || '')
+  const stageOptions = stages.map((stage) => ({
+    value: stage.key || getCanonicalPipelineStageKey(stage.name),
+    label: stage.name,
+  }))
+  const ownerOptions = users.map((user) => ({
+    value: user.id,
+    label: formatUserName(user),
+  }))
+  const tagValue = Array.isArray(lead.tag) ? lead.tag.join('|') : (lead.tag || '')
+
+  return [
+    { key: 'current_stage', type: 'select', label: 'Stage', value: stageValue, displayValue: findOptionLabel(stageOptions, stageValue, stageValue || '-'), options: stageOptions },
+    { key: 'status', type: 'select', label: 'Status', value: lead.status || '', displayValue: findOptionLabel(LEAD_STATUS_OPTIONS, lead.status, lead.status || '-'), options: LEAD_STATUS_OPTIONS },
+    { key: 'assigned_to', type: 'select', label: 'Owner', value: lead.assigned_to || '', displayValue: findOptionLabel(ownerOptions, lead.assigned_to, getLeadOwnerLabel(lead)), options: ownerOptions },
+    { key: 'interest_level', type: 'select', label: 'Priority', value: lead.interest_level || '', displayValue: findOptionLabel(LEAD_PRIORITY_OPTIONS, lead.interest_level, lead.interest_level || '-'), options: LEAD_PRIORITY_OPTIONS },
+    { key: 'channel', type: 'text', label: 'Source', value: lead.channel || '', displayValue: lead.channel || '-' },
+    { key: 'tag', type: 'text', label: 'Tags', value: tagValue, displayValue: tagValue || '-' },
+  ]
+}
+
+export const buildLeadOverviewSections = (lead = {}) => {
+  const customFields = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
+  const contactItems = [
+    { label: 'Contact', value: lead?.crm_contact_name || lead?.primary_contact || lead?.contact_name || lead?.prospect_name || '-' },
+    { label: 'Email', value: lead?.email || '-' },
+    { label: 'Phone', value: lead?.phone || '-' },
+  ]
+  const pipelineItems = [
+    { label: 'Source', value: lead?.channel || '-' },
+    { label: 'Estimated close', value: formatShortDate(lead?.estimated_close_date) },
+    { label: 'Days in stage', value: String(Math.max(Number(lead?.days_in_stage || 0), 0)) },
+  ]
+  const sections = [
+    { title: 'Contact Snapshot', tone: 'emerald', items: contactItems },
+    { title: 'Pipeline Signals', tone: 'amber', items: pipelineItems },
+  ]
+  const customItems = Object.entries(customFields).map(([key, value]) => ({ label: key, value: String(value) }))
+  if (customItems.length) sections.push({ title: 'Custom Fields', tone: 'blue', items: customItems })
+  return sections
+}
 
 const toneClass = (tone) => ({
   rose: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-950/30 dark:text-rose-200 dark:ring-rose-900/50',
@@ -246,43 +304,49 @@ export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
 })
 
 export const LeadOverview = memo(function LeadOverview({ lead }) {
-  const customFields = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
-  const items = [
-    { label: 'Contact', value: lead?.crm_contact_name || lead?.primary_contact || lead?.contact_name || lead?.prospect_name || '-' },
-    { label: 'Email', value: lead?.email || '-' },
-    { label: 'Phone', value: lead?.phone || '-' },
-    { label: 'Source', value: lead?.channel || '-' },
-    { label: 'Estimated close', value: formatShortDate(lead?.estimated_close_date) },
-    { label: 'Days in stage', value: String(Math.max(Number(lead?.days_in_stage || 0), 0)) },
-  ]
+  const sections = buildLeadOverviewSections(lead)
 
   return (
-    <div className="space-y-4">
-      <CRMSection title="Lead details" description="The main fields you need before contacting or updating this lead.">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => (
-            <article key={item.label} className="rounded-xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{item.label}</p>
-              <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{item.value}</p>
-            </article>
-          ))}
-        </div>
-      </CRMSection>
-      {Object.keys(customFields).length ? (
-        <CRMSection title="Custom fields" description="Additional values saved with this lead.">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {Object.entries(customFields).map(([key, value]) => (
-              <article key={key} className="rounded-xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{key}</p>
-                <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">{String(value)}</p>
-              </article>
-            ))}
-          </div>
-        </CRMSection>
-      ) : null}
-    </div>
+    <CRMSection title="Lead overview" description="Balanced lead context grouped for quick scanning.">
+      <div className="grid gap-4 lg:grid-cols-2">
+        {sections.map((section, index) => (
+          <LeadOverviewPanel
+            key={section.title}
+            section={section}
+            className={sections.length === 3 && index === 2 ? 'lg:col-span-2' : ''}
+          />
+        ))}
+      </div>
+    </CRMSection>
   )
 })
+
+function LeadOverviewPanel({ section, className = '' }) {
+  const tone = {
+    emerald: 'border-emerald-200/80 bg-emerald-50/70 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-200',
+    amber: 'border-amber-200/80 bg-amber-50/80 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200',
+    blue: 'border-sky-200/80 bg-sky-50/80 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/20 dark:text-sky-200',
+  }[section.tone] || 'border-surface-border/80 bg-white text-text-primary dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100'
+
+  return (
+    <section className={`rounded-2xl border p-4 shadow-sm ${tone} ${className}`}>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">{section.title}</h3>
+        <span className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-current shadow-sm dark:bg-gray-950/30">
+          {section.items.length} fields
+        </span>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {section.items.map((item) => (
+          <article key={item.label} className="rounded-xl border border-white/70 bg-white/80 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/70">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{item.label}</p>
+            <p className="mt-2 break-words text-sm font-semibold text-gray-900 dark:text-gray-100">{item.value}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 export const LeadSummaryCards = memo(function LeadSummaryCards({ lead }) {
   return (
@@ -295,6 +359,26 @@ export const LeadSummaryCards = memo(function LeadSummaryCards({ lead }) {
   )
 })
 
+function LeadEditField({ field, onChange }) {
+  const inputId = `lead-edit-${field.key}`
+  return (
+    <label className="block rounded-xl border border-surface-border/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <span className="flex items-start justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{field.label}</span>
+        <span className="max-w-[9rem] truncate text-xs font-semibold text-gray-900 dark:text-gray-100">{field.displayValue}</span>
+      </span>
+      {field.type === 'select' ? (
+        <select id={inputId} className={`${inputClassName} mt-2`} value={field.value} onChange={(event) => onChange(event.target.value)}>
+          <option value="">Select {field.label.toLowerCase()}</option>
+          {field.options.map((option) => <option key={option.value || option.label} value={option.value}>{option.label}</option>)}
+        </select>
+      ) : (
+        <input id={inputId} className={`${inputClassName} mt-2`} value={field.value} onChange={(event) => onChange(event.target.value)} placeholder={field.label === 'Tags' ? 'Tags, pipe-separated' : field.label} />
+      )}
+    </label>
+  )
+}
+
 export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const navigate = useNavigate()
   const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
@@ -304,6 +388,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const users = Array.isArray(usersData?.users) ? usersData.users : []
   const [form, setForm] = useState({ current_stage: '', status: '', assigned_to: '', interest_level: '', channel: '', tag: '' })
   const [customFields, setCustomFields] = useState('{}')
+  const editFields = buildLeadEditFields({ ...lead, ...form }, stages, users)
 
   useEffect(() => {
     const custom = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
@@ -351,39 +436,23 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     <div className="space-y-6">
       <CRMSection title="Update lead" description="Quick edit for ownership and pipeline fields.">
         <div className="grid gap-3">
-          <select className={inputClassName} value={getCanonicalPipelineStageKey(form.current_stage)} onChange={(e) => setForm((s) => ({ ...s, current_stage: e.target.value }))}>
-            <option value="">Stage</option>
-            {stages.map((stage) => <option key={stage.id || stage.key || stage.name} value={stage.key || getCanonicalPipelineStageKey(stage.name)}>{stage.name}</option>)}
-          </select>
-          <select className={inputClassName} value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}>
-            <option value="">Status</option>
-            <option value="active">Active</option>
-            <option value="won">Won</option>
-            <option value="lost">Lost</option>
-            <option value="closed">Closed</option>
-          </select>
-          <select className={inputClassName} value={form.assigned_to} onChange={(e) => setForm((s) => ({ ...s, assigned_to: e.target.value }))}>
-            <option value="">Owner</option>
-            {users.map((user) => <option key={user.id} value={user.id}>{user.first_name} {user.last_name}</option>)}
-          </select>
-          <select className={inputClassName} value={form.interest_level} onChange={(e) => setForm((s) => ({ ...s, interest_level: e.target.value }))}>
-            <option value="">Priority</option>
-            <option value="cold">Cold</option>
-            <option value="warm">Warm</option>
-            <option value="hot">Hot</option>
-          </select>
-          <input className={inputClassName} value={form.channel} onChange={(e) => setForm((s) => ({ ...s, channel: e.target.value }))} placeholder="Source" />
-          <input className={inputClassName} value={form.tag} onChange={(e) => setForm((s) => ({ ...s, tag: e.target.value }))} placeholder="Tags, pipe-separated" />
+          {editFields.map((field) => (
+            <LeadEditField
+              key={field.key}
+              field={field}
+              onChange={(value) => setForm((state) => ({ ...state, [field.key]: value }))}
+            />
+          ))}
         </div>
+        <Button type="button" variant="primary" className="mt-4 w-full" onClick={saveLead} loading={saveMutation.isLoading || stageMutation.isLoading}>
+          Save lead
+        </Button>
         <details className="mt-4 rounded-xl border border-surface-border/80 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
           <summary className="cursor-pointer list-none text-sm font-medium text-gray-700 dark:text-gray-200">
             Advanced fields
           </summary>
           <div className="mt-4 space-y-3">
             <textarea className={`${inputClassName} min-h-28`} value={customFields} onChange={(e) => setCustomFields(e.target.value)} placeholder='{"budget":"10000"}' />
-            <Button type="button" variant="primary" className="w-full" onClick={saveLead} loading={saveMutation.isLoading}>
-              Save lead
-            </Button>
           </div>
         </details>
       </CRMSection>

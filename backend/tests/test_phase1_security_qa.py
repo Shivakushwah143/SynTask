@@ -155,11 +155,15 @@ def test_forgot_password_rate_limit_and_success(monkeypatch):
     monkeypatch.setattr(FakeUserModel, "find_one", fake_find_one)
     monkeypatch.setattr(auth_module, "generate_reset_token", lambda: "reset-token")
     monkeypatch.setattr(auth_module, "get_password_hash", lambda value: f"hashed-{value}")
-    monkeypatch.setattr(auth_module.send_password_reset_email_task, "delay", lambda *args, **kwargs: None)
+    async def fake_send_password_reset_email(*args, **kwargs):
+        return True
+
+    monkeypatch.setattr(auth_module, "send_password_reset_email", fake_send_password_reset_email)
 
     first = client.post("/api/v1/auth/forgot-password", data={"email": "admin@demo.com"})
     assert first.status_code == 200
     assert first.json()["message"] == "Password reset link has been sent to your email."
+    assert first.json()["email_sent"] is True
     assert fake_user.saved is True
 
     statuses = []

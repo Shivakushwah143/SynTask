@@ -2,15 +2,40 @@ import { useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { useNavigate } from 'react-router-dom'
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Filter, Repeat, Search } from 'lucide-react'
-import { format, isSameDay, isSameMonth, isSameWeek, parseISO, startOfDay, isValid } from 'date-fns'
+import { addDays, addMonths, addWeeks, format, isSameDay, isSameMonth, isSameWeek, parseISO, startOfDay, isValid } from 'date-fns'
 import { activityAPI } from '../../../api/activity'
 import { meetingsApi } from '../../../api/meetings'
 import { tasksAPI } from '../../../api/tasks'
+import { usersAPI } from '../../../api/users'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
 
 const CALENDAR_QUERY_KEY = 'crm-calendar'
 const VIEW_OPTIONS = ['month', 'week', 'day', 'agenda']
+
+export const getCalendarCursorDate = (date, view, direction) => {
+  if (view === 'month') return addMonths(date, direction)
+  if (view === 'week' || view === 'agenda') return addWeeks(date, direction)
+  return addDays(date, direction)
+}
+
+export const getCalendarCursorLabel = (date, view) => {
+  if (view === 'month') return format(date, 'MMMM yyyy')
+  if (view === 'week' || view === 'agenda') return `Week of ${format(date, 'MMM d, yyyy')}`
+  return format(date, 'MMM d, yyyy')
+}
+
+const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || ''))
+
+export const resolveCalendarOwnerLabel = (owner, usersById = new Map()) => {
+  const value = String(owner || '').trim()
+  if (!value) return ''
+  const direct = usersById.get(value)
+  if (direct) return direct
+  return isMongoObjectId(value) ? '' : value
+}
+
+const formatUserName = (user) => `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.name || user?.email || ''
 
 const ACTIVITY_COLORS = {
   meeting: 'bg-blue-500',
@@ -64,6 +89,12 @@ export default function CRMCalendarPage() {
   const meetingsQuery = useQuery([CALENDAR_QUERY_KEY, 'meetings'], () => meetingsApi.list({ limit: 100 }), { staleTime: 60 * 1000 })
   const tasksQuery = useQuery([CALENDAR_QUERY_KEY, 'tasks'], () => tasksAPI.listTasks({ limit: 200 }), { staleTime: 60 * 1000 })
   const activitiesQuery = useQuery([CALENDAR_QUERY_KEY, 'activities'], () => activityAPI.getTimeline({ days: 90, limit: 500 }), { staleTime: 60 * 1000 })
+  const usersQuery = useQuery([CALENDAR_QUERY_KEY, 'users'], () => usersAPI.getAssignableUsers(), { staleTime: 5 * 60 * 1000 })
+
+  const usersById = useMemo(() => {
+    const users = readCollection(usersQuery.data, ['users', 'items', 'data'])
+    return new Map(users.map((user) => [String(user.id || user._id), formatUserName(user)]).filter(([, name]) => name))
+  }, [usersQuery.data])
 
   const events = useMemo(() => {
     const merged = []
@@ -78,7 +109,8 @@ export default function CRMCalendarPage() {
         type: 'meeting',
         title: meeting.title || 'Meeting',
         timestamp,
-        owner: [meeting.host?.id, meeting.host_id].filter(Boolean).join(', '),
+        owner: meeting.host?.id || meeting.host_id || '',
+        ownerLabel: meeting.host?.name || formatUserName(meeting.host) || '',
         leadId: meeting.lead_id || meeting.entity_id || null,
         companyId: meeting.company_id || null,
         contactId: meeting.contact_id || null,
@@ -94,6 +126,7 @@ export default function CRMCalendarPage() {
         title: task.title || 'Task',
         timestamp: task.due_date || task.created_at,
         owner: task.assigned_to || task.created_by || '',
+        ownerLabel: task.assigned_to_name || task.created_by_name || task.owner_name || '',
         leadId: task.lead_id || null,
         companyId: task.company_id || null,
         contactId: task.contact_id || null,
@@ -109,6 +142,7 @@ export default function CRMCalendarPage() {
         title: activity.title || 'Activity',
         timestamp: activity.timestamp || activity.updated_at || activity.created_at,
         owner: activity.owner_id || activity.created_by || '',
+        ownerLabel: activity.owner_name || activity.created_by_name || '',
         leadId: activity.entity_type === 'lead' ? activity.entity_id : activity.metadata?.lead_id || null,
         companyId: activity.entity_type === 'company' ? activity.entity_id : activity.metadata?.company_id || null,
         contactId: activity.entity_type === 'contact' ? activity.entity_id : activity.metadata?.contact_id || null,
@@ -120,14 +154,18 @@ export default function CRMCalendarPage() {
     return merged
       .filter((item) => parseCalendarTimestamp(item.timestamp))
       .filter((item) => !activityType || item.type === activityType)
-      .filter((item) => !owner || String(item.owner || '').includes(owner))
+      .map((item) => ({
+        ...item,
+        ownerLabel: item.ownerLabel || resolveCalendarOwnerLabel(item.owner, usersById),
+      }))
+      .filter((item) => !owner || String(item.owner || '').includes(owner) || String(item.ownerLabel || '').toLowerCase().includes(owner.toLowerCase()))
       .filter((item) => {
         const q = search.trim().toLowerCase()
         if (!q) return true
-        return [item.title, item.description, item.owner, item.type].some((value) => String(value || '').toLowerCase().includes(q))
+        return [item.title, item.description, item.ownerLabel, item.type].some((value) => String(value || '').toLowerCase().includes(q))
       })
       .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-  }, [activityType, activitiesQuery.data, meetingsQuery.data, owner, search, tasksQuery.data])
+  }, [activityType, activitiesQuery.data, meetingsQuery.data, owner, search, tasksQuery.data, usersById])
 
   const today = startOfDay(new Date())
   const visibleEvents = useMemo(() => {
@@ -160,7 +198,7 @@ export default function CRMCalendarPage() {
   const ownerOptions = useMemo(() => {
     const ids = new Set()
     events.forEach((event) => {
-      if (event.owner) ids.add(String(event.owner))
+      if (event.ownerLabel) ids.add(String(event.ownerLabel))
     })
     return Array.from(ids).map((value) => ({ value, label: value }))
   }, [events])
@@ -176,6 +214,7 @@ export default function CRMCalendarPage() {
     })
     return Array.from(map.entries()).map(([date, items]) => ({ date, items }))
   }, [visibleEvents])
+  const cursorLabel = getCalendarCursorLabel(cursorDate, view)
 
   return (
     <CRMPage>
@@ -185,13 +224,16 @@ export default function CRMCalendarPage() {
         description="Meetings, tasks, and CRM activity in one read-only workspace."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setCursorDate(new Date())}>
+            <span className="inline-flex min-h-9 items-center rounded-full border border-surface-border/80 bg-white px-3 text-sm font-semibold text-text-primary shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100">
+              {cursorLabel}
+            </span>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setCursorDate(new Date())}>
               Today
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setCursorDate((date) => new Date(date.getTime() - 86400000))}>
+            <Button type="button" variant="secondary" size="sm" aria-label={`Previous ${view}`} onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, -1))}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setCursorDate((date) => new Date(date.getTime() + 86400000))}>
+            <Button type="button" variant="secondary" size="sm" aria-label={`Next ${view}`} onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, 1))}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -343,7 +385,7 @@ function CalendarEventCard({ event, navigate, compact = false }) {
           <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{event.description || 'No description'}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <Badge label={format(eventDate, 'MMM d, p')} colorKey="draft" />
-            {event.owner ? <Badge label={`Owner ${event.owner}`} colorKey="draft" /> : null}
+            {event.ownerLabel ? <Badge label={`Owner ${event.ownerLabel}`} colorKey="draft" /> : null}
           </div>
         </div>
         {target ? (
