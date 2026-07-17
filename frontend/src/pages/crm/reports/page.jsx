@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
-import { Link } from 'react-router-dom'
 import { Download, FileText, Filter, LineChart, TrendingUp, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import { crmApi } from '../../../api/crm'
@@ -95,9 +94,6 @@ export default function CRMReportsPage() {
             <Button variant="secondary" size="sm" onClick={onExport}>
               <Download className="h-4 w-4" />
               Export CSV
-            </Button>
-            <Button as={Link} to="/subscriptions" variant="secondary" size="sm">
-              Renewal
             </Button>
           </div>
         )}
@@ -200,17 +196,6 @@ export default function CRMReportsPage() {
           )}
         </CRMSection>
       </div>
-
-      <CRMSection title="Renewal handoff" description="Move from sales reporting into the renewal workspace.">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-gray-600 dark:text-gray-300">
-            Review CRM performance, then continue to subscription renewal when the renewal cycle is due.
-          </div>
-          <Button as={Link} to="/subscriptions">
-            Open Renewal
-          </Button>
-        </div>
-      </CRMSection>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <CRMSection title="Team Leaderboard" description="Salesperson performance from CRM deal outcomes.">

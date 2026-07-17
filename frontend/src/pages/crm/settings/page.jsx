@@ -46,11 +46,11 @@ const DEFAULT_SETTINGS = {
 }
 
 const PIPELINE_RESOURCES = [
-  { key: 'stages', title: 'Pipeline Stages', query: salesApi.getStages, create: salesApi.createStage, fields: ['name', 'order'] },
-  { key: 'tags', title: 'Lead Sources', query: salesApi.getTags, create: salesApi.createTag, fields: ['name'] },
-  { key: 'channels', title: 'Industries', query: salesApi.getChannels, create: salesApi.createChannel, fields: ['name'] },
-  { key: 'categories', title: 'Services', query: salesApi.getCategories, create: salesApi.createCategory, fields: ['name'] },
-  { key: 'products', title: 'Default Task Templates', query: salesApi.getProducts, create: salesApi.createProduct, fields: ['name', 'category_id', 'rate', 'unit', 'state', 'city'] },
+  { key: 'stages', title: 'Pipeline Stages', label: 'Stages', query: salesApi.getStages, create: salesApi.createStage, fields: ['name', 'order'] },
+  { key: 'tags', title: 'Lead Sources', label: 'Sources', query: salesApi.getTags, create: salesApi.createTag, fields: ['name'] },
+  { key: 'channels', title: 'Industries', label: 'Industries', query: salesApi.getChannels, create: salesApi.createChannel, fields: ['name'] },
+  { key: 'categories', title: 'Services', label: 'Services', query: salesApi.getCategories, create: salesApi.createCategory, fields: ['name'] },
+  { key: 'products', title: 'Default Task Templates', label: 'Templates', query: salesApi.getProducts, create: salesApi.createProduct, fields: ['name', 'category_id', 'rate', 'unit', 'state', 'city'] },
 ]
 
 const toFormState = (resource) =>
@@ -239,19 +239,21 @@ function PipelineMastersSection() {
       title="Pipeline"
       description="Manage stages, win reasons, and lost reasons using the existing Sales configuration APIs."
       actions={(
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1">
           {PIPELINE_RESOURCES.map((resource) => (
             <Button
               key={resource.key}
               variant={resource.key === activeResource.key ? 'primary' : 'secondary'}
               size="sm"
+              className="shrink-0 whitespace-nowrap"
               onClick={() => setActiveResource(resource)}
+              title={resource.title}
             >
-              {resource.title}
+              {resource.label}
             </Button>
           ))}
-          <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
-            Add {activeResource.title}
+          <Button variant="secondary" size="sm" className="shrink-0 whitespace-nowrap" onClick={() => setOpen(true)}>
+            Add {activeResource.label}
           </Button>
         </div>
       )}

@@ -9,10 +9,13 @@ describe('CRM leads page helpers', () => {
   })
 
   it('shows owner name from assignable user map instead of raw id', () => {
-    const users = new Map([['user-1', 'Anika Rao']])
+    const mongoId = '64f1b2c3d4e5f67890123456'
+    const users = new Map([['user-1', 'Anika Rao'], [mongoId, 'Nisha Shah']])
 
     expect(getOwnerName({ assigned_to: 'user-1' }, users)).toBe('Anika Rao')
     expect(getOwnerName({ assigned_to: 'user-2' }, users)).toBe('Unassigned')
+    expect(getOwnerName({ owner_name: mongoId, assigned_to: mongoId }, users)).toBe('Nisha Shah')
+    expect(getOwnerName({ owner_name: '64f1b2c3d4e5f67890123457' }, users)).toBe('Unassigned')
   })
 
   it('builds compact dashboard analytics from lead data', () => {

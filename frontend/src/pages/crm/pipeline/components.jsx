@@ -85,9 +85,9 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
 }) {
   return (
     <div className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="grid flex-1 gap-3 md:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(150px,1fr))]">
-          <label className="block">
+      <div className="grid gap-3">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(150px,1fr))]">
+          <label className="block min-w-0">
             <span className="sr-only">Search</span>
             <div className="relative">
               <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
@@ -100,7 +100,7 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               />
             </div>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="sr-only">Owner</span>
             <select
               className="input"
@@ -116,7 +116,7 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               ))}
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="sr-only">Priority</span>
             <select
               className="input"
@@ -131,7 +131,7 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               <option value="low">Low</option>
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="sr-only">Current Stage</span>
             <select
               className="input"
@@ -148,10 +148,75 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
             </select>
           </label>
         </div>
+      </div>
+      <div className="space-y-4">
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,1fr)]">
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Tags</span>
+            <input
+              className="input"
+              value={filters.tags}
+              onChange={(event) => onChange({ tags: event.target.value })}
+              placeholder="Enter comma-separated tags"
+              aria-label="Filter by tags"
+            />
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Min deal value</span>
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              value={filters.minValue}
+              onChange={(event) => onChange({ minValue: event.target.value })}
+              placeholder={currency === 'INR' ? '0' : 'Min value'}
+              aria-label="Minimum deal value"
+            />
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Max deal value</span>
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              value={filters.maxValue}
+              onChange={(event) => onChange({ maxValue: event.target.value })}
+              placeholder="No cap"
+              aria-label="Maximum deal value"
+            />
+          </label>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0">
+              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created from</span>
+              <input
+                className="input"
+                type="date"
+                value={filters.createdFrom}
+                onChange={(event) => onChange({ createdFrom: event.target.value })}
+                aria-label="Filter by created from date"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created to</span>
+              <input
+                className="input"
+                type="date"
+                value={filters.createdTo}
+                onChange={(event) => onChange({ createdTo: event.target.value })}
+                aria-label="Filter by created to date"
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-end border-t border-surface-border/70 pt-4 dark:border-gray-800">
         <Button
           type="button"
           variant="secondary"
           size="sm"
+          className="w-full justify-center sm:w-auto sm:whitespace-nowrap"
           onClick={() => {
             if (onResetFilters) {
               onResetFilters()
@@ -173,68 +238,6 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
           <Filter className="h-4 w-4" />
           Reset filters
         </Button>
-      </div>
-      <div className="space-y-4">
-        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,1fr)]">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Tags</span>
-            <input
-              className="input"
-              value={filters.tags}
-              onChange={(event) => onChange({ tags: event.target.value })}
-              placeholder="Enter comma-separated tags"
-              aria-label="Filter by tags"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Min deal value</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={filters.minValue}
-              onChange={(event) => onChange({ minValue: event.target.value })}
-              placeholder={currency === 'INR' ? '0' : 'Min value'}
-              aria-label="Minimum deal value"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Max deal value</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={filters.maxValue}
-              onChange={(event) => onChange({ maxValue: event.target.value })}
-              placeholder="No cap"
-              aria-label="Maximum deal value"
-            />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created from</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.createdFrom}
-                onChange={(event) => onChange({ createdFrom: event.target.value })}
-                aria-label="Filter by created from date"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created to</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.createdTo}
-                onChange={(event) => onChange({ createdTo: event.target.value })}
-                aria-label="Filter by created to date"
-              />
-            </label>
-          </div>
-        </div>
       </div>
     </div>
   )

@@ -30,6 +30,7 @@ const getOptionId = (item) => String(item?.id || item?._id || item?.value || ite
 const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
 const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
 const isValidLeadOwner = (item) => ['lead', 'employee'].includes(normalizeRole(item?.role))
+const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || '').trim())
 const getResponseItems = (data, key) => {
   const direct = data?.[key]
   const nested = data?.data?.[key]
@@ -1346,9 +1347,9 @@ export function getSalesCollection(data, legacyKey) {
 
 export function getOwnerName(lead, userNameById = new Map()) {
   const direct = lead?.owner_name || lead?.assigned_to_name || lead?.owner?.name
-  if (direct) return direct
-  const ownerId = String(lead?.assigned_to || lead?.owner_id || '')
+  const ownerId = String(lead?.assigned_to || lead?.owner_id || direct || '').trim()
   if (ownerId && userNameById.has(ownerId)) return userNameById.get(ownerId)
+  if (direct && !isMongoObjectId(direct)) return direct
   return 'Unassigned'
 }
 
