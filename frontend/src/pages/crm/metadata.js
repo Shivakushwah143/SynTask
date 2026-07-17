@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 
 export const CRM_NAV_ITEMS = [
-  { key: 'dashboard', label: 'Dashboard', path: '/crm/dashboard', status: 'active', icon: LayoutDashboard },
   { key: 'pipeline', label: 'Pipeline', path: '/crm/pipeline', status: 'active', icon: TrendingUp },
   { key: 'leads', label: 'Leads', path: '/crm/leads', status: 'active', icon: Users },
   { key: 'companies', label: 'Companies', path: '/crm/companies', status: 'active', icon: Building2 },
@@ -23,7 +22,6 @@ export const CRM_NAV_ITEMS = [
 
 export const CRM_ROUTE_LABELS = {
   '/crm': 'CRM',
-  '/crm/dashboard': 'Dashboard',
   '/crm/pipeline': 'Pipeline',
   '/crm/leads': 'Leads',
   '/crm/companies': 'Companies',
@@ -35,7 +33,6 @@ export const CRM_ROUTE_LABELS = {
 }
 
 export const CRM_ROUTE_DESCRIPTIONS = {
-  '/crm/dashboard': 'Workspace foundation for agency relationships and daily triage.',
   '/crm/pipeline': 'Production-ready CRM pipeline board powered by live sales data.',
   '/crm/leads': 'Lead workspace for selected pipeline records.',
   '/crm/companies': 'Company workspace for account management and related contacts.',
@@ -47,7 +44,6 @@ export const CRM_ROUTE_DESCRIPTIONS = {
 }
 
 export const CRM_ROUTE_ICONS = {
-  '/crm/dashboard': LayoutDashboard,
   '/crm/pipeline': TrendingUp,
   '/crm/leads': Users,
   '/crm/companies': Building2,

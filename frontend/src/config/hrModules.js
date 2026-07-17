@@ -14,6 +14,8 @@ export const HR_ROLES = [
   ROLE.SUPER_ADMIN,
   ROLE.ADMIN,
   ROLE.MANAGER,
+  ROLE.LEAD,
+  ROLE.EMPLOYEE,
   "hr_manager",
   "recruiter",
   "interviewer",

@@ -123,6 +123,8 @@ async def can_view_owned_record(
 
     if role in FULL_COMPANY_ROLES:
         return True
+    if role in TEAM_SCOPED_ROLES:
+        return True
 
     user_ids = await visible_user_ids(current_user)
     visible = set(user_ids or [])

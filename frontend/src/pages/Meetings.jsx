@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import { CalendarDays, Video, FileText, CheckSquare, Target, Users, Mail } from 'lucide-react'
@@ -11,17 +11,48 @@ export default function Meetings() {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [composerOpen, setComposerOpen] = useState(false)
+  const [selectedMeetingId, setSelectedMeetingId] = useState(null)
   const { data, isLoading, isError } = useQuery('meetings', () => meetingsApi.list({ limit: 100 }))
   const meetings = asArray(data, ['meetings'])
-  const selected = meetings[0] || null
+  const selected = meetings.find((meeting) => meeting.id === selectedMeetingId) || meetings[0] || null
+
+  const getJoinLink = (row) => row.zoom_start_url || row.zoom_meeting_url || row.join_url || row.meeting_link || ''
+  const openJoinLink = useCallback((row) => {
+    const url = getJoinLink(row)
+    if (!url) {
+      toast.error('No join link configured for this meeting')
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }, [])
 
   const columns = useMemo(() => [
     { key: 'title', header: 'Title' },
     { key: 'meeting_date', header: 'Date', render: (row) => formatDateTime(row.meeting_date) },
     { key: 'duration', header: 'Duration', render: (row) => `${row.duration || 30} min` },
     { key: 'status', header: 'Status', render: (row) => <Badge label={row.status || 'scheduled'} colorKey={row.status || 'scheduled'} /> },
-    { key: 'join_url', header: 'Join', render: (row) => (row.join_url ? <a className="text-primary-700 hover:underline dark:text-primary-300" href={row.join_url} target="_blank" rel="noreferrer">Join Zoom</a> : 'Not configured') },
-  ], [])
+    {
+      key: 'join',
+      header: 'Join',
+      render: (row) => {
+        const joinLink = getJoinLink(row)
+        return joinLink ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              openJoinLink(row)
+            }}
+            className="font-medium text-primary-700 hover:underline dark:text-primary-300"
+          >
+            Join meeting
+          </button>
+        ) : (
+          'Not configured'
+        )
+      },
+    },
+  ], [openJoinLink])
 
   return (
     <div className="space-y-6">
@@ -48,7 +79,7 @@ export default function Meetings() {
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="card overflow-hidden p-0">
-          {isLoading ? <div className="p-4"><SkeletonTable rows={6} cols={5} /></div> : isError ? <div className="p-4"><EmptyState icon={CalendarDays} title="Could not load meetings" /></div> : meetings.length ? <Table columns={columns} data={meetings} /> : <div className="p-4"><EmptyState icon={CalendarDays} title="No meetings scheduled" description="Create a meeting to coordinate work." action={<Button onClick={() => setOpen(true)}>Create Meeting</Button>} /></div>}
+          {isLoading ? <div className="p-4"><SkeletonTable rows={6} cols={5} /></div> : isError ? <div className="p-4"><EmptyState icon={CalendarDays} title="Could not load meetings" /></div> : meetings.length ? <Table columns={columns} data={meetings} onRowClick={(row) => setSelectedMeetingId(row.id)} /> : <div className="p-4"><EmptyState icon={CalendarDays} title="No meetings scheduled" description="Create a meeting to coordinate work." action={<Button onClick={() => setOpen(true)}>Create Meeting</Button>} /></div>}
         </div>
 
         <aside className="card p-4">
@@ -65,6 +96,14 @@ export default function Meetings() {
                 <DetailBlock icon={Target} title="Decisions" value={selected.decisions || 'No decisions captured.'} />
                 <DetailBlock icon={CheckSquare} title="Action items" value={selected.action_items || 'No action items captured.'} />
                 <DetailBlock icon={Users} title="Related projects" value={selected.project_name || selected.project?.name || 'No related project linked.'} />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button type="button" onClick={() => openJoinLink(selected)}>
+                    Join meeting
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setComposerOpen(true)}>
+                    Send follow-up
+                  </Button>
+                </div>
               </>
             ) : (
               <EmptyState icon={Video} title="Select a meeting" description="Pick a row to inspect notes and action items." />

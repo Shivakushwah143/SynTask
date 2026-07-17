@@ -225,6 +225,24 @@ async def _send_task_side_effects(task: Task, current_user: User, assignee, proj
         logger.error(f"Failed to publish TaskCreated event: {str(e)}")
 
 
+async def _notify_task_assignee(task: Task, current_user: User, assignee: User) -> None:
+    try:
+        from app.models.notification import Notification, NotificationType
+        notification = Notification(
+            company_id=current_user.company_id,
+            user_id=str(assignee.id),
+            type=NotificationType.TASK_ASSIGNED,
+            title="Task Assigned",
+            message=f"You have been assigned a task: {task.title}",
+            related_id=str(task.id),
+            related_type="task",
+        )
+        await notification.insert()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to create task reassignment notification: {str(e)}")
+
+
 @router.get("/")
 async def list_tasks(
     status_filter: Optional[str] = None,
@@ -1154,6 +1172,9 @@ async def update_task(
     await sync_task_health(task)
 
     if task.assigned_to and task.assigned_to != previous_assigned_to:
+        assigned_user = await User.get(task.assigned_to)
+        if assigned_user:
+            await _notify_task_assignee(task, current_user, assigned_user)
         await create_timeline_event(
             user_id=task.assigned_to,
             company_id=task.company_id,

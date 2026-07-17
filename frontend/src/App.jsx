@@ -250,7 +250,7 @@ function App() {
           </Route>
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
             <Route index element={<Navigate to="pipeline" replace />} />
-            <Route path="dashboard" element={withBoundary(<CRMDashboardPage />)} />
+            <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
             <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
             <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
             <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />

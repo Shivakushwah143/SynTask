@@ -19,6 +19,7 @@ from app.services.leave_service import (
     assert_leave_view_access,
     ensure_no_overlap,
     get_current_availability,
+    notify_admins,
     notify_user,
     parse_leave_date,
     serialize_leave,
@@ -159,8 +160,8 @@ async def approve_leave_request(
     current_user: User = Depends(get_current_user),
 ):
     leave, employee = await _load_manageable_leave(leave_id, current_user)
-    if leave.status != LeaveStatus.PENDING:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be approved")
+    if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending or forwarded requests can be approved")
     await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=str(leave.id))
     leave.status = LeaveStatus.APPROVED
     leave.reviewed_by = str(current_user.id)
@@ -187,6 +188,48 @@ async def approve_leave_request(
     return {"message": "Leave approved", "leave": serialize_leave(leave, employee)}
 
 
+@router.post("/{leave_id}/forward")
+async def forward_leave_request(
+    leave_id: str,
+    comment: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    leave, employee = await _load_manageable_leave(leave_id, current_user)
+    if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be forwarded")
+    if current_user.role not in {UserRole.MANAGER, UserRole.LEAD} and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only managers can forward leave requests")
+
+    leave.status = LeaveStatus.FORWARDED
+    leave.forwarded_by = str(current_user.id)
+    leave.forwarded_at = datetime.now()
+    leave.forwarded_to_admin = True
+    leave.review_comment = comment
+    leave.updated_at = datetime.now()
+    await leave.save()
+
+    await create_timeline_event(
+        user_id=leave.employee_id,
+        company_id=leave.company_id,
+        event_type=TimelineEventType.LEAVE_REQUESTED,
+        title="Leave Forwarded",
+        description=leave.leave_type.value.replace("_", " ").title(),
+        related_module=TimelineModule.LEAVE,
+        related_record_id=str(leave.id),
+        actor_id=str(current_user.id),
+        metadata={"leave_type": leave.leave_type.value, "status": leave.status.value, "forwarded_to_admin": True, "comment": comment},
+        idempotency_key=f"leave:{leave.id}:forwarded",
+    )
+    await notify_admins(
+        leave.company_id,
+        NotificationType.LEAVE_FORWARDED,
+        "Leave forwarded to admin",
+        f"{employee.full_name()} leave request was forwarded for admin review.",
+        str(leave.id),
+    )
+    return {"message": "Leave forwarded to admin", "leave": serialize_leave(leave, employee)}
+
+
 @router.post("/{leave_id}/reject")
 async def reject_leave_request(
     leave_id: str,
@@ -194,8 +237,8 @@ async def reject_leave_request(
     current_user: User = Depends(get_current_user),
 ):
     leave, employee = await _load_manageable_leave(leave_id, current_user)
-    if leave.status != LeaveStatus.PENDING:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be rejected")
+    if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending or forwarded requests can be rejected")
     leave.status = LeaveStatus.REJECTED
     leave.reviewed_by = str(current_user.id)
     leave.reviewed_at = datetime.now()
