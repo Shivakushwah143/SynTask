@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import Header from '../components/Header'
 import { GlobalSearch } from '../components/GlobalSearch'
+import { CommandPalette } from '../components/CommandPalette'
 import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
 
@@ -42,11 +43,15 @@ const CRM_BREADCRUMB_LABELS = {
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
-  const isDashboardPage = location.pathname === '/dashboard' || location.pathname === '/'
-  const openSearch = () => setSearchOpen(true)
+  const openSearch = useCallback(() => setSearchOpen(true), [])
+  const closeSearch = useCallback(() => setSearchOpen(false), [])
+  const openCommand = useCallback(() => setCommandOpen(true), [])
+  const closeCommand = useCallback(() => setCommandOpen(false), [])
+  // const openSearch = () => setSearchOpen(true)
   const pathSegments = location.pathname.split('/').filter(Boolean)
   const isCrmPath = pathSegments[0] === 'crm'
   const isHrPath = pathSegments[0] === 'hr'
@@ -58,8 +63,8 @@ const MainLayout = () => {
     })
     .join(' / ')
 
-  useKeyboardShortcut('k', openSearch, { ctrlKey: true })
-  useKeyboardShortcut('k', openSearch, { metaKey: true })
+  useKeyboardShortcut('k', openCommand, { ctrlKey: true })
+  useKeyboardShortcut('k', openCommand, { metaKey: true })
 
   return (
     <div className="app-shell flex h-screen overflow-hidden">
@@ -69,14 +74,23 @@ const MainLayout = () => {
       {/* Main Content */}
       <div className="flex min-w-0 w-full flex-1 flex-col  overflow-hidden">
         {/* Header */}
-        <Header title="Main Dashboard" subtitle="Overview" breadcrumb={breadcrumb} onMenuClick={() => setSidebarOpen(true)} onSearchOpen={openSearch} onAssistantOpen={() => setAssistantOpen(true)} />
+        <Header
+          title="Main Dashboard"
+          subtitle="Overview"
+          breadcrumb={breadcrumb}
+          onMenuClick={() => setSidebarOpen(true)}
+          onSearchOpen={openSearch}
+          onCommandOpen={openCommand}
+          onAssistantOpen={() => setAssistantOpen(true)}
+        />
 
         {/* Page Content */}
         <main className={`min-w-0 flex-1 px-4 pl-2 md:pl-6 py-4 md:py-6 ${isChatPage ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} w-full`}> 
           <Outlet />
         </main>
       </div>
-      <GlobalSearch isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+      <GlobalSearch isOpen={searchOpen} onClose={closeSearch} />
+      <CommandPalette isOpen={commandOpen} onClose={closeCommand} />
       <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   )

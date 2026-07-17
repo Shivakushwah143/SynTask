@@ -26,7 +26,7 @@ def _health_value(value: Any) -> str:
 
 
 def calculate_task_health(task: Task, now: Optional[datetime] = None) -> TaskHealthStatus:
-    now = now or datetime.utcnow()
+    now = now or datetime.now()
     if task.status == TaskStatus.COMPLETED:
         return TaskHealthStatus.COMPLETED
     if int(getattr(task, "extension_count", 0) or 0) > 0:
@@ -47,7 +47,7 @@ def _as_naive(value: datetime) -> datetime:
 
 
 async def sync_task_health(task: Task, now: Optional[datetime] = None) -> Task:
-    now = now or datetime.utcnow()
+    now = now or datetime.now()
     previous = _health_value(getattr(task, "health_status", None))
     next_health = calculate_task_health(task, now)
     if previous != next_health.value:
@@ -163,10 +163,12 @@ async def review_extension_request(request: TaskExtensionRequest, reviewer: User
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     await assert_task_manage_access(reviewer, task)
+    if task.status == TaskStatus.COMPLETED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot review extension for a completed task")
     if request.status != TaskExtensionStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Extension request already reviewed")
 
-    now = datetime.utcnow()
+    now = datetime.now()
     request.status = TaskExtensionStatus.APPROVED if approved else TaskExtensionStatus.REJECTED
     request.reviewed_by = str(reviewer.id)
     request.reviewed_at = now

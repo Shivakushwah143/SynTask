@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any
 from beanie import Document, Indexed
 from pydantic import EmailStr, Field
 from enum import Enum
-from pymongo import ASCENDING, IndexModel
+from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
 
 class InterestLevel(str, Enum):
@@ -94,10 +94,21 @@ class SalesProspect(Document):
             "contact_id",
             "deleted",
             ("country_code", "phone"),  # For duplicate check
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("current_stage", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("status", ASCENDING), ("closed_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("assigned_to", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("crm_company_id", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("country_code", ASCENDING), ("phone", ASCENDING)]),
             IndexModel([
                 ("company_id", ASCENDING),
                 ("email", ASCENDING),
             ], unique=True, partialFilterExpression={"email": {"$type": "string"}}),
+            IndexModel(
+                [("prospect_name", TEXT), ("company_name", TEXT), ("email", TEXT), ("phone", TEXT)],
+                language_override="_text_language",
+            ),
             "crm_company_id",
         ]
 

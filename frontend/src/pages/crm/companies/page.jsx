@@ -5,7 +5,7 @@ import { format } from 'date-fns'
 import { Building2, CircleDot, Clock3, Plus, Search, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
-import { Button, ConfirmDialog, EmptyState, FormField, inputClassName, Modal, SkeletonTable, Table } from '../../../components/ui'
+import { Button, ConfirmDialog, EmptyState, FormField, inputClassName, Modal, PhoneInput, SkeletonTable, Table, phoneValidationMessage } from '../../../components/ui'
 import { CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 
 const COMPANY_TEMPLATE = {
@@ -41,7 +41,7 @@ function CompanyModal({ isOpen, onClose, onSave, company = null }) {
           <input className={inputClassName} value={form.email} onChange={(event) => update('email', event.target.value)} />
         </FormField>
         <FormField label="Phone">
-          <input className={inputClassName} value={form.phone} onChange={(event) => update('phone', event.target.value)} />
+          <PhoneInput className={inputClassName} value={form.phone} onChange={(event) => update('phone', event.target.value)} />
         </FormField>
         <FormField label="Website">
           <input className={inputClassName} value={form.website} onChange={(event) => update('website', event.target.value)} />
@@ -58,7 +58,7 @@ function CompanyModal({ isOpen, onClose, onSave, company = null }) {
       </div>
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button onClick={() => onSave(form)} disabled={!form.name}>{company ? 'Save' : 'Create'}</Button>
+        <Button onClick={() => onSave(form)} disabled={!form.name || Boolean(phoneValidationMessage(form.phone))}>{company ? 'Save' : 'Create'}</Button>
       </div>
     </Modal>
   )

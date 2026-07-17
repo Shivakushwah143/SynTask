@@ -4,6 +4,7 @@ import { AlertCircle, Eye, Mail, Paperclip, Send, Sparkles, X, ChevronDown } fro
 import toast from 'react-hot-toast'
 import { notificationsEmailApi } from '../api/notificationsEmail'
 import { Badge, Button, Modal, inputClassName } from './ui'
+import { sanitizeHtml } from '../utils/sanitizeHtml'
 
 const emptyRecipient = { email: '', name: '' }
 const emptyState = {
@@ -287,7 +288,7 @@ export function EmailComposer({ isOpen, onClose, initialData = {}, onSend }) {
                       {summary.cc ? <div><span className="font-semibold text-gray-900 dark:text-gray-100">CC:</span> {form.cc.filter((item) => item.email).map((item) => item.email).join(', ')}</div> : null}
                     </div>
                   </div>
-                  <div className="space-y-4 text-sm leading-7 text-gray-800 dark:text-gray-200" dangerouslySetInnerHTML={{ __html: currentPreview.html || '<p>No preview available yet.</p>' }} />
+                  <div className="space-y-4 text-sm leading-7 text-gray-800 dark:text-gray-200" dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentPreview.html || '<p>No preview available yet.</p>') }} />
                 </div>
               </div>
             </div>

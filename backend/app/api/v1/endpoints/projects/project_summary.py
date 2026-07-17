@@ -39,7 +39,7 @@ async def get_project_summary(
     
     # Calculate date range
     from datetime import timedelta
-    now = datetime.utcnow()
+    now = datetime.now()
     days_ago = now - timedelta(days=days)
     days_ahead = now + timedelta(days=days)
     
@@ -195,5 +195,6 @@ async def get_project_summary(
 
 
 # Pages Endpoints
+
 
 

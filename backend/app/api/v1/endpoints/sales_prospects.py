@@ -9,7 +9,9 @@ import io
 import re
 from pydantic import BaseModel
 
+from app.api.deps import Pagination50, PaginationParams
 from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_capability, require_module
+from app.core.rbac_visibility import build_visibility_query, require_owned_record_access
 from app.models.user import User, UserRole, UserStatus
 from app.models.department import Department
 from app.models.crm_company import CRMCompany
@@ -40,8 +42,11 @@ async def bulk_merge_prospects(payload: BulkLeadMergeRequest, current_user: User
     if not target or target.deleted:
         raise HTTPException(status_code=404, detail="Target prospect not found")
 
-    if current_user.role != UserRole.SUPER_ADMIN and target.company_id != current_user.company_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    await require_owned_record_access(
+        current_user,
+        target,
+        ownership_fields=("assigned_to", "assigned_by", "created_by"),
+    )
 
     total_requested = len(payload.source_lead_ids or [])
     total_merged = 0
@@ -61,7 +66,13 @@ async def bulk_merge_prospects(payload: BulkLeadMergeRequest, current_user: User
             errors.append({"lead_id": source_id, "reason": "Source prospect not found"})
             continue
 
-        if current_user.role != UserRole.SUPER_ADMIN and source.company_id != current_user.company_id:
+        try:
+            await require_owned_record_access(
+                current_user,
+                source,
+                ownership_fields=("assigned_to", "assigned_by", "created_by"),
+            )
+        except HTTPException:
             total_failed += 1
             errors.append({"lead_id": source_id, "reason": "Access denied"})
             continue
@@ -70,11 +81,11 @@ async def bulk_merge_prospects(payload: BulkLeadMergeRequest, current_user: User
         merged_products = list({*(target.product_ids or []), *(source.product_ids or [])})
         target.tag = merged_tags
         target.product_ids = merged_products
-        target.updated_at = datetime.utcnow()
+        target.updated_at = datetime.now()
         await target.save()
 
         source.deleted = True
-        source.updated_at = datetime.utcnow()
+        source.updated_at = datetime.now()
         await source.save()
 
         total_merged += 1
@@ -236,12 +247,14 @@ def _serialize_prospect_identity(prospect: SalesProspect):
 
 
 async def _get_company_prospects(current_user: User, include_deleted: bool = False) -> List[SalesProspect]:
-    query = {"company_id": current_user.company_id}
+    query = {}
     if not include_deleted:
         query["deleted"] = False
-    if current_user.role == UserRole.EMPLOYEE:
-        current_user_id = str(current_user.id)
-        query["$or"] = [{"assigned_to": current_user_id}, {"assigned_by": current_user_id}]
+    query = await build_visibility_query(
+        current_user,
+        ownership_fields=("assigned_to", "assigned_by", "created_by"),
+        base_query=query,
+    )
     return await SalesProspect.find(query).sort(-SalesProspect.updated_at).to_list()
 
 
@@ -258,23 +271,16 @@ async def list_prospects(
     assigned_by: Optional[str] = None,
     channel: Optional[str] = None,
     interest_level: Optional[str] = None,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1),
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List prospects with role-based filtering"""
+    skip, limit = pagination.skip, pagination.limit
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"list_prospects START: user={current_user.id}, role={current_user.role}, limit={limit}, skip={skip}")
     
     query = {"deleted": False}
-    if current_user.role != UserRole.SUPER_ADMIN:
-        query["company_id"] = current_user.company_id
-    if current_user.role == UserRole.EMPLOYEE:
-        query["$or"] = [
-            {"assigned_to": str(current_user.id)},
-            {"assigned_by": str(current_user.id)}
-        ]
     if search:
         search_or_condition = [
             {"prospect_name": {"$regex": search, "$options": "i"}},
@@ -286,19 +292,10 @@ async def list_prospects(
         else:
             query["$or"] = search_or_condition
     
-    # Handle assigned_to filter for employees
     if assigned_to:
-        if current_user.role == UserRole.EMPLOYEE:
-            # Employee can only filter by their own ID
-            if assigned_to != str(current_user.id):
-                return {"total": 0, "items": []}
         query["assigned_to"] = assigned_to
     
     if assigned_by:
-        if current_user.role == UserRole.EMPLOYEE:
-            # Employee can only filter by their own ID
-            if assigned_by != str(current_user.id):
-                return {"total": 0, "items": []}
         query["assigned_by"] = assigned_by
     
     if category_id:
@@ -319,6 +316,12 @@ async def list_prospects(
         query["channel"] = channel
     if interest_level:
         query["interest_level"] = interest_level
+
+    query = await build_visibility_query(
+        current_user,
+        ownership_fields=("assigned_to", "assigned_by", "created_by"),
+        base_query=query,
+    )
     
     total = await SalesProspect.find(query).count()
     prospects = await SalesProspect.find(query).skip(skip).limit(limit).sort(-SalesProspect.created_at).to_list()
@@ -406,8 +409,6 @@ async def search_contact_for_prospect(
 ):
     """Search existing contact to convert to prospect."""
     query = {"deleted": False}
-    if current_user.role != UserRole.SUPER_ADMIN:
-        query["company_id"] = current_user.company_id
 
     if phone:
         query["phone"] = phone
@@ -423,6 +424,12 @@ async def search_contact_for_prospect(
                 {"first_name": {"$regex": name, "$options": "i"}},
                 {"last_name": {"$regex": name, "$options": "i"}},
             ]
+
+    query = await build_visibility_query(
+        current_user,
+        ownership_fields=("created_by",),
+        base_query=query,
+    )
 
     contacts = await SalesContact.find(query).limit(10).to_list()
     return {
@@ -452,14 +459,11 @@ async def get_prospect(
     if not prospect or prospect.deleted:
         raise HTTPException(status_code=404, detail="Prospect not found")
     
-    # Check access
-    if current_user.role != UserRole.SUPER_ADMIN:
-        if prospect.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        if current_user.role == UserRole.EMPLOYEE:
-            # Employee can view if assigned to them OR assigned by them
-            if prospect.assigned_to != str(current_user.id) and prospect.assigned_by != str(current_user.id):
-                raise HTTPException(status_code=403, detail="Access denied")
+    await require_owned_record_access(
+        current_user,
+        prospect,
+        ownership_fields=("assigned_to", "assigned_by", "created_by"),
+    )
     
     return {
         "id": str(prospect.id),
@@ -544,7 +548,7 @@ async def create_prospect(
             "category_id": category_id,
             "product_ids": _parse_multi_value(product_ids) if product_ids else [],
             "interest_level": interest_level or "medium",
-            "estimated_close_date": estimated_close_date or datetime.utcnow().date().isoformat(),
+            "estimated_close_date": estimated_close_date or datetime.now().date().isoformat(),
             "assigned_to": assigned_to,
             "current_stage": current_stage or "new",
             "email": email,
@@ -658,3 +662,4 @@ async def preview_bulk_upload_prospects(
 @router.post("/imports/{job_id}/retry")
 async def retry_import_job(job_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
     return await LeadEngine.retry_import_job(current_user, job_id)
+

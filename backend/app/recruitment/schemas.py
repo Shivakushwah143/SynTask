@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, model_validator
 
 from app.recruitment.models import (CandidateStatus, ImportStatus,
                                     InterviewDecision,
@@ -84,6 +84,8 @@ class JobUpdate(BaseModel):
 
 # Job Response Schema
 class JobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     company_id: str
     title: str
@@ -114,8 +116,6 @@ class JobResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
 
 
 # Job List Response Schema (for pagination)
@@ -299,6 +299,8 @@ class ConversionRequest(BaseModel):
 
 # Public Job Listing Response
 class PublicJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     title: str
     slug: str
@@ -320,8 +322,6 @@ class PublicJobResponse(BaseModel):
     apply_available: bool = True
     created_at: datetime
 
-    class Config:
-        from_attributes = True
 
 
 # Public Job List Response (for pagination)
@@ -375,14 +375,14 @@ class ApplicationApplyResponse(BaseModel):
 
 # Application Status Response (public)
 class ApplicationStatusResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     tracking_code: str
     job_title: str
     status: str
     applied_at: datetime
     last_updated: datetime
 
-    class Config:
-        from_attributes = True
 
 
 # Resume Upload Request (for internal use)
@@ -444,6 +444,8 @@ class InboxMergeRequest(BaseModel):
 
 
 class InboxItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     company_id: str
     job_id: Optional[str] = None
@@ -465,8 +467,6 @@ class InboxItemResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
 
 
 class InboxListResponse(BaseModel):

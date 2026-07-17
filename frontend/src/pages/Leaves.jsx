@@ -27,9 +27,13 @@ const defaultForm = {
   attachment: null,
 }
 
+export const canSubmitLeaveRequest = (role) => !hasCompanyAdminAccess(role)
+
 export default function Leaves() {
   const { user } = useAuthStore()
   const canManage = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role) || isManagerRole(user?.role)
+  const canRequestLeave = canSubmitLeaveRequest(user?.role)
+  const contentGridClassName = canRequestLeave ? 'grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]' : 'grid gap-6'
   const [form, setForm] = useState(defaultForm)
   const [leaves, setLeaves] = useState([])
   const [calendar, setCalendar] = useState({ today: [], upcoming: [] })
@@ -139,7 +143,7 @@ export default function Leaves() {
     <div className="space-y-6">
       <PageHeader
         title="Leave Management"
-        description="Request leave, review approvals, and see current availability."
+        description={canRequestLeave ? 'Request leave, review approvals, and see current availability.' : 'Review leave requests, approve or reject pending items, and see current availability.'}
       />
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -148,33 +152,35 @@ export default function Leaves() {
         <StatusCard icon={Home} label="WFH Today" value={calendar.today?.filter((item) => item.leave_type === 'work_from_home').length || 0} colorKey="approved" />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]">
-        <form onSubmit={submitLeave} className="card space-y-4">
-          <div className="flex items-center gap-2">
-            <Plus className="h-5 w-5 text-primary-600" />
-            <h2 className="section-header">New Request</h2>
-          </div>
-          <Field label="Leave type">
-            <select className="input" value={form.leave_type} onChange={(event) => setForm({ ...form, leave_type: event.target.value })}>
-              {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Start date">
-              <input className="input" type="date" required value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} />
+      <div className={contentGridClassName}>
+        {canRequestLeave ? (
+          <form onSubmit={submitLeave} className="card space-y-4">
+            <div className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary-600" />
+              <h2 className="section-header">New Request</h2>
+            </div>
+            <Field label="Leave type">
+              <select className="input" value={form.leave_type} onChange={(event) => setForm({ ...form, leave_type: event.target.value })}>
+                {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
             </Field>
-            <Field label="End date">
-              <input className="input" type="date" required value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Start date">
+                <input className="input" type="date" required value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} />
+              </Field>
+              <Field label="End date">
+                <input className="input" type="date" required value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} />
+              </Field>
+            </div>
+            <Field label="Reason">
+              <textarea className="input min-h-28" required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
             </Field>
-          </div>
-          <Field label="Reason">
-            <textarea className="input min-h-28" required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
-          </Field>
-          <Field label="Attachment">
-            <input className="input" type="file" onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} />
-          </Field>
-          <Button type="submit" loading={submitting} className="w-full">Submit Request</Button>
-        </form>
+            <Field label="Attachment">
+              <input className="input" type="file" onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} />
+            </Field>
+            <Button type="submit" loading={submitting} className="w-full">Submit Request</Button>
+          </form>
+        ) : null}
 
         <section className="space-y-4">
           <div className="card">

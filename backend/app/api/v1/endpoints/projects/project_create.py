@@ -17,12 +17,23 @@ async def create_project(
     client_id: Optional[str] = Form(None),
     lead_id: Optional[str] = Form(None),
     assigned_to: Optional[str] = Form(None),
+    assigned_user_ids: Optional[str] = Form(None),
     start_date: Optional[str] = Form(None),
     delivery_date: Optional[str] = Form(None),
     project_id: str = Form(...),  # MANDATORY - User-provided unique project ID
-    current_user: User = Depends(get_current_company_admin),
+    current_user: User = Depends(get_current_user),
 ):
-    """Create a new project (Company Admin only)"""
+    """Create a new project. Admins and Managers may create within scope."""
+    if not await can_create_project(current_user):
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only Admins and Managers can create projects",
+        )
+    if not current_user.company_id:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="User must belong to a company",
+        )
     # Validate project_id is provided and not empty
     project_id = project_id.strip() if project_id else ""
     if not project_id:
@@ -57,11 +68,7 @@ async def create_project(
     final_project_id = project_id
     logger.info(f"User provided project_id: {final_project_id} - This will be used throughout")
     
-    # Validate project type
-    try:
-        project_type = ProjectType(type.lower())
-    except:
-        project_type = ProjectType.SOFTWARE
+    project_type = normalize_project_type(type)
     
     # Validate lead if provided
     if lead_id:
@@ -81,21 +88,15 @@ async def create_project(
                 detail="Invalid client"
             )
     
-    # Validate assigned user if provided
-    assigned_user = None
-    if assigned_to:
-        assigned_user = await User.get(assigned_to)
-        if not assigned_user or assigned_user.company_id != current_user.company_id:
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Invalid assigned user"
-            )
-        # Allow assigning to Manager, Lead, or Employee (hierarchical assignment)
-        if assigned_user.role not in [UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE]:
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Can only assign projects to Managers, Leads, or Employees"
-            )
+    requested_assignees = []
+    for raw in [assigned_to, assigned_user_ids]:
+        if isinstance(raw, str) and raw:
+            requested_assignees.extend([item.strip() for item in raw.split(",") if item.strip()])
+    if getattr(current_user, "role", None) == UserRole.MANAGER and str(current_user.id) not in requested_assignees:
+        requested_assignees.insert(0, str(current_user.id))
+    assigned_users = await validate_project_assignees(current_user, current_user.company_id, requested_assignees) if requested_assignees else []
+    assigned_ids = [str(user.id) for user in assigned_users]
+    primary_assigned_to = assigned_ids[0] if assigned_ids else None
     
     # Parse dates
     start_date_obj = None
@@ -135,9 +136,16 @@ async def create_project(
         "client_id": client_id,
         "type": project_type,
         "lead_id": lead_id,
-        "assigned_to": assigned_to,
-        "assigned_by": str(current_user.id) if assigned_to else None,
-        "assigned_at": datetime.utcnow() if assigned_to else None,
+        "assigned_to": primary_assigned_to,
+        "assigned_user_ids": assigned_ids,
+        "assigned_by": str(current_user.id) if assigned_ids else None,
+        "assigned_at": datetime.now() if assigned_ids else None,
+        "assignment_history": [{
+            "assigned_by": str(current_user.id),
+            "assigned_user_ids": assigned_ids,
+            "assigned_at": datetime.now().isoformat(),
+            "action": "created",
+        }] if assigned_ids else [],
         "start_date": start_date_obj,
         "delivery_date": delivery_date_obj,
         "created_by": str(current_user.id),
@@ -197,7 +205,7 @@ async def create_project(
         client_project_ids = [str(item) for item in (client.project_ids or [])]
         if str(project.id) not in client_project_ids:
             client.project_ids = client_project_ids + [str(project.id)]
-        client.updated_at = datetime.utcnow()
+        client.updated_at = datetime.now()
         await client.save()
     
     # Immediately refresh and verify user-provided project_id was saved correctly
@@ -238,11 +246,11 @@ async def create_project(
     logger.info(f"Before return: final_project_id={final_project_id}, project.project_id={project.project_id}, project.id={project.id}")
     
     # Send notification to assigned user
-    if assigned_to and assigned_user:
+    for assigned_user in assigned_users:
         from app.models.notification import Notification, NotificationType
         notification = Notification(
             company_id=current_user.company_id,
-            user_id=assigned_to,
+            user_id=str(assigned_user.id),
             type=NotificationType.PROJECT_ASSIGNED,
             title="New Project Assigned",
             message=f"You have been assigned to project: {name}",
@@ -308,3 +316,4 @@ async def create_project(
     if background_warnings:
         response["warnings"] = background_warnings
     return response
+

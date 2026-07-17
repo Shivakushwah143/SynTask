@@ -52,6 +52,16 @@ const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
 const WIDTH_KEY = "syntask-sidebar-width";
 const WIDTH_OPTIONS = [240, 280, 320];
 
+const getApiAssetUrl = (path) => {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  const apiOrigin = import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "";
+  if (path.startsWith("/uploads/avatars/")) {
+    return `${apiOrigin}/api/v1${path}`;
+  }
+  return `${apiOrigin}${path}`;
+};
+
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { user } = useAuthStore();
@@ -191,18 +201,21 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/attendance",
       icon: UserCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Live Attendance",
       href: "/live-monitor",
       icon: MonitorCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Attendance Reports",
       href: "/attendance-reports",
       icon: FileBarChart2,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
+      module: "task",
     },
 
     {
@@ -210,24 +223,28 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/notifications",
       icon: BellRing,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Timeline",
       href: "/timeline",
       icon: CalendarClock,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Leaves",
       href: "/leaves",
       icon: CalendarCheck2,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Daily EOD",
       href: "/eod",
       icon: ClipboardCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
     {
       name: "Workspace Reports",
@@ -276,6 +293,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       match: "/crm",
       icon: TrendingUp,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "sales",
     },
     {
       name: "HR",
@@ -324,6 +342,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/users",
       icon: UserCog,
       roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
+      module: "task",
     },
     {
       name: "Workflows",
@@ -337,6 +356,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/departments",
       icon: Network,
       roles: [ROLE.ADMIN],
+      module: "task",
     },
     {
       name: "My Team",
@@ -350,31 +370,34 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/companies",
       icon: Landmark,
       roles: [ROLE.SUPER_ADMIN],
+      module: "task",
     },
     {
       name: "Subscriptions",
       href: "/subscriptions",
       icon: CreditCard,
       roles: [ROLE.ADMIN],
+      module: "task",
     },
     {
       name: "Audit Log",
       href: "/activity",
       icon: AlarmClockCheck,
       roles: [ROLE.ADMIN, ROLE.LEAD],
+      module: "task",
     },
     {
       name: "Settings",
       href: "/settings",
       icon: Settings,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
     },
   ];
 
   const filteredNavigation = navigation.filter(
     (item) => item.roles.includes(userRole) && hasModule(item.module) && hasCapability(item.capability) && hasDepartment(item.department),
   );
-  const pinnedNavigation = filteredNavigation.filter((item) => ['Projects', 'Tasks'].includes(item.name));
   const toggleFavorite = (href) => {
     setFavorites((current) => (
       current.includes(href) ? current.filter((item) => item !== href) : [...current, href]
@@ -449,9 +472,23 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const navigationGroups = [
     {
-      key: "workspace",
-      label: "Workspace Tools",
-      items: ["Service Requests", "Workspace Calendar", "Timesheet", "My Team", "Workflows"]
+      key: "operations",
+      label: "Core Operations",
+      items: ["Service Requests", "Workspace Calendar", "Timesheet"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
+      key: "delivery",
+      label: "Project Delivery",
+      items: ["Projects", "Tasks"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
+      key: "people",
+      label: "People & Activity",
+      items: ["My Team", "Users", "Departments", "Attendance", "Live Attendance", "Attendance Reports"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -489,7 +526,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "administration",
       label: "Administration",
-      items: ["Users", "Departments", "Attendance", "Live Attendance", "Attendance Reports", "Company Directory", "Bulk Lead Import", "Audit Log", "Settings"]
+      items: ["Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices", "Agreements"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -612,18 +649,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </div>
               </div>
             ) : null}
-            {pinnedNavigation.map((item) => (
-              <SidebarNavItem
-                key={item.name}
-                item={item}
-                location={location}
-                collapsed={collapsed}
-                onClose={onClose}
-                favorites={favorites}
-                onToggleFavorite={toggleFavorite}
-                showFavorite
-              />
-            ))}
             {dashboardNavigation.map((item) => (
               <SidebarNavItem
                 key={item.name}
@@ -636,7 +661,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                 showFavorite
               />
             ))}
-
             {navigationGroups.map((group) => (
               <SidebarNavGroup
                 key={group.key}
@@ -669,13 +693,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className="flex-shrink-0">
                 {user?.avatar ? (
                   <img
-                    src={
-                      user.avatar.startsWith("http")
-                        ? user.avatar
-                        : user.avatar.startsWith("/uploads/avatars/")
-                        ? `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}/api/v1${user.avatar}`
-                        : `${import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "http://localhost:8000"}${user.avatar}`
-                    }
+                    src={getApiAssetUrl(user.avatar)}
                     alt={user?.first_name}
                     className="h-10 w-10 rounded-full object-cover border border-white/10 shadow-none"
                     onError={(e) => {

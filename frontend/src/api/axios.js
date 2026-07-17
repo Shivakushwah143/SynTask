@@ -113,11 +113,11 @@ axiosInstance.interceptors.response.use(
           refreshToken = getRefreshToken()
         }
 
-        if (refreshToken) {
+        if (refreshToken || useAuthStore.getState().isAuthenticated) {
           if (!refreshPromise) {
-            refreshPromise = axios.post(`${API_URL}/auth/refresh`, {
+            refreshPromise = axios.post(`${API_URL}/auth/refresh`, refreshToken ? {
               refresh_token: refreshToken,
-            }, {
+            } : undefined, {
               withCredentials: true,
             }).finally(() => {
               refreshPromise = null
@@ -130,8 +130,10 @@ axiosInstance.interceptors.response.use(
           const authState = useAuthStore.getState()
           if (
             authState.isLoggingOut ||
-            authState.refreshToken !== refreshToken ||
-            getRefreshToken() !== refreshToken
+            (refreshToken && (
+              authState.refreshToken !== refreshToken ||
+              getRefreshToken() !== refreshToken
+            ))
           ) {
             return Promise.reject(error)
           }
@@ -144,6 +146,7 @@ axiosInstance.interceptors.response.use(
             authState.user,
             access_token,
             refreshToken,
+            undefined,
           )
 
           originalRequest.headers = originalRequest.headers || {}
@@ -171,7 +174,7 @@ axiosInstance.interceptors.response.use(
       error.response?.data
     )
 
-    if (error.response?.status !== 401) {
+    if (![401, 403].includes(error.response?.status)) {
       toast.error(errorMessage)
     }
 
@@ -180,4 +183,3 @@ axiosInstance.interceptors.response.use(
 )
 
 export default axiosInstance
-

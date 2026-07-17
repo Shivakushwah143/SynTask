@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock3, Plus, Receipt, Search } from 'lucide-react'
+import { Clock3, Plus, Receipt, Search, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
-import { hasCompanyAdminAccess } from '../utils/roles'
-import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
+import { canCreateProject, canManageProject, normalizeRole } from '../utils/roles'
+import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
+import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import {
   buildProjectGraphRows,
   buildProjectGraphSummary,
@@ -29,10 +30,39 @@ const PROJECT_WORKFLOW = {
   archived: [],
 }
 
+const DEFAULT_PROJECT_TYPES = [
+  { value: 'software', label: 'Software' },
+  { value: 'business', label: 'Business' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'operations', label: 'Operations' },
+]
+
+const PROJECT_TYPE_STORAGE_KEY = 'syntask_project_type_options'
+
+const formatProjectTypeLabel = (value) => (value || '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+const slugifyProjectType = (value) => (value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_+|_+$/g, '')
+
+const loadStoredProjectTypes = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROJECT_TYPE_STORAGE_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.value && item?.label) : []
+  } catch {
+    return []
+  }
+}
+
 export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const canCreateProjects = hasCompanyAdminAccess(user?.role)
+  const canCreateProjects = canCreateProject(user?.role)
+  const userRole = normalizeRole(user?.role)
   const [loading, setLoading] = useState(true)
   const [projects, setProjects] = useState([])
   const [projectPage, setProjectPage] = useState(1)
@@ -49,6 +79,18 @@ export default function Projects() {
   const [versions, setVersions] = useState([])
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [assignmentProject, setAssignmentProject] = useState(null)
+  const [assignmentUserId, setAssignmentUserId] = useState('')
+  const [assigningProject, setAssigningProject] = useState(false)
+  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
+  const [showProjectTypeModal, setShowProjectTypeModal] = useState(false)
+  const [projectTypeName, setProjectTypeName] = useState('')
+  const [projectTypeError, setProjectTypeError] = useState('')
+  const [projectTypeOptions, setProjectTypeOptions] = useState(() => {
+    const merged = new Map(DEFAULT_PROJECT_TYPES.map((item) => [item.value, item]))
+    loadStoredProjectTypes().forEach((item) => merged.set(item.value, item))
+    return Array.from(merged.values())
+  })
   const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
   const [formErrors, setFormErrors] = useState({})
 
@@ -86,6 +128,24 @@ export default function Projects() {
   }, [loadAssignableUsers])
 
   useEffect(() => {
+    const merged = new Map(projectTypeOptions.map((item) => [item.value, item]))
+    projects.forEach((project) => {
+      const value = slugifyProjectType(project.type)
+      if (value && !merged.has(value)) {
+        merged.set(value, { value, label: formatProjectTypeLabel(project.type) })
+      }
+    })
+    if (merged.size !== projectTypeOptions.length) {
+      setProjectTypeOptions(Array.from(merged.values()))
+    }
+  }, [projectTypeOptions, projects])
+
+  useEffect(() => {
+    const customTypes = projectTypeOptions.filter((item) => !DEFAULT_PROJECT_TYPES.some((base) => base.value === item.value))
+    localStorage.setItem(PROJECT_TYPE_STORAGE_KEY, JSON.stringify(customTypes))
+  }, [projectTypeOptions])
+
+  useEffect(() => {
     const projectId = sessionStorage.getItem('open_project_id')
     if (projectId && projects.length) {
       sessionStorage.removeItem('open_project_id')
@@ -101,6 +161,14 @@ export default function Projects() {
   const uniqueAssignableUsers = useMemo(
     () => Array.from(new Map(assignableUsers.map((item) => [item.id, item])).values()),
     [assignableUsers],
+  )
+  const projectAssigneeOptions = useMemo(
+    () => uniqueAssignableUsers.filter((item) => {
+      const role = normalizeRole(item.role)
+      if (userRole === 'manager') return role === 'lead'
+      return role === 'manager' || role === 'lead'
+    }),
+    [uniqueAssignableUsers, userRole],
   )
 
   const summary = useMemo(() => ({
@@ -164,6 +232,28 @@ export default function Projects() {
     }
   }
 
+  const openAssignmentModal = (project) => {
+    setAssignmentProject(project)
+    setAssignmentUserId(project.assigned_to || project.lead_id || '')
+  }
+
+  const handleProjectAssignment = async (event) => {
+    event.preventDefault()
+    if (!assignmentProject || assigningProject) return
+    try {
+      setAssigningProject(true)
+      await projectsApi.updateProject(assignmentProject.id, { assigned_to: assignmentUserId })
+      toast.success(assignmentUserId ? 'Project assigned' : 'Project unassigned')
+      setAssignmentProject(null)
+      setAssignmentUserId('')
+      await loadProjects()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update project assignment')
+    } finally {
+      setAssigningProject(false)
+    }
+  }
+
   const validateCreateForm = () => {
     const nextErrors = {}
     if (!formData.name.trim()) nextErrors.name = 'Project name is required.'
@@ -212,6 +302,30 @@ export default function Projects() {
     }
   }
 
+  const handleCreateProjectType = (event) => {
+    event.preventDefault()
+    const label = projectTypeName.trim()
+    const value = slugifyProjectType(label)
+    if (!label || !value) {
+      setProjectTypeError('Enter a valid project type.')
+      return
+    }
+    const duplicate = projectTypeOptions.find((item) => item.value === value || item.label.toLowerCase() === label.toLowerCase())
+    if (duplicate) {
+      setFormData((state) => ({ ...state, type: duplicate.value }))
+      setProjectTypeName('')
+      setProjectTypeError('')
+      setShowProjectTypeModal(false)
+      return
+    }
+    const nextOption = { value, label: formatProjectTypeLabel(label) }
+    setProjectTypeOptions((state) => [...state, nextOption])
+    setFormData((state) => ({ ...state, type: nextOption.value }))
+    setProjectTypeName('')
+    setProjectTypeError('')
+    setShowProjectTypeModal(false)
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -245,10 +359,7 @@ export default function Projects() {
             </select>
             <select className={inputClassName} value={filters.type} onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}>
               <option value="">All types</option>
-              <option value="software">Software</option>
-              <option value="marketing">Marketing</option>
-              <option value="business">Business</option>
-              <option value="operations">Operations</option>
+              {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <select className={inputClassName} value={filters.owner} onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}>
               <option value="">All owners</option>
@@ -275,6 +386,14 @@ export default function Projects() {
         onOpenProject={(project) => {
           const match = projectCards.find((item) => item.id === project.id)
           if (match) navigate(`/projects/${match.id}/board`)
+        }}
+        canAssignProject={(project) => {
+          const match = projectCards.find((item) => item.id === project.id)
+          return Boolean(match && canManageProject(user?.role, match, user?.id))
+        }}
+        onAssignProject={(project) => {
+          const match = projectCards.find((item) => item.id === project.id)
+          if (match && canManageProject(user?.role, match, user?.id)) openAssignmentModal(match)
         }}
       />
 
@@ -321,18 +440,29 @@ export default function Projects() {
           </FormField>
           <div className="grid gap-4 lg:grid-cols-2">
             <FormField label="Type">
-              <select className={inputClassName} value={formData.type} onChange={(event) => setFormData((state) => ({ ...state, type: event.target.value }))}>
-                <option value="software">Software</option>
-                <option value="business">Business</option>
-                <option value="marketing">Marketing</option>
-                <option value="operations">Operations</option>
-              </select>
+              <CreatableSelectField
+                value={formData.type}
+                onChange={(value) => setFormData((state) => ({ ...state, type: value }))}
+                className={inputClassName}
+                createLabel="Add project type"
+                onCreate={() => setShowProjectTypeModal(true)}
+                canCreate={canCreateProjects}
+              >
+                {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </CreatableSelectField>
             </FormField>
-            <FormField label="Lead">
-              <select className={inputClassName} value={formData.lead_id} onChange={(event) => setFormData((state) => ({ ...state, lead_id: event.target.value }))}>
-                <option value="">Select lead</option>
-                {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
-              </select>
+            <FormField label="Assigned to">
+              <CreatableSelectField
+                value={formData.assigned_to}
+                onChange={(value) => setFormData((state) => ({ ...state, assigned_to: value }))}
+                className={inputClassName}
+                createLabel="Create user"
+                onCreate={() => setShowQuickEmployeeModal(true)}
+                canCreate={canCreateProjects}
+              >
+                <option value="">Select manager or lead</option>
+                {projectAssigneeOptions.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name} ({item.role})</option>)}
+              </CreatableSelectField>
             </FormField>
             <FormField label="Start date">
               <input type="datetime-local" className={inputClassName} value={formData.start_date} onChange={(event) => setFormData((state) => ({ ...state, start_date: event.target.value }))} />
@@ -347,6 +477,66 @@ export default function Projects() {
           </div>
         </form>
       </Modal>
+
+      <Modal isOpen={showProjectTypeModal} onClose={() => setShowProjectTypeModal(false)} title="Add project type">
+        <form onSubmit={handleCreateProjectType} className="space-y-4">
+          <FormField label="Type name" error={projectTypeError} required>
+            <input
+              autoFocus
+              className={inputClassName}
+              value={projectTypeName}
+              onChange={(event) => {
+                setProjectTypeName(event.target.value)
+                setProjectTypeError('')
+              }}
+              placeholder="Research, design, support"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" type="button" onClick={() => setShowProjectTypeModal(false)}>Cancel</Button>
+            <Button type="submit">Add type</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={Boolean(assignmentProject)} onClose={() => setAssignmentProject(null)} title="Assign project">
+        <form onSubmit={handleProjectAssignment} className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Project</p>
+            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{assignmentProject?.name}</p>
+          </div>
+          <FormField label="Assigned to">
+            <CreatableSelectField
+              value={assignmentUserId}
+              onChange={setAssignmentUserId}
+              className={inputClassName}
+              createLabel="Create user"
+              onCreate={() => setShowQuickEmployeeModal(true)}
+              canCreate={canCreateProjects}
+            >
+              <option value="">Unassigned</option>
+              {projectAssigneeOptions.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name} ({item.role})</option>)}
+            </CreatableSelectField>
+          </FormField>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setAssignmentProject(null)}>Cancel</Button>
+            <Button type="submit" loading={assigningProject} loadingText="Saving">Save assignment</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <QuickCreateEmployeeModal
+        isOpen={showQuickEmployeeModal}
+        onClose={() => setShowQuickEmployeeModal(false)}
+        existing={assignableUsers}
+        leads={uniqueAssignableUsers.filter((item) => item.role === 'lead')}
+        canCreateLead={userRole !== 'manager'}
+        onCreated={async (created) => {
+          await loadAssignableUsers()
+          setAssignmentUserId(created.id)
+          setFormData((state) => ({ ...state, assigned_to: created.id }))
+        }}
+      />
 
       <ProjectDetailsPanel
         isOpen={showDetails && false}
@@ -364,7 +554,7 @@ export default function Projects() {
   )
 }
 
-function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject }) {
+function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject, canAssignProject, onAssignProject }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
@@ -405,14 +595,13 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
         ) : rows.length ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map((project) => (
-          <button
+          <article
             key={project.id}
-            type="button"
-            onClick={() => onOpenProject(project)}
             title={`${project.name}: ${project.progress}% complete, ${project.remainingTasks} tasks remaining`}
             className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-700 dark:hover:bg-gray-950"
           >
-            <div className="flex items-start gap-3">
+            <button type="button" onClick={() => onOpenProject(project)} className="w-full text-left">
+              <div className="flex items-start gap-3">
               <ProgressRing value={project.progress} />
               <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold leading-5 text-primary-600 dark:text-primary-400">{project.name}</p>
@@ -422,7 +611,8 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
                 <Badge label={project.status.replace(/_/g, ' ')} colorKey={project.status} />
               </div>
               </div>
-            </div>
+              </div>
+            </button>
             <div className="mt-3">
               <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                 <span>Task Budget</span>
@@ -430,7 +620,15 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
               </div>
               <StackedBudgetBar completed={project.completedTasks} remaining={project.remainingTasks} total={project.totalTasks} />
             </div>
-          </button>
+            {onAssignProject && canAssignProject?.(project) ? (
+              <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+                <Button variant="secondary" size="sm" onClick={() => onAssignProject(project)}>
+                  <UserPlus className="h-4 w-4" />
+                  {project.assigned_to ? 'Change assignee' : 'Assign project'}
+                </Button>
+              </div>
+            ) : null}
+          </article>
           ))}
           </div>
         ) : (

@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo } from 'lucide-react'
+import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { EmptyState, SkeletonKanban } from '../components/ui'
+import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/ui'
+import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
 import { useViewStore } from '../store/viewStore'
-import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
+import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
 
@@ -21,9 +22,11 @@ const Tasks = () => {
   const { user } = useAuthStore()
   const { view, setView } = useViewStore()
   const userRole = normalizeRole(user?.role)
-  const canManageTasks = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
+  const canManageTasks = canCreateTask(userRole)
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const routeState = useMemo(() => readTaskRouteState(searchParams), [searchParams])
@@ -42,8 +45,14 @@ const Tasks = () => {
   const [departments, setDepartments] = useState([])
   const [loadingDepartments, setLoadingDepartments] = useState(false)
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState('')
+  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
+  const [showQuickDepartmentModal, setShowQuickDepartmentModal] = useState(false)
   const [dueDateValue, setDueDateValue] = useState('')
   const [estimatedHoursValue, setEstimatedHoursValue] = useState('')
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(1)
+  const pageSize = 20
 
   const statuses = [
     { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
@@ -84,6 +93,13 @@ const Tasks = () => {
     }
   }, [filters, searchParams, searchQuery, setSearchParams, view])
 
+  useEffect(() => {
+    const nextParams = writeTaskRouteState(searchParams, { view, searchQuery, filters, page })
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [filters, page, searchQuery, searchParams, setSearchParams, view])
+
   // Fetch tasks
   const loadAssignableUsers = useCallback(async () => {
     try {
@@ -113,16 +129,20 @@ const Tasks = () => {
     }
   }, [isCompanyAdmin])
 
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(async ({ isRefresh = false } = {}) => {
     try {
-      setLoading(true)
+      if (!isRefresh) setLoading(true)
+      setRefreshing(isRefresh)
+      setLoadError('')
       const data = await tasksAPI.listTasks({
         status: filters.status,
         priority: filters.priority,
         assigned_to: filters.assigned_to,
         department_id: filters.department_id,
+        skip: (page - 1) * pageSize,
+        limit: pageSize,
       })
-      let filteredTasks = data.tasks || []
+      let filteredTasks = Array.isArray(data.tasks) ? data.tasks : []
       
       // Apply search filter
       if (searchQuery.trim()) {
@@ -155,14 +175,17 @@ const Tasks = () => {
       }
       
       setTasks(filteredTasks)
+      setTotalCount(Number(data.total || filteredTasks.length || 0))
     } catch (error) {
       console.error('Error loading tasks:', error)
+      setLoadError(error.response?.data?.detail || error.message || 'Failed to load tasks')
       toast.error('Failed to load tasks')
       setTasks([])
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }, [filters, searchQuery])
+  }, [filters, page, searchQuery])
 
   useEffect(() => {
     loadAssignableUsers()
@@ -201,7 +224,7 @@ const Tasks = () => {
 
   useEffect(() => {
     const handleTasksUpdated = () => {
-      fetchTasks()
+      fetchTasks({ isRefresh: true })
     }
     window.addEventListener('syntask:tasks-updated', handleTasksUpdated)
     const interval = setInterval(handleTasksUpdated, 30000)
@@ -235,12 +258,14 @@ const Tasks = () => {
     if (submitting) return
     setShowCreateModal(false)
     setSelectedDepartmentId('')
+    setSelectedAssigneeId('')
     setDueDateValue('')
     setEstimatedHoursValue('')
   }
 
   const resetFilters = () => {
     setSearchQuery('')
+    setPage(1)
     setFilters({
       status: '',
       priority: '',
@@ -249,12 +274,12 @@ const Tasks = () => {
       due_from: '',
       due_to: '',
     })
-    setSearchParams(writeTaskRouteState(searchParams, { view, searchQuery: '', filters: {} }), { replace: true })
+    setSearchParams(writeTaskRouteState(searchParams, { view, searchQuery: '', filters: {}, page: 1 }), { replace: true })
   }
 
   const handleViewChange = (nextView) => {
     setView(nextView)
-    setSearchParams(writeTaskRouteState(searchParams, { view: nextView, searchQuery, filters }), { replace: true })
+    setSearchParams(writeTaskRouteState(searchParams, { view: nextView, searchQuery, filters, page }), { replace: true })
   }
 
   // Handle create task
@@ -278,7 +303,7 @@ const Tasks = () => {
       const taskData = {
         title: formData.get('title'),
         description: formData.get('description') || '',
-        assigned_to: formData.get('assigned_to') || '',
+        assigned_to: selectedAssigneeId || '',
         priority: formData.get('priority') || 'medium',
         due_date: formData.get('due_date') || dueDateValue || '',
         estimated_hours: formData.get('estimated_hours') || estimatedHoursValue || '',
@@ -288,13 +313,64 @@ const Tasks = () => {
         taskData.department_id = selectedDepartmentId
       }
 
-      await tasksAPI.createTask(taskData)
+      const response = await tasksAPI.createTask(taskData)
+      const createdTask = response?.task || response?.data?.task || response
+      const createdTaskId = createdTask?.id || createdTask?._id || null
+      const createdTaskStatus = createdTask?.status || taskData.status || 'todo'
+      const createdTaskPriority = createdTask?.priority || taskData.priority || 'medium'
+      const createdTaskDepartmentId = createdTask?.department_id || taskData.department_id || ''
+      const createdTaskAssignee = createdTask?.assigned_to || taskData.assigned_to || ''
+      const createdTaskDueDate = createdTask?.due_date || taskData.due_date || ''
+      const createdTaskTitle = createdTask?.title || taskData.title || ''
+
+      const matchesCurrentFilters = () => {
+        if (filters.status && createdTaskStatus !== filters.status) return false
+        if (filters.priority && createdTaskPriority !== filters.priority) return false
+        if (filters.assigned_to && String(createdTaskAssignee || '') !== String(filters.assigned_to)) return false
+        if (filters.department_id && String(createdTaskDepartmentId || '') !== String(filters.department_id)) return false
+        if (filters.due_from || filters.due_to) {
+          if (!createdTaskDueDate) return false
+          const dueDate = new Date(createdTaskDueDate)
+          if (Number.isNaN(dueDate.getTime())) return false
+          if (filters.due_from) {
+            const fromDate = new Date(filters.due_from)
+            fromDate.setHours(0, 0, 0, 0)
+            if (dueDate < fromDate) return false
+          }
+          if (filters.due_to) {
+            const toDate = new Date(filters.due_to)
+            toDate.setHours(23, 59, 59, 999)
+            if (dueDate > toDate) return false
+          }
+        }
+        if (searchQuery.trim()) {
+          const query = searchQuery.trim().toLowerCase()
+          const haystack = `${createdTaskTitle} ${createdTask?.description || ''}`.toLowerCase()
+          if (!haystack.includes(query)) return false
+        }
+        return true
+      }
+
+      if (createdTask && matchesCurrentFilters()) {
+        const normalizedTask = {
+          ...taskData,
+          ...createdTask,
+          id: createdTaskId,
+          status: createdTaskStatus,
+          priority: createdTaskPriority,
+          department_id: createdTaskDepartmentId || null,
+          assigned_to: createdTaskAssignee || null,
+          due_date: createdTaskDueDate || null,
+        }
+        setTasks((current) => [normalizedTask, ...current].slice(0, pageSize))
+        setTotalCount((current) => current + 1)
+      }
       toast.success('✅ Task created successfully!')
       setShowCreateModal(false)
       setSelectedDepartmentId('')
       setDueDateValue('')
       setEstimatedHoursValue('')
-      await fetchTasks()
+      fetchTasks({ isRefresh: true })
       e.target.reset()
     } catch (error) {
       console.error('Error creating task:', error)
@@ -321,6 +397,29 @@ const Tasks = () => {
     )
   }
 
+  if (loadError) {
+    return (
+      <div className="p-4">
+        <EmptyState
+          icon={AlertTriangle}
+          title="Could not load tasks"
+          description={loadError}
+          action={(
+          <button
+            type="button"
+            onClick={() => fetchTasks({ isRefresh: true })}
+            className="btn btn-primary inline-flex items-center gap-2"
+            aria-busy={refreshing || undefined}
+          >
+              <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Try again
+            </button>
+          )}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="p-4">
       {/* Page Header */}
@@ -331,6 +430,15 @@ const Tasks = () => {
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle view={view} onChange={handleViewChange} />
+          <button
+            type="button"
+            onClick={() => fetchTasks({ isRefresh: true })}
+            className="btn btn-secondary inline-flex items-center gap-2"
+            aria-busy={refreshing || undefined}
+          >
+            <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
           {canManageTasks && (
             <button
               onClick={() => {
@@ -381,6 +489,13 @@ const Tasks = () => {
           >
             Reset Filters
           </button>
+        </div>
+        <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
+          <span>Showing {tasks.length} of {totalCount}</span>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={page * pageSize >= totalCount} onClick={() => setPage((value) => value + 1)}>Next</button>
+          </div>
         </div>
 
         {showFilters && (
@@ -483,7 +598,7 @@ const Tasks = () => {
                 {tasks.length === 0 ? (
                   <tr>
                     <td colSpan="4" className="px-4 py-6 text-center text-sm text-gray-500 dark:text-[var(--color-app-text-muted)]">
-                      No tasks yet.
+                      No tasks match the current filters.
                     </td>
                   </tr>
                 ) : (
@@ -494,7 +609,11 @@ const Tasks = () => {
                       className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-[var(--color-app-surface-muted)]"
                     >
                       <td className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-[var(--color-app-text)]">{task.title}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">{task.status}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">
+                        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium capitalize text-gray-700 dark:bg-[var(--color-app-surface-subtle)] dark:text-[var(--color-app-text-secondary)]">
+                          {String(task.status || '').replace(/_/g, ' ')}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">{priorities[task.priority]?.label || task.priority}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">
                         {task.due_date ? format(new Date(task.due_date), 'MMM d') : '—'}
@@ -619,43 +738,47 @@ const Tasks = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                  Assignee
-                </label>
-                <select
+                <CreatableSelectField
                   name="assigned_to"
+                  label="Assignee"
+                  value={selectedAssigneeId}
+                  onChange={setSelectedAssigneeId}
                   className="input"
                   disabled={loadingUsers}
+                  createLabel="Create user"
+                  onCreate={() => setShowQuickEmployeeModal(true)}
+                  canCreate={canManageTasks}
                 >
                   <option value="">Unassigned</option>
                   {uniqueAssignableUsers.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.first_name} {u.last_name} ({u.role === 'lead' ? 'Lead' : 'Employee'})
+                      {u.first_name} {u.last_name} ({u.role || 'user'})
                     </option>
                   ))}
-                </select>
+                </CreatableSelectField>
                 {loadingUsers && (
                   <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">Loading users...</p>
                 )}
                 {!loadingUsers && visibleAssignableUsers.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">
-                    {userRole === ROLE.ADMIN 
-                      ? 'No leads or employees available yet.'
-                      : 'No employees available yet.'}
+                    {userRole === 'admin' || userRole === 'super_admin'
+                      ? 'No managers, leads, or employees available yet.'
+                      : 'No assignable users available yet.'}
                   </p>
                 )}
               </div>
               {isCompanyAdmin && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                    Department
-                  </label>
-                  <select
+                  <CreatableSelectField
                     name="department_id"
+                    label="Department"
                     value={selectedDepartmentId}
-                    onChange={(event) => setSelectedDepartmentId(event.target.value)}
+                    onChange={setSelectedDepartmentId}
                     className="input"
                     disabled={loadingDepartments}
+                    createLabel="Create department"
+                    onCreate={() => setShowQuickDepartmentModal(true)}
+                    canCreate={isCompanyAdmin}
                   >
                     <option value="">No department</option>
                     {uniqueDepartments.map((department) => (
@@ -663,7 +786,7 @@ const Tasks = () => {
                         {department.name}
                       </option>
                     ))}
-                  </select>
+                  </CreatableSelectField>
                   {loadingDepartments && (
                     <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">Loading departments...</p>
                   )}
@@ -728,6 +851,30 @@ const Tasks = () => {
           </div>
         </div>
       )}
+
+      <QuickCreateEmployeeModal
+        isOpen={showQuickEmployeeModal}
+        onClose={() => setShowQuickEmployeeModal(false)}
+        existing={assignableUsers}
+        departments={uniqueDepartments}
+        leads={assignableUsers.filter((item) => item.role === 'lead')}
+        departmentId={selectedDepartmentId}
+        canCreateLead={isCompanyAdmin}
+        onCreated={async (created) => {
+          await loadAssignableUsers()
+          setSelectedAssigneeId(created.id)
+        }}
+      />
+
+      <QuickCreateDepartmentModal
+        isOpen={showQuickDepartmentModal}
+        onClose={() => setShowQuickDepartmentModal(false)}
+        existing={departments}
+        onCreated={async (created) => {
+          await loadDepartments()
+          setSelectedDepartmentId(created.id || created._id)
+        }}
+      />
 
     </div>
   )

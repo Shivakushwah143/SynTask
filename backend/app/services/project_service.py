@@ -212,6 +212,7 @@ class ProjectService:
         status_filter: Optional[str] = None,
         lead_id: Optional[str] = None,
         assigned_to: Optional[str] = None,
+        assigned_user_ids: Optional[list[str]] = None,
         start_date: Optional[str] = None,
         delivery_date: Optional[str] = None,
     ) -> Project:
@@ -257,7 +258,7 @@ class ProjectService:
 
                 project.assigned_to = assigned_to
                 project.assigned_by = str(current_user.id)
-                project.assigned_at = datetime.utcnow()
+                project.assigned_at = datetime.now()
                 if assigned_user.role == UserRole.LEAD:
                     project.lead_id = assigned_to
                 if old_assigned_to != assigned_to:
@@ -266,6 +267,31 @@ class ProjectService:
                 project.assigned_to = None
                 project.assigned_by = None
                 project.assigned_at = None
+
+        if assigned_user_ids is not None:
+            old_ids = [str(item) for item in (getattr(project, "assigned_user_ids", None) or []) if item]
+            clean_ids = []
+            for user_id in assigned_user_ids:
+                user_id = str(user_id).strip()
+                if user_id and user_id not in clean_ids:
+                    await ProjectService._validate_assignee(user_id, current_user.company_id)
+                    clean_ids.append(user_id)
+            project.assigned_user_ids = clean_ids
+            project.assigned_to = clean_ids[0] if clean_ids else None
+            project.assigned_by = str(current_user.id) if clean_ids else None
+            project.assigned_at = datetime.now() if clean_ids else None
+            if old_ids != clean_ids:
+                history = getattr(project, "assignment_history", None) or []
+                history.append({
+                    "assigned_by": str(current_user.id),
+                    "assigned_user_ids": clean_ids,
+                    "assigned_at": datetime.now().isoformat(),
+                    "action": "updated",
+                })
+                project.assignment_history = history
+                for user_id in clean_ids:
+                    if user_id not in old_ids:
+                        await ProjectService._notify_project_assignment(project, user_id, current_user.company_id)
 
         parsed_start_date = await ProjectService._parse_date(start_date, "start date")
         parsed_delivery_date = await ProjectService._parse_date(delivery_date, "delivery date")
@@ -280,6 +306,7 @@ class ProjectService:
                 detail="Start date cannot be after delivery date",
             )
 
-        project.updated_at = datetime.utcnow()
+        project.updated_at = datetime.now()
         await project.save()
         return project
+

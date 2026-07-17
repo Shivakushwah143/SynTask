@@ -19,7 +19,7 @@ import { usersAPI } from '../../../api/users'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection } from '../../../components/crm'
 import { ChartCard } from '../../../components/charts/ChartCard'
 import { ChartTooltip } from '../../../components/charts/ChartTooltip'
-import { Badge, Button, Modal, Skeleton, inputClassName } from '../../../components/ui'
+import { Badge, Button, Modal, PhoneInput, Skeleton, inputClassName } from '../../../components/ui'
 import BulkImportLeadsModal from '../../../components/BulkImportProspectsModal'
 import { useAuthStore } from '../../../store/authStore'
 import { isEmployeeRole, normalizeRole } from '../../../utils/roles'
@@ -29,6 +29,7 @@ import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealVal
 const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
 const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
 const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
+const isValidLeadOwner = (item) => ['lead', 'employee'].includes(normalizeRole(item?.role))
 const getResponseItems = (data, key) => {
   const direct = data?.[key]
   const nested = data?.data?.[key]
@@ -53,6 +54,8 @@ export default function CRMLeadsPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
+  const [createProductOpen, setCreateProductOpen] = useState(false)
   const [showAllLeads, setShowAllLeads] = useState(false)
   const [showAllAccountLeads, setShowAllAccountLeads] = useState(false)
   const [showAllDuplicates, setShowAllDuplicates] = useState(false)
@@ -73,6 +76,8 @@ export default function CRMLeadsPage() {
     remark: '',
     tag: '',
   })
+  const [categoryForm, setCategoryForm] = useState({ name: '' })
+  const [productForm, setProductForm] = useState({ name: '', category_id: '', rate: '', unit: '', state: '', city: '' })
   const [selectedIds, setSelectedIds] = useState([])
   const [leadSearch, setLeadSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
@@ -171,6 +176,7 @@ export default function CRMLeadsPage() {
   
   const categories = useMemo(() => getResponseItems(categoriesQuery.data, 'categories'), [categoriesQuery.data])
   const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
+  const leadOwnerOptions = useMemo(() => assignableUsers.filter(isValidLeadOwner), [assignableUsers])
   
   const userNameById = useMemo(() => {
     const map = new Map()
@@ -185,7 +191,7 @@ export default function CRMLeadsPage() {
   const defaultStageId = getStageValue(stages[0])
   const defaultCategoryId = getOptionId(categories[0])
   const defaultProductIds = getOptionId(products[0])
-  const defaultOwnerId = getUserId(assignableUsers[0]) || currentUserId
+  const defaultOwnerId = getUserId(leadOwnerOptions[0]) || (isValidLeadOwner(user) ? currentUserId : '')
 
   useEffect(() => {
     if (!createOpen) return
@@ -241,6 +247,66 @@ export default function CRMLeadsPage() {
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || 'Unable to create lead')
+      },
+    }
+  )
+
+  const createCategoryMutation = useMutation(
+    (payload) => salesApi.createCategory(payload),
+    {
+      onSuccess: (response) => {
+        const createdCategory = response?.data?.category || response?.data || response
+        if (createdCategory) {
+          queryClient.setQueryData('crm-lead-categories', (current) => {
+            const currentCategories = getResponseItems(current, 'categories')
+            const nextCategories = currentCategories.some((item) => getOptionId(item) === getOptionId(createdCategory))
+              ? currentCategories
+              : [...currentCategories, createdCategory]
+            if (Array.isArray(current)) return nextCategories
+            if (current && typeof current === 'object') return { ...current, categories: nextCategories }
+            return { categories: nextCategories }
+          })
+          setCreateForm((state) => ({ ...state, category_id: getOptionId(createdCategory) || state.category_id }))
+        }
+        toast.success('Category created')
+        queryClient.invalidateQueries('crm-lead-categories', { exact: true })
+        queryClient.invalidateQueries('sales-categories', { exact: true })
+        queryClient.refetchQueries('crm-lead-categories', { exact: true })
+        setCreateCategoryOpen(false)
+        setCategoryForm({ name: '' })
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Unable to create category')
+      },
+    }
+  )
+
+  const createProductMutation = useMutation(
+    (payload) => salesApi.createProduct(payload),
+    {
+      onSuccess: (response) => {
+        const createdProduct = Array.isArray(response?.data) ? response.data[0] : (response?.data?.product || response?.data || response)
+        if (createdProduct) {
+          queryClient.setQueryData('crm-lead-products', (current) => {
+            const currentProducts = getResponseItems(current, 'products')
+            const nextProducts = currentProducts.some((item) => getOptionId(item) === getOptionId(createdProduct))
+              ? currentProducts
+              : [...currentProducts, createdProduct]
+            if (Array.isArray(current)) return nextProducts
+            if (current && typeof current === 'object') return { ...current, products: nextProducts }
+            return { products: nextProducts }
+          })
+          setCreateForm((state) => ({ ...state, product_ids: getOptionId(createdProduct) || state.product_ids }))
+        }
+        toast.success('Product created')
+        queryClient.invalidateQueries('crm-lead-products', { exact: true })
+        queryClient.invalidateQueries('sales-products', { exact: true })
+        queryClient.refetchQueries('crm-lead-products', { exact: true })
+        setCreateProductOpen(false)
+        setProductForm({ name: '', category_id: '', rate: '', unit: '', state: '', city: '' })
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Unable to create product')
       },
     }
   )
@@ -987,6 +1053,10 @@ export default function CRMLeadsPage() {
                 toast.error('First name, last name, and phone are required')
                 return
               }
+              if (!/^\+\d{1,4}$/.test(String(payload.country_code || '')) || !/^\d{10}$/.test(payload.phone)) {
+                toast.error('Use a + country code and exactly 10 phone digits')
+                return
+              }
               if (!payload.assigned_to) {
                 toast.error('No valid owner found for this company')
                 return
@@ -1003,13 +1073,15 @@ export default function CRMLeadsPage() {
                 <span className="text-xs font-medium text-text-muted">Last name *</span>
                 <input className={inputClassName} placeholder="Last name" value={createForm.last_name} onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))} />
               </label>
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-text-muted">Country code</span>
-                <input className={inputClassName} placeholder="Country code" value={createForm.country_code} onChange={(e) => setCreateForm((state) => ({ ...state, country_code: e.target.value }))} />
-              </label>
-              <label className="space-y-1">
+              <label className="space-y-1 md:col-span-2">
                 <span className="text-xs font-medium text-text-muted">Phone *</span>
-                <input className={inputClassName} placeholder="Phone" value={createForm.phone} onChange={(e) => setCreateForm((state) => ({ ...state, phone: e.target.value }))} />
+                <PhoneInput
+                  countryCode={createForm.country_code}
+                  phoneNumber={createForm.phone}
+                  onCountryCodeChange={(value) => setCreateForm((state) => ({ ...state, country_code: value }))}
+                  onPhoneNumberChange={(value) => setCreateForm((state) => ({ ...state, phone: value }))}
+                  required
+                />
               </label>
               <label className="space-y-1">
                 <span className="text-xs font-medium text-text-muted">Email</span>
@@ -1020,7 +1092,10 @@ export default function CRMLeadsPage() {
                 <input className={inputClassName} placeholder="Company name" value={createForm.company_name} onChange={(e) => setCreateForm((state) => ({ ...state, company_name: e.target.value }))} />
               </label>
               <label className="space-y-1">
-                <span className="text-xs font-medium text-text-muted">Category</span>
+                <span className="flex items-center justify-between gap-2 text-xs font-medium text-text-muted">
+                  <span>Category</span>
+                  <button type="button" className="text-primary-600 hover:underline" onClick={() => setCreateCategoryOpen(true)}>+ New category</button>
+                </span>
                 <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
                   <option value="">Select category</option>
                   {categories.map((category) => (
@@ -1029,7 +1104,10 @@ export default function CRMLeadsPage() {
                 </select>
               </label>
               <label className="space-y-1">
-                <span className="text-xs font-medium text-text-muted">Product</span>
+                <span className="flex items-center justify-between gap-2 text-xs font-medium text-text-muted">
+                  <span>Product</span>
+                  <button type="button" className="text-primary-600 hover:underline" onClick={() => setCreateProductOpen(true)}>+ New product</button>
+                </span>
                 <select className={inputClassName} value={createForm.product_ids || defaultProductIds} onChange={(e) => setCreateForm((state) => ({ ...state, product_ids: e.target.value }))}>
                   <option value="">Select product</option>
                   {products.map((product) => (
@@ -1050,12 +1128,12 @@ export default function CRMLeadsPage() {
                 <span className="text-xs font-medium text-text-muted">Owner</span>
                 <select className={inputClassName} value={createForm.assigned_to || defaultOwnerId} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
                   <option value="">Select owner</option>
-                  {assignableUsers.map((userOption) => (
+                  {leadOwnerOptions.map((userOption) => (
                     <option key={getUserId(userOption)} value={getUserId(userOption)}>
                       {userOption.first_name} {userOption.last_name} {userOption.role ? `(${userOption.role})` : ''}
                     </option>
                   ))}
-                  {!assignableUsers.length && defaultOwnerId ? (
+                  {!leadOwnerOptions.length && defaultOwnerId ? (
                     <option value={defaultOwnerId}>{user?.first_name} {user?.last_name} ({user?.role || 'owner'})</option>
                   ) : null}
                 </select>
@@ -1088,6 +1166,100 @@ export default function CRMLeadsPage() {
           </form>
         </Modal>
       )}
+      <Modal
+        isOpen={createCategoryOpen}
+        onClose={() => setCreateCategoryOpen(false)}
+        title="Create category"
+        description="Add a new lead category and keep the lead form open."
+        size="md"
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setCreateCategoryOpen(false)}>Cancel</Button>
+            <Button
+              type="button"
+              loading={createCategoryMutation.isLoading}
+              onClick={() => {
+                if (!categoryForm.name.trim()) {
+                  toast.error('Category name is required')
+                  return
+                }
+                createCategoryMutation.mutate({ name: categoryForm.name.trim() })
+              }}
+            >
+              Save category
+            </Button>
+          </div>
+        )}
+      >
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-text-muted">Category name</span>
+          <input className={inputClassName} value={categoryForm.name} onChange={(e) => setCategoryForm({ name: e.target.value })} placeholder="New category name" />
+        </label>
+      </Modal>
+      <Modal
+        isOpen={createProductOpen}
+        onClose={() => setCreateProductOpen(false)}
+        title="Create product"
+        description="Add a new product and keep the lead form open."
+        size="lg"
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setCreateProductOpen(false)}>Cancel</Button>
+            <Button
+              type="button"
+              loading={createProductMutation.isLoading}
+              onClick={() => {
+                if (!productForm.name.trim()) {
+                  toast.error('Product name is required')
+                  return
+                }
+                createProductMutation.mutate({
+                  name: productForm.name.trim(),
+                  category_id: productForm.category_id || undefined,
+                  rate: productForm.rate || undefined,
+                  unit: productForm.unit.trim(),
+                  state: productForm.state.trim(),
+                  city: productForm.city.trim(),
+                })
+              }}
+            >
+              Save product
+            </Button>
+          </div>
+        )}
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="space-y-1 md:col-span-2">
+            <span className="text-xs font-medium text-text-muted">Product name</span>
+            <input className={inputClassName} value={productForm.name} onChange={(e) => setProductForm((state) => ({ ...state, name: e.target.value }))} placeholder="New product name" />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-text-muted">Category</span>
+            <select className={inputClassName} value={productForm.category_id} onChange={(e) => setProductForm((state) => ({ ...state, category_id: e.target.value }))}>
+              <option value="">Select category</option>
+              {categories.map((category) => (
+                <option key={getOptionId(category)} value={getOptionId(category)}>{category.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-text-muted">Rate</span>
+            <input className={inputClassName} value={productForm.rate} onChange={(e) => setProductForm((state) => ({ ...state, rate: e.target.value }))} placeholder="0" />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-text-muted">Unit</span>
+            <input className={inputClassName} value={productForm.unit} onChange={(e) => setProductForm((state) => ({ ...state, unit: e.target.value }))} placeholder="Each" />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-text-muted">State</span>
+            <input className={inputClassName} value={productForm.state} onChange={(e) => setProductForm((state) => ({ ...state, state: e.target.value }))} placeholder="State" />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-text-muted">City</span>
+            <input className={inputClassName} value={productForm.city} onChange={(e) => setProductForm((state) => ({ ...state, city: e.target.value }))} placeholder="City" />
+          </label>
+        </div>
+      </Modal>
     </CRMPage>
   )
 }

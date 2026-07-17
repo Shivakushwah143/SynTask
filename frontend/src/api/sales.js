@@ -10,6 +10,41 @@ const toFormData = (data) => {
   return formData
 }
 
+const toProspectFormData = (data) => {
+  const formData = toFormData(data)
+  const today = new Date().toISOString().slice(0, 10)
+  const defaults = {
+    category_id: ' ',
+    product_ids: ' ',
+    interest_level: 'medium',
+    estimated_close_date: today,
+    assigned_to: '',
+    current_stage: 'new',
+    email: '',
+    contact_id: '',
+    due_date: '',
+    due_time: '',
+    remark: '',
+    company_name: '',
+    crm_company_id: '',
+    relationship_type: '',
+    channel: '',
+    designation: '',
+    nationality: '',
+    language: '',
+    owner_name: '',
+    owner_contact_no: '',
+    tag: '',
+    greeting_preference: '',
+    custom_fields: '',
+  }
+
+  Object.entries(defaults).forEach(([key, fallback]) => {
+    if (!formData.has(key)) formData.append(key, fallback)
+  })
+  return formData
+}
+
 export const salesApi = {
   getOverview: () => api.get('/sales/dashboard'),
   getContacts: (params) => api.get('/sales/contacts/', { params }),
@@ -20,7 +55,7 @@ export const salesApi = {
   shareContact: (data) => api.post('/sales/contacts/share', data),
   getProspects: (params) => api.get('/sales/prospects/', { params }),
   getProspect: (id) => api.get(`/sales/prospects/${id}`),
-  createProspect: (data) => api.post('/sales/prospects/', data instanceof FormData ? data : toFormData(data)),
+  createProspect: (data) => api.post('/sales/prospects/', data instanceof FormData ? data : toProspectFormData(data)),
   bulkUploadProspects: (payload) => {
     if (payload instanceof FormData) {
       return api.post('/sales/prospects/bulk-upload', payload)

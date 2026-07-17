@@ -59,7 +59,7 @@ async def create_timeline_event(
             description=description,
             related_module=normalized_module,
             related_record_id=str(related_record_id) if related_record_id else None,
-            timestamp=timestamp or datetime.utcnow(),
+            timestamp=timestamp or datetime.now(),
             metadata=metadata or {},
             actor_id=str(actor_id) if actor_id else None,
             idempotency_key=key,
@@ -101,3 +101,4 @@ def _build_idempotency_key(
     else:
         time_key = "instant"
     return f"{user_id}:{event_type.value}:{related_module.value}:{related_record_id or 'none'}:{time_key}"
+

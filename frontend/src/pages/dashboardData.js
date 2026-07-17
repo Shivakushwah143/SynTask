@@ -1,6 +1,6 @@
 import { differenceInCalendarDays, format, isValid, parseISO, startOfDay } from 'date-fns'
 
-const PROJECT_STATUSES = ['active', 'planning', 'completed', 'on_hold']
+const PROJECT_STATUSES = ['created', 'planning', 'active', 'kickoff', 'execution', 'review', 'completed', 'reporting', 'on_hold', 'archived']
 export const TASK_PRIORITY_COLORS = {
   critical: '#991B1B',
   high: '#EF4444',

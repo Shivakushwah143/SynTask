@@ -22,6 +22,7 @@ from app.api.dependencies import (
     check_company_access
 )
 from app.services.user_service import UserService
+from app.api.deps import Pagination20, PaginationParams
 
 router = APIRouter()
 
@@ -45,7 +46,7 @@ async def _resolve_department(company_id: Optional[str], department_id: Optional
 
 async def _build_department_name_map(company_id: Optional[str], users: list[User]) -> dict[str, str]:
     department_ids = {
-        getattr(user, "department_id", None)
+        str(getattr(user, "department_id", None))
         for user in users
         if getattr(user, "department_id", None)
     }
@@ -72,6 +73,11 @@ async def _build_department_name_map(company_id: Optional[str], users: list[User
         }
     ).to_list()
     return {str(department.id): department.name for department in departments}
+
+
+def _department_id_value(user: User) -> Optional[str]:
+    department_id = getattr(user, "department_id", None)
+    return str(department_id) if department_id else None
 
 
 async def _notify_department_assignment(
@@ -169,11 +175,11 @@ async def list_users(
     company_id: str = None,
     role: str = None,
     status_filter: str = Query(None, alias="status"),
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
     """List users with hierarchical RBAC filtering"""
+    skip, limit = pagination.skip, pagination.limit
     # Super Admin can see all users
     if current_user.role == UserRole.SUPER_ADMIN:
         query = {}
@@ -280,8 +286,8 @@ async def list_users(
                 "status": user.status.value,
                 "company_id": user.company_id,
                 "reports_to": user.reports_to,
-                "department_id": getattr(user, "department_id", None),
-                "department_name": department_name_map.get(getattr(user, "department_id", None), None),
+                "department_id": _department_id_value(user),
+                "department_name": department_name_map.get(_department_id_value(user), None),
                 "modules": getattr(user, "modules", []),
                 "active_module": getattr(user, "active_module", None),
                 "created_at": user.created_at,
@@ -368,7 +374,11 @@ async def get_assignable_users(
     # Admin or Super Admin
     is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
     if is_admin or current_user.role == UserRole.SUPER_ADMIN:
-        # Admin can assign to Leads and Employees
+        # Admin can assign tasks to Managers, Leads, and Employees
+        managers = await Manager.find({
+            "company_id": current_user.company_id,
+            "status": UserStatus.ACTIVE
+        }).to_list()
         leads = await Lead.find({
             "company_id": current_user.company_id,
             "status": UserStatus.ACTIVE
@@ -377,7 +387,7 @@ async def get_assignable_users(
             "company_id": current_user.company_id,
             "status": UserStatus.ACTIVE
         }).to_list()
-        users = leads + employees
+        users = managers + leads + employees
     
     elif current_user.role == UserRole.EMPLOYEE:
         if for_tickets:
@@ -437,6 +447,18 @@ async def get_assignable_users(
                     if str(emp.id) not in all_employee_ids:
                         all_employee_ids.add(str(emp.id))
                         users.append(emp)
+
+    elif current_user.role == UserRole.MANAGER:
+        subordinates = await current_user.get_all_subordinates()
+        scope_ids = {str(item.id) for item in subordinates}
+        all_users = await User.find({
+            "company_id": current_user.company_id,
+            "status": UserStatus.ACTIVE,
+        }).to_list()
+        users = [
+            item for item in all_users
+            if str(item.id) in scope_ids and item.role in [UserRole.LEAD, UserRole.EMPLOYEE]
+        ]
     
     return {
         "users": [
@@ -666,7 +688,7 @@ async def create_lead(
 ):
     """Create a Lead (Company Admin only)"""
     # Check if email already exists
-    existing = await User.find_one(User.email == email)
+    existing = await User.find_one({"email": email})
     if existing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -729,9 +751,23 @@ async def create_employee(
     phone: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
+
+    print("\n========== CREATE EMPLOYEE API ==========")
+    print(f"[DEBUG] Email          : {email}")
+    print(f"[DEBUG] Password       : {password}")
+    print(f"[DEBUG] First Name     : {first_name}")
+    print(f"[DEBUG] Last Name      : {last_name}")
+    print(f"[DEBUG] Lead ID        : {lead_id}")
+    print(f"[DEBUG] Department ID  : {department_id}")
+    print(f"[DEBUG] Designation    : {designation}")
+    print(f"[DEBUG] Phone          : {phone}")
+    print(f"[DEBUG] Current User ID: {current_user.id}")
+    print(f"[DEBUG] Current User Email: {current_user.email}")
+    print(f"[DEBUG] Current User Role : {current_user.role}")
+    print("=========================================\n")
     """Create an Employee (Company Admin or Lead)"""
     # Check if email already exists
-    existing = await User.find_one(User.email == email)
+    existing = await User.find_one({"email": email})
     if existing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -769,9 +805,6 @@ async def create_employee(
         phone=phone,
         status=UserStatus.ACTIVE
     )
-    await UserService.update_hierarchy_ancestors(employee)
-    
-    from app.services.user_service import UserService
     await UserService.update_hierarchy_ancestors(employee)
     await employee.insert()
     
@@ -839,7 +872,7 @@ async def update_user_status(
     check_company_access(current_user, user.company_id)
     
     user.status = new_status
-    user.updated_at = datetime.utcnow()
+    user.updated_at = datetime.now()
     await user.save()
     
     return {"message": "User status updated successfully"}
@@ -974,7 +1007,7 @@ async def update_user(
         normalized_email = email.lower()
         # Only check uniqueness if changing email
         if normalized_email != user.email:
-            existing = await User.find_one(User.email == normalized_email)
+            existing = await User.find_one({"email": normalized_email})
             if existing and existing.id != user.id:
                 raise HTTPException(
                     status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -998,7 +1031,7 @@ async def update_user(
                 assigned_by=current_user,
                 previous_department_name=previous_department_name,
             )
-    user.updated_at = datetime.utcnow()
+    user.updated_at = datetime.now()
     await user.save()
 
     return {"message": "User updated successfully"}
@@ -1053,7 +1086,7 @@ async def create_user_hierarchical(
         )
     
     # Check if email already exists
-    existing = await User.find_one(User.email == email.lower())
+    existing = await User.find_one({"email": email.lower()})
     if existing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -1194,3 +1227,4 @@ async def create_user_hierarchical(
         "role": target_role.value,
         "reports_to": reports_to
     }
+

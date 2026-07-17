@@ -52,7 +52,7 @@ async def health_check():
         "status": "healthy",
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now().isoformat(),
     }
 
     checks = {"mongodb": {"ok": True}, "redis": {"ok": False}, "celery": {"ok": False}}
@@ -164,3 +164,4 @@ api_router.include_router(superadmin_plans.router, prefix="/superadmin/plans", t
 api_router.include_router(superadmin_tenants.router, prefix="/superadmin/tenants", tags=["Super Admin - Tenants"])
 api_router.include_router(superadmin_usage.router, prefix="/superadmin/usage", tags=["Super Admin - Usage"])
 api_router.include_router(superadmin_billing.router, prefix="/superadmin/billing", tags=["Super Admin - Billing"])
+

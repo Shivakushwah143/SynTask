@@ -65,7 +65,7 @@ async def get_ledger(
         invoice_list = []
         for inv in paginated_invoices:
             # Calculate days passed
-            days_passed = (datetime.utcnow() - inv.invoice_date).days if inv.invoice_date else 0
+            days_passed = (datetime.now() - inv.invoice_date).days if inv.invoice_date else 0
             
             invoice_list.append({
                 "id": str(inv.id),
@@ -148,7 +148,7 @@ async def add_payment(
         check_company_access(current_user, invoice.company_id)
         
         # Parse payment date
-        payment_date_obj = datetime.utcnow()
+        payment_date_obj = datetime.now()
         if payment_date:
             try:
                 payment_date_obj = datetime.fromisoformat(payment_date.replace('Z', '+00:00'))
@@ -183,7 +183,7 @@ async def add_payment(
         elif invoice.total_received > 0:
             invoice.status = InvoiceStatus.SENT  # Partially paid
         
-        invoice.updated_at = datetime.utcnow()
+        invoice.updated_at = datetime.now()
         await invoice.save()
         
         return {
@@ -247,7 +247,7 @@ async def update_tds(
         elif invoice.total_received > 0:
             invoice.status = InvoiceStatus.SENT
         
-        invoice.updated_at = datetime.utcnow()
+        invoice.updated_at = datetime.now()
         await invoice.save()
         
         return {
@@ -269,3 +269,4 @@ async def update_tds(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update TDS: {str(e)}"
         )
+

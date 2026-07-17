@@ -67,19 +67,10 @@ async def send_password_reset_email(email: str, reset_token: str, user_name: Opt
     if not frontend_url or 'localhost' in frontend_url:
         frontend_url = "https://task.synzent.ai"
     reset_link = f"{frontend_url}/reset-password?token={reset_token}"
-    
-    # Check if email is configured
-    if not EMAIL_CONFIGURED:
-        logger.warning(
-            f"Email not configured. Password reset link for {email}: {reset_link}\n"
-            f"To enable email sending, configure MAIL_USERNAME, MAIL_PASSWORD, and MAIL_SERVER in settings."
-        )
-        return False
 
+    subject = "Reset Your Password - SynTask"
 
     try:
-        # Email subject
-        subject = "Reset Your Password - SynTask"
         
         # Email body (HTML)
         html_body = f"""
@@ -193,8 +184,32 @@ The SynTask Team
 
 © 2025 SynTask. All Rights Reserved.
         """
-        
-        
+        try:
+            from app.services.notification_service import EmailService
+
+            brevo = EmailService()
+            if brevo.configured:
+                result = await brevo.send_email(
+                    to_email=email,
+                    subject=subject,
+                    html=html_body,
+                    text=text_body,
+                    idempotency_key=f"password-reset:{email}:{reset_token[:12]}",
+                )
+                if result.success:
+                    logger.info("Password reset email sent through Brevo to %s", email)
+                    return True
+                logger.error("Brevo password reset email failed for %s: %s", email, result.error or result.status)
+        except Exception as exc:
+            logger.exception("Brevo password reset email raised for %s: %s", email, exc)
+
+        if not EMAIL_CONFIGURED:
+            logger.warning(
+                f"Email not configured. Password reset link for {email}: {reset_link}\n"
+                f"To enable SMTP email sending, configure MAIL_USERNAME, MAIL_PASSWORD, and MAIL_SERVER in settings."
+            )
+            return False
+
         # Check if email can be sent
         if not FASTAPI_MAIL_AVAILABLE or not conf:
             logger.warning(f"Email not available. Password reset link for {email}: {reset_link}")

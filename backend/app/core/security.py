@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from cryptography.fernet import Fernet
 import secrets
@@ -16,7 +16,7 @@ from app.core.config import settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer token
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -34,9 +34,9 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     to_encode = data.copy()
     
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
     to_encode.update({"exp": expire, "type": "access", "jti": secrets.token_urlsafe(16)})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
@@ -47,7 +47,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
 def create_refresh_token(data: Dict[str, Any]) -> str:
     """Create JWT refresh token"""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     
     to_encode.update({"exp": expire, "type": "refresh", "jti": secrets.token_urlsafe(16)})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
@@ -81,9 +81,23 @@ async def decode_token_with_blacklist_check(token: str) -> Dict[str, Any]:
     return decode_token(token)
 
 
-def get_token_from_header(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """Extract token from Authorization header"""
-    return credentials.credentials
+def get_token_from_header(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> str:
+    """Extract token from Authorization header or httpOnly access cookie."""
+    if credentials:
+        return credentials.credentials
+
+    token = request.cookies.get("access_token")
+    if token:
+        return token
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 def verify_token_type(token: str, expected_type: str) -> Dict[str, Any]:
@@ -118,4 +132,5 @@ def encrypt_sensitive_value(value: str) -> str:
 def decrypt_sensitive_value(encrypted_value: str) -> str:
     """Decrypt sensitive values loaded from storage."""
     return Fernet(settings.ENCRYPTION_KEY.encode()).decrypt(encrypted_value.encode()).decode()
+
 

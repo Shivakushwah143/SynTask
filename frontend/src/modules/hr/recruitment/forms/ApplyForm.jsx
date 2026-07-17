@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, FormField, inputClassName } from "../../../../components/ui";
+import { Button, FormField, PhoneInput, inputClassName } from "../../../../components/ui";
 
 export function ApplyForm({ jobId, onSubmit, loading }) {
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", experience_years: 0, skills: "", resume: null });
@@ -24,7 +24,7 @@ export function ApplyForm({ jobId, onSubmit, loading }) {
       <div className="grid gap-4 md:grid-cols-2">
         <FormField label="Full name" error={errors.full_name} required><input className={inputClassName} value={form.full_name} onChange={(e) => setField("full_name", e.target.value)} /></FormField>
         <FormField label="Email" error={errors.email} required><input className={inputClassName} type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} /></FormField>
-        <FormField label="Phone"><input className={inputClassName} value={form.phone} onChange={(e) => setField("phone", e.target.value)} /></FormField>
+        <FormField label="Phone"><PhoneInput className={inputClassName} value={form.phone} onChange={(e) => setField("phone", e.target.value)} /></FormField>
         <FormField label="Experience years"><input className={inputClassName} type="number" value={form.experience_years} onChange={(e) => setField("experience_years", e.target.value)} /></FormField>
       </div>
       <FormField label="Skills" helperText="Comma separated"><input className={inputClassName} value={form.skills} onChange={(e) => setField("skills", e.target.value)} /></FormField>

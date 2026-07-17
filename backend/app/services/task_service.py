@@ -35,10 +35,10 @@ class TaskService:
         task.status = new_status
         status_value = new_status.value if hasattr(new_status, "value") else str(new_status)
         if status_value.lower() in {"completed", "complete", "done"}:
-            task.completed_at = datetime.utcnow()
+            task.completed_at = datetime.now()
         else:
             task.completed_at = None
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now()
         await task.save()
         from app.services.task_health_service import sync_task_health
         await sync_task_health(task)
@@ -80,11 +80,11 @@ class TaskService:
             entry = {
                 "hours": hours,
                 "note": payload.get("time_log_note"),
-                "logged_at": datetime.utcnow(),
+                "logged_at": datetime.now(),
             }
             task.time_logs = list(task.time_logs or []) + [entry]
             task.actual_hours = float(task.actual_hours or 0) + hours
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now()
         await task.save()
         return task
 
@@ -102,7 +102,7 @@ class TaskService:
             by_priority[priority_key] = by_priority.get(priority_key, 0) + 1
             if task.assigned_to:
                 assigned[str(task.assigned_to)] = assigned.get(str(task.assigned_to), 0) + 1
-            if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < datetime.utcnow():
+            if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < datetime.now():
                 overdue += 1
         return {
             "total": total,

@@ -37,6 +37,85 @@ PROJECT_UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "projects"
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def project_assignee_ids(project: Project) -> list[str]:
+    ids = set(str(value) for value in (getattr(project, "assigned_user_ids", None) or []) if value)
+    if getattr(project, "assigned_to", None):
+        ids.add(str(project.assigned_to))
+    if getattr(project, "lead_id", None):
+        ids.add(str(project.lead_id))
+    if getattr(project, "created_by", None):
+        ids.add(str(project.created_by))
+    return list(ids)
+
+
+def enum_or_string_value(value, default: Optional[str] = None) -> Optional[str]:
+    if value is None:
+        return default
+    return getattr(value, "value", value)
+
+
+def normalize_project_type(value: str | None) -> str:
+    normalized = (value or ProjectType.SOFTWARE.value).strip().lower().replace(" ", "_")
+    return normalized or ProjectType.SOFTWARE.value
+
+
+async def scoped_user_ids(current_user: User) -> list[str]:
+    ids = {str(current_user.id)}
+    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+        subordinates = await current_user.get_all_subordinates()
+        ids.update(str(user.id) for user in subordinates)
+    return list(ids)
+
+
+async def can_manage_project(project: Project, current_user: User) -> bool:
+    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+        return True
+    if current_user.company_id != project.company_id:
+        return False
+    if current_user.role == UserRole.MANAGER:
+        scope_ids = await scoped_user_ids(current_user)
+        project_ids = set(project_assignee_ids(project))
+        return str(current_user.id) == project.created_by or bool(project_ids.intersection(scope_ids))
+    return False
+
+
+async def can_create_project(current_user: User) -> bool:
+    return getattr(current_user, "role", UserRole.ADMIN) in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
+
+
+async def validate_project_assignees(
+    current_user: User,
+    company_id: str,
+    assignee_ids: list[str],
+) -> list[User]:
+    clean_ids = []
+    for user_id in assignee_ids:
+        user_id = str(user_id).strip()
+        if user_id and user_id not in clean_ids:
+            clean_ids.append(user_id)
+
+    users = []
+    scope_ids = set(await scoped_user_ids(current_user))
+    for user_id in clean_ids:
+        assignee = await User.get(user_id)
+        if not assignee or assignee.company_id != company_id:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project assignee")
+        if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+            allowed_roles = {UserRole.MANAGER, UserRole.LEAD}
+            if assignee.role not in allowed_roles:
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Admin can assign projects to Managers or Leads")
+        elif current_user.role == UserRole.MANAGER:
+            if str(assignee.id) == str(current_user.id):
+                users.append(assignee)
+                continue
+            if assignee.role != UserRole.LEAD or str(assignee.id) not in scope_ids:
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Manager can assign projects only to scoped Leads")
+        else:
+            raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Cannot assign projects")
+        users.append(assignee)
+    return users
+
+
 async def check_project_access(project: Project, current_user: User) -> bool:
     """
     Check if user has access to a project based on hierarchical visibility
@@ -47,32 +126,17 @@ async def check_project_access(project: Project, current_user: User) -> bool:
     if current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
         return True
     
-    # For Manager, Lead, Employee - check hierarchical access
+    assignee_ids = set(project_assignee_ids(project))
+
     if current_user.role == UserRole.MANAGER:
-        # Manager can access if project is assigned to them or their subordinates
-        subordinates = await current_user.get_all_subordinates()
-        subordinate_ids = [str(sub.id) for sub in subordinates]
-        subordinate_ids.append(str(current_user.id))
-        return project.assigned_to in subordinate_ids
+        scope_ids = set(await scoped_user_ids(current_user))
+        return str(current_user.id) == project.created_by or bool(assignee_ids.intersection(scope_ids))
     
     elif current_user.role == UserRole.LEAD:
-        # Lead can access if project is assigned to them, their managers, or their employees
-        managers = await current_user.get_all_managers()
-        manager_ids = [str(mgr.id) for mgr in managers]
-        
-        subordinates = await current_user.get_all_subordinates()
-        subordinate_ids = [str(sub.id) for sub in subordinates]
-        
-        visible_ids = [str(current_user.id)] + manager_ids + subordinate_ids
-        return project.assigned_to in visible_ids
+        return str(current_user.id) in assignee_ids
     
     elif current_user.role == UserRole.EMPLOYEE:
-        # Employee can access if project is assigned to them or their managers
-        managers = await current_user.get_all_managers()
-        manager_ids = [str(mgr.id) for mgr in managers]
-        
-        visible_ids = [str(current_user.id)] + manager_ids
-        return project.assigned_to in visible_ids
+        return str(current_user.id) in (getattr(project, "team_member_ids", None) or [])
     
     return False
 

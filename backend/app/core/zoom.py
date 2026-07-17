@@ -28,7 +28,7 @@ class ZoomService:
     async def _get_access_token(self) -> str:
         """Get OAuth access token for Zoom API"""
         # If we have a valid token, return it
-        if self.access_token and self.token_expires_at and datetime.utcnow() < self.token_expires_at:
+        if self.access_token and self.token_expires_at and datetime.now() < self.token_expires_at:
             return self.access_token
         
         # Generate new token
@@ -56,7 +56,7 @@ class ZoomService:
                 data = response.json()
                 self.access_token = data.get("access_token")
                 expires_in = data.get("expires_in", 3600)
-                self.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in - 60)  # 1 min buffer
+                self.token_expires_at = datetime.now() + timedelta(seconds=expires_in - 60)  # 1 min buffer
                 return self.access_token
             except Exception as e:
                 logger.error(f"Failed to get Zoom access token: {str(e)}")
@@ -71,7 +71,7 @@ class ZoomService:
                 }
                 token = jwt.encode(payload, self.api_secret, algorithm="HS256")
                 self.access_token = token
-                self.token_expires_at = datetime.utcnow() + timedelta(seconds=3540)  # 59 minutes
+                self.token_expires_at = datetime.now() + timedelta(seconds=3540)  # 59 minutes
                 return self.access_token
             except ImportError:
                 raise ValueError("PyJWT is required for JWT-based Zoom authentication. Install it with: pip install PyJWT")
@@ -171,4 +171,5 @@ class ZoomService:
         except Exception as e:
             logger.error(f"Error deleting Zoom meeting: {str(e)}")
             return False
+
 

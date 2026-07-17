@@ -88,7 +88,7 @@ def _build_lead_created_event(prospect: SalesProspect, actor_name: str) -> Dict[
         event_type="lead_created",
         title="Lead created",
         description=f"{prospect.prospect_name} entered the CRM workspace.",
-        timestamp=prospect.created_at or datetime.utcnow(),
+        timestamp=prospect.created_at or datetime.now(),
         actor=actor_name,
         metadata={
             "company_name": prospect.company_name,
@@ -152,7 +152,7 @@ def _build_note_created_event(note: SalesLeadNote, actor_name: str) -> Dict[str,
         event_type="comment_added",
         title="Note added",
         description=note.content,
-        timestamp=note.created_at or datetime.utcnow(),
+        timestamp=note.created_at or datetime.now(),
         actor=actor_name,
         metadata={
             "note_id": str(note.id),
@@ -171,7 +171,7 @@ def _build_note_updated_event(note: SalesLeadNote, actor_name: str) -> Dict[str,
         event_type="comment_updated",
         title="Note updated",
         description=note.content,
-        timestamp=note.edited_at or note.updated_at or note.created_at or datetime.utcnow(),
+        timestamp=note.edited_at or note.updated_at or note.created_at or datetime.now(),
         actor=actor_name,
         metadata={
             "note_id": str(note.id),
@@ -190,7 +190,7 @@ def _build_note_deleted_event(note: SalesLeadNote, actor_name: str) -> Dict[str,
         event_type="comment_deleted",
         title="Note deleted",
         description=note.content,
-        timestamp=note.deleted_at or note.updated_at or note.created_at or datetime.utcnow(),
+        timestamp=note.deleted_at or note.updated_at or note.created_at or datetime.now(),
         actor=actor_name,
         metadata={
             "note_id": str(note.id),
@@ -209,7 +209,7 @@ def _build_file_uploaded_event(file_record: SalesLeadFile, actor_name: str) -> D
         event_type="file_uploaded",
         title="File uploaded",
         description=file_record.original_name or file_record.file_name,
-        timestamp=file_record.created_at or datetime.utcnow(),
+        timestamp=file_record.created_at or datetime.now(),
         actor=actor_name,
         metadata={
             "file_id": str(file_record.id),
@@ -232,7 +232,7 @@ def _build_file_deleted_event(file_record: SalesLeadFile, actor_name: str) -> Di
         event_type="file_deleted",
         title="File deleted",
         description=file_record.original_name or file_record.file_name,
-        timestamp=file_record.deleted_at or file_record.updated_at or file_record.created_at or datetime.utcnow(),
+        timestamp=file_record.deleted_at or file_record.updated_at or file_record.created_at or datetime.now(),
         actor=actor_name,
         metadata={
             "file_id": str(file_record.id),
@@ -419,3 +419,4 @@ class CRMLeadTimelineService:
             ],
             "summary": summary,
         }
+

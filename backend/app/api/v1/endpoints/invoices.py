@@ -30,14 +30,14 @@ def _invoice_public(invoice: Invoice) -> Dict[str, Any]:
 
 def _parse_payment_date(payment_date: Optional[str]) -> datetime:
     if not payment_date:
-        return datetime.utcnow()
+        return datetime.now()
     try:
         return datetime.fromisoformat(payment_date.replace("Z", "+00:00"))
     except Exception:
         try:
             return datetime.strptime(payment_date, "%Y-%m-%d")
         except Exception:
-            return datetime.utcnow()
+            return datetime.now()
 
 
 async def _apply_invoice_payment(
@@ -77,7 +77,7 @@ async def _apply_invoice_payment(
     invoice_tds = float(invoice.tds_amount or 0)
     invoice.outstanding_amount = max(invoice_total - invoice.total_received - invoice_tds, 0)
     invoice.status = InvoiceStatus.PAID if invoice.outstanding_amount <= 0 else InvoiceStatus.SENT
-    invoice.updated_at = datetime.utcnow()
+    invoice.updated_at = datetime.now()
     await invoice.save()
 
     return {
@@ -107,7 +107,7 @@ async def _get_invoice_for_user(invoice_id: str, current_user: User) -> Invoice:
 
 async def generate_invoice_number_async(company_id: str) -> str:
     """Generate unique invoice number: INV-YYYY-XXXX (async version)"""
-    year = datetime.utcnow().year
+    year = datetime.now().year
     prefix = f"INV-{year}-"
     
     # Find the highest number for this company this year
@@ -202,7 +202,7 @@ async def create_invoice(
     total_amount = subtotal + tax_amount
     
     # Parse dates
-    invoice_date_obj = datetime.utcnow()
+    invoice_date_obj = datetime.now()
     if invoice_date:
         try:
             invoice_date_obj = datetime.fromisoformat(invoice_date.replace('Z', '+00:00'))
@@ -335,7 +335,7 @@ async def seed_demo_invoices(
 
     clients: List[Client] = []
     for data in demo_clients:
-        client = await Client.find_one(Client.company_id == company_id, Client.email == data["email"])
+        client = await Client.find_one({"company_id": company_id, "email": data["email"]})
         if not client:
             client = Client(company_id=company_id, created_by=str(current_user.id), **data)
             await client.insert()
@@ -402,8 +402,8 @@ async def seed_demo_invoices(
             client_country=client.country,
             client_zip_code=client.zip_code,
             client_company_name=client.company_name,
-            invoice_date=datetime.utcnow() + timedelta(days=template["days_offset"]),
-            due_date=datetime.utcnow() + timedelta(days=template["due_days"]),
+            invoice_date=datetime.now() + timedelta(days=template["days_offset"]),
+            due_date=datetime.now() + timedelta(days=template["due_days"]),
             items=items,
             subtotal=subtotal,
             tax_rate=18,
@@ -419,7 +419,7 @@ async def seed_demo_invoices(
         )
         if template["status"] == InvoiceStatus.PAID:
             invoice.payments = [{
-                "date": datetime.utcnow().isoformat(),
+                "date": datetime.now().isoformat(),
                 "amount": total_amount,
                 "payment_method": "demo_payment",
                 "reference_number": f"DEMO-{invoice.invoice_number}",
@@ -639,7 +639,7 @@ async def update_invoice(
     
     # Ensure outstanding amount is up to date
     invoice.outstanding_amount = invoice.total_amount - invoice.total_received - invoice.tds_amount
-    invoice.updated_at = datetime.utcnow()
+    invoice.updated_at = datetime.now()
     await invoice.save()
     
     return {"message": "Invoice updated successfully"}
@@ -694,10 +694,10 @@ async def send_invoice_email(
     send_invoice_email_task.delay(invoice_dict, invoice.client_email, invoice.client_name)
 
     invoice.email_sent = True
-    invoice.email_sent_at = datetime.utcnow()
+    invoice.email_sent_at = datetime.now()
     invoice.email_sent_to = invoice.client_email
     invoice.status = InvoiceStatus.SENT
-    invoice.updated_at = datetime.utcnow()
+    invoice.updated_at = datetime.now()
     await invoice.save()
 
     return {
@@ -735,3 +735,4 @@ async def download_invoice_pdf(
             "Content-Disposition": f'attachment; filename="{filename}"'
         },
     )
+
