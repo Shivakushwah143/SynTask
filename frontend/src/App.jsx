@@ -47,8 +47,9 @@ const Chat = lazy(() => import('./pages/Chat'))
 const Clients = lazy(() => import('./pages/Clients'))
 const ClientWorkspacePage = lazy(() => import('./pages/ClientWorkspace'))
 const Invoices = lazy(() => import('./pages/Invoices'))
-const MSA = lazy(() => import('./pages/MSA'))
-const MSASign = lazy(() => import('./pages/MSASign'))
+// MSA hidden by request. Keep implementation available for later restore.
+// const MSA = lazy(() => import('./pages/MSA'))
+// const MSASign = lazy(() => import('./pages/MSASign'))
 const Ledger = lazy(() => import('./pages/Ledger'))
 const Meetings = lazy(() => import('./pages/Meetings'))
 const Calendar = lazy(() => import('./pages/Calendar'))
@@ -183,7 +184,9 @@ function App() {
         <Route path="/admin-request" element={<PublicRoute><AuthLayout maxWidth="max-w-5xl"><AdminRequest /></AuthLayout></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />
         <Route path="/reset-password" element={<PublicRouteAllowAuth><AuthLayout><ResetPassword /></AuthLayout></PublicRouteAllowAuth>} />
+        {/* MSA hidden by request. Keep route commented for later restore.
         <Route path="/msa/sign/:token" element={<PublicRouteAllowAuth><MSASign /></PublicRouteAllowAuth>} />
+        */}
         <Route path="/careers" element={withBoundary(<CareersLandingPage />)} />
         <Route path="/careers/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
@@ -198,7 +201,9 @@ function App() {
           <Route path="clients" element={withBoundary(<Clients />)} />
           <Route path="clients/:clientId/workspace" element={withBoundary(<ClientWorkspacePage />)} />
           <Route path="invoices" element={withBoundary(<Invoices />)} />
+          {/* MSA hidden by request. Keep route commented for later restore.
           <Route path="msa" element={withBoundary(<MSA />)} />
+          */}
           <Route path="ledger" element={withBoundary(<Ledger />)} />
           <Route path="bulk-leads" element={<CompanyAdminGuard>{withBoundary(<BulkLeads />)}</CompanyAdminGuard>} />
           <Route path="projects" element={withBoundary(<Projects />)} />

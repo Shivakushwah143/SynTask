@@ -54,6 +54,26 @@ const TASK_PRIORITY_STYLES = {
   low: 'border-emerald-200 bg-emerald-50/70 hover:border-emerald-300 dark:border-emerald-700/55 dark:bg-[rgb(22_38_30_/_0.96)] dark:hover:border-emerald-500/75',
 }
 
+const TASK_PRIORITY_OPTIONS = [
+  { value: 'low', label: 'Low', className: 'text-emerald-700 dark:text-emerald-300' },
+  { value: 'medium', label: 'Medium', className: 'text-amber-700 dark:text-amber-300' },
+  { value: 'high', label: 'High', className: 'text-orange-700 dark:text-orange-300' },
+  { value: 'critical', label: 'Critical', className: 'text-rose-700 dark:text-rose-300' },
+]
+
+const TASK_PRIORITY_SELECT_STYLES = {
+  low: 'border-emerald-300 text-emerald-700 focus:border-emerald-500 focus:ring-emerald-500/20 dark:border-emerald-700 dark:text-emerald-300',
+  medium: 'border-amber-300 text-amber-700 focus:border-amber-500 focus:ring-amber-500/20 dark:border-amber-700 dark:text-amber-300',
+  high: 'border-orange-300 text-orange-700 focus:border-orange-500 focus:ring-orange-500/20 dark:border-orange-700 dark:text-orange-300',
+  critical: 'border-rose-300 text-rose-700 focus:border-rose-500 focus:ring-rose-500/20 dark:border-rose-700 dark:text-rose-300',
+}
+
+export function normalizeEstimatedHours(value) {
+  const hours = Number(value)
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return null
+  return String(hours)
+}
+
 const normalizeStatusId = (value) => String(value || '').trim().toLowerCase()
 
 const normalizeBoardColumns = (columns) => {
@@ -122,6 +142,7 @@ export default function ProjectBoard() {
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
   const [assignmentUserId, setAssignmentUserId] = useState('')
   const [taskAssigneeId, setTaskAssigneeId] = useState('')
+  const [createTaskPriority, setCreateTaskPriority] = useState('medium')
   const [selectedStatus, setSelectedStatus] = useState('todo')
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES)
   const [submitting, setSubmitting] = useState(false)
@@ -269,15 +290,20 @@ export default function ProjectBoard() {
   const handleCreateTask = async (event) => {
     event.preventDefault()
     const formData = new FormData(event.target)
+    const estimatedHours = normalizeEstimatedHours(formData.get('estimated_hours'))
+    if (!estimatedHours) {
+      toast.error('Estimated hours must be greater than 0 and no more than 24')
+      return
+    }
     try {
       setSubmitting(true)
       await tasksAPI.createTask({
         title: formData.get('title'),
         description: formData.get('description') || '',
-        priority: formData.get('priority') || 'medium',
+        priority: formData.get('priority') || createTaskPriority || 'medium',
         assigned_to: taskAssigneeId || null,
         due_date: formData.get('due_date'),
-        estimated_hours: formData.get('estimated_hours'),
+        estimated_hours: estimatedHours,
         project_id: projectId,
         status: selectedStatus,
       })
@@ -285,6 +311,7 @@ export default function ProjectBoard() {
       setShowCreateModal(false)
       event.target.reset()
       setTaskAssigneeId('')
+      setCreateTaskPriority('medium')
       await loadBoardData()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create task')
@@ -755,18 +782,36 @@ export default function ProjectBoard() {
           </FormField>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label="Priority">
-              <select name="priority" defaultValue="medium" className={inputClassName}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
+              <select
+                name="priority"
+                value={createTaskPriority}
+                onChange={(event) => setCreateTaskPriority(event.target.value)}
+                className={`${inputClassName} font-semibold ${TASK_PRIORITY_SELECT_STYLES[createTaskPriority] || TASK_PRIORITY_SELECT_STYLES.medium}`}
+              >
+                {TASK_PRIORITY_OPTIONS.map((priority) => (
+                  <option key={priority.value} value={priority.value} className={priority.className}>
+                    {priority.label}
+                  </option>
+                ))}
               </select>
             </FormField>
             <FormField label="Due date" required>
               <input type="datetime-local" name="due_date" required className={inputClassName} />
             </FormField>
             <FormField label="Estimated hours" required>
-              <input type="number" name="estimated_hours" min="0.25" step="0.25" required className={inputClassName} placeholder="8" />
+              <input
+                type="number"
+                name="estimated_hours"
+                min="0.25"
+                max="24"
+                step="0.25"
+                required
+                className={inputClassName}
+                placeholder="8"
+                onInput={(event) => {
+                  if (Number(event.currentTarget.value) > 24) event.currentTarget.value = '24'
+                }}
+              />
             </FormField>
           </div>
           <FormField label="Assign to">

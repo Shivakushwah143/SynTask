@@ -362,7 +362,7 @@ export default function Projects() {
               {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <select className={inputClassName} value={filters.owner} onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}>
-              <option value="">All owners</option>
+              <option value="">All assigned</option>
               {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
             </select>
           </div>

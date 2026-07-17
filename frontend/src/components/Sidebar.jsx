@@ -20,7 +20,7 @@ import {
   DollarSign,
   Factory,
   FileBarChart2,
-  FileCheck2,
+  // FileCheck2, // MSA nav hidden by request.
   FolderKanban,
   Gauge,
   GitBranch,
@@ -323,6 +323,8 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.ADMIN],
       module: "task",
     },
+    /*
+    MSA hidden by request. Keep nav item commented for later restore.
     {
       name: "Agreements",
       href: "/msa",
@@ -330,6 +332,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.ADMIN, ROLE.LEAD],
       module: "task",
     },
+    */
     {
       name: "Ledger",
       href: "/ledger",
@@ -341,7 +344,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: "Users",
       href: "/users",
       icon: UserCog,
-      roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
+      roles: [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN],
       module: "task",
     },
     {
@@ -514,14 +517,16 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "finance",
       label: "Finance Tools",
-      items: ["Agreements", "Subscriptions"]
+      // MSA hidden by request. Restore "Agreements" here when MSA returns.
+      items: ["Subscriptions"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
     {
       key: "administration",
       label: "Administration",
-      items: ["Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices", "Agreements"]
+      // MSA hidden by request. Restore "Agreements" here when MSA returns.
+      items: ["Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },

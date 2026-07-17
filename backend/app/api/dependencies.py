@@ -46,7 +46,7 @@ def require_module(module_name: str):
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role == UserRole.SUPER_ADMIN:
             return current_user
-        if module_name == "sales" and current_user.role == UserRole.EMPLOYEE:
+        if module_name == "sales" and current_user.role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user
         modules = getattr(current_user, "modules", []) or []
         if module_name not in modules:

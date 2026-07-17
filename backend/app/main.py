@@ -294,9 +294,8 @@ async def debug_backend():
 app.include_router(api_router, prefix="/api/v1")
 
 # CORS-enabled avatar endpoint
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pathlib import Path
-from fastapi.responses import FileResponse
 from app.api.dependencies import get_current_user
 from app.api.v1.endpoints.files import UPLOAD_DIR, serve_upload_file
 from app.models.user import User
@@ -306,10 +305,7 @@ avatar_router = APIRouter()
 @avatar_router.get("/uploads/avatars/{filename}")
 async def serve_avatar(filename: str):
     """Serve avatar files with CORS headers"""
-    avatar_path = Path("uploads") / "avatars" / filename
-    if not avatar_path.exists():
-        raise HTTPException(status_code=404, detail="Avatar not found")
-    return FileResponse(avatar_path, headers={"Access-Control-Allow-Origin": "*"})
+    return serve_upload_file(UPLOAD_DIR / "avatars", Path(filename).name)
 
 app.include_router(avatar_router, prefix="/api/v1", include_in_schema=False)
 app.include_router(avatar_router, include_in_schema=False)

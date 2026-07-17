@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Check, Clock, Home, Paperclip, Plus, X, Forward } from 'lucide-react'
+import { CalendarDays, Check, Clock, Home, Paperclip, Plus, X, Send, Forward } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { leavesAPI } from '../api/leaves'
 import { usersAPI } from '../api/users'
-import { PageHeader, Button, Badge, Modal, FormField, inputClassName } from '../components/ui'
+import { PageHeader, Button, Badge, FormField, Modal, inputClassName } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
-import { hasCompanyAdminAccess, isAdminRole, isLeadRole, isManagerRole } from '../utils/roles'
+import { ROLE, hasCompanyAdminAccess, isManagerRole, normalizeRole } from '../utils/roles'
 
 const LEAVE_TYPES = [
   ['full_day', 'Full Day'],
@@ -32,13 +32,31 @@ const defaultActionState = {
   type: null,
   leave: null,
   comment: '',
+  target_user_id: '',
 }
 
 export const canSubmitLeaveRequest = (role) => !hasCompanyAdminAccess(role)
 
+export const canReviewLeaveRequest = (leave, user) => {
+  const userId = String(user?.id || '')
+  const userRole = normalizeRole(user?.role)
+  const employeeRole = normalizeRole(leave?.employee_role)
+  if (!leave || !['pending', 'forwarded'].includes(leave.status) || !userId || String(leave.employee_id) === userId) return false
+  if (!(leave.pending_with_user_ids || []).map(String).includes(userId)) return false
+  if (userRole === ROLE.MANAGER) return [ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole)
+  if (userRole === ROLE.ADMIN) return employeeRole === ROLE.MANAGER || Boolean(leave.forwarded_by)
+  return false
+}
+
+export const canForwardLeaveRequest = (leave, user) => {
+  const userRole = normalizeRole(user?.role)
+  const employeeRole = normalizeRole(leave?.employee_role)
+  return userRole === ROLE.MANAGER && [ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole) && canReviewLeaveRequest(leave, user)
+}
+
 export default function Leaves() {
   const { user } = useAuthStore()
-  const canManage = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role) || isManagerRole(user?.role)
+  const canManage = hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role)
   const canRequestLeave = canSubmitLeaveRequest(user?.role)
   const contentGridClassName = canRequestLeave ? 'grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]' : 'grid gap-6'
   const [form, setForm] = useState(defaultForm)
@@ -46,6 +64,7 @@ export default function Leaves() {
   const [calendar, setCalendar] = useState({ today: [], upcoming: [] })
   const [availability, setAvailability] = useState({ availability: 'working' })
   const [users, setUsers] = useState([])
+  const [forwardTargetUsers, setForwardTargetUsers] = useState([])
   const [filters, setFilters] = useState({ status: '', leave_type: '', employee_id: '', start_date: '', end_date: '' })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -55,6 +74,16 @@ export default function Leaves() {
     const item = users.find((entry) => String(entry.id) === String(filters.employee_id))
     return item ? `${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email : 'All employees'
   }, [filters.employee_id, users])
+
+  const forwardTargets = useMemo(() => {
+    const currentUserId = String(user?.id || '')
+    const requesterId = String(actionState.leave?.employee_id || '')
+    return forwardTargetUsers.filter((item) => {
+      const role = normalizeRole(item.role)
+      const id = String(item.id)
+      return role === ROLE.ADMIN && id !== currentUserId && id !== requesterId
+    })
+  }, [actionState.leave?.employee_id, forwardTargetUsers, user?.id])
 
   const loadData = useCallback(async () => {
     try {
@@ -101,6 +130,20 @@ export default function Leaves() {
     loadUsers()
   }, [canManage, user?.role])
 
+  useEffect(() => {
+    if (!isManagerRole(user?.role)) return
+    const loadForwardTargets = async () => {
+      try {
+        const data = await leavesAPI.forwardTargets()
+        setForwardTargetUsers(data.users || [])
+      } catch (error) {
+        console.error('Error loading leave forward targets:', error)
+        setForwardTargetUsers([])
+      }
+    }
+    loadForwardTargets()
+  }, [user?.role])
+
   const submitLeave = async (event) => {
     event.preventDefault()
     try {
@@ -117,11 +160,15 @@ export default function Leaves() {
   }
 
   const openAction = (type, leave) => {
+    const defaultForwardTargetId = type === 'forward'
+      ? forwardTargetUsers.find((item) => normalizeRole(item.role) === ROLE.ADMIN && String(item.id) !== String(user?.id || '') && String(item.id) !== String(leave?.employee_id || ''))?.id || ''
+      : ''
     setActionState({
       open: true,
       type,
       leave,
       comment: type === 'reject' ? leave?.review_comment || '' : '',
+      target_user_id: defaultForwardTargetId,
     })
   }
 
@@ -129,7 +176,7 @@ export default function Leaves() {
 
   const submitAction = async (event) => {
     event.preventDefault()
-    const { type, leave, comment } = actionState
+    const { type, leave, comment, target_user_id } = actionState
     if (!leave || !type) return
     try {
       if (type === 'approve') {
@@ -143,8 +190,16 @@ export default function Leaves() {
         await leavesAPI.reject(leave.id, comment)
         toast.success('Leave rejected')
       } else if (type === 'forward') {
-        await leavesAPI.forward(leave.id, comment)
-        toast.success('Leave forwarded to admin')
+        if (!target_user_id) {
+          toast.error('Select who should review this leave request')
+          return
+        }
+        if (!comment.trim()) {
+          toast.error('Forwarding reason is required')
+          return
+        }
+        await leavesAPI.forward(leave.id, { target_user_id, comment })
+        toast.success('Leave forwarded')
       } else if (type === 'cancel') {
         await leavesAPI.cancel(leave.id)
         toast.success('Leave cancelled')
@@ -176,25 +231,25 @@ export default function Leaves() {
               <Plus className="h-5 w-5 text-primary-600" />
               <h2 className="section-header">New Request</h2>
             </div>
-            <Field label="Leave type">
-              <select className="input" value={form.leave_type} onChange={(event) => setForm({ ...form, leave_type: event.target.value })}>
+            <FormField label="Leave type" required>
+              <select className={inputClassName} value={form.leave_type} onChange={(event) => setForm({ ...form, leave_type: event.target.value })}>
                 {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
-            </Field>
+            </FormField>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Start date">
-                <input className="input" type="date" required value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} />
-              </Field>
-              <Field label="End date">
-                <input className="input" type="date" required value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} />
-              </Field>
+              <FormField label="Start date" required>
+                <input className={inputClassName} type="date" required value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} />
+              </FormField>
+              <FormField label="End date" required>
+                <input className={inputClassName} type="date" required value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} />
+              </FormField>
             </div>
-            <Field label="Reason">
-              <textarea className="input min-h-28" required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
-            </Field>
-            <Field label="Attachment">
-              <input className="input" type="file" onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} />
-            </Field>
+            <FormField label="Reason" required>
+              <textarea className={`${inputClassName} min-h-28 resize-y`} required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
+            </FormField>
+            <FormField label="Attachment">
+              <input className={inputClassName} type="file" onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} />
+            </FormField>
             <Button type="submit" loading={submitting} className="w-full">Submit Request</Button>
           </form>
         ) : null}
@@ -236,8 +291,8 @@ export default function Leaves() {
                   <LeaveRow
                     key={leave.id}
                     leave={leave}
-                    canManage={canManage}
                     currentUserId={user?.id}
+                    currentUser={user}
                     currentRole={user?.role}
                     onApprove={() => openAction('approve', leave)}
                     onReject={() => openAction('reject', leave)}
@@ -285,23 +340,46 @@ export default function Leaves() {
       >
         <form className="space-y-4" onSubmit={submitAction}>
           {actionState.type === 'reject' || actionState.type === 'forward' || actionState.type === 'approve' ? (
-            <FormField label={actionState.type === 'reject' ? 'Rejection reason' : 'Note to reviewer'}>
-              <textarea
-                className={inputClassName}
-                required={actionState.type === 'reject'}
-                minLength={actionState.type === 'reject' ? 3 : undefined}
-                value={actionState.comment}
-                onChange={(event) => setActionState((current) => ({ ...current, comment: event.target.value }))}
-                placeholder={actionState.type === 'reject' ? 'Explain why this leave request is rejected' : 'Optional internal note'}
-                rows={4}
-              />
-            </FormField>
+            <>
+              {actionState.type === 'forward' ? (
+                <FormField label="Admin reviewer" required>
+                  <select
+                    className={inputClassName}
+                    required
+                    value={actionState.target_user_id}
+                    onChange={(event) => setActionState((current) => ({ ...current, target_user_id: event.target.value }))}
+                  >
+                    <option value="">Select admin</option>
+                    {forwardTargets.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}
+                      </option>
+                    ))}
+                    {!forwardTargets.length ? <option value="" disabled>No admin available</option> : null}
+                  </select>
+                </FormField>
+              ) : null}
+              <FormField label={actionState.type === 'reject' ? 'Rejection reason' : actionState.type === 'forward' ? 'Forwarding reason' : 'Note to reviewer'} required={actionState.type === 'reject' || actionState.type === 'forward'}>
+                <textarea
+                  className={inputClassName}
+                  required={actionState.type === 'reject' || actionState.type === 'forward'}
+                  minLength={actionState.type === 'reject' || actionState.type === 'forward' ? 3 : undefined}
+                  value={actionState.comment}
+                  onChange={(event) => setActionState((current) => ({ ...current, comment: event.target.value }))}
+                  placeholder={actionState.type === 'reject' ? 'Explain why this leave request is rejected' : actionState.type === 'forward' ? 'Explain why this request needs admin review' : 'Optional internal note'}
+                  rows={4}
+                />
+              </FormField>
+            </>
           ) : null}
           {actionState.leave ? (
-            <div className="rounded-2xl border border-surface-border bg-surface-muted/60 p-4 text-sm text-text-secondary">
-              <p className="font-semibold text-text-primary">{actionState.leave.employee_name || 'Employee'}</p>
+            <div className="rounded-xl border border-primary-200/70 bg-primary-50/80 p-4 text-sm text-primary-950 shadow-sm dark:border-primary-500/25 dark:bg-primary-950/20 dark:text-primary-100">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-semibold">{actionState.leave.employee_name || 'Employee'}</p>
+                <Badge label={actionState.leave.status} colorKey={actionState.leave.status} />
+              </div>
               <p className="mt-1">{typeLabel(actionState.leave.leave_type)} · {dateRange(actionState.leave)}</p>
-              <p className="mt-1">{actionState.leave.reason}</p>
+              <p className="mt-3 leading-6 text-text-secondary dark:text-primary-100/85">{actionState.leave.reason}</p>
             </div>
           ) : null}
           <div className="flex flex-wrap justify-end gap-2 pt-2">
@@ -316,10 +394,10 @@ export default function Leaves() {
   )
 }
 
-function LeaveRow({ leave, canManage, currentUserId, currentRole, onApprove, onReject, onForward, onCancel }) {
+function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onForward, onCancel }) {
   const canCancel = leave.status === 'pending' && String(leave.employee_id) === String(currentUserId)
-  const canForward = canManage && isManagerRole(currentRole)
-  const canAdminReviewForwarded = isAdminRole(currentRole) && leave.status === 'forwarded'
+  const canReview = canReviewLeaveRequest(leave, currentUser)
+  const canForward = canForwardLeaveRequest(leave, currentUser)
   return (
     <div className="rounded-2xl border border-surface-border bg-surface-muted/70 p-4 dark:bg-[var(--color-app-surface-muted)]">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -345,20 +423,14 @@ function LeaveRow({ leave, canManage, currentUserId, currentRole, onApprove, onR
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {canManage && leave.status === 'pending' ? (
+          {canReview ? (
             <>
               <Button size="sm" onClick={onApprove}><Check className="h-4 w-4" /> Approve</Button>
               <Button size="sm" variant="danger" onClick={onReject}><X className="h-4 w-4" /> Reject</Button>
-              {canForward ? (
-                <Button size="sm" variant="secondary" onClick={onForward}><Forward className="h-4 w-4" /> Forward</Button>
-              ) : null}
             </>
           ) : null}
-          {canAdminReviewForwarded ? (
-            <>
-              <Button size="sm" onClick={onApprove}><Check className="h-4 w-4" /> Accept</Button>
-              <Button size="sm" variant="danger" onClick={onReject}><X className="h-4 w-4" /> Reject</Button>
-            </>
+          {canForward ? (
+            <Button size="sm" variant="secondary" onClick={onForward}><Send className="h-4 w-4" /> Forward</Button>
           ) : null}
           {canCancel ? (
             <Button size="sm" variant="secondary" onClick={onCancel}>Cancel</Button>
@@ -400,15 +472,6 @@ function StatusCard({ icon: Icon, label, value, colorKey }) {
       </div>
       <span className="sr-only">{colorKey}</span>
     </div>
-  )
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="text-xs font-semibold text-text-secondary">{label}</span>
-      {children}
-    </label>
   )
 }
 

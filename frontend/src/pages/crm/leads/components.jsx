@@ -2,7 +2,7 @@
 import { memo, useEffect, useState } from 'react'
 import { useMutation, useQuery } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, BadgeInfo, CalendarClock, Clock3, FileText, History, Lock, Mail, MessageSquare, Sparkles, StickyNote, Video, Wand2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeInfo, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Route, Sparkles, StickyNote, Video, Wand2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -303,23 +303,91 @@ export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
   )
 })
 
-export const LeadOverview = memo(function LeadOverview({ lead }) {
+const buildLeadOverviewForm = (lead = {}) => ({
+  prospect_name: lead?.prospect_name || '',
+  company_name: lead?.company_name || '',
+  email: lead?.email || '',
+  phone: lead?.phone || '',
+  channel: lead?.channel || '',
+  estimated_close_date: lead?.estimated_close_date ? String(lead.estimated_close_date).slice(0, 10) : '',
+})
+
+export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSaving = false }) {
   const sections = buildLeadOverviewSections(lead)
+  const [isEditing, setIsEditing] = useState(false)
+  const [form, setForm] = useState(() => buildLeadOverviewForm(lead))
+
+  useEffect(() => {
+    setForm(buildLeadOverviewForm(lead))
+  }, [lead])
+
+  const updateField = (field, value) => {
+    setForm((state) => ({ ...state, [field]: value }))
+  }
+
+  const saveOverview = () => {
+    onSubmit?.(form)
+    setIsEditing(false)
+  }
 
   return (
-    <CRMSection title="Lead overview" description="Balanced lead context grouped for quick scanning.">
-      <div className="grid gap-4 lg:grid-cols-2">
-        {sections.map((section, index) => (
-          <LeadOverviewPanel
-            key={section.title}
-            section={section}
-            className={sections.length === 3 && index === 2 ? 'lg:col-span-2' : ''}
-          />
-        ))}
-      </div>
+    <CRMSection
+      title="Lead overview"
+      description="Balanced lead context grouped for quick scanning."
+      actions={(
+        <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditing((value) => !value)}>
+          <Pencil className="h-4 w-4" />
+          {isEditing ? 'Close edit' : 'Edit'}
+        </Button>
+      )}
+    >
+      {isEditing ? (
+        <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <LeadOverviewInput label="Lead name" value={form.prospect_name} onChange={(value) => updateField('prospect_name', value)} />
+            <LeadOverviewInput label="Company" value={form.company_name} onChange={(value) => updateField('company_name', value)} />
+            <LeadOverviewInput label="Email" type="email" value={form.email} onChange={(value) => updateField('email', value)} />
+            <LeadOverviewInput label="Phone" value={form.phone} onChange={(value) => updateField('phone', value)} />
+            <LeadOverviewInput label="Source" value={form.channel} onChange={(value) => updateField('channel', value)} />
+            <LeadOverviewInput label="Estimated close" type="date" value={form.estimated_close_date} onChange={(value) => updateField('estimated_close_date', value)} />
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-surface-border/80 pt-4 dark:border-gray-800">
+            <Button type="button" variant="secondary" onClick={() => { setForm(buildLeadOverviewForm(lead)); setIsEditing(false) }}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" onClick={saveOverview} loading={isSaving}>
+              Review changes
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {sections.map((section, index) => (
+            <LeadOverviewPanel
+              key={section.title}
+              section={section}
+              className={sections.length === 3 && index === 2 ? 'lg:col-span-2' : ''}
+            />
+          ))}
+        </div>
+      )}
     </CRMSection>
   )
 })
+
+function LeadOverviewInput({ label, value, onChange, type = 'text' }) {
+  return (
+    <label className="block rounded-xl border border-surface-border/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{label}</span>
+      <input
+        className={`${inputClassName} mt-2`}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  )
+}
 
 function LeadOverviewPanel({ section, className = '' }) {
   const tone = {
@@ -362,7 +430,7 @@ export const LeadSummaryCards = memo(function LeadSummaryCards({ lead }) {
 function LeadEditField({ field, onChange }) {
   const inputId = `lead-edit-${field.key}`
   return (
-    <label className="block rounded-xl border border-surface-border/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <label className="block rounded-xl border border-white/70 bg-white/85 p-3 shadow-sm transition-colors focus-within:border-primary-300 dark:border-gray-800 dark:bg-gray-950/60 dark:focus-within:border-primary-700">
       <span className="flex items-start justify-between gap-3">
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{field.label}</span>
         <span className="max-w-[9rem] truncate text-xs font-semibold text-gray-900 dark:text-gray-100">{field.displayValue}</span>
@@ -389,6 +457,10 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const [form, setForm] = useState({ current_stage: '', status: '', assigned_to: '', interest_level: '', channel: '', tag: '' })
   const [customFields, setCustomFields] = useState('{}')
   const editFields = buildLeadEditFields({ ...lead, ...form }, stages, users)
+  const sidebarMeta = [
+    { label: 'Stage', value: form.current_stage || lead?.current_stage || 'new' },
+    { label: 'Priority', value: form.interest_level || lead?.interest_level || 'medium' },
+  ]
 
   useEffect(() => {
     const custom = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
@@ -433,8 +505,28 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     saveMutation.mutate(payload)
   }
   return (
-    <div className="space-y-6">
-      <CRMSection title="Update lead" description="Quick edit for ownership and pipeline fields.">
+    <div className="space-y-4 rounded-2xl border border-primary-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,242,232,0.88))] p-4 shadow-[0_18px_44px_rgba(63,49,37,0.09)] dark:border-[#5a4635] dark:bg-[linear-gradient(180deg,rgba(36,28,20,0.96),rgba(20,16,12,0.94))] dark:shadow-[0_18px_44px_rgba(0,0,0,0.28)]">
+      <div className="rounded-xl border border-primary-100/80 bg-white/80 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950/50">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-600 dark:text-primary-300">Lead control</p>
+            <h2 className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">Update workspace</h2>
+          </div>
+          <span className="rounded-xl bg-primary-50 p-2 text-primary-700 ring-1 ring-primary-100 dark:bg-primary-950/50 dark:text-primary-200 dark:ring-primary-900/50">
+            <Layers3 className="h-4 w-4" />
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          {sidebarMeta.map((item) => (
+            <div key={item.label} className="rounded-xl border border-surface-border/70 bg-white/75 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/70">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{item.label}</p>
+              <p className="mt-1 truncate text-sm font-semibold capitalize text-gray-900 dark:text-gray-100">{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <LeadSidebarPanel title="Pipeline edits" description="Ownership, stage and qualification fields.">
         <div className="grid gap-3">
           {editFields.map((field) => (
             <LeadEditField
@@ -444,10 +536,11 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
             />
           ))}
         </div>
-        <Button type="button" variant="primary" className="mt-4 w-full" onClick={saveLead} loading={saveMutation.isLoading || stageMutation.isLoading}>
+        <Button type="button" variant="primary" className="mt-4 w-full justify-center shadow-sm" onClick={saveLead} loading={saveMutation.isLoading || stageMutation.isLoading}>
+          <CheckCircle2 className="h-4 w-4" />
           Save lead
         </Button>
-        <details className="mt-4 rounded-xl border border-surface-border/80 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
+        <details className="mt-4 rounded-xl border border-primary-100/80 bg-primary-50/45 p-4 dark:border-gray-800 dark:bg-gray-950/60">
           <summary className="cursor-pointer list-none text-sm font-medium text-gray-700 dark:text-gray-200">
             Advanced fields
           </summary>
@@ -455,42 +548,78 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
             <textarea className={`${inputClassName} min-h-28`} value={customFields} onChange={(e) => setCustomFields(e.target.value)} placeholder='{"budget":"10000"}' />
           </div>
         </details>
-      </CRMSection>
-      <CRMSection title="Actions" description="Fast links to related CRM areas.">
-        <div className="grid gap-2">
-          <Button type="button" variant="primary" className="justify-between" onClick={onSendEmail}>
-            <span>Send Email</span>
-            <Mail className="h-4 w-4" />
-          </Button>
-          <Link className="btn btn-secondary justify-between" to={activityPath}>
-            <span>Activities</span>
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Button type="button" variant="secondary" className="justify-between" onClick={() => navigate('/crm/pipeline')}>
-            <span>Pipeline</span>
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </CRMSection>
+      </LeadSidebarPanel>
 
-      <CRMSection title="Activity" description="Lead activity and meetings stay visible without duplicating records.">
-        <div className="grid gap-4 xl:grid-cols-2">
-          <LeadTimelineTab />
-          <LeadMeetingsTab />
+      <LeadSidebarPanel title="Actions" description="Fast links to related CRM areas.">
+        <div className="grid gap-3">
+          <LeadSidebarAction icon={Mail} title="Send email" description="Start a lead thread." onClick={onSendEmail} />
+          <LeadSidebarAction as={Link} to={activityPath} icon={Clock3} title="Activities" description="Open lead activity log." />
+          <LeadSidebarAction icon={Route} title="Pipeline" description="Return to pipeline board." onClick={() => navigate('/crm/pipeline')} />
         </div>
-      </CRMSection>
+      </LeadSidebarPanel>
 
-      <CRMSection title="Quick panels" description="Notes, emails, calls and tasks remain available in the workspace.">
-        <div className="grid gap-4 xl:grid-cols-2">
-          <LeadTasksTab />
-          <LeadEmailsTab />
-          <LeadCallLogsTab />
-          <LeadAITab />
+      <LeadSidebarPanel title="Activity" description="Lead activity and meetings stay visible.">
+        <div className="grid gap-3">
+          <LeadSidebarMiniTile icon={History} title="Timeline" value="Coming soon" />
+          <LeadSidebarMiniTile icon={Video} title="Meetings" value="Schedule later" />
         </div>
-      </CRMSection>
+      </LeadSidebarPanel>
+
+      <LeadSidebarPanel title="Quick panels" description="Notes, emails, calls and tasks remain available.">
+        <div className="grid gap-3">
+          <LeadSidebarMiniTile icon={Sparkles} title="Tasks" value="Ready" />
+          <LeadSidebarMiniTile icon={Mail} title="Emails" value="Coming soon" />
+          <LeadSidebarMiniTile icon={Video} title="Calls" value="No logs yet" />
+          <LeadSidebarMiniTile icon={Wand2} title="AI" value="Open AI tab" />
+        </div>
+      </LeadSidebarPanel>
     </div>
   )
 })
+
+function LeadSidebarPanel({ title, description, children }) {
+  return (
+    <section className="rounded-xl border border-white/75 bg-white/72 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-950/45">
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+        <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</p>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function LeadSidebarAction({ as: Component = 'button', icon: Icon, title, description, ...props }) {
+  const commonClass = 'group flex min-h-14 w-full items-center justify-between gap-3 rounded-xl border border-surface-border/80 bg-white/85 px-3 py-3 text-left shadow-sm transition-colors hover:border-primary-200 hover:bg-primary-50/60 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-gray-800 dark:bg-gray-900/70 dark:hover:border-primary-800 dark:hover:bg-primary-950/30'
+  return (
+    <Component type={Component === 'button' ? 'button' : undefined} className={commonClass} {...props}>
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="rounded-lg bg-primary-50 p-2 text-primary-700 ring-1 ring-primary-100 dark:bg-primary-950/60 dark:text-primary-200 dark:ring-primary-900/50">
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</span>
+          <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{description}</span>
+        </span>
+      </span>
+      <ArrowRight className="h-4 w-4 shrink-0 text-gray-400 transition-transform group-hover:translate-x-0.5 group-hover:text-primary-600 dark:text-gray-500 dark:group-hover:text-primary-300" />
+    </Component>
+  )
+}
+
+function LeadSidebarMiniTile({ icon: Icon, title, value }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-surface-border/70 bg-white/80 p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/65">
+      <span className="rounded-lg bg-gray-50 p-2 text-gray-600 ring-1 ring-gray-100 dark:bg-gray-950 dark:text-gray-300 dark:ring-gray-800">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</span>
+        <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{value}</span>
+      </span>
+    </div>
+  )
+}
 
 export const LeadActions = memo(function LeadActions() {
   return (

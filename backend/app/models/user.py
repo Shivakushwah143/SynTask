@@ -130,9 +130,9 @@ class User(Document):
         if self.role == UserRole.ADMIN:
             return target_role in [UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE]
         
-        # Manager can create Manager, Lead
+        # Manager can create Lead and Employee
         if self.role == UserRole.MANAGER:
-            return target_role in [UserRole.MANAGER, UserRole.LEAD]
+            return target_role in [UserRole.LEAD, UserRole.EMPLOYEE]
         
         # Lead can create Employee
         if self.role == UserRole.LEAD:
@@ -198,11 +198,12 @@ CompanyAdmin = Admin
 
 
 class Manager(User):
-    """Manager - Manages teams and can have nested managers"""
+    """Manager - Manages projects and teams."""
     role: UserRole = UserRole.MANAGER
     permissions: List[str] = [
-        "create_managers",
         "create_leads",
+        "create_employees",
+        "manage_tasks",
         "assign_tasks",
         "manage_team",
         "view_team_reports",

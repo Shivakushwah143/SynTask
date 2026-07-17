@@ -20,6 +20,16 @@ import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } fr
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 
+const dedupeUsersById = (items = []) => {
+  const seen = new Set()
+  return items.filter((item) => {
+    const id = String(item?.id || item?._id || '')
+    if (!id || seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
+
 const TaskDetail = () => {
   const { projectId, taskId } = useParams()
   const navigate = useNavigate()
@@ -125,15 +135,19 @@ const TaskDetail = () => {
       }
 
       try {
-        const commentsData = await tasksAPI.getComments(data.id)
+        setLoadingComments(true)
+        const commentsData = await tasksAPI.getComments(taskId)
         setComments(commentsData.comments || [])
       } catch (error) {
         console.error('Error loading comments:', error)
+        setComments([])
+      } finally {
+        setLoadingComments(false)
       }
 
       try {
         const usersData = await usersAPI.getAssignableUsers()
-        setUsers(usersData.users || [])
+        setUsers(dedupeUsersById(usersData.users || []))
       } catch (error) {
         console.error('Error loading users:', error)
       }
@@ -178,7 +192,26 @@ const TaskDetail = () => {
   useEffect(() => {
     const refreshCurrentTask = (event) => {
       const relatedId = event?.detail?.relatedId
-      if (relatedId && String(relatedId) !== String(taskId)) return
+      const metadataTaskId = event?.detail?.metadata?.task_id
+      if (
+        relatedId &&
+        String(relatedId) !== String(taskId) &&
+        (!metadataTaskId || String(metadataTaskId) !== String(taskId))
+      ) return
+      const notificationType = String(event?.detail?.type || '').toLowerCase()
+      const eventName = String(event?.detail?.metadata?.event || '').toLowerCase()
+      if (notificationType === 'task_comment' || eventName === 'task_comment_added') {
+        const refreshComments = async () => {
+          try {
+            const data = await tasksAPI.getComments(taskId)
+            setComments(data.comments || [])
+          } catch (error) {
+            console.error('Error refreshing comments:', error)
+          }
+        }
+        refreshComments()
+        return
+      }
       if (taskId) {
         loadTask()
       }
@@ -997,18 +1030,31 @@ const TaskDetail = () => {
           <div className="p-4 space-y-4">
             {/* Status and Actions */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-gray-500">Status</span>
+                  {updatingStatus && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600">
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Updating...
+                    </span>
+                  )}
+                </div>
                 <select
                   value={taskStatus}
                   onChange={(e) => handleStatusChange(e.target.value)}
                   disabled={updatingStatus}
                   aria-busy={updatingStatus || undefined}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-white"
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-white transition ${
+                    updatingStatus ? 'cursor-wait opacity-70' : ''
+                  }`}
                 >
                   {Object.entries(statuses).map(([key, status]) => (
                     <option key={key} value={key}>{status.label}</option>
                   ))}
                 </select>
+              </div>
+              <div className="flex items-center justify-end">
                 <button className="p-2 hover:bg-gray-200 rounded">
                   <Zap className="h-4 w-4 text-gray-600" />
                 </button>
@@ -1037,10 +1083,19 @@ const TaskDetail = () => {
                 <div className="space-y-3 bg-white rounded-lg p-3 border border-gray-200">
                   {/* Assignee */}
                   <div>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Assignee</label>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium text-gray-500">Assignee</label>
+                      {updatingField === 'assignee' && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600">
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          Updating...
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={task.assigned_to || ''}
                       disabled={updatingField === 'assignee'}
+                      aria-busy={updatingField === 'assignee' || undefined}
                       onChange={async (e) => {
                         const newAssignee = e.target.value
                         try {
@@ -1054,12 +1109,14 @@ const TaskDetail = () => {
                           setUpdatingField(null)
                         }
                       }}
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
+                      className={`w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white transition ${
+                        updatingField === 'assignee' ? 'cursor-wait opacity-70' : ''
+                      }`}
                     >
                       <option value="">Unassigned</option>
                       {users.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.first_name} {u.last_name}
+                        <option key={u.id || u._id} value={u.id || u._id}>
+                          {[u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || 'Team member'}
                         </option>
                       ))}
                     </select>
@@ -1067,10 +1124,19 @@ const TaskDetail = () => {
 
                   {/* Priority */}
                   <div>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Priority</label>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium text-gray-500">Priority</label>
+                      {updatingField === 'priority' && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600">
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          Updating...
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={task.priority}
                       disabled={updatingField === 'priority'}
+                      aria-busy={updatingField === 'priority' || undefined}
                       onChange={async (e) => {
                         try {
                           setUpdatingField('priority')
@@ -1083,7 +1149,9 @@ const TaskDetail = () => {
                           setUpdatingField(null)
                         }
                       }}
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
+                      className={`w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white transition ${
+                        updatingField === 'priority' ? 'cursor-wait opacity-70' : ''
+                      }`}
                     >
                       {Object.entries(priorities).map(([key, priority]) => (
                         <option key={key} value={key}>{priority.label}</option>

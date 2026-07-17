@@ -18,12 +18,13 @@ from app.services.timeline_service import create_timeline_event
 logger = logging.getLogger(__name__)
 
 
-MANAGER_ROLES = {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
+APPROVER_ROLES = {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
+TERMINAL_LEAVE_STATUSES = {LeaveStatus.APPROVED, LeaveStatus.REJECTED, LeaveStatus.CANCELLED}
 
 
 async def assert_leave_view_access(current_user: User, employee: User) -> None:
     if str(current_user.id) == str(employee.id):
-        return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Users cannot view their own leave requests")
     if current_user.role == UserRole.SUPER_ADMIN:
         return
     if current_user.company_id != employee.company_id:
@@ -36,18 +37,117 @@ async def assert_leave_view_access(current_user: User, employee: User) -> None:
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
 
-async def assert_leave_manage_access(current_user: User, employee: User) -> None:
-    if current_user.role not in MANAGER_ROLES:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
+def history_entry(action: str, actor_id: str, *, comment: Optional[str] = None, target_user_id: Optional[str] = None) -> Dict[str, Any]:
+    return {
+        "action": action,
+        "actor_id": str(actor_id),
+        "target_user_id": str(target_user_id) if target_user_id else None,
+        "comment": comment,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+def is_direct_or_indirect_report(manager: User, employee: User) -> bool:
+    manager_id = str(manager.id)
+    return employee.reports_to == manager_id or manager_id in (employee.ancestors or [])
+
+
+def can_approve_leave(current_user: User, employee: User, leave: LeaveRequest) -> bool:
+    current_user_id = str(current_user.id)
+    if current_user_id == str(employee.id) or current_user_id == leave.employee_id:
+        return False
+    if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
+        return False
+    if current_user.role not in APPROVER_ROLES:
+        return False
     if current_user.role == UserRole.SUPER_ADMIN:
-        return
+        return False
     if current_user.company_id != employee.company_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        return False
+    pending_with = {str(item) for item in getattr(leave, "pending_with_user_ids", []) or []}
+    if current_user_id not in pending_with:
+        return False
     if current_user.role == UserRole.ADMIN:
-        return
-    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
-        return
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        return employee.role == UserRole.MANAGER or bool(getattr(leave, "forwarded_by", None))
+    if current_user.role == UserRole.MANAGER:
+        return employee.role in {UserRole.EMPLOYEE, UserRole.LEAD} and is_direct_or_indirect_report(current_user, employee)
+    return False
+
+
+async def assert_leave_manage_access(current_user: User, employee: User, leave: LeaveRequest) -> None:
+    if not can_approve_leave(current_user, employee, leave):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot review this leave request")
+
+
+def assert_leave_mutable(leave: LeaveRequest) -> None:
+    if leave.status in TERMINAL_LEAVE_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalized leave requests cannot be modified")
+
+
+def require_action_comment(comment: Optional[str], label: str) -> str:
+    cleaned = (comment or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{label} is required")
+    return cleaned
+
+
+async def nearest_manager(employee: User) -> Optional[User]:
+    if employee.role == UserRole.LEAD and employee.reports_to:
+        manager = await User.get(employee.reports_to)
+        return manager if manager and manager.role == UserRole.MANAGER else None
+    for ancestor_id in reversed(employee.ancestors or []):
+        ancestor = await User.get(ancestor_id)
+        if ancestor and ancestor.role == UserRole.MANAGER:
+            return ancestor
+    return None
+
+
+async def company_admin_ids(company_id: Optional[str]) -> list[str]:
+    if not company_id:
+        return []
+    admins = await User.find({"company_id": company_id, "role": UserRole.ADMIN.value}).to_list()
+    return [str(admin.id) for admin in admins]
+
+
+async def initial_pending_reviewers(employee: User) -> list[str]:
+    if employee.role in {UserRole.EMPLOYEE, UserRole.LEAD}:
+        manager = await nearest_manager(employee)
+        if manager:
+            return [str(manager.id)]
+        return await company_admin_ids(employee.company_id)
+    if employee.role == UserRole.MANAGER:
+        return await company_admin_ids(employee.company_id)
+    return []
+
+
+def leave_visibility_query(current_user: User, employee_id: Optional[str] = None) -> Dict[str, Any]:
+    current_user_id = str(current_user.id)
+    if employee_id:
+        if employee_id == current_user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Users cannot view their own leave requests")
+        return {"employee_id": employee_id}
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return {}
+    query: Dict[str, Any] = {"company_id": current_user.company_id, "employee_id": {"$ne": current_user_id}}
+    if current_user.role == UserRole.ADMIN:
+        return query
+    if current_user.role == UserRole.MANAGER:
+        query["pending_with_user_ids"] = current_user_id
+        return query
+    query["employee_id"] = "__none__"
+    return query
+
+
+async def assert_forward_target(current_user: User, leave: LeaveRequest, employee: User, target_user: User) -> None:
+    if current_user.role != UserRole.MANAGER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only managers can forward leave requests")
+    await assert_leave_manage_access(current_user, employee, leave)
+    if str(target_user.id) == leave.employee_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot forward leave to requester")
+    if target_user.company_id != leave.company_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forward target outside company")
+    if target_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Forward target must be Admin")
 
 
 def parse_leave_date(value: str, *, end_of_day: bool = False) -> datetime:
@@ -161,9 +261,13 @@ async def notify_admins(company_id: Optional[str], notification_type: Notificati
 
 
 def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dict[str, Any]:
+    employee_role = getattr(leave, "employee_role", None)
+    if not employee_role and employee:
+        employee_role = employee.role.value
     return {
         "id": str(leave.id),
         "employee_id": leave.employee_id,
+        "employee_role": employee_role,
         "employee_name": employee.full_name() if employee else None,
         "company_id": leave.company_id,
         "leave_type": leave.leave_type.value,
@@ -175,9 +279,12 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
         "reviewed_by": leave.reviewed_by,
         "reviewed_at": leave.reviewed_at,
         "review_comment": leave.review_comment,
+        "pending_with_user_ids": [str(item) for item in (getattr(leave, "pending_with_user_ids", []) or [])],
         "forwarded_by": leave.forwarded_by,
+        "forwarded_to_user_id": getattr(leave, "forwarded_to_user_id", None),
         "forwarded_at": leave.forwarded_at,
         "forwarded_to_admin": leave.forwarded_to_admin,
+        "approval_history": getattr(leave, "approval_history", []) or [],
         "cancelled_at": leave.cancelled_at,
         "created_at": leave.created_at,
         "updated_at": leave.updated_at,

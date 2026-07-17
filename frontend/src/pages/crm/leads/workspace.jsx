@@ -6,7 +6,7 @@ import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
 import { EmailComposer } from '../../../components/EmailComposer'
-import { Button } from '../../../components/ui'
+import { Button, ConfirmDialog } from '../../../components/ui'
 import { LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadTasksTab, LeadWorkspace } from './components'
 import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
 import { LEAD_NOTES_QUERY_KEY, LeadNotesTab } from './notes'
@@ -23,6 +23,7 @@ export default function CRMLeadWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [timelineSearch, setTimelineSearch] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
+  const [pendingLeadUpdate, setPendingLeadUpdate] = useState(null)
   const [proposalForm, setProposalForm] = useState({
     title: '',
     summary: '',
@@ -119,6 +120,21 @@ export default function CRMLeadWorkspacePage() {
   }, [setSearchParams])
 
   const openComposer = useCallback(() => setComposerOpen(true), [])
+  const leadUpdateMutation = useMutation(
+    (payload) => salesApi.updateLeadForm(leadId, payload),
+    {
+      onSuccess: async () => {
+        toast.success('Lead updated')
+        setPendingLeadUpdate(null)
+        await leadQuery.refetch()
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'timeline'], { exact: true })
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'history'], { exact: true })
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Lead update failed')
+      },
+    },
+  )
   const proposalMutation = useMutation(
     (payload) => {
       const proposalId = payload.proposalId || proposalQuery.data?.proposals?.[0]?.id || null
@@ -165,6 +181,15 @@ export default function CRMLeadWorkspacePage() {
   const handleProposalArchive = useCallback((proposal) => {
     proposalMutation.mutate({ action: 'archive', proposalId: proposal?.id })
   }, [proposalMutation])
+
+  const handleLeadOverviewSubmit = useCallback((payload) => {
+    setPendingLeadUpdate(payload)
+  }, [])
+
+  const handleConfirmLeadUpdate = useCallback(() => {
+    if (!pendingLeadUpdate) return
+    leadUpdateMutation.mutate(pendingLeadUpdate)
+  }, [leadUpdateMutation, pendingLeadUpdate])
 
   let body
   if (activeTab === 'notes') body = <LeadNotesTab leadId={leadId} lead={lead} />
@@ -217,7 +242,11 @@ export default function CRMLeadWorkspacePage() {
   } else {
     body = (
       <div className="space-y-4">
-        <LeadOverview lead={lead} />
+        <LeadOverview
+          lead={lead}
+          onSubmit={handleLeadOverviewSubmit}
+          isSaving={leadUpdateMutation.isLoading}
+        />
       </div>
     )
   }
@@ -292,6 +321,17 @@ export default function CRMLeadWorkspacePage() {
           related_entity_type: 'lead',
           related_entity_id: leadId,
           related_module: 'crm',
+        }}
+      />
+      <ConfirmDialog
+        isOpen={Boolean(pendingLeadUpdate)}
+        title="Confirm lead changes"
+        message="Review accuracy before saving. These changes will update the lead record."
+        confirmLabel="Save changes"
+        loading={leadUpdateMutation.isLoading}
+        onConfirm={handleConfirmLeadUpdate}
+        onClose={() => {
+          if (!leadUpdateMutation.isLoading) setPendingLeadUpdate(null)
         }}
       />
     </>

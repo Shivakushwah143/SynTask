@@ -49,15 +49,8 @@ export const canCreateTask = (role) => {
 
 export const canManageProject = (role, project, userId) => {
   const normalized = normalizeRole(role)
-  if (normalized === ROLE.ADMIN || normalized === ROLE.SUPER_ADMIN) return true
-  if (normalized !== ROLE.MANAGER || !project || !userId) return false
-  const assignedIds = new Set([
-    ...(project.assigned_user_ids || []),
-    project.assigned_to,
-    project.lead_id,
-    project.created_by,
-  ].filter(Boolean).map(String))
-  return assignedIds.has(String(userId))
+  if (normalized === ROLE.ADMIN || normalized === ROLE.SUPER_ADMIN || normalized === ROLE.MANAGER) return true
+  return false
 }
 
 export const canManageTask = (role, task, userId) => {

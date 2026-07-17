@@ -26,6 +26,7 @@ from app.middleware.rate_limiter import limiter
 from app.api.dependencies import get_current_user
 from app.schemas.auth import RefreshTokenRequest, LoginRequest, ChangePasswordRequest
 from app.core.email import send_password_reset_email as _send_password_reset_email
+from app.services.file_service import FileService
 
 logger = logging.getLogger(__name__)
 
@@ -679,7 +680,7 @@ async def upload_avatar(
             )
         
         # Create avatars directory if it doesn't exist
-        upload_dir = Path(settings.UPLOAD_DIR) / "avatars"
+        upload_dir = FileService.resolve_upload_dir() / "avatars"
         upload_dir.mkdir(parents=True, exist_ok=True)
         
         # Generate unique filename
@@ -693,7 +694,7 @@ async def upload_avatar(
         
         # Delete old avatar if exists
         if current_user.avatar:
-            old_avatar_path = Path(settings.UPLOAD_DIR) / current_user.avatar.lstrip('/uploads/avatars/')
+            old_avatar_path = FileService.resolve_upload_dir() / "avatars" / Path(current_user.avatar).name
             if old_avatar_path.exists() and old_avatar_path.is_file():
                 try:
                     old_avatar_path.unlink()
@@ -734,7 +735,7 @@ async def delete_avatar(
             )
         
         # Delete avatar file
-        avatar_path = Path(settings.UPLOAD_DIR) / current_user.avatar.lstrip('/uploads/avatars/')
+        avatar_path = FileService.resolve_upload_dir() / "avatars" / Path(current_user.avatar).name
         if avatar_path.exists() and avatar_path.is_file():
             try:
                 avatar_path.unlink()

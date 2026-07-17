@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import toast from "react-hot-toast";
-import { Copy, Eye, Plus, Send, Trash2 } from "lucide-react";
+import { Archive, Copy, Eye, Plus, Send } from "lucide-react";
 
 import { recruitmentApi } from "../../../../api/recruitment";
 import { departmentsAPI } from "../../../../api/departments";
@@ -12,6 +12,7 @@ import { RecruitmentDrawer } from "../components/RecruitmentDrawer";
 import { RecruitmentFilters } from "../components/RecruitmentFilters";
 import { RecruitmentTable } from "../components/RecruitmentTable";
 import { StatusBadge } from "../components/StatusBadge";
+import { ConfirmActionDialog } from "../dialogs/RecruitmentDialogs";
 import { compactParams, fmtDate, idOf, labelize, toArray } from "../utils/data";
 
 export default function JobsPage() {
@@ -22,6 +23,7 @@ export default function JobsPage() {
   const [dialogJob, setDialogJob] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [drawerJob, setDrawerJob] = useState(null);
+  const [archiveJob, setArchiveJob] = useState(null);
   const params = compactParams({ page, page_size: 20, search, ...filters });
   const query = useQuery(["recruitment", "jobs", params], () => recruitmentApi.getJobs(params), { keepPreviousData: true });
   const departmentsQuery = useQuery(["recruitment", "departments"], () => departmentsAPI.listDepartments(), { retry: 1 });
@@ -32,8 +34,16 @@ export default function JobsPage() {
     onSuccess: () => { toast.success("Job saved"); setDialogOpen(false); setDialogJob(null); invalidate(); },
   });
   const actionMutation = useMutation(({ action, id }) => recruitmentApi[action](id), {
-    onSuccess: () => { toast.success("Job updated"); invalidate(); },
+    onSuccess: (_, variables) => {
+      toast.success(variables.action === "archiveJob" ? "Job archived" : "Job updated");
+      setArchiveJob(null);
+      invalidate();
+    },
   });
+  const confirmArchiveJob = () => {
+    if (!archiveJob) return;
+    actionMutation.mutate({ id: idOf(archiveJob), action: "archiveJob" });
+  };
   const columns = useMemo(() => [
     { key: "title", header: "Job", render: (job) => <button type="button" className="font-semibold text-primary-700 hover:underline dark:text-primary-300" onClick={() => setDrawerJob(job)}>{job.title}</button> },
     { key: "status", header: "Status", render: (job) => <StatusBadge status={job.lifecycle_status || job.status} /> },
@@ -46,7 +56,10 @@ export default function JobsPage() {
         <Button type="button" size="sm" variant="ghost" onClick={() => { setDialogJob(job); setDialogOpen(true); }}>Edit</Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => actionMutation.mutate({ id: idOf(job), action: "publishJob" })}><Send className="h-4 w-4" /></Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => actionMutation.mutate({ id: idOf(job), action: "duplicateJob" })}><Copy className="h-4 w-4" /></Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => actionMutation.mutate({ id: idOf(job), action: "archiveJob" })}><Trash2 className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" disabled={actionMutation.isLoading} onClick={() => setArchiveJob(job)} title="Archive job" aria-label={`Archive ${job.title || "job"}`}>
+          <Archive className="h-4 w-4" />
+          <span className="sr-only">Archive</span>
+        </Button>
       </div>
     ) },
   ], [actionMutation]);
@@ -66,6 +79,15 @@ export default function JobsPage() {
         onSubmit={(payload) => saveMutation.mutate(payload)}
         loading={saveMutation.isLoading}
         departments={departments}
+      />
+      <ConfirmActionDialog
+        open={!!archiveJob}
+        title="Archive job?"
+        description={archiveJob?.title ? `Archive "${archiveJob.title}"? It will be removed from active hiring lists and can be restored later.` : "Archive this job? It will be removed from active hiring lists and can be restored later."}
+        confirmLabel="Archive job"
+        onClose={() => setArchiveJob(null)}
+        onConfirm={confirmArchiveJob}
+        loading={actionMutation.isLoading}
       />
       <RecruitmentDrawer open={!!drawerJob} title={drawerJob?.title} description="Job details" onClose={() => setDrawerJob(null)}>
         {drawerJob ? <div className="space-y-4 text-sm">

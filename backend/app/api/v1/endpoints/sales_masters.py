@@ -27,7 +27,7 @@ APPROVED_STAGE_METADATA = {
 
 
 def _ensure_admin_permission(user: User):
-    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    if user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Admin access required"

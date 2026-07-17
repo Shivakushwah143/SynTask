@@ -12,10 +12,10 @@ export function JobDialog({ open, job, onClose, onSubmit, loading, departments }
   );
 }
 
-export function InterviewDialog({ open, interview, onClose, onSubmit, loading }) {
+export function InterviewDialog({ open, interview, onClose, onSubmit, loading, candidates = [], jobs = [], interviewers = [] }) {
   return (
     <Modal isOpen={open} onClose={onClose} title={interview ? "Edit interview" : "Schedule interview"} size="xl">
-      <InterviewForm initialValue={interview} onSubmit={onSubmit} loading={loading} />
+      <InterviewForm initialValue={interview} onSubmit={onSubmit} loading={loading} candidates={candidates} jobs={jobs} interviewers={interviewers} />
     </Modal>
   );
 }
