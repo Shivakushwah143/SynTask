@@ -18,6 +18,13 @@ const COMPANY_TEMPLATE = {
   notes: '',
 }
 
+const normalizeCompanyPayload = (payload) =>
+  Object.fromEntries(
+    Object.entries(payload || {})
+      .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value])
+      .filter(([, value]) => value !== '' && value !== undefined && value !== null)
+  )
+
 function CompanyModal({ isOpen, onClose, onSave, company = null }) {
   const [form, setForm] = useState(COMPANY_TEMPLATE)
 
@@ -30,9 +37,14 @@ function CompanyModal({ isOpen, onClose, onSave, company = null }) {
   }, [company, isOpen])
 
   const update = (key, value) => setForm((state) => ({ ...state, [key]: value }))
+  const submit = (event) => {
+    event.preventDefault()
+    onSave(form)
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={company ? 'Edit company' : 'New company'} size="xl">
+      <form onSubmit={submit}>
       <div className="grid gap-4 md:grid-cols-2">
         <FormField label="Company name" required>
           <input className={inputClassName} value={form.name} onChange={(event) => update('name', event.target.value)} />
@@ -57,9 +69,10 @@ function CompanyModal({ isOpen, onClose, onSave, company = null }) {
         </FormField>
       </div>
       <div className="mt-6 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button onClick={() => onSave(form)} disabled={!form.name || Boolean(phoneValidationMessage(form.phone))}>{company ? 'Save' : 'Create'}</Button>
+        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button type="submit" disabled={!form.name || Boolean(phoneValidationMessage(form.phone))}>{company ? 'Save' : 'Create'}</Button>
       </div>
+      </form>
     </Modal>
   )
 }
@@ -77,11 +90,26 @@ export default function CRMCompaniesPage() {
   const companies = useMemo(() => companiesData || [], [companiesData])
 
   const createMutation = useMutation((payload) => crmApi.createCompany(payload), {
-    onSuccess: () => {
+    onSuccess: (response) => {
+      const createdCompany = response?.company || response?.data?.company || null
+      if (createdCompany) {
+        queryClient.setQueryData(['crm-companies', search], (current) => {
+          const currentCompanies = Array.isArray(current?.companies) ? current.companies : []
+          const withoutDuplicate = currentCompanies.filter((company) => company.id !== createdCompany.id)
+          return {
+            ...(current || {}),
+            companies: [createdCompany, ...withoutDuplicate],
+            total: typeof current?.total === 'number' ? current.total + 1 : withoutDuplicate.length + 1,
+          }
+        })
+      }
       toast.success('Company created')
       setCompanyModalOpen(false)
       setEditingCompany(null)
-      queryClient.invalidateQueries('crm-companies')
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.detail || error?.message || 'Failed to create company'
+      toast.error(message)
     },
   })
 
@@ -90,7 +118,11 @@ export default function CRMCompaniesPage() {
       toast.success('Company updated')
       setCompanyModalOpen(false)
       setEditingCompany(null)
-      queryClient.invalidateQueries('crm-companies')
+      queryClient.invalidateQueries(['crm-companies'])
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.detail || error?.message || 'Failed to update company'
+      toast.error(message)
     },
   })
 
@@ -98,7 +130,7 @@ export default function CRMCompaniesPage() {
     onSuccess: () => {
       toast.success('Company deleted')
       setDeleteId(null)
-      queryClient.invalidateQueries('crm-companies')
+      queryClient.invalidateQueries(['crm-companies'])
     },
   })
 
@@ -145,11 +177,12 @@ export default function CRMCompaniesPage() {
   }), [companies])
 
   const onSave = (payload) => {
+    const normalizedPayload = normalizeCompanyPayload(payload)
     if (editingCompany) {
-      updateMutation.mutate({ companyId: editingCompany.id, payload })
+      updateMutation.mutate({ companyId: editingCompany.id, payload: normalizedPayload })
       return
     }
-    createMutation.mutate(payload)
+    createMutation.mutate(normalizedPayload)
   }
 
   return (

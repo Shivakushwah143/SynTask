@@ -86,7 +86,7 @@ const Settings = () => {
             { id: 'profile', label: 'Profile', icon: User },
             { id: 'security', label: 'Security', icon: Lock },
             { id: 'notifications', label: 'Notifications', icon: Bell },
-            { id: 'mail-sync', label: 'Mail Sync', icon: Inbox },
+            ...(user?.role === 'manager' ? [] : [{ id: 'mail-sync', label: 'Mail Sync', icon: Inbox }]),
           ].map((tab) => {
             const Icon = tab.icon
             return (
@@ -173,7 +173,7 @@ const Settings = () => {
         </section>
       )}
 
-      {activeTab === 'mail-sync' && (
+      {activeTab === 'mail-sync' && user?.role !== 'manager' && (
         <section className="card p-5">
           <div className="mb-4 flex items-center gap-2">
             <Mail className="h-5 w-5 text-primary-600" />

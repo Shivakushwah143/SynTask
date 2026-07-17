@@ -203,20 +203,24 @@ class CRMCompanyService:
             company.updated_at = now
             await company.save()
 
-        await publish_crm_timeline_event(
-            event_name="CompanyCreated",
-            aggregate_type="crm_company",
-            aggregate_id=str(company.id),
-            company_id=company.company_id,
-            actor_id=str(getattr(current_user, "id", "")),
-            payload={
-                "company_id": str(company.id),
-                "company_name": company.name,
-                "primary_contact_id": company.primary_contact_id,
-                "timestamp": now.isoformat(),
-            },
-            metadata={"surface": "crm", "workflow": "companies"},
-        )
+        try:
+            await publish_crm_timeline_event(
+                event_name="CompanyCreated",
+                aggregate_type="crm_company",
+                aggregate_id=str(company.id),
+                company_id=company.company_id,
+                actor_id=str(getattr(current_user, "id", "")),
+                payload={
+                    "company_id": str(company.id),
+                    "company_name": company.name,
+                    "primary_contact_id": company.primary_contact_id,
+                    "timestamp": now.isoformat(),
+                },
+                metadata={"surface": "crm", "workflow": "companies"},
+            )
+        except Exception:
+            # Creation should still succeed even if the timeline subsystem is unavailable.
+            pass
 
         return {
             "message": "Company created successfully",

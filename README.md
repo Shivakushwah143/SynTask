@@ -1,4 +1,4 @@
-# SynTask - Multi-Tenant B2B SaaS Task Management Platform
+﻿# SynTask - Multi-Tenant B2B SaaS Task Management Platform
 
 ## Overview
 SynTask is a multi-tenant B2B SaaS platform for task management, project boards, ticketing, client operations, billing workflows, MSA signing, meetings, chat, and sales CRM. It is built for companies that need one operational workspace with tenant isolation, role-based access, and module-based feature access.
@@ -78,6 +78,13 @@ docs/                    Testing guide and diagrams
 SynTask uses a single database with tenant isolation through `company_id` fields. Most tenant-owned models store `company_id`, and API queries use the authenticated user from `get_current_user()` plus dependency helpers to restrict access. Super admins can cross tenant boundaries; company users are scoped to their company.
 
 ## Documentation
+- [Documentation Index](docs/DOCUMENTATION_INDEX.md)
+- [Product Requirements](docs/product/PRD.md)
+- [Detailed Architecture](docs/architecture/DETAILED_ARCHITECTURE.md)
+- [Non-Functional Requirements](docs/architecture/NON_FUNCTIONAL_REQUIREMENTS.md)
+- [Production Deployment Guide](docs/infrastructure/PRODUCTION_DEPLOYMENT_GUIDE.md)
+- [Master Test Plan](docs/quality/TEST_PLAN.md)
+- [Go-Live Readiness](docs/operations/GO_LIVE_READINESS.md)
 - [Architecture](docs/architecture/ARCHITECTURE.md)
 - [Security](docs/infrastructure/SECURITY.md)
 - [Deployment](docs/infrastructure/DEPLOYMENT.md)
@@ -90,3 +97,5 @@ SynTask uses a single database with tenant isolation through `company_id` fields
 
 ## License
 Proprietary. Copyright SynTask / Alphanexis Tech LLC.
+
+Documentation is maintained as part of feature delivery. Repository-wide Codex instructions are in [AGENTS.md](AGENTS.md); every implementation change must review its PRD, user-flow, architecture, testing, deployment, and README impact.

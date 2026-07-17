@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Check, Clock, Home, Paperclip, Plus, Send, X } from 'lucide-react'
+import { CalendarDays, Check, Clock, Home, Paperclip, Plus, X, Send, Forward } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { leavesAPI } from '../api/leaves'
@@ -17,7 +17,7 @@ const LEAVE_TYPES = [
   ['work_from_home', 'Work From Home'],
 ]
 
-const STATUS_OPTIONS = ['pending', 'approved', 'rejected', 'cancelled']
+const STATUS_OPTIONS = ['pending', 'forwarded', 'approved', 'rejected', 'cancelled']
 
 const defaultForm = {
   leave_type: 'full_day',
@@ -27,13 +27,21 @@ const defaultForm = {
   attachment: null,
 }
 
+const defaultActionState = {
+  open: false,
+  type: null,
+  leave: null,
+  comment: '',
+  target_user_id: '',
+}
+
 export const canSubmitLeaveRequest = (role) => !hasCompanyAdminAccess(role)
 
 export const canReviewLeaveRequest = (leave, user) => {
   const userId = String(user?.id || '')
   const userRole = normalizeRole(user?.role)
   const employeeRole = normalizeRole(leave?.employee_role)
-  if (!leave || leave.status !== 'pending' || !userId || String(leave.employee_id) === userId) return false
+  if (!leave || !['pending', 'forwarded'].includes(leave.status) || !userId || String(leave.employee_id) === userId) return false
   if (!(leave.pending_with_user_ids || []).map(String).includes(userId)) return false
   if (userRole === ROLE.MANAGER) return [ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole)
   if (userRole === ROLE.ADMIN) return employeeRole === ROLE.MANAGER || Boolean(leave.forwarded_by)
@@ -59,9 +67,7 @@ export default function Leaves() {
   const [filters, setFilters] = useState({ status: '', leave_type: '', employee_id: '', start_date: '', end_date: '' })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [forwarding, setForwarding] = useState(false)
-  const [forwardLeave, setForwardLeave] = useState(null)
-  const [forwardForm, setForwardForm] = useState({ target_user_id: '', comment: '' })
+  const [actionState, setActionState] = useState(defaultActionState)
 
   const selectedEmployeeName = useMemo(() => {
     const item = users.find((entry) => String(entry.id) === String(filters.employee_id))
@@ -70,13 +76,13 @@ export default function Leaves() {
 
   const forwardTargets = useMemo(() => {
     const currentUserId = String(user?.id || '')
-    const requesterId = String(forwardLeave?.employee_id || '')
+    const requesterId = String(actionState.leave?.employee_id || '')
     return users.filter((item) => {
       const role = normalizeRole(item.role)
       const id = String(item.id)
       return [ROLE.MANAGER, ROLE.ADMIN].includes(role) && id !== currentUserId && id !== requesterId
     })
-  }, [forwardLeave?.employee_id, user?.id, users])
+  }, [actionState.leave?.employee_id, user?.id, users])
 
   const loadData = useCallback(async () => {
     try {
@@ -138,60 +144,47 @@ export default function Leaves() {
     }
   }
 
-  const approveLeave = async (id) => {
-    try {
-      await leavesAPI.approve(id)
-      toast.success('Leave approved')
-      await loadData()
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Unable to approve leave')
-    }
+  const openAction = (type, leave) => {
+    setActionState({
+      open: true,
+      type,
+      leave,
+      comment: type === 'reject' ? leave?.review_comment || '' : '',
+    })
   }
 
-  const rejectLeave = async (id) => {
-    const comment = window.prompt('Reason for rejection') || ''
-    try {
-      await leavesAPI.reject(id, comment)
-      toast.success('Leave rejected')
-      await loadData()
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Unable to reject leave')
-    }
-  }
+  const closeAction = () => setActionState(defaultActionState)
 
-  const openForwardModal = (leave) => {
-    setForwardLeave(leave)
-    setForwardForm({ target_user_id: '', comment: '' })
-  }
-
-  const submitForward = async (event) => {
+  const submitAction = async (event) => {
     event.preventDefault()
-    if (!forwardLeave) return
-    if (!forwardForm.target_user_id) {
-      toast.error('Select who should review this leave request')
-      return
-    }
+    const { type, leave, comment, target_user_id } = actionState
+    if (!leave || !type) return
     try {
-      setForwarding(true)
-      await leavesAPI.forward(forwardLeave.id, forwardForm)
-      toast.success('Leave request forwarded')
-      setForwardLeave(null)
-      setForwardForm({ target_user_id: '', comment: '' })
+      if (type === 'approve') {
+        await leavesAPI.approve(leave.id, comment)
+        toast.success('Leave approved')
+      } else if (type === 'reject') {
+        if (!comment.trim()) {
+          toast.error('Rejection reason is required')
+          return
+        }
+        await leavesAPI.reject(leave.id, comment)
+        toast.success('Leave rejected')
+      } else if (type === 'forward') {
+        if (!target_user_id) {
+          toast.error('Select who should review this leave request')
+          return
+        }
+        await leavesAPI.forward(leave.id, { target_user_id, comment })
+        toast.success('Leave forwarded')
+      } else if (type === 'cancel') {
+        await leavesAPI.cancel(leave.id)
+        toast.success('Leave cancelled')
+      }
+      closeAction()
       await loadData()
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Unable to forward leave')
-    } finally {
-      setForwarding(false)
-    }
-  }
-
-  const cancelLeave = async (id) => {
-    try {
-      await leavesAPI.cancel(id)
-      toast.success('Leave cancelled')
-      await loadData()
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Unable to cancel leave')
+      toast.error(error.response?.data?.detail || `Unable to ${type} leave`)
     }
   }
 
@@ -277,10 +270,11 @@ export default function Leaves() {
                     leave={leave}
                     currentUserId={user?.id}
                     currentUser={user}
-                    onApprove={approveLeave}
-                    onReject={rejectLeave}
-                    onForward={openForwardModal}
-                    onCancel={cancelLeave}
+                    currentRole={user?.role}
+                    onApprove={() => openAction('approve', leave)}
+                    onReject={() => openAction('reject', leave)}
+                    onForward={() => openAction('forward', leave)}
+                    onCancel={() => openAction('cancel', leave)}
                   />
                 ))}
               </div>
@@ -300,31 +294,73 @@ export default function Leaves() {
       </div>
 
       <Modal
-        isOpen={Boolean(forwardLeave)}
-        onClose={() => setForwardLeave(null)}
-        title="Forward Leave Request"
-        description="Send this request to another manager in the hierarchy or to an admin with a review note."
-        footer={(
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setForwardLeave(null)}>Cancel</Button>
-            <Button type="submit" form="forward-leave-form" loading={forwarding}><Send className="h-4 w-4" /> Forward</Button>
-          </div>
-        )}
+        isOpen={actionState.open}
+        onClose={closeAction}
+        title={
+          actionState.type === 'approve'
+            ? 'Approve Leave'
+            : actionState.type === 'reject'
+              ? 'Reject Leave'
+              : actionState.type === 'forward'
+                ? 'Forward to Admin'
+                : 'Cancel Leave'
+        }
+        description={
+          actionState.type === 'reject'
+            ? 'Rejection reason is required and will be shown to the requester.'
+            : actionState.type === 'forward'
+              ? 'Forward this request so an admin can approve or reject it.'
+              : actionState.type === 'cancel'
+                ? 'Confirm that you want to cancel this leave request.'
+                : 'Confirm approval for this leave request.'
+        }
       >
-        <form id="forward-leave-form" onSubmit={submitForward} className="space-y-4">
-          <FormField label="Forward to" required>
-            <select className={inputClassName} required value={forwardForm.target_user_id} onChange={(event) => setForwardForm({ ...forwardForm, target_user_id: event.target.value })}>
-              <option value="">Select reviewer</option>
-              {forwardTargets.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email} ({normalizeRole(item.role)?.replace(/_/g, ' ')})
-                </option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Comment">
-            <textarea className={`${inputClassName} min-h-24 resize-y`} value={forwardForm.comment} onChange={(event) => setForwardForm({ ...forwardForm, comment: event.target.value })} />
-          </FormField>
+        <form className="space-y-4" onSubmit={submitAction}>
+          {actionState.type === 'reject' || actionState.type === 'forward' || actionState.type === 'approve' ? (
+            <>
+              {actionState.type === 'forward' ? (
+                <FormField label="Forward to" required>
+                  <select
+                    className={inputClassName}
+                    required
+                    value={actionState.target_user_id}
+                    onChange={(event) => setActionState((current) => ({ ...current, target_user_id: event.target.value }))}
+                  >
+                    <option value="">Select reviewer</option>
+                    {forwardTargets.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              ) : null}
+              <FormField label={actionState.type === 'reject' ? 'Rejection reason' : 'Note to reviewer'}>
+                <textarea
+                  className={inputClassName}
+                  required={actionState.type === 'reject'}
+                  minLength={actionState.type === 'reject' ? 3 : undefined}
+                  value={actionState.comment}
+                  onChange={(event) => setActionState((current) => ({ ...current, comment: event.target.value }))}
+                  placeholder={actionState.type === 'reject' ? 'Explain why this leave request is rejected' : 'Optional internal note'}
+                  rows={4}
+                />
+              </FormField>
+            </>
+          ) : null}
+          {actionState.leave ? (
+            <div className="rounded-2xl border border-surface-border bg-surface-muted/60 p-4 text-sm text-text-secondary">
+              <p className="font-semibold text-text-primary">{actionState.leave.employee_name || 'Employee'}</p>
+              <p className="mt-1">{typeLabel(actionState.leave.leave_type)} · {dateRange(actionState.leave)}</p>
+              <p className="mt-1">{actionState.leave.reason}</p>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={closeAction}>Close</Button>
+            <Button type="submit">
+              Confirm
+            </Button>
+          </div>
         </form>
       </Modal>
     </div>
@@ -346,6 +382,12 @@ function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onFo
           <p className="mt-1 text-sm text-text-secondary">{leave.employee_name || 'Employee'}</p>
           <p className="mt-1 text-xs text-text-muted">{dateRange(leave)}</p>
           <p className="mt-2 text-sm text-text-secondary">{leave.reason}</p>
+          {leave.forwarded_to_admin ? (
+            <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <Forward className="h-3.5 w-3.5" />
+              Forwarded to admin
+            </p>
+          ) : null}
           {leave.attachment_url ? (
             <a className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 dark:text-primary-300" href={leave.attachment_url} target="_blank" rel="noreferrer">
               <Paperclip className="h-3.5 w-3.5" />
@@ -356,15 +398,15 @@ function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onFo
         <div className="flex flex-wrap gap-2">
           {canReview ? (
             <>
-              <Button size="sm" onClick={() => onApprove(leave.id)}><Check className="h-4 w-4" /> Approve</Button>
-              <Button size="sm" variant="danger" onClick={() => onReject(leave.id)}><X className="h-4 w-4" /> Reject</Button>
+              <Button size="sm" onClick={onApprove}><Check className="h-4 w-4" /> Approve</Button>
+              <Button size="sm" variant="danger" onClick={onReject}><X className="h-4 w-4" /> Reject</Button>
             </>
           ) : null}
           {canForward ? (
-            <Button size="sm" variant="secondary" onClick={() => onForward(leave)}><Send className="h-4 w-4" /> Forward</Button>
+            <Button size="sm" variant="secondary" onClick={onForward}><Send className="h-4 w-4" /> Forward</Button>
           ) : null}
           {canCancel ? (
-            <Button size="sm" variant="secondary" onClick={() => onCancel(leave.id)}>Cancel</Button>
+            <Button size="sm" variant="secondary" onClick={onCancel}>Cancel</Button>
           ) : null}
         </div>
       </div>

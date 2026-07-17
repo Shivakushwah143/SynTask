@@ -145,6 +145,10 @@ async def assert_forward_target(current_user: User, leave: LeaveRequest, employe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot forward leave to yourself")
     if target_user.role == UserRole.MANAGER and not is_direct_or_indirect_report(target_user, employee):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Target manager is outside requester hierarchy")
+        return
+    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
 
 def parse_leave_date(value: str, *, end_of_day: bool = False) -> datetime:
@@ -249,6 +253,14 @@ async def notify_user(user_id: str, company_id: Optional[str], notification_type
         logger.error("Failed to create leave notification: %s", exc)
 
 
+async def notify_admins(company_id: Optional[str], notification_type: NotificationType, title: str, message: str, leave_id: str) -> None:
+    if not company_id:
+        return
+    admins = await User.find({"company_id": company_id, "role": UserRole.ADMIN.value}).to_list()
+    for admin in admins:
+        await notify_user(str(admin.id), company_id, notification_type, title, message, leave_id)
+
+
 def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dict[str, Any]:
     employee_role = getattr(leave, "employee_role", None)
     if not employee_role and employee:
@@ -268,12 +280,9 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
         "reviewed_by": leave.reviewed_by,
         "reviewed_at": leave.reviewed_at,
         "review_comment": leave.review_comment,
-        "pending_with_user_ids": getattr(leave, "pending_with_user_ids", []) or [],
-        "forwarded_to_user_id": getattr(leave, "forwarded_to_user_id", None),
-        "forwarded_by": getattr(leave, "forwarded_by", None),
-        "forwarded_at": getattr(leave, "forwarded_at", None),
-        "forward_comment": getattr(leave, "forward_comment", None),
-        "approval_history": getattr(leave, "approval_history", []) or [],
+        "forwarded_by": leave.forwarded_by,
+        "forwarded_at": leave.forwarded_at,
+        "forwarded_to_admin": leave.forwarded_to_admin,
         "cancelled_at": leave.cancelled_at,
         "created_at": leave.created_at,
         "updated_at": leave.updated_at,

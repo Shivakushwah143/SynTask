@@ -57,7 +57,7 @@ async def update_project(
         description=description,
         status_filter=None,
         lead_id=lead_id,
-        assigned_to=None,
+        assigned_to=parsed_assignee_ids[0] if parsed_assignee_ids else None,
         assigned_user_ids=parsed_assignee_ids,
         start_date=start_date,
         delivery_date=delivery_date,

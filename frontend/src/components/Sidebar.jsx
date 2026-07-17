@@ -44,7 +44,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
-import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
+import { ROLE, getRoleLabel, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
 import { HR_MODULES, HR_ROLES } from "../config/hrModules";
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
@@ -418,11 +418,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       icon: GitBranch,
     },
     {
-      name: "CRM Dashboard",
-      href: "/crm/dashboard",
-      icon: Gauge,
-    },
-    {
       name: "Leads",
       href: "/crm/leads",
       icon: UserRoundSearch,
@@ -535,7 +530,11 @@ const Sidebar = ({ isOpen, onClose }) => {
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
-  ].filter((group) => group.items.length);
+  ]
+    .filter((group) => group.items.length)
+    .filter((group) => !(isManagerRole(userRole) && group.key === "operations"))
+    .filter((group) => !(isManagerRole(userRole) && group.key === "administration"))
+    .filter((group) => !(isManagerRole(userRole) && group.key === "hr"));
 
   return (
     <>
@@ -666,19 +665,21 @@ const Sidebar = ({ isOpen, onClose }) => {
                 showFavorite
               />
             ))}
-            {navigationGroups.map((group) => (
-              <SidebarNavGroup
-                key={group.key}
-                group={group}
-                location={location}
-                collapsed={collapsed}
-                onClose={onClose}
-                favorites={favorites}
-                onToggleFavorite={toggleFavorite}
-                isOpen={openGroups[group.key] ?? true}
-                onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? true) }))}
-              />
-            ))}
+            {navigationGroups
+              .filter((group) => !(isManagerRole(userRole) && group.key === 'hr'))
+              .map((group) => (
+                <SidebarNavGroup
+                  key={group.key}
+                  group={group}
+                  location={location}
+                  collapsed={collapsed}
+                  onClose={onClose}
+                  favorites={favorites}
+                  onToggleFavorite={toggleFavorite}
+                  isOpen={openGroups[group.key] ?? true}
+                  onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? true) }))}
+                />
+              ))}
           </nav>
 
           {/* User Info */}
