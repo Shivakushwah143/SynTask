@@ -45,3 +45,9 @@ flowchart TD
 - Timeline events created: review/approval events may be logged.
 - Notifications sent: none directly.
 - Related modules updated: Projects, Clients.
+
+## AI-enabled Phase 2 flow ownership
+
+The canonical product scope for Project Agent, Task-Specific Subagents, Task Performance Agent, Email Draft Agent, transactional email, automated notifications, and Microsoft 365 integration lives in [Product requirements](../product/PRD.md). This user-flow file remains a route-level implementation reference and should not duplicate Phase 2 agent requirements.
+
+Proposed Phase 2 AI flows must preserve the existing AI Chat, AI Hub, AI Prioritization, and Creative Director workflows. New flows must enforce tenant/project/task authorization server-side, show AI output as draft or recommendation, require human approval before external communication or material record changes, and write audit records for agent runs, approvals, delivery, retries, and failures.
