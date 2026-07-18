@@ -6,7 +6,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, date, timedelta
 
 from app.models.meeting import Meeting
-from app.models.task import Task
+from app.models.task import Task, TaskStatus
+from app.models.project import Project, ProjectStatus
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, check_company_access
 from app.services.project_service import ProjectService
@@ -117,46 +118,38 @@ async def get_calendar_events(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get calendar events (meetings and tasks) for the current user
-    - my_calendar: Only events for the current user
-    - team_calendar: Events for all team members (admin/lead only)
+    Get calendar events (meetings, tasks, projects, milestones) for the current user/team.
+    - my_calendar: Only events assigned to or associated with the current user.
+    - team_calendar: Team events (accessible by Admin, Manager, Lead).
     """
     try:
         start, end, start_at, end_at = parse_calendar_window(start_date, end_date)
         
         events = []
         
-        # Determine which users' events to fetch
+        # Determine user scope
         user_ids_to_fetch = []
+        is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
         
         if view_type == "my_calendar":
-            # Only current user's events
             user_ids_to_fetch = [str(current_user.id)]
         elif view_type == "team_calendar":
-            # Check if user has permission for team calendar
-            # Check access - Admin, Manager, Lead can view team calendar
-            is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
-            
             if not is_admin and current_user.role not in [UserRole.MANAGER, UserRole.LEAD]:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only Admin, Manager, and Lead can view team calendar"
                 )
             
-            # Get all users in the company
             if is_admin:
-                # Company Admin sees all users in company
                 query = {"company_id": current_user.company_id}
                 if employee_id:
                     query["_id"] = employee_id
                 users = await User.find(query).to_list()
                 user_ids_to_fetch = [str(u.id) for u in users]
             elif current_user.role == UserRole.MANAGER:
-                # Manager sees all subordinates
                 subordinates = await current_user.get_all_subordinates()
                 user_ids_to_fetch = [str(sub.id) for sub in subordinates]
                 user_ids_to_fetch.append(str(current_user.id))
-                
                 if employee_id:
                     if employee_id not in user_ids_to_fetch:
                         raise HTTPException(
@@ -164,16 +157,13 @@ async def get_calendar_events(
                             detail="You can only view events for your team members"
                         )
                     user_ids_to_fetch = [employee_id]
-            else:
-                # Lead sees their employees
+            else:  # LEAD
                 employees = await User.find(
                     User.reports_to == str(current_user.id),
                     User.role == UserRole.EMPLOYEE
                 ).to_list()
                 user_ids_to_fetch = [str(e.id) for e in employees]
                 user_ids_to_fetch.append(str(current_user.id))
-                
-                # Filter by employee_id if provided
                 if employee_id:
                     if employee_id not in user_ids_to_fetch:
                         raise HTTPException(
@@ -187,21 +177,18 @@ async def get_calendar_events(
                 detail="view_type must be 'my_calendar' or 'team_calendar'"
             )
         
-        # Fetch meetings
+        # 1. Fetch meetings
         meeting_query = {
             "company_id": current_user.company_id,
             "meeting_date": {"$gte": start_at, "$lte": end_at}
         }
         
-        # Filter by user for meetings
         if view_type == "my_calendar":
-            # User is host or participant
             meeting_query["$or"] = [
                 {"host_id": str(current_user.id)},
                 {"participant_ids": str(current_user.id)}
             ]
         else:
-            # Team calendar - filter by user_ids_to_fetch
             meeting_query["$or"] = [
                 {"host_id": {"$in": user_ids_to_fetch}},
                 {"participant_ids": {"$in": user_ids_to_fetch}}
@@ -209,31 +196,30 @@ async def get_calendar_events(
         
         meetings = await Meeting.find(meeting_query).to_list()
         
-        task_query = build_calendar_task_query(
-            current_user,
-            view_type=view_type,
-            user_ids_to_fetch=user_ids_to_fetch,
-            start_at=start_at,
-            end_at=end_at,
-            project_id=project_id,
-        )
-        tasks = await Task.find(task_query).to_list()
-        
-        # Format meetings as events
+        # Format meetings
+        # Optimize by loading users to map IDs to names
+        user_ids_set = set()
         for meeting in meetings:
-            # Check if meeting is within date range
+            user_ids_set.add(meeting.host_id)
+            user_ids_set.update(meeting.participant_ids)
+        
+        users_cache = {}
+        if user_ids_set:
+            db_users = await User.find({"_id": {"$in": list(user_ids_set)}}).to_list()
+            for u in db_users:
+                users_cache[str(u.id)] = f"{u.first_name} {u.last_name}"
+
+        for meeting in meetings:
             meeting_date = meeting.meeting_date.date() if isinstance(meeting.meeting_date, datetime) else meeting.meeting_date
-            
             if start <= meeting_date <= end:
-                # Get host and participant names
-                host = await User.get(meeting.host_id)
-                host_name = f"{host.first_name} {host.last_name}" if host else "Unknown"
+                host_name = users_cache.get(meeting.host_id, "Unknown")
+                participants = [users_cache.get(pid, pid) for pid in meeting.participant_ids]
                 
-                participants = []
-                for pid in meeting.participant_ids:
-                    p = await User.get(pid)
-                    if p:
-                        participants.append(f"{p.first_name} {p.last_name}")
+                meeting_status = meeting.status.value if hasattr(meeting.status, "value") else str(meeting.status)
+                if meeting_status in {"completed", "cancelled"} or (meeting.meeting_date and meeting.meeting_date < datetime.utcnow()):
+                    color = "#9CA3AF"  # Gray for completed/cancelled/past meetings
+                else:
+                    color = "#8B5CF6"  # Purple for active meetings
                 
                 events.append({
                     "id": f"meeting_{meeting.id}",
@@ -249,29 +235,197 @@ async def get_calendar_events(
                     "participant_ids": meeting.participant_ids,
                     "zoom_meeting_url": meeting.zoom_meeting_url,
                     "zoom_start_url": meeting.zoom_start_url,
-                    "status": meeting.status.value,
-                    "color": "#3B82F6",  # Blue for meetings
+                    "status": meeting_status,
+                    "color": color,
                 })
-        
-        # Format tasks as events
-        for task in tasks:
-            # Use due_date if available, otherwise created_at
-            task_date = None
-            if task.due_date:
-                task_date = task.due_date.date() if isinstance(task.due_date, datetime) else task.due_date
-            elif task.created_at:
-                task_date = task.created_at.date() if isinstance(task.created_at, datetime) else task.created_at
+
+        # 2. Fetch projects
+        project_query = {"company_id": current_user.company_id, "deleted": {"$ne": True}}
+        if not is_admin:
+            if view_type == "my_calendar":
+                project_query["$or"] = [
+                    {"lead_id": str(current_user.id)},
+                    {"assigned_to": str(current_user.id)},
+                    {"team_member_ids": str(current_user.id)}
+                ]
+            else:
+                project_query["$or"] = [
+                    {"lead_id": {"$in": user_ids_to_fetch}},
+                    {"assigned_to": {"$in": user_ids_to_fetch}},
+                    {"team_member_ids": {"$in": user_ids_to_fetch}}
+                ]
+        if project_id:
+            project_query["_id"] = project_id
             
-            if task_date and start <= task_date <= end:
-                # Get assignee name
-                assignee = await User.get(task.assigned_to) if task.assigned_to else None
-                assignee_name = f"{assignee.first_name} {assignee.last_name}" if assignee else "Unassigned"
-                
-                # Get project name if available
-                project_name = await load_calendar_project_name(task.project_id, current_user.company_id)
-                
-                events.append(task_to_calendar_event(task, assignee_name=assignee_name, project_name=project_name))
+        projects = await Project.find(project_query).to_list()
         
+        # Format projects and milestones
+        for project in projects:
+            p_status = project.status.value if hasattr(project.status, "value") else str(project.status)
+            proj_completed = p_status == "completed"
+            
+            # Project Start Event (Blue/Gray)
+            if project.start_date:
+                proj_start_date = project.start_date.date() if isinstance(project.start_date, datetime) else project.start_date
+                if start <= proj_start_date <= end:
+                    events.append({
+                        "id": f"project_start_{project.id}",
+                        "type": "project_start",
+                        "title": f"Project Started: {project.name}",
+                        "description": project.description,
+                        "start": proj_start_date.isoformat(),
+                        "time": project.start_date.strftime("%H:%M") if isinstance(project.start_date, datetime) else None,
+                        "project_id": str(project.id),
+                        "project_name": project.name,
+                        "status": p_status,
+                        "color": "#9CA3AF" if proj_completed else "#3B82F6",  # Blue (Project Start) / Gray (Completed)
+                    })
+            
+            # Project Due Event (Red/Gray)
+            proj_due_date = project.delivery_date or project.end_date
+            if proj_due_date:
+                proj_due_date_parsed = proj_due_date.date() if isinstance(proj_due_date, datetime) else proj_due_date
+                if start <= proj_due_date_parsed <= end:
+                    events.append({
+                        "id": f"project_due_{project.id}",
+                        "type": "project_due",
+                        "title": f"Project Due: {project.name}",
+                        "description": project.description,
+                        "start": proj_due_date_parsed.isoformat(),
+                        "time": proj_due_date.strftime("%H:%M") if isinstance(proj_due_date, datetime) else None,
+                        "project_id": str(project.id),
+                        "project_name": project.name,
+                        "status": p_status,
+                        "color": "#9CA3AF" if proj_completed else "#EF4444",  # Red (Project Due) / Gray (Completed)
+                    })
+            
+            # Milestones (Yellow/Gray)
+            if project.milestones:
+                for idx, milestone in enumerate(project.milestones):
+                    milestone_date_raw = milestone.get("date") or milestone.get("due_date")
+                    if milestone_date_raw:
+                        if isinstance(milestone_date_raw, str):
+                            try:
+                                milestone_date = datetime.fromisoformat(milestone_date_raw.replace("Z", "+00:00"))
+                            except ValueError:
+                                continue
+                        else:
+                            milestone_date = milestone_date_raw
+                        
+                        milestone_date_parsed = milestone_date.date() if isinstance(milestone_date, datetime) else milestone_date
+                        if start <= milestone_date_parsed <= end:
+                            m_status = milestone.get("status", "pending")
+                            m_completed = m_status == "completed" or proj_completed
+                            events.append({
+                                "id": f"project_milestone_{project.id}_{idx}",
+                                "type": "milestone",
+                                "title": f"Milestone: {milestone.get('name') or milestone.get('title')} ({project.name})",
+                                "description": milestone.get("description"),
+                                "start": milestone_date_parsed.isoformat(),
+                                "project_id": str(project.id),
+                                "project_name": project.name,
+                                "status": m_status,
+                                "color": "#9CA3AF" if m_completed else "#EAB308",  # Yellow (Milestone) / Gray (Completed)
+                            })
+
+        # 3. Fetch tasks
+        task_query = build_calendar_task_query(
+            current_user,
+            view_type=view_type,
+            user_ids_to_fetch=user_ids_to_fetch,
+            start_at=start_at,
+            end_at=end_at,
+            project_id=project_id,
+        )
+        tasks = await Task.find(task_query).to_list()
+        
+        # Format tasks
+        # Cache unique assigned_to user names to prevent N+1 queries
+        task_assignee_ids = {task.assigned_to for task in tasks if task.assigned_to}
+        assignee_names_cache = {}
+        if task_assignee_ids:
+            task_users = await User.find({"_id": {"$in": list(task_assignee_ids)}}).to_list()
+            for u in task_users:
+                assignee_names_cache[str(u.id)] = f"{u.first_name} {u.last_name}"
+
+        # Cache unique project names to prevent N+1 queries
+        project_ids_set = {str(task.project_id) for task in tasks if task.project_id}
+        project_names_cache = {}
+        if project_ids_set:
+            # We can lookup by either internal ID or logical project_id
+            db_projects = await Project.find({"$or": [{"_id": {"$in": list(project_ids_set)}}, {"project_id": {"$in": list(project_ids_set)}}]}).to_list()
+            for p in db_projects:
+                project_names_cache[str(p.id)] = p.name
+                if p.project_id:
+                    project_names_cache[p.project_id] = p.name
+
+        for task in tasks:
+            task_status = _enum_value(getattr(task, "status", None), "todo")
+            task_completed = task_status == "completed" or task_status == "done"
+            priority = _enum_value(getattr(task, "priority", None), "medium")
+            
+            assignee_name = assignee_names_cache.get(task.assigned_to, "Unassigned")
+            proj_name = project_names_cache.get(str(task.project_id), task.project_id) if task.project_id else None
+            
+            # Task Start / Assigned Event (Green/Gray)
+            if task.start_date:
+                t_start_date = task.start_date.date() if isinstance(task.start_date, datetime) else task.start_date
+                if start <= t_start_date <= end:
+                    events.append({
+                        "id": f"task_start_{task.id}",
+                        "type": "task_assigned",
+                        "title": f"Task Assigned: {task.title}",
+                        "description": task.description,
+                        "start": t_start_date.isoformat(),
+                        "time": task.start_date.strftime("%H:%M") if isinstance(task.start_date, datetime) else None,
+                        "due_date": task.due_date.isoformat() if getattr(task, "due_date", None) else None,
+                        "assignee": assignee_name,
+                        "assignee_id": task.assigned_to,
+                        "project_id": str(task.project_id) if getattr(task, "project_id", None) else None,
+                        "project_name": proj_name,
+                        "priority": priority,
+                        "status": task_status,
+                        "color": "#9CA3AF" if task_completed else "#10B981",  # Green (Task Assigned) / Gray (Completed)
+                    })
+
+            # Task Due Event (Orange/Yellow/Gray)
+            t_due_date = task.due_date
+            if not t_due_date and task.created_at and not task.start_date:
+                t_due_date = task.created_at
+                
+            if t_due_date:
+                t_due_date_parsed = t_due_date.date() if isinstance(t_due_date, datetime) else t_due_date
+                if start <= t_due_date_parsed <= end:
+                    # Upcoming deadline check (due within next 3 days, and not completed)
+                    if task_completed:
+                        color = "#9CA3AF"  # Gray for Completed
+                    else:
+                        if isinstance(t_due_date, datetime):
+                            time_diff = t_due_date - datetime.utcnow()
+                            if timedelta(days=0) <= time_diff <= timedelta(days=3):
+                                color = "#EAB308"  # Yellow - Upcoming Deadline
+                            else:
+                                color = "#F97316"  # Orange - Task Due
+                        else:
+                            color = "#F97316"
+                    
+                    events.append({
+                        "id": f"task_due_{task.id}",
+                        "type": "task_due",
+                        "title": f"Task Due: {task.title}",
+                        "description": task.description,
+                        "start": t_due_date_parsed.isoformat(),
+                        "time": t_due_date.strftime("%H:%M") if isinstance(t_due_date, datetime) else None,
+                        "due_date": task.due_date.isoformat() if getattr(task, "due_date", None) else None,
+                        "assignee": assignee_name,
+                        "assignee_id": task.assigned_to,
+                        "project_id": str(task.project_id) if getattr(task, "project_id", None) else None,
+                        "project_name": proj_name,
+                        "priority": priority,
+                        "status": task_status,
+                        "color": color,
+                    })
+
         # Sort events by date
         events.sort(key=lambda x: x["start"])
         
@@ -286,6 +440,8 @@ async def get_calendar_events(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching calendar events: {str(e)}"

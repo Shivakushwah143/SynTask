@@ -36,6 +36,15 @@ class ContentCalendarItemPayload(BaseModel):
     photographer: Optional[str] = None
     team: list[str] = Field(default_factory=list)
     assets_required: list[str] = Field(default_factory=list)
+    category: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    time: Optional[str] = None
+    assigned_person: Optional[str] = None
+    reminder: Optional[str] = None
+    color: Optional[str] = None
+    attachment: Optional[str] = None
     metadata: dict = Field(default_factory=dict)
 
 
@@ -58,6 +67,15 @@ class ContentCalendarItemUpdatePayload(BaseModel):
     photographer: Optional[str] = None
     team: list[str] = Field(default_factory=list)
     assets_required: list[str] = Field(default_factory=list)
+    category: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    time: Optional[str] = None
+    assigned_person: Optional[str] = None
+    reminder: Optional[str] = None
+    color: Optional[str] = None
+    attachment: Optional[str] = None
     metadata: dict = Field(default_factory=dict)
 
 

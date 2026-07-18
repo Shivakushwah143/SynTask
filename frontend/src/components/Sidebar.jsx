@@ -281,8 +281,8 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
-      name: "Marketing Calendar",
-      href: "/marketing/calendar",
+      name: "Content Calendar",
+      href: "/content-calendar",
       icon: CalendarCheck2,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
       module: "task",

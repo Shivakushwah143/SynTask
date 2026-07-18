@@ -52,7 +52,8 @@ const Invoices = lazy(() => import('./pages/Invoices'))
 // const MSASign = lazy(() => import('./pages/MSASign'))
 const Ledger = lazy(() => import('./pages/Ledger'))
 const Meetings = lazy(() => import('./pages/Meetings'))
-const Calendar = lazy(() => import('./pages/Calendar'))
+const WorkspaceCalendar = lazy(() => import('./pages/WorkspaceCalendar'))
+const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
@@ -213,8 +214,8 @@ function App() {
           <Route path="workflows" element={<CompanyAdminGuard>{withBoundary(<WorkflowAdmin />)}</CompanyAdminGuard>} />
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
-          <Route path="calendar" element={withBoundary(<Calendar />)} />
-          <Route path="content-calendar" element={withBoundary(<Calendar />)} />
+          <Route path="calendar" element={withBoundary(<WorkspaceCalendar />)} />
+          <Route path="content-calendar" element={withBoundary(<ContentCalendar />)} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />

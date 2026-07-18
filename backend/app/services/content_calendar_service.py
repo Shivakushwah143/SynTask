@@ -113,6 +113,15 @@ def _serialize_item(item: ContentCalendarItem) -> Dict[str, Any]:
         "photographer": item.photographer,
         "team": list(item.team or []),
         "assets_required": list(item.assets_required or []),
+        "category": getattr(item, "category", None),
+        "description": getattr(item, "description", None),
+        "start_date": getattr(item, "start_date", None),
+        "end_date": getattr(item, "end_date", None),
+        "time": getattr(item, "time", None),
+        "assigned_person": getattr(item, "assigned_person", None),
+        "reminder": getattr(item, "reminder", None),
+        "color": getattr(item, "color", None),
+        "attachment": getattr(item, "attachment", None),
         "draft_at": item.draft_at,
         "planned_at": item.planned_at,
         "shoot_scheduled_at": item.shoot_scheduled_at,
@@ -262,6 +271,15 @@ class ContentCalendarService:
             photographer=payload.get("photographer"),
             team=list(payload.get("team") or []),
             assets_required=list(payload.get("assets_required") or []),
+            category=payload.get("category"),
+            description=payload.get("description"),
+            start_date=_parse_datetime(payload.get("start_date")),
+            end_date=_parse_datetime(payload.get("end_date")),
+            time=payload.get("time"),
+            assigned_person=payload.get("assigned_person"),
+            reminder=payload.get("reminder"),
+            color=payload.get("color"),
+            attachment=payload.get("attachment"),
             metadata=dict(payload.get("metadata") or {}),
             created_by=str(getattr(current_user, "id", "")),
             updated_by=str(getattr(current_user, "id", "")),
@@ -344,6 +362,24 @@ class ContentCalendarService:
             item.team = [str(member).strip() for member in payload.get("team") if str(member).strip()]
         if "assets_required" in payload and isinstance(payload.get("assets_required"), list):
             item.assets_required = [str(asset).strip() for asset in payload.get("assets_required") if str(asset).strip()]
+        if "category" in payload:
+            item.category = payload.get("category")
+        if "description" in payload:
+            item.description = payload.get("description")
+        if "start_date" in payload:
+            item.start_date = _parse_datetime(payload.get("start_date"))
+        if "end_date" in payload:
+            item.end_date = _parse_datetime(payload.get("end_date"))
+        if "time" in payload:
+            item.time = payload.get("time")
+        if "assigned_person" in payload:
+            item.assigned_person = payload.get("assigned_person")
+        if "reminder" in payload:
+            item.reminder = payload.get("reminder")
+        if "color" in payload:
+            item.color = payload.get("color")
+        if "attachment" in payload:
+            item.attachment = payload.get("attachment")
         if "metadata" in payload and isinstance(payload.get("metadata"), dict):
             item.metadata = dict(payload.get("metadata"))
         item.updated_by = str(getattr(current_user, "id", ""))

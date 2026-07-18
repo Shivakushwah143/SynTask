@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { format } from 'date-fns'
-import { ArrowRight, Building2, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
+import { format, parseISO, isAfter, isBefore, isSameDay, addDays } from 'date-fns'
+import { ArrowRight, Building2, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp, AlertTriangle, Video, Clock } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -22,6 +22,8 @@ import { tasksAPI } from '../api/tasks'
 import { ticketsAPI } from '../api/tickets'
 import { meetingsApi } from '../api/meetings'
 import { projectsApi } from '../api/projects'
+import { calendarApi } from '../api/calendar'
+import { contentCalendarApi } from '../api/contentCalendar'
 import toast from 'react-hot-toast'
 import AIBriefingCenter from '../components/AIBriefingCenter'
 import { Badge, Button, EmptyState, PageHeader, SkeletonCard, SkeletonTable, Table } from '../components/ui'
@@ -104,6 +106,12 @@ const Dashboard = () => {
   const [taskExtensions, setTaskExtensions] = useState(null)
   const [teamCompletion, setTeamCompletion] = useState(null)
   const [revenueMode, setRevenueMode] = useState('Accrual')
+  const [todayEvents, setTodayEvents] = useState([])
+  const [upcomingDeadlines, setUpcomingDeadlines] = useState([])
+  const [upcomingMeetingsList, setUpcomingMeetingsList] = useState([])
+  const [todayContent, setTodayContent] = useState([])
+  const [overdueTasksList, setOverdueTasksList] = useState([])
+  const [calendarLoading, setCalendarLoading] = useState(false)
   const [sectionVisibility, setSectionVisibility] = useState(readStoredSectionVisibility)
   const [sectionOrder, setSectionOrder] = useState(readStoredSectionOrder)
   const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
