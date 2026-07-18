@@ -528,7 +528,7 @@ export default function ScheduledJobs() {
           </div>
         ) : jobs.length === 0 ? (
           <EmptyState
-            icon={<CalendarClock className="h-10 w-10 text-gray-300" />}
+            icon={CalendarClock}
             title={search ? 'No matching jobs' : activeTab ? `No ${activeTab.toLowerCase()} jobs` : 'No scheduled jobs yet'}
             description={
               search

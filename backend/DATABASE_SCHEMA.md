@@ -623,6 +623,27 @@ Indexes: `['user_id', 'company_id', 'is_read', 'type', 'priority', 'scheduled_fo
 
 Reminder notifications store `metadata.reminder_key` as `entityType:entityId:userId:reminderType:YYYY-MM-DD`. A partial unique index on `(company_id, user_id, metadata.reminder_key)` applies only when `metadata.reminder_key` is a string, preventing duplicate reminder notifications while preserving tenant isolation and allowing legacy notifications without reminder metadata.
 
+### `scheduled_jobs`
+
+#### Model: `ScheduledJob`
+
+Indexes: `['created_by', 'company_id', 'status', 'run_at', ('status', 'run_at'), ('company_id', 'status')]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `ObjectId` | No | Yes | Primary key |
+| `action_type` | `ScheduledJobActionType` | Yes | No | `CREATE_PROJECT` or `CREATE_TASK` |
+| `payload` | `Dict[str, Any]` | Yes | No | Validated action payload reused by the existing project/task creation services |
+| `run_at` | `datetime.datetime` | Yes | Yes | UTC execution time checked by the one-minute scheduler loop |
+| `status` | `ScheduledJobStatus` | No | Yes | `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, or `CANCELLED` |
+| `created_by` | `str` | Yes | Yes | User ID of the scheduler/creator |
+| `company_id` | `Optional[str]` | No | Yes | Tenant scope key used for all list/action authorization |
+| `retry_count` | `int` | No | No | Retry attempts tracked by the execution worker |
+| `error` | `Optional[str]` | No | No | Last execution failure detail |
+| `notes` | `Optional[str]` | No | No | User-provided schedule notes |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `completed_at` | `Optional[datetime.datetime]` | No | No | Completion, failure terminal, or cancellation timestamp |
+
 ### `pages`
 
 #### Model: `Page`

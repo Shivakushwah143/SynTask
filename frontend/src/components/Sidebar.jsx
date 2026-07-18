@@ -226,6 +226,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
+      name: "Scheduled Jobs",
+      href: "/scheduled-jobs",
+      icon: CalendarClock,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
+      module: "task",
+    },
+    {
       name: "Timeline",
       href: "/timeline",
       icon: CalendarClock,
@@ -472,7 +479,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "operations",
       label: "Core Operations",
-      items: ["Service Requests", "Workspace Calendar", "Timesheet"]
+      items: ["Service Requests", "Workspace Calendar", "Scheduled Jobs", "Timesheet"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -532,9 +539,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     },
   ]
     .filter((group) => group.items.length)
-    .filter((group) => !(isManagerRole(userRole) && group.key === "operations"))
-    .filter((group) => !(isManagerRole(userRole) && group.key === "administration"))
-    .filter((group) => !(isManagerRole(userRole) && group.key === "hr"));
+    // .filter((group) => !(isManagerRole(userRole) && group.key === "operations"))
+    // .filter((group) => !(isManagerRole(userRole) && group.key === "administration"))
+    // .filter((group) => !(isManagerRole(userRole) && group.key === "hr"));
 
   return (
     <>

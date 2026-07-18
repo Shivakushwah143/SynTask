@@ -62,6 +62,7 @@ const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 const MarketingChat = lazy(() => import('./pages/MarketingChat'))
 const MarketingCalendar = lazy(() => import('./pages/marketing/calendar/page'))
 const Notifications = lazy(() => import('./pages/Notifications'))
+const ScheduledJobs = lazy(() => import('./pages/ScheduledJobs'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
@@ -226,6 +227,7 @@ function App() {
 
         <Route path="reports" element={withBoundary(<Reports />)} />
         <Route path="notifications" element={withBoundary(<Notifications />)} />
+        <Route path="scheduled-jobs" element={withBoundary(<ScheduledJobs />)} />
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
         <Route path="ai-hub" element={withBoundary(<AIHub />)} />
         <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />

@@ -49,6 +49,7 @@ For every tenant-owned endpoint/job, attempt list, get, foreign-parent create, u
 - Task detail UI verifies status tone labels and color-coded selector/indicator states for each task status.
 - Calendar events verify date-window parsing, assigned-only employee task visibility, assigned task event serialization, and project-name resolution from logical project keys such as `PROJ-101`.
 - Reminder engine tests verify calendar-day remaining calculations, task/content reminder rules including task due-today critical popup eligibility, skipped completed/submitted records, daily duplicate protection, toast eligibility, and due-tone color mapping. Frontend smoke checks should verify global authenticated reminder popup polling, sound attempt, cancel/dismiss control, and notification-panel persistence.
+- Scheduled job tests verify future-date validation, timezone normalization, role gates by action type, company-scoped list/action authorization, pending-to-running atomic lock, exactly-once project/task creation, retry/cancel/delete state gates, creator notifications, and activity timeline entries.
 - Project/task role matrix: Admin company-wide list/manage; Manager company-wide list with same-department edit/assign only; Employee assigned-task visibility with project context and no detail edits except progress, comments, and attachments.
 - CRM lifecycle, deduplication, import, conversion.
 - Invoice/ledger/MSA states, rounding, signing, payment callbacks.

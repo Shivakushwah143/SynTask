@@ -249,6 +249,17 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 | DELETE | `/api/v1/notifications/{notification_id}` | `delete_notification` | Uses router/endpoint dependencies where configured. |
 | PATCH | `/api/v1/notifications/{notification_id}/read` | `mark_notification_as_read` | Uses router/endpoint dependencies where configured. |
 
+### Scheduled Jobs
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/scheduled-jobs/` | `list_scheduled_jobs` | Company-scoped list with status/search pagination. Admin, Manager, Lead, and Super Admin can view jobs; jobs expose payload summaries and creator names. |
+| POST | `/api/v1/scheduled-jobs/` | `create_scheduled_job` | Schedules `CREATE_PROJECT` or `CREATE_TASK`. Project scheduling is limited to Admin, Manager, and Super Admin; task scheduling also allows Lead. `run_at` must be a future datetime and is stored as UTC. |
+| PATCH | `/api/v1/scheduled-jobs/{job_id}` | `update_scheduled_job` | Edits `run_at` for pending jobs only; same-tenant access required and past datetimes are rejected. |
+| POST | `/api/v1/scheduled-jobs/{job_id}/cancel` | `cancel_scheduled_job` | Cancels pending or failed jobs and notifies the creator. |
+| POST | `/api/v1/scheduled-jobs/{job_id}/retry` | `retry_failed_job` | Moves failed or cancelled jobs back to pending and clears the stored error/retry count. |
+| DELETE | `/api/v1/scheduled-jobs/{job_id}` | `delete_scheduled_job` | Deletes completed, failed, or cancelled jobs only. |
+
 ### Projects
 
 | Method | Path | Handler | Notes |

@@ -22,6 +22,7 @@ import { CSS } from '@dnd-kit/utilities'
 import toast from 'react-hot-toast'
 import { projectsApi } from '../api/projects'
 import { tasksAPI } from '../api/tasks'
+import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
@@ -140,6 +141,8 @@ export default function ProjectBoard() {
   const [assignmentLeaderId, setAssignmentLeaderId] = useState('')
   const [taskAssigneeId, setTaskAssigneeId] = useState('')
   const [createTaskPriority, setCreateTaskPriority] = useState('medium')
+  const [createMode, setCreateMode] = useState('now')
+  const [scheduleRunAt, setScheduleRunAt] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('todo')
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES)
   const [submitting, setSubmitting] = useState(false)
@@ -299,7 +302,7 @@ export default function ProjectBoard() {
     }
     try {
       setSubmitting(true)
-      await tasksAPI.createTask({
+      const taskPayload = {
         title: formData.get('title'),
         description: formData.get('description') || '',
         priority: formData.get('priority') || createTaskPriority || 'medium',
@@ -308,12 +311,39 @@ export default function ProjectBoard() {
         estimated_hours: estimatedHours,
         project_id: projectId,
         status: selectedStatus,
-      })
+      }
+      if (createMode === 'schedule') {
+        if (!scheduleRunAt) {
+          toast.error('Schedule time is required')
+          return
+        }
+        const runAt = new Date(scheduleRunAt)
+        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+          toast.error('Schedule time must be in the future')
+          return
+        }
+        await scheduledJobsAPI.scheduleJob({
+          action_type: 'CREATE_TASK',
+          payload: taskPayload,
+          run_at: runAt.toISOString(),
+        })
+        toast.success('Task scheduled successfully')
+        setShowCreateModal(false)
+        event.target.reset()
+        setTaskAssigneeId('')
+        setCreateTaskPriority('medium')
+        setCreateMode('now')
+        setScheduleRunAt('')
+        return
+      }
+      await tasksAPI.createTask(taskPayload)
       toast.success('Task created successfully')
       setShowCreateModal(false)
       event.target.reset()
       setTaskAssigneeId('')
       setCreateTaskPriority('medium')
+      setCreateMode('now')
+      setScheduleRunAt('')
       await loadBoardData()
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create task')
@@ -847,9 +877,20 @@ export default function ProjectBoard() {
               {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
             </CreatableSelectField>
           </FormField>
+          <div className="rounded-xl border border-gray-200 p-3 dark:border-[var(--color-app-border)]">
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant={createMode === 'now' ? 'primary' : 'secondary'} onClick={() => setCreateMode('now')}>Create now</Button>
+              <Button type="button" variant={createMode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setCreateMode('schedule')}>Schedule</Button>
+            </div>
+            {createMode === 'schedule' && (
+              <FormField label="Schedule for" required>
+                <input type="datetime-local" value={scheduleRunAt} onChange={(event) => setScheduleRunAt(event.target.value)} required={createMode === 'schedule'} className={inputClassName} />
+              </FormField>
+            )}
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button type="submit" loading={submitting}>Create task</Button>
+            <Button type="submit" loading={submitting}>{createMode === 'schedule' ? 'Schedule task' : 'Create task'}</Button>
           </div>
         </form>
       </Modal>

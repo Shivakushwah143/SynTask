@@ -12,7 +12,7 @@ The application has a FastAPI backend, MongoDB/Beanie document models, Redis-bac
 | Frontend | React 18, Vite, Zustand, React Query, Tailwind CSS, Axios |
 | Database | MongoDB Atlas or MongoDB 6+ |
 | Cache/Security | Redis 7+ for JWT blacklist and future caching |
-| Background Work | asyncio deadline checker and reminder scheduler; Celery worker service |
+| Background Work | asyncio deadline checker, reminder scheduler, and one-minute scheduled-job runner; Celery worker service |
 | Deployment | Docker, Docker Compose, Nginx reverse proxy |
 
 ## Prerequisites

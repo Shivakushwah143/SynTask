@@ -4,6 +4,7 @@ import { Clock3, Plus, Receipt, Search, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { projectsApi } from '../api/projects'
+import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
@@ -70,6 +71,8 @@ export default function Projects() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState({ status: '', type: '', owner: '' })
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createMode, setCreateMode] = useState('now')
+  const [scheduleRunAt, setScheduleRunAt] = useState('')
   const [assignableUsers, setAssignableUsers] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
   const [showDetails, setShowDetails] = useState(false)
@@ -275,11 +278,36 @@ export default function Projects() {
       if (payload.start_date) payload.start_date = new Date(payload.start_date).toISOString()
       if (payload.delivery_date) payload.delivery_date = new Date(payload.delivery_date).toISOString()
       
+      if (createMode === 'schedule') {
+        if (!scheduleRunAt) {
+          toast.error('Schedule time is required')
+          return
+        }
+        const runAt = new Date(scheduleRunAt)
+        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+          toast.error('Schedule time must be in the future')
+          return
+        }
+        await scheduledJobsAPI.scheduleJob({
+          action_type: 'CREATE_PROJECT',
+          payload,
+          run_at: runAt.toISOString(),
+        })
+        toast.success('Project scheduled successfully')
+        setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+        setCreateMode('now')
+        setScheduleRunAt('')
+        setShowCreateModal(false)
+        return
+      }
+
       const response = await projectsApi.createProject(payload)
       toast.success('Project created successfully')
       
       // Reset form
       setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+      setCreateMode('now')
+      setScheduleRunAt('')
       
       // Close modal first
       setShowCreateModal(false)
@@ -471,9 +499,20 @@ export default function Projects() {
               <input type="datetime-local" className={inputClassName} value={formData.delivery_date} onChange={(event) => setFormData((state) => ({ ...state, delivery_date: event.target.value }))} />
             </FormField>
           </div>
+          <div className="rounded-xl border border-gray-200 p-3 dark:border-[var(--color-app-border)]">
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant={createMode === 'now' ? 'primary' : 'secondary'} onClick={() => setCreateMode('now')}>Create now</Button>
+              <Button type="button" variant={createMode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setCreateMode('schedule')}>Schedule</Button>
+            </div>
+            {createMode === 'schedule' && (
+              <FormField label="Schedule for" required>
+                <input type="datetime-local" className={inputClassName} value={scheduleRunAt} onChange={(event) => setScheduleRunAt(event.target.value)} required={createMode === 'schedule'} />
+              </FormField>
+            )}
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button type="submit" loading={submitting} loadingText="Creating">Create</Button>
+            <Button type="submit" loading={submitting} loadingText={createMode === 'schedule' ? 'Scheduling' : 'Creating'}>{createMode === 'schedule' ? 'Schedule project' : 'Create project'}</Button>
           </div>
         </form>
       </Modal>

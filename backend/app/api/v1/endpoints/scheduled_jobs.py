@@ -1,7 +1,7 @@
 """
 Scheduled Jobs Endpoints
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any, Dict
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from pydantic import BaseModel, Field
@@ -25,6 +25,44 @@ class ScheduleJobRequest(BaseModel):
 
 class UpdateScheduleRequest(BaseModel):
     run_at: datetime
+
+
+def _normalize_run_at(run_at: datetime) -> datetime:
+    """Return a naive UTC datetime for storage and due-job queries."""
+    if run_at.tzinfo:
+        return run_at.astimezone(timezone.utc).replace(tzinfo=None)
+    return run_at
+
+
+def _ensure_future_run_at(run_at: datetime) -> datetime:
+    normalized = _normalize_run_at(run_at)
+    if normalized <= datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Schedule time must be in the future"
+        )
+    return normalized
+
+
+def _ensure_can_schedule_action(current_user: User, action_type: ScheduledJobActionType) -> None:
+    if action_type == ScheduledJobActionType.CREATE_PROJECT:
+        allowed_roles = {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
+    else:
+        allowed_roles = {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
+
+    if current_user.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to schedule this action"
+        )
+
+
+def _ensure_can_manage_scheduled_jobs(current_user: User) -> None:
+    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to manage scheduled jobs"
+        )
 
 
 def _serialize_job(job: ScheduledJob) -> Dict[str, Any]:
@@ -55,12 +93,8 @@ async def create_scheduled_job(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User must belong to a company"
         )
-    # Only Admin, Manager, Lead can schedule
-    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to schedule actions"
-        )
+    _ensure_can_schedule_action(current_user, request.action_type)
+    run_at = _ensure_future_run_at(request.run_at)
 
     # If action_type is CREATE_PROJECT, verify project_id and key uniqueness
     if request.action_type == ScheduledJobActionType.CREATE_PROJECT:
@@ -83,7 +117,7 @@ async def create_scheduled_job(
     job = await SchedulingService.schedule_job(
         action_type=request.action_type,
         payload=request.payload,
-        run_at=request.run_at,
+        run_at=run_at,
         created_by=str(current_user.id),
         company_id=current_user.company_id,
         notes=request.notes,
@@ -104,6 +138,7 @@ async def list_scheduled_jobs(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User must belong to a company"
         )
+    _ensure_can_manage_scheduled_jobs(current_user)
 
     skip, limit = pagination.skip, pagination.limit
     query: Dict[str, Any] = {"company_id": current_user.company_id}
@@ -158,6 +193,7 @@ async def update_scheduled_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Scheduled job not found"
         )
+    _ensure_can_manage_scheduled_jobs(current_user)
 
     if job.status != ScheduledJobStatus.PENDING:
         raise HTTPException(
@@ -165,7 +201,7 @@ async def update_scheduled_job(
             detail="Only pending jobs can be modified"
         )
 
-    job.run_at = request.run_at
+    job.run_at = _ensure_future_run_at(request.run_at)
     await job.save()
     return _serialize_job(job)
 
@@ -182,6 +218,7 @@ async def cancel_scheduled_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Scheduled job not found"
         )
+    _ensure_can_manage_scheduled_jobs(current_user)
 
     if job.status not in {ScheduledJobStatus.PENDING, ScheduledJobStatus.FAILED}:
         raise HTTPException(
@@ -221,6 +258,7 @@ async def retry_failed_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Scheduled job not found"
         )
+    _ensure_can_manage_scheduled_jobs(current_user)
 
     if job.status not in {ScheduledJobStatus.FAILED, ScheduledJobStatus.CANCELLED}:
         raise HTTPException(
@@ -232,7 +270,7 @@ async def retry_failed_job(
     job.retry_count = 0
     job.error = None
     # If run_at is in the past, reset it to now so it runs immediately on next minute check
-    if job.run_at <= datetime.utcnow():
+    if _normalize_run_at(job.run_at) <= datetime.utcnow():
         job.run_at = datetime.utcnow()
     await job.save()
     return _serialize_job(job)
@@ -250,6 +288,7 @@ async def delete_scheduled_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Scheduled job not found"
         )
+    _ensure_can_manage_scheduled_jobs(current_user)
 
     if job.status not in {ScheduledJobStatus.COMPLETED, ScheduledJobStatus.CANCELLED, ScheduledJobStatus.FAILED}:
         raise HTTPException(
