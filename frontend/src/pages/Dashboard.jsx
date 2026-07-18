@@ -186,16 +186,77 @@ const Dashboard = () => {
   }, [user?.role])
 
   useEffect(() => {
-    let active = true
+    let active = true;
     const run = async () => {
-      if (!active) return
-      await refreshDashboard(() => active)
-    }
-    run()
+      if (!active) return;
+      await refreshDashboard(() => active);
+    };
+    run();
     return () => {
-      active = false
-    }
-  }, [refreshDashboard])
+      active = false;
+    };
+  }, [refreshDashboard]);
+
+  // Fetch workspace and content calendar data for dashboard widgets
+  useEffect(() => {
+    let active = true;
+    const fetchCalendarData = async () => {
+      setCalendarLoading(true);
+      try {
+        const today = new Date();
+        const startStr = format(today, 'yyyy-MM-dd');
+        const endStr = format(addDays(today, 30), 'yyyy-MM-dd');
+        // Workspace calendar events
+        const { data: workspaceResp } = await calendarApi.getEvents({
+          start_date: startStr,
+          end_date: endStr,
+          view_type: 'my_calendar',
+        });
+        // Content calendar events
+        const { data: contentResp } = await contentCalendarApi.getCalendar({
+          start_date: startStr,
+          end_date: endStr,
+        });
+        if (!active) return;
+        const workspaceEvents = workspaceResp?.events || [];
+        const contentEvents = contentResp?.events || [];
+        const todayStr = format(today, 'yyyy-MM-dd');
+
+        setTodayEvents(workspaceEvents.filter((e) => e.start === todayStr));
+        setTodayContent(contentEvents.filter((e) => e.start === todayStr));
+
+        const upcomingDead = workspaceEvents.filter((e) => {
+          if (e.type !== 'task_due' || !e.start) return false;
+          const dueDate = new Date(e.start);
+          return dueDate > today && dueDate <= addDays(today, 3) && e.status !== 'completed';
+        });
+        setUpcomingDeadlines(upcomingDead);
+
+        const upcomingMeet = workspaceEvents.filter((e) => {
+          if (e.type !== 'meeting' || !e.start) return false;
+          const meetDate = new Date(e.start);
+          return meetDate >= today;
+        });
+        setUpcomingMeetingsList(upcomingMeet);
+
+        const overdue = workspaceEvents.filter((e) => {
+          if (e.type !== 'task_due' || !e.start) return false;
+          const dueDate = new Date(e.start);
+          return dueDate < today && e.status !== 'completed';
+        });
+        setOverdueTasksList(overdue);
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to load calendar data');
+      } finally {
+        if (active) setCalendarLoading(false);
+      }
+    };
+    fetchCalendarData();
+    return () => {
+      active = false;
+    };
+  }, [refreshDashboard]);
 
   useEffect(() => {
     try {
@@ -379,6 +440,7 @@ const Dashboard = () => {
     { id: 'work-meetings', name: 'Work & Meetings' },
     { id: 'project-health', name: 'Project Health' },
     { id: 'recent-activity', name: 'Recent Activity' },
+    { id: 'calendar-overview', name: 'Calendar Overview' },
   ].filter((section) => section.available !== false)
 
   const orderedDashboardSections = normalizeSectionOrder(dashboardSections, sectionOrder)
@@ -521,6 +583,24 @@ const Dashboard = () => {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Today</p>
           <p className="mt-3 text-2xl font-semibold text-text-primary dark:text-text-primary">{todayLabel}</p>
           <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Quick access to work, meetings, and AI guidance.</p>
+        </div>
+        <div className="card p-5">
+          <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Today's Events</p>
+          {todayEvents.slice(0, 5).map((e) => (
+            <p key={e.id} className="text-xs truncate">{e.title} ({e.type})</p>
+          ))}
+        </div>
+        <div className="card p-5">
+          <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Upcoming Deadlines</p>
+          {upcomingDeadlines.slice(0, 5).map((e) => (
+            <p key={e.id} className="text-xs truncate">{e.title} - {e.start}</p>
+          ))}
+        </div>
+        <div className="card p-5">
+          <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Upcoming Meetings</p>
+          {upcomingMeetingsList.slice(0, 5).map((e) => (
+            <p key={e.id} className="text-xs truncate">{e.title} - {e.start}</p>
+          ))}
         </div>
         <div className="card p-5">
           <div className="flex items-center justify-between">
