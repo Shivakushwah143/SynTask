@@ -9,6 +9,7 @@ from app.models.content_calendar import ContentItemStatus
 from app.services.reminder_service import (
     ReminderPriority,
     ReminderService,
+    build_pending_toast_query,
     calculate_remaining_days,
     calendar_due_tone,
 )
@@ -83,6 +84,19 @@ def test_reminder_key_unique_index_ignores_legacy_notifications_without_key():
     assert len(indexes) == 1
     assert indexes[0].document["partialFilterExpression"] == {"metadata.reminder_key": {"$type": "string"}}
     assert "sparse" not in indexes[0].document
+
+
+def test_pending_toast_query_returns_due_reminders_even_after_old_auto_ack_or_read():
+    today_start = datetime(2026, 7, 18)
+
+    query = build_pending_toast_query("user-1", "company-1", today_start)
+
+    assert query["company_id"] == "company-1"
+    assert query["user_id"] == "user-1"
+    assert query["created_at"] == {"$gte": today_start}
+    assert query["metadata.show_toast"] is True
+    assert "is_read" not in query
+    assert "metadata.toast_acknowledged" not in query
 
 
 @pytest.mark.asyncio

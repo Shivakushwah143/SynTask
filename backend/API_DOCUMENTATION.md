@@ -243,8 +243,8 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/notifications/` | `list_notifications` | Lists only the authenticated user's notifications. Reminder notifications include `priority`, `scheduled_for`, and reminder metadata. |
-| GET | `/api/v1/notifications/reminder-toasts` | `list_pending_reminder_toasts` | Runs a duplicate-safe reminder catch-up, then returns unread, unacknowledged due-tomorrow/due-today reminder notifications for the authenticated user's dashboard toast on login. |
-| POST | `/api/v1/notifications/reminder-toasts/ack` | `acknowledge_reminder_toasts` | Marks the authenticated user's reminder toast notifications as shown without marking the notification itself read. |
+| GET | `/api/v1/notifications/reminder-toasts` | `list_pending_reminder_toasts` | Runs a duplicate-safe reminder catch-up, then returns today's due-tomorrow/due-today reminder notifications for the authenticated user's global in-app popup. Read or previously auto-acknowledged reminders can still be returned so users do not miss current due alerts. |
+| POST | `/api/v1/notifications/reminder-toasts/ack` | `acknowledge_reminder_toasts` | Marks the authenticated user's reminder toast notifications as shown when the user clicks or cancels the popup. |
 | POST | `/api/v1/notifications/mark-all-read` | `mark_all_notifications_as_read` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/notifications/{notification_id}` | `delete_notification` | Uses router/endpoint dependencies where configured. |
 | PATCH | `/api/v1/notifications/{notification_id}/read` | `mark_notification_as_read` | Uses router/endpoint dependencies where configured. |

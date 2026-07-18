@@ -80,6 +80,15 @@ def calendar_due_tone(due_date: datetime | date | None, today: Optional[date] = 
     return REMINDER_COLORS["assigned"]
 
 
+def build_pending_toast_query(user_id: str, company_id: str, today_start: datetime) -> dict[str, Any]:
+    return {
+        "company_id": company_id,
+        "user_id": user_id,
+        "created_at": {"$gte": today_start},
+        "metadata.show_toast": True,
+    }
+
+
 class ReminderService:
     def __init__(
         self,
@@ -288,16 +297,7 @@ class ReminderService:
 
     async def get_pending_toast_notifications(self, user_id: str, company_id: str) -> list[Notification]:
         today_start = datetime.combine(self.now().date(), time.min)
-        return await Notification.find(
-            {
-                "company_id": company_id,
-                "user_id": user_id,
-                "is_read": False,
-                "created_at": {"$gte": today_start},
-                "metadata.show_toast": True,
-                "metadata.toast_acknowledged": {"$ne": True},
-            }
-        ).sort("-created_at").to_list()
+        return await Notification.find(build_pending_toast_query(user_id, company_id, today_start)).sort("-created_at").to_list()
 
     async def acknowledge_toasts(self, user_id: str, notification_ids: list[str]) -> int:
         now = self.now()
