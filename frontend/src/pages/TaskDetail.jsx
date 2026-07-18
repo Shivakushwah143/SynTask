@@ -16,7 +16,7 @@ import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
 import { EmptyState } from '../components/ui'
-import { buildTaskAssignmentOptions, canEditTaskDetails, getProjectLeadName, getUserDisplayName, getUserId } from './TaskDetail.helpers'
+import { TASK_STATUS_TONES, buildTaskAssignmentOptions, canEditTaskDetails, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
 import { normalizeRole } from '../utils/roles'
 import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } from './taskNavigation'
 import toast from 'react-hot-toast'
@@ -502,14 +502,8 @@ const TaskDetail = () => {
     critical: { label: 'Critical', color: 'text-red-600 bg-red-100' },
   }
 
-  const statuses = {
-    todo: { label: 'To Do', color: 'bg-gray-100 text-gray-800' },
-    in_progress: { label: 'In Progress', color: 'bg-blue-100 text-blue-800' },
-    in_review: { label: 'In Review', color: 'bg-yellow-100 text-yellow-800' },
-    completed: { label: 'Completed', color: 'bg-green-100 text-green-800' },
-    on_hold: { label: 'On Hold', color: 'bg-purple-100 text-purple-800' },
-    cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-800' },
-  }
+  const statuses = TASK_STATUS_TONES
+  const currentStatusTone = getTaskStatusTone(taskStatus || task?.status)
 
   if (loading) {
     return (
@@ -666,7 +660,7 @@ const TaskDetail = () => {
         {/* Left Panel */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Task Title */}
-          <div className="mb-6">
+          <div className="mb-6 md:flex md:justify-between md:items-center">
             {isEditing ? (
               <input
                 type="text"
@@ -689,6 +683,12 @@ const TaskDetail = () => {
                 {task.title}
               </h1>
             )}
+            <div className="mt-2 flex items-center gap-2 px-2">
+              <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${currentStatusTone.chipClass}`}>
+                <span className={`h-2 w-2 rounded-full ${currentStatusTone.dotClass}`} />
+                {currentStatusTone.label}
+              </span>
+            </div>
           </div>
 
           {/* Description */}
@@ -1069,7 +1069,7 @@ const TaskDetail = () => {
                   onChange={(e) => handleStatusChange(e.target.value)}
                   disabled={updatingStatus}
                   aria-busy={updatingStatus || undefined}
-                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-white transition ${
+                  className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold transition ${currentStatusTone.selectClass} ${
                     updatingStatus ? 'cursor-wait opacity-70' : ''
                   }`}
                 >

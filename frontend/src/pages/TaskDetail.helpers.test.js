@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTaskAssignmentOptions, canEditTaskDetails, getProjectLeadName, getUserDisplayName, getUserId } from './TaskDetail.helpers'
+import { buildTaskAssignmentOptions, canEditTaskDetails, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
 
 describe('TaskDetail assignment helpers', () => {
   it('splits assignable users into lead and employee options', () => {
@@ -53,5 +53,14 @@ describe('TaskDetail assignment helpers', () => {
   it('allows managers to edit only same-department task details', () => {
     expect(canEditTaskDetails({ role: 'manager', department_id: 'delivery' }, { department_id: 'delivery' })).toBe(true)
     expect(canEditTaskDetails({ role: 'manager', department_id: 'delivery' }, { department_id: 'sales' })).toBe(false)
+  })
+
+  it('provides color-coded status tone', () => {
+    expect(getTaskStatusTone('in_progress')).toEqual(expect.objectContaining({
+      label: 'In Progress',
+      chipClass: expect.stringContaining('blue'),
+      selectClass: expect.stringContaining('blue'),
+    }))
+    expect(getTaskStatusTone('blocked_custom').label).toBe('blocked custom')
   })
 })

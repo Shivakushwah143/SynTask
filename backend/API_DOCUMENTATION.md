@@ -88,7 +88,7 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/calendar/events` | `get_calendar_events` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/calendar/events` | `get_calendar_events` | Returns date-windowed meetings and tasks. `my_calendar` includes only the current user's hosted/participating meetings and assigned tasks; assigned tasks are scheduled by `due_date` or `created_at` fallback. Task project names resolve from the logical project key such as `PROJ-101` or MongoDB `_id`. |
 
 ### Changelog
 
@@ -433,7 +433,7 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/tasks/` | `list_tasks` | Company-scoped. Admin/Super Admin and Manager list company tasks; Employee list is assigned-only. |
+| GET | `/api/v1/tasks/` | `list_tasks` | Company-scoped. Admin/Super Admin and Manager list company tasks; Employee list is assigned-only. Response includes `assigned_to_name` for assigned task display. |
 | POST | `/api/v1/tasks/` | `create_task` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/tasks/{task_id}` | `get_task` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/tasks/{task_id}` | `update_task` | Admin/Super Admin manage company tasks; Manager detail edits/assignment are limited to matching `department_id`; Employees cannot edit details through this endpoint. |

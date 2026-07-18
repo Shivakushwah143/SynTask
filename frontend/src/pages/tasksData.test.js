@@ -39,4 +39,14 @@ describe('tasks graph data helpers', () => {
     expect(rows[0].assignee).toBe('Anita Rao')
     expect(rows[1].assignee).toBe('Unassigned')
   })
+
+  test('resolves employee assignee from current user fallback', () => {
+    const rows = buildTaskGraphRows([
+      { id: 't1', title: 'Employee task', assigned_to: 'employee-1' },
+    ], [
+      { id: 'employee-1', first_name: 'Asha', last_name: 'Patel', role: 'employee' },
+    ])
+
+    expect(rows[0].assignee).toBe('Asha Patel')
+  })
 })

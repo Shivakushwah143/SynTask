@@ -73,6 +73,8 @@ Measures: login success/error rate, provisioning completion, authorization rejec
 - Authorized users create projects, boards, sprints, epics, tasks and subtasks.
 - Project boards show separate Manager and Leader assignment fields; Company Admin assigns the Manager, and Company Admin or Manager can assign/change the Leader.
 - Task details show the project Lead as read-only context and expose Employee assignment for permitted task reassignment.
+- Task details show a color-coded status indicator and status selector so task state is scannable without relying on text alone.
+- Workspace calendars show tasks only for the assigned employee in `my_calendar`, scheduled by task due date with creation date fallback. Task calendar entries resolve project names from logical project keys such as `PROJ-101` or MongoDB `_id` without exposing raw database IDs as the primary project reference.
 - Workflow transitions are validated and recorded in history.
 - Assignment candidates are restricted by company, hierarchy, project membership and policy.
 - Comments, files, watchers, links, components, versions and time records remain tenant/resource bound.

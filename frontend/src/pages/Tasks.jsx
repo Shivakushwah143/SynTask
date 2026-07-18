@@ -251,7 +251,8 @@ const Tasks = () => {
     [departments],
   )
 
-  const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks, assignableUsers), [assignableUsers, tasks])
+  const taskGraphUsers = useMemo(() => [user, ...assignableUsers].filter(Boolean), [assignableUsers, user])
+  const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks, taskGraphUsers), [taskGraphUsers, tasks])
   const taskGraphSummary = useMemo(() => buildTaskGraphSummary(tasks), [tasks])
 
   const closeCreateModal = () => {

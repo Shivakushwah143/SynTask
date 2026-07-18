@@ -49,3 +49,52 @@ export const canEditTaskDetails = (currentUser = null, task = {}) => {
   }
   return role === 'lead'
 }
+
+export const TASK_STATUS_TONES = {
+  todo: {
+    label: 'To Do',
+    chipClass: 'border-gray-200 bg-gray-100 text-gray-800',
+    selectClass: 'border-gray-300 bg-gray-50 text-gray-800',
+    dotClass: 'bg-gray-500',
+  },
+  in_progress: {
+    label: 'In Progress',
+    chipClass: 'border-blue-200 bg-blue-100 text-blue-800',
+    selectClass: 'border-blue-300 bg-blue-50 text-blue-800',
+    dotClass: 'bg-blue-600',
+  },
+  in_review: {
+    label: 'In Review',
+    chipClass: 'border-yellow-200 bg-yellow-100 text-yellow-800',
+    selectClass: 'border-yellow-300 bg-yellow-50 text-yellow-800',
+    dotClass: 'bg-yellow-500',
+  },
+  completed: {
+    label: 'Completed',
+    chipClass: 'border-green-200 bg-green-100 text-green-800',
+    selectClass: 'border-green-300 bg-green-50 text-green-800',
+    dotClass: 'bg-green-600',
+  },
+  on_hold: {
+    label: 'On Hold',
+    chipClass: 'border-purple-200 bg-purple-100 text-purple-800',
+    selectClass: 'border-purple-300 bg-purple-50 text-purple-800',
+    dotClass: 'bg-purple-600',
+  },
+  cancelled: {
+    label: 'Cancelled',
+    chipClass: 'border-red-200 bg-red-100 text-red-800',
+    selectClass: 'border-red-300 bg-red-50 text-red-800',
+    dotClass: 'bg-red-600',
+  },
+}
+
+export const getTaskStatusTone = (status) => {
+  const key = String(status || 'todo').toLowerCase()
+  return TASK_STATUS_TONES[key] || {
+    label: key.replace(/_/g, ' '),
+    chipClass: 'border-gray-200 bg-gray-100 text-gray-800',
+    selectClass: 'border-gray-300 bg-gray-50 text-gray-800',
+    dotClass: 'bg-gray-500',
+  }
+}

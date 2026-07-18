@@ -45,6 +45,9 @@ For every tenant-owned endpoint/job, attempt list, get, foreign-parent create, u
 ### Domain regression
 
 - Project/task lifecycle, assignment, boards, automation, history.
+- Task list graphs resolve assigned employee names from API `assigned_to_name`, embedded assignee objects, assignable users, or current-user fallback.
+- Task detail UI verifies status tone labels and color-coded selector/indicator states for each task status.
+- Calendar events verify date-window parsing, assigned-only employee task visibility, assigned task event serialization, and project-name resolution from logical project keys such as `PROJ-101`.
 - Project/task role matrix: Admin company-wide list/manage; Manager company-wide list with same-department edit/assign only; Employee assigned-task visibility with project context and no detail edits except progress, comments, and attachments.
 - CRM lifecycle, deduplication, import, conversion.
 - Invoice/ledger/MSA states, rounding, signing, payment callbacks.

@@ -34,7 +34,7 @@ const normalizePriority = (priority) => {
 
 const displayName = (user) => (
   user
-    ? [user.first_name, user.last_name].filter(Boolean).join(' ') || user.name || user.email || ''
+    ? [user.first_name, user.last_name].filter(Boolean).join(' ') || user.name || user.full_name || user.email || ''
     : ''
 )
 
@@ -49,6 +49,9 @@ const getAssigneeName = (task, userNameById = {}) => (
   || task.assignee_name
   || task.user_name
   || task.assigned_user?.name
+  || task.assigned_user?.full_name
+  || displayName(task.assigned_user)
+  || displayName(task.assignee)
   || userNameById[String(task.assigned_to || '')]
   || 'Unassigned'
 )

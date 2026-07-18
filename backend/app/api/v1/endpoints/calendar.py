@@ -9,8 +9,102 @@ from app.models.meeting import Meeting
 from app.models.task import Task
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, check_company_access
+from app.services.project_service import ProjectService
 
 router = APIRouter()
+
+
+def parse_calendar_window(start_date: Optional[str], end_date: Optional[str]):
+    try:
+        if start_date:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        else:
+            start = date.today() - timedelta(days=30)
+
+        if end_date:
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        else:
+            end = date.today() + timedelta(days=60)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid date format: {str(e)}",
+        )
+
+    start_at = datetime.combine(start, datetime.min.time())
+    end_at = datetime.combine(end, datetime.max.time())
+    return start, end, start_at, end_at
+
+
+def build_calendar_task_query(
+    current_user: User,
+    *,
+    view_type: str,
+    user_ids_to_fetch: list[str],
+    start_at: datetime,
+    end_at: datetime,
+    project_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    task_query: Dict[str, Any] = {"company_id": current_user.company_id}
+    if view_type == "my_calendar":
+        task_query["assigned_to"] = str(current_user.id)
+    else:
+        task_query["assigned_to"] = {"$in": user_ids_to_fetch}
+
+    task_query["$or"] = [
+        {"due_date": {"$gte": start_at, "$lte": end_at}},
+        {"due_date": None, "created_at": {"$gte": start_at, "$lte": end_at}},
+    ]
+
+    if project_id:
+        from bson import ObjectId
+        try:
+            task_query["project_id"] = ObjectId(project_id)
+        except Exception:
+            task_query["project_id"] = project_id
+
+    return task_query
+
+
+async def load_calendar_project_name(
+    project_id,
+    company_id: str,
+    *,
+    project_resolver=ProjectService.get_by_identifier,
+) -> Optional[str]:
+    if not project_id:
+        return None
+
+    project = await project_resolver(str(project_id), company_id)
+    return project.name if project else None
+
+
+def _enum_value(value, fallback: str) -> str:
+    return getattr(value, "value", value) or fallback
+
+
+def task_to_calendar_event(task, *, assignee_name: str = "Unassigned", project_name: Optional[str] = None) -> Dict[str, Any]:
+    event_datetime = task.due_date or task.created_at
+    event_date = event_datetime.date() if isinstance(event_datetime, datetime) else event_datetime
+    event_time = event_datetime.strftime("%H:%M") if isinstance(event_datetime, datetime) else None
+    priority = _enum_value(getattr(task, "priority", None), "medium")
+    status_value = _enum_value(getattr(task, "status", None), "todo")
+    return {
+        "id": f"task_{task.id}",
+        "type": "task",
+        "title": task.title,
+        "description": task.description,
+        "start": event_date.isoformat() if event_date else None,
+        "time": event_time,
+        "due_date": task.due_date.isoformat() if getattr(task, "due_date", None) else None,
+        "assignee": assignee_name,
+        "assignee_id": task.assigned_to,
+        "project_id": str(task.project_id) if getattr(task, "project_id", None) else None,
+        "project_name": project_name,
+        "priority": priority,
+        "status": status_value,
+        "color": "#10B981" if priority in {"urgent", "critical"} else "#F59E0B" if priority == "high" else "#3B82F6",
+    }
 
 
 @router.get("/events")
@@ -28,16 +122,7 @@ async def get_calendar_events(
     - team_calendar: Events for all team members (admin/lead only)
     """
     try:
-        # Parse dates
-        if start_date:
-            start = datetime.strptime(start_date, "%Y-%m-%d").date()
-        else:
-            start = date.today() - timedelta(days=30)
-        
-        if end_date:
-            end = datetime.strptime(end_date, "%Y-%m-%d").date()
-        else:
-            end = date.today() + timedelta(days=60)
+        start, end, start_at, end_at = parse_calendar_window(start_date, end_date)
         
         events = []
         
@@ -105,7 +190,7 @@ async def get_calendar_events(
         # Fetch meetings
         meeting_query = {
             "company_id": current_user.company_id,
-            "meeting_date": {"$gte": start, "$lte": end}
+            "meeting_date": {"$gte": start_at, "$lte": end_at}
         }
         
         # Filter by user for meetings
@@ -124,26 +209,14 @@ async def get_calendar_events(
         
         meetings = await Meeting.find(meeting_query).to_list()
         
-        # Fetch tasks
-        task_query = {
-            "company_id": current_user.company_id,
-        }
-        
-        # Filter by user for tasks
-        if view_type == "my_calendar":
-            task_query["assigned_to"] = str(current_user.id)
-        else:
-            task_query["assigned_to"] = {"$in": user_ids_to_fetch}
-        
-        # Filter by project if provided
-        if project_id:
-            from bson import ObjectId
-            try:
-                task_query["project_id"] = ObjectId(project_id)
-            except:
-                task_query["project_id"] = project_id
-        
-        # Filter tasks by due_date if available, or created_at
+        task_query = build_calendar_task_query(
+            current_user,
+            view_type=view_type,
+            user_ids_to_fetch=user_ids_to_fetch,
+            start_at=start_at,
+            end_at=end_at,
+            project_id=project_id,
+        )
         tasks = await Task.find(task_query).to_list()
         
         # Format meetings as events
@@ -195,28 +268,9 @@ async def get_calendar_events(
                 assignee_name = f"{assignee.first_name} {assignee.last_name}" if assignee else "Unassigned"
                 
                 # Get project name if available
-                project_name = None
-                if task.project_id:
-                    from app.models.project import Project
-                    project = await Project.get(task.project_id)
-                    if project:
-                        project_name = project.name
+                project_name = await load_calendar_project_name(task.project_id, current_user.company_id)
                 
-                events.append({
-                    "id": f"task_{task.id}",
-                    "type": "task",
-                    "title": task.title,
-                    "description": task.description,
-                    "start": task_date.isoformat(),
-                    "due_date": task.due_date.isoformat() if task.due_date else None,
-                    "assignee": assignee_name,
-                    "assignee_id": task.assigned_to,
-                    "project_id": task.project_id,
-                    "project_name": project_name,
-                    "priority": task.priority.value if task.priority else "medium",
-                    "status": task.status.value if task.status else "todo",
-                    "color": "#10B981" if task.priority and task.priority.value == "urgent" else "#F59E0B" if task.priority and task.priority.value == "high" else "#3B82F6",  # Green for urgent, Orange for high, Blue for others
-                })
+                events.append(task_to_calendar_event(task, assignee_name=assignee_name, project_name=project_name))
         
         # Sort events by date
         events.sort(key=lambda x: x["start"])
@@ -229,11 +283,8 @@ async def get_calendar_events(
             "total": len(events)
         }
     
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid date format: {str(e)}"
-        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

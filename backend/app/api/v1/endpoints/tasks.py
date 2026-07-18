@@ -442,6 +442,11 @@ async def list_tasks(
     for task in tasks:
         await sync_task_health(task)
     total = await Task.find(query).count()
+    assignee_names = {}
+    for assignee_id in {task.assigned_to for task in tasks if task.assigned_to}:
+        assignee = await User.get(assignee_id)
+        if assignee:
+            assignee_names[str(assignee.id)] = f"{assignee.first_name} {assignee.last_name}".strip() or assignee.email
 
     return {
         "tasks": [
@@ -451,6 +456,7 @@ async def list_tasks(
                 "status": task.status.value,
                 "priority": task.priority.value,
                 "assigned_to": task.assigned_to,
+                "assigned_to_name": assignee_names.get(str(task.assigned_to or "")),
                 "created_by": task.created_by,
                 "project_id": str(task.project_id) if task.project_id else None,
                 "department_id": getattr(task, "department_id", None),
