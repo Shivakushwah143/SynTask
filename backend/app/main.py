@@ -124,6 +124,12 @@ async def _startup_tasks() -> None:
             logger.info("IMAP recruitment sync background task started")
         except Exception as imap_err:
             logger.warning(f"IMAP recruitment sync startup skipped: {imap_err}")
+        try:
+            from app.services.scheduling_service import SchedulingService
+            asyncio.create_task(SchedulingService.run_scheduled_jobs_loop())
+            logger.info("Scheduled jobs background task started")
+        except Exception as scheduling_err:
+            logger.warning(f"Scheduled jobs startup skipped: {scheduling_err}")
     else:
         logger.warning("Database background workers skipped because MongoDB/Beanie is not ready.")
 

@@ -502,195 +502,24 @@ async def create_task(
     We resolve to the project and store the custom project_id in task.project_id so tasks are
     linked by logical ID, not by ObjectId.
     """
-    if not current_user.company_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User must belong to a company"
-        )
-    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to create tasks",
-        )
-
-    # Validate priority
-    try:
-        task_priority = TaskPriority(priority.lower())
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid priority. Must be one of: {[p.value for p in TaskPriority]}"
-        )
-
-    # Parse due date
-    parsed_due_date = None
-    if due_date:
-        try:
-            parsed_due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
-        except:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid due date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)"
-            )
-
-    # Parse tags
-    parsed_tags = []
-    if tags:
-        try:
-            parsed_tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
-        except:
-            parsed_tags = []
-
-    # Convert empty strings to None for optional fields (do this before validation)
-    project_id = project_id.strip() if project_id and project_id.strip() else None
-    # Keep original value from form so we can use same id in task (fetch by project_id)
-    original_project_id_from_request = project_id
-    epic_id = epic_id.strip() if epic_id and epic_id.strip() else None
-    sprint_id = sprint_id.strip() if sprint_id and sprint_id.strip() else None
-    parent_task_id = parent_task_id.strip() if parent_task_id and parent_task_id.strip() else None
-    assigned_to = assigned_to.strip() if assigned_to and assigned_to.strip() else None
-
-    # Validate assigned user if provided
-    assignee = None
-    if assigned_to:
-        assignee = await User.get(assigned_to)
-        if not assignee:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Assigned user not found"
-            )
-        if assignee.company_id != current_user.company_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Assigned user must be from the same company"
-            )
-        await _assert_can_assign_task(current_user, assignee)
-
-    # Validate project if provided - use helper function to find by user-provided project_id or MongoDB _id
-    project = None
-    if project_id:
-        from app.api.dependencies import get_project_by_id
-        import logging
-        logger = logging.getLogger(__name__)
-
-        project, user_project_id = await get_project_by_id(project_id, current_user.company_id)
-
-        if not project:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Project not found with id: {project_id}"
-            )
-
-        # Verify company access
-        if project.company_id != current_user.company_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to this project"
-            )
-        if not await _can_access_project_for_task(current_user, project):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You cannot create tasks in this project",
-            )
-
-        # Task must store same project_id so we can fetch tasks by project. Prefer:
-        # 1) request value if it looks like custom id (e.g. ak-001), else
-        # 2) project.project_id, else 3) MongoDB _id
-        def looks_like_objectid(s):
-            return s and len(s) == 24 and all(c in "0123456789abcdef" for c in s.lower())
-        if original_project_id_from_request and not looks_like_objectid(original_project_id_from_request):
-            project_id = original_project_id_from_request
-            logger.info(f"Task creation: Using request project_id={project_id} (custom id) for project {project.id}")
-        elif user_project_id:
-            project_id = user_project_id
-            logger.info(f"Task creation: Using user-defined project_id={project_id} for project MongoDB _id={project.id}")
-        else:
-            project_id = str(project.id)
-            logger.warning(f"Task creation: Using MongoDB _id={project_id} as fallback")
-
-    # Validate epic if provided
-    if epic_id:
-        from app.models.project import Epic
-        epic = await Epic.get(epic_id)
-        if not epic or epic.company_id != current_user.company_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Epic not found"
-            )
-
-    # Validate sprint if provided
-    if sprint_id:
-        from app.models.project import Sprint
-        sprint = await Sprint.get(sprint_id)
-        if not sprint or sprint.company_id != current_user.company_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Sprint not found"
-            )
-
-    department_doc = await _resolve_department(current_user.company_id, department_id)
-
-    task = Task(
+    from app.services.task_service import TaskService
+    return await TaskService.create_task_core(
         title=title,
         description=description,
-        company_id=current_user.company_id,
-        created_by=str(current_user.id),
         assigned_to=assigned_to,
-        assigned_by=str(current_user.id) if assignee else None,
-        department_id=department_id if department_doc else None,
-        department=department_doc.name if department_doc else None,
-        priority=task_priority,
-        due_date=parsed_due_date,
-        tags=parsed_tags,
+        priority=priority,
+        due_date=due_date,
+        tags=tags,
         parent_task_id=parent_task_id,
-        project_id=project_id,  # Now properly None if empty string was sent
+        project_id=project_id,
         epic_id=epic_id,
         sprint_id=sprint_id,
+        department_id=department_id,
         story_points=story_points,
         estimated_hours=estimated_hours,
+        current_user=current_user,
+        background_tasks=background_tasks
     )
-
-    # --- Save the task. This is the only DB write that MUST succeed before
-    # we respond. Everything else (email, notification, cache, event) is
-    # non-critical and happens in the background AFTER the response is sent. ---
-    await task.insert()
-    await sync_task_health(task)
-
-    if task.assigned_to:
-        await create_timeline_event(
-            user_id=task.assigned_to,
-            company_id=task.company_id,
-            event_type=TimelineEventType.TASK_ASSIGNED,
-            title="Task Assigned",
-            description=task.title,
-            related_module=TimelineModule.TASK,
-            related_record_id=str(task.id),
-            actor_id=str(current_user.id),
-            metadata={"task_title": task.title, "project_id": task.project_id, "priority": task.priority.value},
-            idempotency_key=f"task:{task.id}:assigned:{task.assigned_to}",
-        )
-
-    background_tasks.add_task(
-        _send_task_side_effects, task, current_user, assignee, project
-    )
-
-    return {
-        "id": str(task.id),
-        "title": task.title,
-        "status": task.status.value,
-        "priority": task.priority.value,
-        "assigned_to": task.assigned_to,
-        "created_by": task.created_by,
-        "project_id": str(task.project_id) if task.project_id else None,
-        "department_id": task.department_id,
-        "department": task.department,
-        "due_date": task.due_date,
-        "health_status": getattr(task.health_status, "value", task.health_status),
-        "extension_count": getattr(task, "extension_count", 0),
-        "created_at": task.created_at,
-        "message": "Task created successfully",
-        "task_id": str(task.id)
-    }
 
 
 @router.post("/health/sync")
