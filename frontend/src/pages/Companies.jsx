@@ -9,7 +9,9 @@ import toast from 'react-hot-toast'
 const Companies = () => {
   const { confirm } = useConfirmation()
   const [companies, setCompanies] = useState([])
+  const [totalCompanies, setTotalCompanies] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(null)
   const [showRegisterModal, setShowRegisterModal] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
@@ -17,29 +19,44 @@ const Companies = () => {
   const [submitting, setSubmitting] = useState(false)
 
   // Fetch companies
-  const fetchCompanies = async () => {
+  const fetchCompanies = async ({ skip = 0, limit = 20, append = false } = {}) => {
     try {
-      setLoading(true)
+      if (append) {
+        setLoadingMore(true)
+      } else {
+        setLoading(true)
+      }
       setError(null)
       console.log('📡 Fetching companies...')
-      const data = await companiesAPI.listCompanies()
+      const data = await companiesAPI.listCompanies(null, skip, limit)
       console.log('✅ Companies received:', data)
       
       if (data && Array.isArray(data.companies)) {
-        setCompanies(data.companies)
+        setCompanies((current) => {
+          if (!append) return data.companies
+          const existingIds = new Set(current.map((company) => company.id))
+          return [...current, ...data.companies.filter((company) => !existingIds.has(company.id))]
+        })
+        setTotalCompanies(Number(data.total || 0))
       } else {
         console.warn('⚠️ Unexpected data format:', data)
-        setCompanies([])
+        if (!append) setCompanies([])
+        setTotalCompanies(0)
       }
     } catch (error) {
       console.error('❌ Error loading companies:', error)
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to load companies'
       setError(errorMsg)
       toast.error(errorMsg)
-      setCompanies([])
+      if (!append) setCompanies([])
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
+  }
+
+  const handleShowMore = () => {
+    fetchCompanies({ skip: companies.length, limit: 10, append: true })
   }
 
   useEffect(() => {
@@ -318,6 +335,17 @@ const Companies = () => {
           ))
         )}
       </div>
+
+      {companies.length > 0 && companies.length < totalCompanies ? (
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-gray-200 bg-white p-4 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] sm:flex-row sm:justify-between">
+          <p className="text-sm text-gray-600 dark:text-[var(--color-app-text-muted)]">
+            Showing {companies.length} of {totalCompanies} companies
+          </p>
+          <Button type="button" variant="secondary" loading={loadingMore} loadingText="Loading" onClick={handleShowMore}>
+            Show 10 more
+          </Button>
+        </div>
+      ) : null}
 
       {/* Register Company Modal */}
       <Modal

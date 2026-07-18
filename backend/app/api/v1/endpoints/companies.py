@@ -100,7 +100,7 @@ async def list_companies(
     if status_filter:
         query["status"] = status_filter
     
-    companies = await Company.find(query).skip(skip).limit(limit).to_list()
+    companies = await Company.find(query).sort("-created_at").skip(skip).limit(limit).to_list()
     total = await Company.find(query).count()
     
     return {
