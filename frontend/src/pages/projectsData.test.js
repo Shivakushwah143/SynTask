@@ -35,6 +35,20 @@ describe('projects graph data helpers', () => {
     expect(buildProjectGraphRows(projects, 10)).toHaveLength(10)
   })
 
+  test('shows manager and lead names in project graph owner line', () => {
+    const rows = buildProjectGraphRows([{
+      id: 'p1',
+      name: 'Alpha Website',
+      assigned_users: [
+        { id: 'manager-1', name: 'Maya Manager', role: 'manager' },
+        { id: 'lead-1', name: 'Leena Lead', role: 'lead' },
+      ],
+      task_count: 2,
+    }])
+
+    expect(rows[0].owner).toBe('Manager: Maya Manager / Lead: Leena Lead')
+  })
+
   test('filters the full project dataset before visible rows are selected', () => {
     const projects = Array.from({ length: 14 }, (_, index) => ({
       id: `p${index}`,

@@ -21,6 +21,7 @@ class NotificationType(str, Enum):
     TICKET_COMMENT = "ticket_comment"
     TICKET_ESCALATED = "ticket_escalated"
     PROJECT_ASSIGNED = "project_assigned"
+    MEETING_INVITED = "meeting_invited"
     DEADLINE_APPROACHING = "deadline_approaching"
     MENTION = "mention"
     MESSAGE = "message"

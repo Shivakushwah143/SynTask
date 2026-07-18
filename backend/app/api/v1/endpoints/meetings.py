@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import logging
 
 from app.models.meeting import Meeting, MeetingStatus
+from app.models.notification import Notification, NotificationType
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole
 from app.events import publish_event
@@ -25,6 +26,158 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 zoom_service = ZoomService()
 
+MEETING_PARTICIPANT_ROLES_BY_CREATOR = {
+    UserRole.SUPER_ADMIN: {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE},
+    UserRole.ADMIN: {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE},
+    UserRole.MANAGER: {UserRole.LEAD, UserRole.EMPLOYEE},
+    UserRole.LEAD: {UserRole.EMPLOYEE},
+}
+
+
+def validate_meeting_duration(duration: int) -> None:
+    if duration < 1 or duration > 60:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Duration must be between 1 and 60 minutes",
+        )
+
+
+def validate_meeting_participant_role(current_user: User, participant: User) -> None:
+    allowed_roles = MEETING_PARTICIPANT_ROLES_BY_CREATOR.get(current_user.role, set())
+    if participant.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Participants must be junior users available to the meeting creator",
+        )
+
+
+def normalize_participant_ids(participant_ids: Optional[str]) -> List[str]:
+    seen = set()
+    normalized = []
+    for pid in (participant_ids or "").split(","):
+        value = pid.strip()
+        if value and value not in seen:
+            seen.add(value)
+            normalized.append(value)
+    return normalized
+
+
+def can_view_meeting(current_user: User, meeting: Meeting) -> bool:
+    user_id = str(current_user.id)
+    return meeting.host_id == user_id or user_id in (meeting.participant_ids or [])
+
+
+def can_see_zoom_start_url(current_user: User, meeting: Meeting) -> bool:
+    return meeting.host_id == str(current_user.id) or current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+
+
+def can_manage_meeting(current_user: User, meeting: Meeting) -> bool:
+    return meeting.host_id == str(current_user.id) or current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+
+
+def validate_meeting_access(current_user: User, meeting: Meeting) -> None:
+    check_company_access(current_user, meeting.company_id)
+    if not can_view_meeting(current_user, meeting):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this meeting",
+        )
+
+
+def validate_meeting_management_access(current_user: User, meeting: Meeting) -> None:
+    check_company_access(current_user, meeting.company_id)
+    if not can_manage_meeting(current_user, meeting):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the meeting host or admin can manage this meeting",
+        )
+
+
+def parse_meeting_datetime(meeting_date: str, meeting_time: str) -> datetime:
+    try:
+        date_obj = datetime.strptime(meeting_date, "%Y-%m-%d").date()
+        time_obj = datetime.strptime(meeting_time, "%H:%M").time()
+        return datetime.combine(date_obj, time_obj)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid date or time format: {str(e)}",
+        )
+
+
+def validate_future_meeting_datetime(meeting_datetime: datetime) -> None:
+    if meeting_datetime < datetime.now():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Meeting date and time must be in the future",
+        )
+
+
+def serialize_meeting(meeting: Meeting, host: Optional[User], participants: List[dict], current_user: User) -> dict:
+    return {
+        "id": str(meeting.id),
+        "title": meeting.title,
+        "description": meeting.description,
+        "meeting_date": meeting.meeting_date.isoformat(),
+        "meeting_time": meeting.meeting_time,
+        "duration": meeting.duration,
+        "host": {
+            "id": str(host.id) if host else None,
+            "email": host.email if host else None,
+            "first_name": host.first_name if host else None,
+            "last_name": host.last_name if host else None,
+        } if host else None,
+        "participants": participants,
+        "zoom_meeting_url": meeting.zoom_meeting_url,
+        "zoom_start_url": meeting.zoom_start_url if can_see_zoom_start_url(current_user, meeting) else None,
+        "zoom_password": meeting.zoom_password,
+        "host_video_enabled": meeting.host_video_enabled,
+        "participant_video_enabled": meeting.participant_video_enabled,
+        "status": meeting.status.value,
+        "created_at": meeting.created_at.isoformat(),
+    }
+
+
+async def notify_meeting_participants(meeting: Meeting, current_user: User) -> None:
+    for participant_id in meeting.participant_ids or []:
+        notification = Notification(
+            user_id=participant_id,
+            company_id=str(meeting.company_id),
+            type=NotificationType.MEETING_INVITED,
+            title="Meeting invitation",
+            message=f"You are invited to {meeting.title}",
+            related_id=str(meeting.id),
+            related_type="meeting",
+            action_url=f"/meetings/{meeting.id}",
+            metadata={
+                "meeting_date": meeting.meeting_date.isoformat(),
+                "meeting_time": meeting.meeting_time,
+                "duration": meeting.duration,
+                "host_id": str(current_user.id),
+            },
+        )
+        await notification.insert()
+
+
+async def get_participant_details(participant_ids: List[str]) -> List[dict]:
+    participants = []
+    for pid in participant_ids:
+        user = await User.get(pid)
+        if user:
+            participants.append({
+                "id": str(user.id),
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            })
+    return participants
+
+
+async def serialize_meeting_response(meeting: Meeting, current_user: User) -> dict:
+    host = await User.get(meeting.host_id)
+    participants = await get_participant_details(meeting.participant_ids or [])
+    return serialize_meeting(meeting, host, participants, current_user)
+
 
 @router.post("/")
 async def create_meeting(
@@ -40,28 +193,14 @@ async def create_meeting(
 ):
     """Create a meeting and schedule it on Zoom"""
     try:
-        # Parse meeting date and time
-        try:
-            date_obj = datetime.strptime(meeting_date, "%Y-%m-%d").date()
-            time_obj = datetime.strptime(meeting_time, "%H:%M").time()
-            meeting_datetime = datetime.combine(date_obj, time_obj)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid date or time format: {str(e)}"
-            )
+        validate_meeting_duration(duration)
+
+        meeting_datetime = parse_meeting_datetime(meeting_date, meeting_time)
         
-        # Check if meeting is in the future
-        if meeting_datetime < datetime.now():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Meeting date and time must be in the future"
-            )
+        validate_future_meeting_datetime(meeting_datetime)
         
         # Parse participant IDs
-        participant_list = []
-        if participant_ids:
-            participant_list = [pid.strip() for pid in participant_ids.split(",") if pid.strip()]
+        participant_list = normalize_participant_ids(participant_ids)
         
         # Validate participants are in the same company
         if participant_list:
@@ -77,6 +216,7 @@ async def create_meeting(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Participant {pid} is not in your company"
                     )
+                validate_meeting_participant_role(current_user, participant)
         
         # Create Zoom meeting if credentials are configured
         zoom_data = {}
@@ -135,6 +275,8 @@ async def create_meeting(
             idempotency_key=f"meeting:{meeting.id}:created:{current_user.id}",
         )
 
+        await notify_meeting_participants(meeting, current_user)
+
         await publish_event(
             build_domain_event(
                 event_name="MeetingCreated",
@@ -156,44 +298,10 @@ async def create_meeting(
             )
         )
         
-        # Get participant details for response
-        participants = []
-        if participant_list:
-            for pid in participant_list:
-                user = await User.get(pid)
-                if user:
-                    participants.append({
-                        "id": str(user.id),
-                        "email": user.email,
-                        "first_name": user.first_name,
-                        "last_name": user.last_name,
-                    })
-        
         return {
             "success": True,
             "message": "Meeting scheduled successfully",
-            "meeting": {
-                "id": str(meeting.id),
-                "title": meeting.title,
-                "description": meeting.description,
-                "meeting_date": meeting.meeting_date.isoformat(),
-                "meeting_time": meeting.meeting_time,
-                "duration": meeting.duration,
-                "host": {
-                    "id": str(current_user.id),
-                    "email": current_user.email,
-                    "first_name": current_user.first_name,
-                    "last_name": current_user.last_name,
-                },
-                "participants": participants,
-                "zoom_meeting_url": meeting.zoom_meeting_url,
-                "zoom_start_url": meeting.zoom_start_url,
-                "zoom_password": meeting.zoom_password,
-                "host_video_enabled": meeting.host_video_enabled,
-                "participant_video_enabled": meeting.participant_video_enabled,
-                "status": meeting.status.value,
-                "created_at": meeting.created_at.isoformat(),
-            }
+            "meeting": await serialize_meeting_response(meeting, current_user)
         }
     except HTTPException:
         raise
@@ -210,6 +318,7 @@ async def list_meetings(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None),
+    upcoming: bool = Query(False),
     current_user: User = Depends(get_current_user),
 ):
     """List meetings for the current user's company"""
@@ -224,13 +333,14 @@ async def list_meetings(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid status: {status}"
             )
+
+    if upcoming:
+        query["meeting_date"] = {"$gte": datetime.now()}
     
-    # Employees can only see meetings they're part of
-    if current_user.role == UserRole.EMPLOYEE:
-        query["$or"] = [
-            {"host_id": str(current_user.id)},
-            {"participant_ids": str(current_user.id)}
-        ]
+    query["$or"] = [
+        {"host_id": str(current_user.id)},
+        {"participant_ids": str(current_user.id)}
+    ]
     
     meetings = await Meeting.find(query).sort(-Meeting.meeting_date).skip(skip).limit(limit).to_list()
     total = await Meeting.find(query).count()
@@ -250,28 +360,7 @@ async def list_meetings(
                     "last_name": user.last_name,
                 })
         
-        meetings_data.append({
-            "id": str(meeting.id),
-            "title": meeting.title,
-            "description": meeting.description,
-            "meeting_date": meeting.meeting_date.isoformat(),
-            "meeting_time": meeting.meeting_time,
-            "duration": meeting.duration,
-            "host": {
-                "id": str(host.id) if host else None,
-                "email": host.email if host else None,
-                "first_name": host.first_name if host else None,
-                "last_name": host.last_name if host else None,
-            } if host else None,
-            "participants": participants,
-            "zoom_meeting_url": meeting.zoom_meeting_url,
-            "zoom_start_url": meeting.zoom_start_url,
-            "zoom_password": meeting.zoom_password,
-            "host_video_enabled": meeting.host_video_enabled,
-            "participant_video_enabled": meeting.participant_video_enabled,
-            "status": meeting.status.value,
-            "created_at": meeting.created_at.isoformat(),
-        })
+        meetings_data.append(serialize_meeting(meeting, host, participants, current_user))
     
     return {
         "meetings": meetings_data,
@@ -279,6 +368,114 @@ async def list_meetings(
         "skip": skip,
         "limit": limit
     }
+
+
+@router.patch("/{meeting_id}")
+async def update_meeting(
+    meeting_id: str,
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    meeting_date: Optional[str] = Form(None),
+    meeting_time: Optional[str] = Form(None),
+    duration: Optional[int] = Form(None),
+    participant_ids: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_company_admin_or_lead),
+):
+    """Update meeting details and reschedule when date/time changes"""
+    meeting = await Meeting.get(meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+
+    validate_meeting_management_access(current_user, meeting)
+
+    if duration is not None:
+        validate_meeting_duration(duration)
+        meeting.duration = duration
+
+    if title is not None:
+        meeting.title = title
+    if description is not None:
+        meeting.description = description
+
+    next_date = meeting_date or meeting.meeting_date.strftime("%Y-%m-%d")
+    next_time = meeting_time or meeting.meeting_time
+    if meeting_date is not None or meeting_time is not None:
+        meeting_datetime = parse_meeting_datetime(next_date, next_time)
+        validate_future_meeting_datetime(meeting_datetime)
+        meeting.meeting_date = meeting_datetime
+        meeting.meeting_time = next_time
+
+    if participant_ids is not None:
+        participant_list = normalize_participant_ids(participant_ids)
+        for pid in participant_list:
+            participant = await User.get(pid)
+            if not participant:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Participant {pid} not found")
+            if participant.company_id != current_user.company_id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Participant {pid} is not in your company")
+            validate_meeting_participant_role(current_user, participant)
+        meeting.participant_ids = participant_list
+
+    meeting.updated_at = datetime.utcnow()
+    await meeting.save()
+
+    await publish_event(
+        build_domain_event(
+            event_name="MeetingUpdated",
+            aggregate_type="meeting",
+            aggregate_id=str(meeting.id),
+            company_id=str(current_user.company_id),
+            actor_id=str(current_user.id),
+            payload={"title": meeting.title, "meeting_date": meeting.meeting_date.isoformat(), "status": meeting.status.value},
+            metadata={"source": "meeting_update"},
+        )
+    )
+
+    return {"success": True, "message": "Meeting updated successfully", "meeting": await serialize_meeting_response(meeting, current_user)}
+
+
+@router.post("/{meeting_id}/start")
+async def start_meeting(meeting_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
+    meeting = await Meeting.get(meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    validate_meeting_management_access(current_user, meeting)
+    if meeting.status == MeetingStatus.CANCELLED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled meetings cannot be started")
+    meeting.status = MeetingStatus.ONGOING
+    meeting.started_at = datetime.utcnow()
+    meeting.updated_at = datetime.utcnow()
+    await meeting.save()
+    return {"success": True, "message": "Meeting started", "meeting": await serialize_meeting_response(meeting, current_user)}
+
+
+@router.post("/{meeting_id}/complete")
+async def complete_meeting(meeting_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
+    meeting = await Meeting.get(meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    validate_meeting_management_access(current_user, meeting)
+    if meeting.status == MeetingStatus.CANCELLED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled meetings cannot be completed")
+    meeting.status = MeetingStatus.COMPLETED
+    meeting.ended_at = datetime.utcnow()
+    meeting.updated_at = datetime.utcnow()
+    await meeting.save()
+    return {"success": True, "message": "Meeting completed", "meeting": await serialize_meeting_response(meeting, current_user)}
+
+
+@router.post("/{meeting_id}/cancel")
+async def cancel_meeting(meeting_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
+    meeting = await Meeting.get(meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+    validate_meeting_management_access(current_user, meeting)
+    if meeting.zoom_meeting_id and settings.ZOOM_API_KEY_COMPUTED:
+        await zoom_service.delete_meeting(meeting.zoom_meeting_id, current_user.email)
+    meeting.status = MeetingStatus.CANCELLED
+    meeting.updated_at = datetime.utcnow()
+    await meeting.save()
+    return {"success": True, "message": "Meeting cancelled", "meeting": await serialize_meeting_response(meeting, current_user)}
 
 
 @router.get("/{meeting_id}")
@@ -297,13 +494,11 @@ async def get_meeting(
     
     check_company_access(current_user, meeting.company_id)
     
-    # Employees can only see meetings they're part of
-    if current_user.role == UserRole.EMPLOYEE:
-        if meeting.host_id != str(current_user.id) and str(current_user.id) not in meeting.participant_ids:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have access to this meeting"
-            )
+    if not can_view_meeting(current_user, meeting):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this meeting"
+        )
     
     host = await User.get(meeting.host_id)
     participants = []
@@ -317,28 +512,7 @@ async def get_meeting(
                 "last_name": user.last_name,
             })
     
-    return {
-        "id": str(meeting.id),
-        "title": meeting.title,
-        "description": meeting.description,
-        "meeting_date": meeting.meeting_date.isoformat(),
-        "meeting_time": meeting.meeting_time,
-        "duration": meeting.duration,
-        "host": {
-            "id": str(host.id) if host else None,
-            "email": host.email if host else None,
-            "first_name": host.first_name if host else None,
-            "last_name": host.last_name if host else None,
-        } if host else None,
-        "participants": participants,
-        "zoom_meeting_url": meeting.zoom_meeting_url,
-        "zoom_start_url": meeting.zoom_start_url,
-        "zoom_password": meeting.zoom_password,
-        "host_video_enabled": meeting.host_video_enabled,
-        "participant_video_enabled": meeting.participant_video_enabled,
-        "status": meeting.status.value,
-        "created_at": meeting.created_at.isoformat(),
-    }
+    return serialize_meeting(meeting, host, participants, current_user)
 
 
 @router.delete("/{meeting_id}")

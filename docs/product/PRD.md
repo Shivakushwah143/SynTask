@@ -71,6 +71,8 @@ Measures: login success/error rate, provisioning completion, authorization rejec
 ### 4.2 Projects, tasks and delivery
 
 - Authorized users create projects, boards, sprints, epics, tasks and subtasks.
+- Project boards show separate Manager and Leader assignment fields; Company Admin assigns the Manager, and Company Admin or Manager can assign/change the Leader.
+- Task details show the project Lead as read-only context and expose Employee assignment for permitted task reassignment.
 - Workflow transitions are validated and recorded in history.
 - Assignment candidates are restricted by company, hierarchy, project membership and policy.
 - Comments, files, watchers, links, components, versions and time records remain tenant/resource bound.
@@ -115,6 +117,8 @@ See [attendance flow](../user-flows/attendance.md).
 ### 4.7 Support, chat, meetings and notifications
 
 - Ticket/chat/meeting visibility is participant, team and tenant scoped.
+- Meeting creation shows searchable selectable junior participants by creator role, stores participant IDs internally, rejects durations outside 1-60 minutes, and limits ordinary meeting visibility to hosts and invited participants.
+- Meeting records support host/admin update, reschedule, start, complete, cancel, and delete actions with meeting domain events.
 - Delivery records preference, channel, retry and terminal failure where material.
 - Unread/read and actionable/informational states are clear.
 - Provider failure does not corrupt the primary record.

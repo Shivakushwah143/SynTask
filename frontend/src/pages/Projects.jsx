@@ -605,7 +605,7 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
               <ProgressRing value={project.progress} />
               <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold leading-5 text-primary-600 dark:text-primary-400">{project.name}</p>
-              <p className="truncate text-sm text-gray-500 dark:text-gray-400">{project.owner}</p>
+              <p className="text-sm leading-5 text-gray-500 dark:text-gray-400">{project.owner}</p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {project.key ? <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">{project.key}</span> : null}
                 <Badge label={project.status.replace(/_/g, ' ')} colorKey={project.status} />

@@ -31,6 +31,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery'
 import { canCreateTask, canManageProject, hasCompanyAdminAccess, isLeadRole, normalizeRole } from '../utils/roles'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
+import { getProjectRoleAssignmentIds, getProjectRoleNames, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
 
 const DEFAULT_STATUSES = [
   { id: 'todo', label: 'To Do' },
@@ -66,12 +67,6 @@ const TASK_PRIORITY_SELECT_STYLES = {
   medium: 'border-amber-300 text-amber-700 focus:border-amber-500 focus:ring-amber-500/20 dark:border-amber-700 dark:text-amber-300',
   high: 'border-orange-300 text-orange-700 focus:border-orange-500 focus:ring-orange-500/20 dark:border-orange-700 dark:text-orange-300',
   critical: 'border-rose-300 text-rose-700 focus:border-rose-500 focus:ring-rose-500/20 dark:border-rose-700 dark:text-rose-300',
-}
-
-export function normalizeEstimatedHours(value) {
-  const hours = Number(value)
-  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return null
-  return String(hours)
 }
 
 const normalizeStatusId = (value) => String(value || '').trim().toLowerCase()
@@ -134,13 +129,15 @@ export default function ProjectBoard() {
   const [components, setComponents] = useState([])
   const [versions, setVersions] = useState([])
   const [assignableUsers, setAssignableUsers] = useState([])
+  const [projectAssignableUsers, setProjectAssignableUsers] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState({ priority: '', assignee: '', label: '' })
   const [showFilters, setShowFilters] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
-  const [assignmentUserId, setAssignmentUserId] = useState('')
+  const [assignmentManagerId, setAssignmentManagerId] = useState('')
+  const [assignmentLeaderId, setAssignmentLeaderId] = useState('')
   const [taskAssigneeId, setTaskAssigneeId] = useState('')
   const [createTaskPriority, setCreateTaskPriority] = useState('medium')
   const [selectedStatus, setSelectedStatus] = useState('todo')
@@ -182,10 +179,15 @@ export default function ProjectBoard() {
 
   const loadAssignableUsers = useCallback(async () => {
     try {
-      const data = await usersAPI.getAssignableUsers(false, projectId)
-      setAssignableUsers(data.users || [])
+      const [taskAssignableData, projectAssignableData] = await Promise.all([
+        usersAPI.getAssignableUsers(false, projectId),
+        usersAPI.listUsers(null, null, 'active', 0, 500),
+      ])
+      setAssignableUsers(taskAssignableData.users || [])
+      setProjectAssignableUsers(projectAssignableData.users || [])
     } catch (error) {
       setAssignableUsers([])
+      setProjectAssignableUsers([])
     }
   }, [projectId])
 
@@ -321,7 +323,9 @@ export default function ProjectBoard() {
   }
 
   const openAssignProjectModal = () => {
-    setAssignmentUserId(projectRecord.assigned_to || projectRecord.lead_id || '')
+    const roleIds = getProjectRoleAssignmentIds(projectRecord, projectAssignableUsers, user)
+    setAssignmentManagerId(roleIds.manager)
+    setAssignmentLeaderId(roleIds.lead || projectRecord.lead_id || '')
     setShowAssignModal(true)
   }
 
@@ -330,8 +334,12 @@ export default function ProjectBoard() {
     if (assigningProject) return
     try {
       setAssigningProject(true)
-      await projectsApi.updateProject(projectId, { assigned_to: assignmentUserId })
-      toast.success(assignmentUserId ? 'Project assigned' : 'Project unassigned')
+      const assignedUserIds = [assignmentManagerId, assignmentLeaderId].filter(Boolean)
+      await projectsApi.updateProject(projectId, {
+        assigned_to: assignmentManagerId || assignmentLeaderId || '',
+        assigned_user_ids: assignedUserIds.join(','),
+      })
+      toast.success(assignedUserIds.length ? 'Project assignment updated' : 'Project unassigned')
       setShowAssignModal(false)
       await Promise.all([loadProjectInfo(), loadBoardData()])
     } catch (error) {
@@ -366,7 +374,12 @@ export default function ProjectBoard() {
   }).length
   const unassignedTasks = allProjectTasks.filter((task) => !task.assigned_to).length
   const totalEstimatedHours = allProjectTasks.reduce((sum, task) => sum + Number(task.estimated_hours || 0), 0)
-  const projectRecord = projectInfo || boardData?.project || {}
+  const projectRecord = {
+    ...(boardData?.project || {}),
+    ...(projectInfo || {}),
+    assigned_users: projectInfo?.assigned_users || boardData?.project?.assigned_users || [],
+    assigned_user_ids: projectInfo?.assigned_user_ids || boardData?.project?.assigned_user_ids || [],
+  }
   const canManageCurrentProject = canManageProject(user?.role, projectRecord, user?.id)
   const canManageColumns = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role) || canManageCurrentProject
   const canAssignProject = hasCompanyAdminAccess(user?.role) || (userRole === 'manager' && canManageCurrentProject)
@@ -438,35 +451,18 @@ export default function ProjectBoard() {
       setUpdatingTaskId(null)
     }
   }
-  const userNameById = useMemo(() => {
-    return Object.fromEntries(assignableUsers.map((item) => [
-      String(item.id || item._id),
-      [item.first_name, item.last_name].filter(Boolean).join(' ') || item.email || 'Team member',
-    ]))
-  }, [assignableUsers])
-  const projectAssignmentOptions = useMemo(
-    () => assignableUsers.filter((item) => {
-      const role = normalizeRole(item.role)
-      if (userRole === 'manager') return role === 'lead'
-      return role === 'manager' || role === 'lead'
-    }),
-    [assignableUsers, userRole],
+  const managerAssignmentOptions = useMemo(() => {
+    const managers = projectAssignableUsers.filter((item) => normalizeRole(item.role) === 'manager')
+    if (userRole === 'manager' && !managers.some((item) => String(item.id || item._id) === String(user?.id || user?._id))) {
+      return [user, ...managers].filter(Boolean)
+    }
+    return managers
+  }, [projectAssignableUsers, user, userRole])
+  const leaderAssignmentOptions = useMemo(
+    () => projectAssignableUsers.filter((item) => normalizeRole(item.role) === 'lead'),
+    [projectAssignableUsers],
   )
-  const assignedProjectUsers = Array.isArray(projectRecord.assigned_users) ? projectRecord.assigned_users : []
-  const assignedProjectIds = projectRecord.assigned_user_ids || (projectRecord.assigned_to ? [projectRecord.assigned_to] : [])
-  const projectManagers = assignedProjectUsers
-    .filter((item) => normalizeRole(item.role) === 'manager')
-    .map((item) => item.name)
-  const projectLeaders = assignedProjectUsers
-    .filter((item) => normalizeRole(item.role) === 'lead')
-    .map((item) => item.name)
-  assignedProjectIds.forEach((id) => {
-    const match = assignableUsers.find((item) => String(item.id || item._id) === String(id))
-    if (!match) return
-    const name = userNameById[String(id)]
-    if (normalizeRole(match.role) === 'manager' && !projectManagers.includes(name)) projectManagers.push(name)
-    if (normalizeRole(match.role) === 'lead' && !projectLeaders.includes(name)) projectLeaders.push(name)
-  })
+  const { manager: projectManagers, lead: projectLeaders } = getProjectRoleNames(projectRecord, projectAssignableUsers, user)
   const managerValue = projectManagers.length ? projectManagers.join(', ') : 'Unassigned'
   const leaderValue = projectLeaders.length ? projectLeaders.join(', ') : 'Unassigned'
   const statusChartData = statuses.map((status) => ({
@@ -563,11 +559,20 @@ export default function ProjectBoard() {
                 action={canAssignProject ? (
                   <Button variant="secondary" size="sm" onClick={openAssignProjectModal}>
                     <UserPlus className="h-4 w-4" />
-                    {projectRecord.assigned_to ? 'Change' : 'Assign'}
+                    Change
                   </Button>
                 ) : null}
               />
-              <ProjectOverviewLine label="Leader" value={leaderValue} />
+              <ProjectOverviewLine
+                label="Leader"
+                value={leaderValue}
+                action={canAssignProject ? (
+                  <Button variant="secondary" size="sm" onClick={openAssignProjectModal}>
+                    <UserPlus className="h-4 w-4" />
+                    Change
+                  </Button>
+                ) : null}
+              />
               <ProjectOverviewLine label="Start" value={formatProjectDate(projectRecord.start_date)} />
               <ProjectOverviewLine label="Delivery" value={formatProjectDate(projectRecord.delivery_date)} />
               <ProjectOverviewLine label="Assets" value={`${projectFiles.length} files / ${pages.length} pages`} />
@@ -739,17 +744,31 @@ export default function ProjectBoard() {
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Project</p>
             <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{activeProject}</p>
           </div>
-          <FormField label="Assigned to">
+          <FormField label="Manager">
             <CreatableSelectField
-              value={assignmentUserId}
-              onChange={setAssignmentUserId}
+              value={assignmentManagerId}
+              onChange={setAssignmentManagerId}
               className={inputClassName}
               createLabel="Create user"
               onCreate={() => setShowQuickEmployeeModal(true)}
+              canCreate={hasCompanyAdminAccess(user?.role)}
+              disabled={!hasCompanyAdminAccess(user?.role)}
+            >
+              <option value="">No manager</option>
+              {managerAssignmentOptions.map((item) => <option key={item.id || item._id} value={item.id || item._id}>{getUserDisplayName(item)} ({item.role})</option>)}
+            </CreatableSelectField>
+          </FormField>
+          <FormField label="Leader">
+            <CreatableSelectField
+              value={assignmentLeaderId}
+              onChange={setAssignmentLeaderId}
+              className={inputClassName}
+              createLabel="Create lead"
+              onCreate={() => setShowQuickEmployeeModal(true)}
               canCreate={canAssignProject}
             >
-              <option value="">Unassigned</option>
-              {projectAssignmentOptions.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name} ({item.role})</option>)}
+              <option value="">No leader</option>
+              {leaderAssignmentOptions.map((item) => <option key={item.id} value={item.id}>{getUserDisplayName(item)} ({item.role})</option>)}
             </CreatableSelectField>
           </FormField>
           <div className="flex justify-end gap-2 pt-2">
@@ -762,12 +781,12 @@ export default function ProjectBoard() {
       <QuickCreateEmployeeModal
         isOpen={showQuickEmployeeModal}
         onClose={() => setShowQuickEmployeeModal(false)}
-        existing={assignableUsers}
-        leads={assignableUsers.filter((item) => item.role === 'lead')}
+        existing={projectAssignableUsers}
+        leads={projectAssignableUsers.filter((item) => item.role === 'lead')}
         canCreateLead={canAssignProject}
         onCreated={async (created) => {
           await loadAssignableUsers()
-          setAssignmentUserId(created.id)
+          if (normalizeRole(created.role) === 'lead') setAssignmentLeaderId(created.id)
           setTaskAssigneeId(created.id)
         }}
       />

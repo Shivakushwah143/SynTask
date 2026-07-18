@@ -135,6 +135,7 @@ def register_knowledge_subscribers() -> None:
         "TaskCommentAdded",
         "TaskAttachmentAdded",
         "MeetingCreated",
+        "MeetingUpdated",
         "MeetingDeleted",
         "CreativeUploaded",
         "CreativeReviewed",

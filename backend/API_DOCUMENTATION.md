@@ -227,10 +227,14 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/meetings/` | `list_meetings` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/meetings/` | `create_meeting` | Uses router/endpoint dependencies where configured. |
-| DELETE | `/api/v1/meetings/{meeting_id}` | `delete_meeting` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/meetings/{meeting_id}` | `get_meeting` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/meetings/` | `list_meetings` | Lists meetings where the current user is host or participant; supports `status` and `upcoming` filters. |
+| POST | `/api/v1/meetings/` | `create_meeting` | Admin, Manager, Lead, or Super Admin only; duration must be 1-60 minutes; participant IDs must be same-tenant junior users available to the creator role. |
+| PATCH | `/api/v1/meetings/{meeting_id}` | `update_meeting` | Host/Admin/Super Admin update or reschedule meeting details and participants. |
+| GET | `/api/v1/meetings/{meeting_id}` | `get_meeting` | Host or invited participant only; host start URL is returned only to host/Admin/Super Admin. |
+| POST | `/api/v1/meetings/{meeting_id}/start` | `start_meeting` | Host/Admin/Super Admin marks a scheduled meeting ongoing. |
+| POST | `/api/v1/meetings/{meeting_id}/complete` | `complete_meeting` | Host/Admin/Super Admin marks a meeting completed. |
+| POST | `/api/v1/meetings/{meeting_id}/cancel` | `cancel_meeting` | Host/Admin/Super Admin marks a meeting cancelled and attempts Zoom deletion when configured. |
+| DELETE | `/api/v1/meetings/{meeting_id}` | `delete_meeting` | Host/Admin/Super Admin deletes a meeting and publishes `MeetingDeleted`. |
 
 ### Notifications
 
@@ -245,7 +249,7 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/projects/` | `list_projects` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/` | `list_projects` | Company-scoped. Admin/Super Admin and Manager list company projects; Employee list includes project membership and projects containing tasks assigned to them. |
 | POST | `/api/v1/projects/` | `create_project` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/projects/for-task-creation` | `get_projects_for_task_creation` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/projects/{project_id}` | `delete_project` | Uses router/endpoint dependencies where configured. |
@@ -429,10 +433,10 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/tasks/` | `list_tasks` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/tasks/` | `list_tasks` | Company-scoped. Admin/Super Admin and Manager list company tasks; Employee list is assigned-only. |
 | POST | `/api/v1/tasks/` | `create_task` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/tasks/{task_id}` | `get_task` | Uses router/endpoint dependencies where configured. |
-| PUT | `/api/v1/tasks/{task_id}` | `update_task` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/tasks/{task_id}` | `update_task` | Admin/Super Admin manage company tasks; Manager detail edits/assignment are limited to matching `department_id`; Employees cannot edit details through this endpoint. |
 | POST | `/api/v1/tasks/{task_id}/attachments` | `add_task_attachment` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/tasks/{task_id}/comments` | `get_task_comments` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/tasks/{task_id}/comments` | `add_task_comment` | Uses router/endpoint dependencies where configured. |

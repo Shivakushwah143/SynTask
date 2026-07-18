@@ -45,11 +45,13 @@ For every tenant-owned endpoint/job, attempt list, get, foreign-parent create, u
 ### Domain regression
 
 - Project/task lifecycle, assignment, boards, automation, history.
+- Project/task role matrix: Admin company-wide list/manage; Manager company-wide list with same-department edit/assign only; Employee assigned-task visibility with project context and no detail edits except progress, comments, and attachments.
 - CRM lifecycle, deduplication, import, conversion.
 - Invoice/ledger/MSA states, rounding, signing, payment callbacks.
 - Attendance duplicate sessions, timezone, corrections, leave, reports.
 - Recruitment public fields, files/privacy, transitions.
 - Chat/ticket/notification participant scope and retry.
+- Meeting creation/lifecycle: searchable junior-only participant selection by creator role, same-tenant rejection, host/participant visibility, host URL redaction, 1-60 minute duration boundaries, update/reschedule, start, complete, cancel, delete, and Zoom failure/retry paths.
 - AI permissions, confirmation, leakage, evaluation.
 
 ### Data/integration and quality

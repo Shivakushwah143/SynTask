@@ -16,6 +16,8 @@ import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
 import { EmptyState } from '../components/ui'
+import { buildTaskAssignmentOptions, canEditTaskDetails, getProjectLeadName, getUserDisplayName, getUserId } from './TaskDetail.helpers'
+import { normalizeRole } from '../utils/roles'
 import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } from './taskNavigation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -71,6 +73,26 @@ const TaskDetail = () => {
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
   const historyRef = useRef(null)
+  const { leads: leadAssignmentOptions, employees: employeeAssignmentOptions } = buildTaskAssignmentOptions(users, user)
+  const currentAssignee = users.find((item) => getUserId(item) === String(task?.assigned_to || ''))
+    || (getUserId(user) === String(task?.assigned_to || '') ? user : null)
+  const currentAssigneeRole = normalizeRole(currentAssignee?.role)
+  const selectedEmployeeId = currentAssigneeRole === 'employee' ? String(task?.assigned_to || '') : ''
+  const projectLeadName = getProjectLeadName(projectInfo, leadAssignmentOptions, user)
+  const canEditDetails = canEditTaskDetails(user, task)
+
+  const updateAssignee = async (newAssignee) => {
+    try {
+      setUpdatingField('assignee')
+      await tasksAPI.updateTask(task.id, { assigned_to: newAssignee || null })
+      toast.success('Task reassigned')
+      await loadTask()
+    } catch (error) {
+      toast.error('Failed to reassign task')
+    } finally {
+      setUpdatingField(null)
+    }
+  }
 
   const navigateBack = useCallback(() => {
     const fallbackPath = resolveTaskCloseFallback(projectId || task?.project_id)
@@ -660,8 +682,9 @@ const TaskDetail = () => {
               />
             ) : (
               <h1 
-                className="text-2xl font-bold text-gray-900 cursor-pointer hover:bg-gray-50 p-2 rounded"
-                onClick={() => setIsEditing(true)}
+                className={`text-2xl font-bold text-gray-900 p-2 rounded ${canEditDetails ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                onClick={() => canEditDetails && setIsEditing(true)}
+                aria-disabled={!canEditDetails}
               >
                 {task.title}
               </h1>
@@ -680,8 +703,9 @@ const TaskDetail = () => {
               />
             ) : (
               <div 
-                className="text-gray-700 whitespace-pre-wrap cursor-pointer hover:bg-gray-50 p-3 rounded"
-                onClick={() => setIsEditing(true)}
+                className={`text-gray-700 whitespace-pre-wrap p-3 rounded ${canEditDetails ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                onClick={() => canEditDetails && setIsEditing(true)}
+                aria-disabled={!canEditDetails}
               >
                 {task.description || 'No description'}
               </div>
@@ -1081,10 +1105,21 @@ const TaskDetail = () => {
               
               {detailsExpanded && (
                 <div className="space-y-3 bg-white rounded-lg p-3 border border-gray-200">
-                  {/* Assignee */}
+                  {/* Lead */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Lead</label>
+                    <div
+                      className="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm text-gray-700"
+                      aria-label="Project lead"
+                    >
+                      {projectLeadName}
+                    </div>
+                  </div>
+
+                  {/* Employee */}
                   <div>
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <label className="text-xs font-medium text-gray-500">Assignee</label>
+                      <label className="text-xs font-medium text-gray-500">Employee</label>
                       {updatingField === 'assignee' && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600">
                           <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -1093,30 +1128,18 @@ const TaskDetail = () => {
                       )}
                     </div>
                     <select
-                      value={task.assigned_to || ''}
-                      disabled={updatingField === 'assignee'}
+                      value={selectedEmployeeId}
+                      disabled={!canEditDetails || updatingField === 'assignee'}
                       aria-busy={updatingField === 'assignee' || undefined}
-                      onChange={async (e) => {
-                        const newAssignee = e.target.value
-                        try {
-                          setUpdatingField('assignee')
-                          await tasksAPI.updateTask(task.id, { assigned_to: newAssignee || null })
-                          toast.success('Task reassigned')
-                          await loadTask()
-                        } catch (error) {
-                          toast.error('Failed to reassign task')
-                        } finally {
-                          setUpdatingField(null)
-                        }
-                      }}
+                      onChange={(e) => updateAssignee(e.target.value)}
                       className={`w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white transition ${
                         updatingField === 'assignee' ? 'cursor-wait opacity-70' : ''
                       }`}
                     >
-                      <option value="">Unassigned</option>
-                      {users.map((u) => (
-                        <option key={u.id || u._id} value={u.id || u._id}>
-                          {[u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || 'Team member'}
+                      <option value="">No employee assigned</option>
+                      {employeeAssignmentOptions.map((u) => (
+                        <option key={getUserId(u)} value={getUserId(u)}>
+                          {getUserDisplayName(u)}
                         </option>
                       ))}
                     </select>

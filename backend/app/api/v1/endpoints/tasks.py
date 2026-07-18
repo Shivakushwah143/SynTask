@@ -109,6 +109,63 @@ async def _assert_task_manage(current_user: User, task: Task) -> None:
     if current_user.role == UserRole.EMPLOYEE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     await _assert_task_view(current_user, task)
+    if current_user.role == UserRole.MANAGER and not can_update_task_field(current_user, task, "details"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager can edit only assigned department tasks")
+
+
+def build_task_list_query(
+    current_user: User,
+    *,
+    scope_ids: Optional[list[str]] = None,
+) -> dict:
+    if current_user.role == UserRole.SUPER_ADMIN:
+        query = {}
+    else:
+        if not current_user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User must belong to a company",
+            )
+        query = {"company_id": current_user.company_id}
+
+    if current_user.role == UserRole.EMPLOYEE:
+        query["assigned_to"] = str(current_user.id)
+    elif current_user.role == UserRole.LEAD:
+        ids = scope_ids or [str(current_user.id)]
+        query["$or"] = [
+            {"assigned_to": {"$in": ids}},
+            {"created_by": str(current_user.id)},
+        ]
+    return query
+
+
+def can_update_task_field(current_user: User, task: Task, field_name: str) -> bool:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+        return True
+    if current_user.role == UserRole.EMPLOYEE:
+        return field_name == "status" and task.assigned_to == str(current_user.id)
+    if current_user.role == UserRole.MANAGER:
+        manager_department = getattr(current_user, "department_id", None)
+        task_department = getattr(task, "department_id", None)
+        return bool(manager_department and task_department and str(manager_department) == str(task_department))
+    if current_user.role == UserRole.LEAD:
+        return True
+    return False
+
+
+def build_employee_project_visibility_query(current_user: User, project_ids: list[str]) -> dict:
+    clean_project_ids = []
+    for project_id in project_ids:
+        project_id = str(project_id)
+        if project_id and project_id not in clean_project_ids:
+            clean_project_ids.append(project_id)
+    return {
+        "$or": [
+            {"team_member_ids": str(current_user.id)},
+            {"project_id": {"$in": clean_project_ids}},
+            {"_id": {"$in": clean_project_ids}},
+        ]
+    }
 
 
 async def _assert_can_assign_task(current_user: User, assignee: Optional[User]) -> None:
@@ -358,33 +415,8 @@ async def list_tasks(
 ):
     """List tasks with filters"""
     skip, limit = pagination.skip, pagination.limit
-    # Super Admin can see all tasks, others need company_id
-    if current_user.role == UserRole.SUPER_ADMIN:
-        query = {}
-    else:
-        if not current_user.company_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User must belong to a company"
-            )
-        query = {"company_id": current_user.company_id}
-
-    # Role-based task visibility
-    if current_user.role == UserRole.EMPLOYEE:
-        query["assigned_to"] = str(current_user.id)
-    elif current_user.role == UserRole.LEAD:
-        scope_ids = await _get_user_scope_ids(current_user)
-        query["$or"] = [
-            {"assigned_to": {"$in": scope_ids}},
-            {"created_by": str(current_user.id)},
-        ]
-    elif current_user.role == UserRole.MANAGER:
-        scope_ids = await _get_user_scope_ids(current_user)
-        query["$or"] = [
-            {"assigned_to": {"$in": scope_ids}},
-            {"created_by": str(current_user.id)},
-        ]
-    # Admin and Super Admin see all tasks (no additional filter)
+    scope_ids = await _get_user_scope_ids(current_user) if current_user.role == UserRole.LEAD else None
+    query = build_task_list_query(current_user, scope_ids=scope_ids)
 
     if status_filter:
         query["status"] = status_filter

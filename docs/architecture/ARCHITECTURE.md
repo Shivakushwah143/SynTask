@@ -40,6 +40,8 @@ flowchart TD
 | Lead | Employee management | hierarchy helpers |
 | Employee | Assigned task/ticket execution | authenticated endpoint access |
 
+Project/task delivery access is company-scoped before role rules apply. Company Admin and Super Admin can list and manage all company tasks. Managers can list all company projects and tasks, but task detail edits and assignment changes are limited to tasks whose `department_id` matches the manager's `department_id`; negative tests cover cross-department edit denial. Employees list tasks assigned to them and can see projects that contain those assigned tasks, but task/project detail editing is disabled except for allowed task progress/status, comments, and attachments.
+
 ## Authentication Flow
 ```mermaid
 sequenceDiagram

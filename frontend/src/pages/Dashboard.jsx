@@ -117,7 +117,7 @@ const Dashboard = () => {
       const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
       const [tasksData, meetingsData, projectsData] = await Promise.all([
         tasksAPI.listTasks({ limit: 8 }),
-        meetingsApi.list({ limit: 6 }),
+        meetingsApi.list({ limit: 6, upcoming: true }),
         projectsApi.getProjects({ limit: 8 }),
       ])
       const [metricsData] = await Promise.all([
