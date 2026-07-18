@@ -1,6 +1,6 @@
 # SynTask Documentation Index
 
-Status: living documentation  
+Status: living documentation
 Last reviewed: 2026-07-16
 
 This is the canonical entry point. **Observed** means supported by repository evidence. **Verified** means exercised in a named environment. **Target** is intended design and is not proof of deployment.
@@ -9,7 +9,7 @@ This is the canonical entry point. **Observed** means supported by repository ev
 
 | Document | Purpose | Owner | Review trigger |
 |---|---|---|---|
-| [Product requirements](product/PRD.md) | Scope, personas, module requirements, acceptance criteria, measures | Product | Feature/priority change |
+| [Product requirements](product/PRD.md) | Canonical product scope, including proposed AI-enabled Phase 2 agents, notifications, Microsoft 365, user stories, acceptance criteria and measures | Product | Feature/priority change |
 | [Detailed architecture](architecture/DETAILED_ARCHITECTURE.md) | Current and target design, boundaries, data and risks | Engineering | Component/dependency/data-flow change |
 | [Non-functional requirements](architecture/NON_FUNCTIONAL_REQUIREMENTS.md) | Security, availability, performance and recovery targets | Product + Engineering | Release/operational change |
 | [Production deployment guide](infrastructure/PRODUCTION_DEPLOYMENT_GUIDE.md) | Preparation, deployment, verification and rollback | Platform | Infrastructure/config change |
@@ -31,5 +31,3 @@ This is the canonical entry point. **Observed** means supported by repository ev
 ## Ownership
 
 Product owns problems, scope, priority and acceptance. Engineering owns architecture and operations accuracy. QA owns evidence and release-quality reporting. Security owns security acceptance. The release owner owns go/no-go.
-
-

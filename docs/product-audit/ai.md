@@ -90,3 +90,23 @@ AI assistant, AI hub, prioritization, and creative director surfaces.
 - Missing tenant isolation: AI data scoping must be verified.
 - Missing audit trail: AI actions should ideally emit logs/timeline entries.
 - Missing timeline integration: not uniformly present.
+
+## Phase 2 AI scope relationship
+
+The next AI-enabled scope is documented canonically in [Product requirements](../product/PRD.md). This audit remains evidence about current AI surfaces.
+
+Current audit classification for Phase 2 planning:
+
+| Capability | Audit classification |
+|---|---|
+| AI provider abstraction | Existing |
+| AI logs/memory/semantic retrieval | Existing / Partial |
+| Task breakdown agent | Partially Existing |
+| Project Agent | Proposed |
+| Task Performance Agent | Proposed |
+| Company-specific Email Draft Agent | Proposed |
+| Transactional email expansion | Partially Existing / Proposed expansion |
+| Automated task notifications | Partially Existing / Proposed expansion |
+| Microsoft 365 integration | Proposed |
+
+Do not treat proposed Phase 2 agent capabilities as implemented until matching models, endpoints, services, permissions, tests, and user-facing workflows exist in the repository.
