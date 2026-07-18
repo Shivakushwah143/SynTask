@@ -140,6 +140,18 @@ Out of scope: autonomous email sending from AI generation alone, cross-tenant or
 
 ## 6. Agent operating model
 
+- Authorized users create projects, boards, sprints, epics, tasks and subtasks.
+- Project boards show separate Manager and Leader assignment fields; Company Admin assigns the Manager, and Company Admin or Manager can assign/change the Leader.
+- Task details show the project Lead as read-only context and expose Employee assignment for permitted task reassignment.
+- Task details show a color-coded status indicator and status selector so task state is scannable without relying on text alone.
+- Workspace calendars show tasks only for the assigned employee in `my_calendar`, scheduled by task due date with creation date fallback. Task calendar entries resolve project names from logical project keys such as `PROJ-101` or MongoDB `_id` without exposing raw database IDs as the primary project reference.
+- Admin/Manager users can schedule project creation; Admin/Manager/Lead users can schedule task creation. Scheduled jobs are company-scoped, execute every minute, move through pending/running/completed/failed/cancelled states, and notify the scheduling user after completion, cancellation, or terminal failure.
+- Workflow transitions are validated and recorded in history.
+- Assignment candidates are restricted by company, hierarchy, project membership and policy.
+- Comments, files, watchers, links, components, versions and time records remain tenant/resource bound.
+- Automation/webhooks are idempotent or safely retryable and expose terminal failures.
+
+Acceptance: create-to-close succeeds for each role; scheduled project/task creation runs once at the requested future time; invalid transitions and foreign-tenant access fail; concurrent board changes do not silently lose data.
 Agents extend Phase 1 and run through server-side authorization, tenant-safe retrieval, provider abstraction, structured audit, token budgets, timeouts, prompt versioning, and human approval for material actions.
 
 Each agent or subagent run includes tenant ID, authorized user ID, role/capability snapshot, project ID where applicable, task ID where applicable, prompt version, model, provider, allowed tools, context-source manifest, token budget, timeout, approval requirement, idempotency key, and audit record.
@@ -164,6 +176,15 @@ Every subagent inherits tenant ID, project ID, task ID, authorized user identity
 
 Hierarchy: Company/Tenant -> Project -> Project Agent -> Task -> Task-Specific Subagent -> Draft/Recommendation -> Human Review -> Approved Action.
 
+- Ticket/chat/meeting visibility is participant, team and tenant scoped.
+- Meeting creation shows searchable selectable junior participants by creator role, stores participant IDs internally, rejects durations outside 1-60 minutes, and limits ordinary meeting visibility to hosts and invited participants.
+- Meeting records support host/admin update, reschedule, start, complete, cancel, and delete actions with meeting domain events.
+- Reminder engine creates company-scoped notifications for assigned task deadlines and assigned content due dates at 3 days, 2 days, tomorrow, today, and daily overdue intervals until completion/submission.
+- Authenticated workspace pages poll for due-tomorrow and due-today task/content reminders, perform duplicate-safe reminder catch-up, and show a sound-backed in-app popup with a cancel/dismiss control; overdue reminders remain in the notification panel.
+- Workspace Calendar and Content Calendar render backend-provided due tones: assigned blue, within 3 days yellow, tomorrow orange, today red, and overdue dark red.
+- Delivery records preference, channel, retry and terminal failure where material.
+- Unread/read and actionable/informational states are clear.
+- Provider failure does not corrupt the primary record.
 Inputs: user question or trigger, resource IDs, purpose, constraints, approved context source manifest, requested output schema, token budget, timeout, and approval policy.
 
 Outputs: answer/draft/recommendation, source references, assumptions, missing data, confidence level, structured JSON where required, proposed actions, approval status, audit ID, token/cost metadata.

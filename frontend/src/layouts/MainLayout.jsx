@@ -6,6 +6,7 @@ import { GlobalSearch } from '../components/GlobalSearch'
 import { CommandPalette } from '../components/CommandPalette'
 import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
+import ReminderToastListener from '../components/ReminderToastListener'
 
 const BREADCRUMB_LABELS = {
   dashboard: 'Main Dashboard',
@@ -92,6 +93,7 @@ const MainLayout = () => {
       <GlobalSearch isOpen={searchOpen} onClose={closeSearch} />
       <CommandPalette isOpen={commandOpen} onClose={closeCommand} />
       <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      <ReminderToastListener />
     </div>
   )
 }

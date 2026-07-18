@@ -52,7 +52,8 @@ const Invoices = lazy(() => import('./pages/Invoices'))
 // const MSASign = lazy(() => import('./pages/MSASign'))
 const Ledger = lazy(() => import('./pages/Ledger'))
 const Meetings = lazy(() => import('./pages/Meetings'))
-const Calendar = lazy(() => import('./pages/Calendar'))
+const WorkspaceCalendar = lazy(() => import('./pages/WorkspaceCalendar'))
+const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
@@ -61,6 +62,7 @@ const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 const MarketingChat = lazy(() => import('./pages/MarketingChat'))
 const MarketingCalendar = lazy(() => import('./pages/marketing/calendar/page'))
 const Notifications = lazy(() => import('./pages/Notifications'))
+const ScheduledJobs = lazy(() => import('./pages/ScheduledJobs'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
@@ -213,8 +215,8 @@ function App() {
           <Route path="workflows" element={<CompanyAdminGuard>{withBoundary(<WorkflowAdmin />)}</CompanyAdminGuard>} />
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
-          <Route path="calendar" element={withBoundary(<Calendar />)} />
-          <Route path="content-calendar" element={withBoundary(<Calendar />)} />
+          <Route path="calendar" element={withBoundary(<WorkspaceCalendar />)} />
+          <Route path="content-calendar" element={withBoundary(<ContentCalendar />)} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />
@@ -225,6 +227,7 @@ function App() {
 
         <Route path="reports" element={withBoundary(<Reports />)} />
         <Route path="notifications" element={withBoundary(<Notifications />)} />
+        <Route path="scheduled-jobs" element={withBoundary(<ScheduledJobs />)} />
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
         <Route path="ai-hub" element={withBoundary(<AIHub />)} />
         <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />

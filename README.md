@@ -12,7 +12,7 @@ The application has a FastAPI backend, MongoDB/Beanie document models, Redis-bac
 | Frontend | React 18, Vite, Zustand, React Query, Tailwind CSS, Axios |
 | Database | MongoDB Atlas or MongoDB 6+ |
 | Cache/Security | Redis 7+ for JWT blacklist and future caching |
-| Background Work | asyncio deadline checker; Celery worker service |
+| Background Work | asyncio deadline checker, reminder scheduler, and one-minute scheduled-job runner; Celery worker service |
 | Deployment | Docker, Docker Compose, Nginx reverse proxy |
 
 ## Prerequisites
@@ -35,6 +35,8 @@ Use the dedicated startup guide for the canonical local workflow:
 3. Start the development stack with `.\bootstrap.ps1` on Windows or `./bootstrap.sh` on Linux/macOS.
 
 The frontend defaults to Vite port `3000`. The backend API defaults to port `8000`. See the startup guide for the complete port map and commands.
+
+MongoDB must be reachable before using authenticated API routes. If database initialization fails, the backend starts in a degraded state, `/health` reports `503`, `/api/v1/*` routes return a database-unavailable `503`, and database background workers are skipped until the backend is restarted with a valid `MONGODB_URL`.
 
 ## Environment Variables
 See [backend/.env.example](backend/.env.example) and [frontend/.env.example](frontend/.env.example). Required backend variables are `SECRET_KEY`, `ENCRYPTION_KEY`, `MONGODB_URL`, `DATABASE_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `REDIS_URL`. Optional integrations include SMTP, Brevo, Stripe, Razorpay, Zoom, AWS S3, Celery overrides, and AI provider keys. The startup guide and infrastructure audit document the full environment strategy.

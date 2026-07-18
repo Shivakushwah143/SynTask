@@ -7,7 +7,32 @@ const getProgress = (project) => {
   return clamp(Math.round((Number(project.completed_task_count || 0) / total) * 100))
 }
 
+const getUserDisplayName = (user) => (
+  user?.name
+  || [user?.first_name, user?.last_name].filter(Boolean).join(' ')
+  || user?.email
+  || ''
+)
+
+const getRoleOwnerLine = (project) => {
+  const assignedUsers = Array.isArray(project.assigned_users) ? project.assigned_users : []
+  const managerNames = assignedUsers
+    .filter((user) => String(user.role || '').toLowerCase() === 'manager')
+    .map(getUserDisplayName)
+    .filter(Boolean)
+  const leadNames = assignedUsers
+    .filter((user) => String(user.role || '').toLowerCase() === 'lead')
+    .map(getUserDisplayName)
+    .filter(Boolean)
+  const parts = []
+  if (managerNames.length) parts.push(`Manager: ${managerNames.join(', ')}`)
+  if (leadNames.length) parts.push(`Lead: ${leadNames.join(', ')}`)
+  return parts.join(' / ')
+}
+
 const getOwner = (project) => (
+  getRoleOwnerLine(project)
+  ||
   project.assigned_to_name
   || project.lead_name
   || project.owner_name

@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from .shared import *
 from app.api.deps import Pagination50, PaginationParams
+from app.api.v1.endpoints.tasks import build_employee_project_visibility_query
 
 router = APIRouter()
 
@@ -40,7 +41,14 @@ async def list_projects(
                 {"team_member_ids": str(current_user.id)},
             ]
         elif current_user.role == UserRole.EMPLOYEE:
-            query["team_member_ids"] = str(current_user.id)
+            assigned_tasks = await Task.find({
+                "company_id": current_user.company_id,
+                "assigned_to": str(current_user.id),
+            }).to_list()
+            query.update(build_employee_project_visibility_query(
+                current_user,
+                [task.project_id for task in assigned_tasks if getattr(task, "project_id", None)],
+            ))
     
     if status_filter:
         try:

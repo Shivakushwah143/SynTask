@@ -3,12 +3,17 @@ import { useMutation, useQuery, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import { CalendarDays, Video, FileText, CheckSquare, Target, Users, Mail } from 'lucide-react'
 import { meetingsApi } from '../api/meetings'
+import { usersAPI } from '../api/users'
 import { Badge, Button, EmptyState, FormField, Modal, PageHeader, SkeletonTable, Table, inputClassName } from '../components/ui'
+import { useAuthStore } from '../store/authStore'
+import { buildMeetingParticipantOptions, filterMeetingParticipantOptions, toggleMeetingParticipantId, validateMeetingDuration } from './Meetings.helpers'
 import { asArray, formatDateTime, toFormData } from './phase4Utils'
 import { EmailComposer } from '../components/EmailComposer'
+import { ROLE, normalizeRole } from '../utils/roles'
 
 export default function Meetings() {
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
   const [open, setOpen] = useState(false)
   const [composerOpen, setComposerOpen] = useState(false)
   const [selectedMeetingId, setSelectedMeetingId] = useState(null)
@@ -16,7 +21,7 @@ export default function Meetings() {
   const meetings = asArray(data, ['meetings'])
   const selected = meetings.find((meeting) => meeting.id === selectedMeetingId) || meetings[0] || null
 
-  const getJoinLink = (row) => row.zoom_start_url || row.zoom_meeting_url || row.join_url || row.meeting_link || ''
+  const getJoinLink = (row) => row.zoom_meeting_url || row.join_url || row.meeting_link || row.zoom_start_url || ''
   const openJoinLink = useCallback((row) => {
     const url = getJoinLink(row)
     if (!url) {
@@ -25,6 +30,20 @@ export default function Meetings() {
     }
     window.open(url, '_blank', 'noopener,noreferrer')
   }, [])
+  const meetingActionMutation = useMutation(
+    ({ action, meetingId }) => meetingsApi[action](meetingId),
+    {
+      onSuccess: () => {
+        toast.success('Meeting updated')
+        queryClient.invalidateQueries('meetings')
+      },
+      onError: (error) => toast.error(error?.response?.data?.detail || 'Could not update meeting'),
+    }
+  )
+  const canManageSelected = selected && (
+    String(selected.host?.id || selected.host_id || '') === String(user?.id || user?._id || '') ||
+    [ROLE.ADMIN, ROLE.SUPER_ADMIN].includes(normalizeRole(user?.role))
+  )
 
   const columns = useMemo(() => [
     { key: 'title', header: 'Title' },
@@ -104,6 +123,28 @@ export default function Meetings() {
                     Send follow-up
                   </Button>
                 </div>
+                {canManageSelected ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {selected.status !== 'ongoing' && selected.status !== 'completed' && selected.status !== 'cancelled' ? (
+                      <Button type="button" variant="secondary" loading={meetingActionMutation.isLoading} onClick={() => meetingActionMutation.mutate({ action: 'start', meetingId: selected.id })}>
+                        Start
+                      </Button>
+                    ) : null}
+                    {selected.status !== 'completed' && selected.status !== 'cancelled' ? (
+                      <Button type="button" variant="secondary" loading={meetingActionMutation.isLoading} onClick={() => meetingActionMutation.mutate({ action: 'complete', meetingId: selected.id })}>
+                        Complete
+                      </Button>
+                    ) : null}
+                    {selected.status !== 'cancelled' && selected.status !== 'completed' ? (
+                      <Button type="button" variant="secondary" loading={meetingActionMutation.isLoading} onClick={() => meetingActionMutation.mutate({ action: 'cancel', meetingId: selected.id })}>
+                        Cancel
+                      </Button>
+                    ) : null}
+                    <Button type="button" variant="danger" loading={meetingActionMutation.isLoading} onClick={() => meetingActionMutation.mutate({ action: 'delete', meetingId: selected.id })}>
+                      Delete
+                    </Button>
+                  </div>
+                ) : null}
               </>
             ) : (
               <EmptyState icon={Video} title="Select a meeting" description="Pick a row to inspect notes and action items." />
@@ -149,14 +190,30 @@ function DetailBlock({ icon: Icon, title, value }) {
 }
 
 function MeetingModal({ isOpen, onClose, onDone }) {
+  const { user } = useAuthStore()
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  const [form, setForm] = useState({ title: '', description: '', meeting_date: tomorrow, meeting_time: '10:00', duration: 30, participant_ids: '' })
+  const [form, setForm] = useState({ title: '', description: '', meeting_date: tomorrow, meeting_time: '10:00', duration: 30, participant_ids: [] })
   const [errors, setErrors] = useState({})
+  const [participantSearch, setParticipantSearch] = useState('')
+  const { data: usersData, isLoading: isLoadingUsers } = useQuery(
+    ['meeting-participant-users', user?.id],
+    () => usersAPI.getAssignableUsers(),
+    { enabled: isOpen }
+  )
+  const participantOptions = useMemo(
+    () => buildMeetingParticipantOptions(asArray(usersData, ['users']), user),
+    [usersData, user]
+  )
+  const visibleParticipantOptions = useMemo(
+    () => filterMeetingParticipantOptions(participantOptions, participantSearch),
+    [participantOptions, participantSearch]
+  )
   const mutation = useMutation((payload) => meetingsApi.create(toFormData(payload)), {
     onSuccess: () => {
       toast.success('Meeting created')
       onDone()
     },
+    onError: (error) => toast.error(error?.response?.data?.detail || 'Could not create meeting'),
   })
 
   const update = (key, value) => setForm((state) => ({ ...state, [key]: value }))
@@ -166,14 +223,15 @@ function MeetingModal({ isOpen, onClose, onDone }) {
     if (!form.title.trim()) nextErrors.title = 'Title is required'
     if (!form.meeting_date) nextErrors.meeting_date = 'Meeting date is required'
     if (!form.meeting_time) nextErrors.meeting_time = 'Meeting time is required'
-    if (!form.duration || Number(form.duration) < 1) nextErrors.duration = 'Duration must be at least 1 minute'
+    const durationError = validateMeetingDuration(form.duration)
+    if (durationError) nextErrors.duration = durationError
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
 
   const submit = () => {
     if (!validate()) return
-    mutation.mutate(form)
+    mutation.mutate({ ...form, participant_ids: form.participant_ids.join(',') })
   }
 
   return (
@@ -204,8 +262,8 @@ function MeetingModal({ isOpen, onClose, onDone }) {
             <FormField label="Time" required error={errors.meeting_time}>
               <input className={inputClassName} type="time" value={form.meeting_time} onChange={(event) => update('meeting_time', event.target.value)} aria-invalid={Boolean(errors.meeting_time)} />
             </FormField>
-            <FormField label="Duration minutes" required error={errors.duration} helperText="Minimum 1 minute.">
-              <input className={inputClassName} type="number" min="1" value={form.duration} onChange={(event) => update('duration', event.target.value)} aria-invalid={Boolean(errors.duration)} />
+            <FormField label="Duration minutes" required error={errors.duration} helperText="1 to 60 minutes.">
+              <input className={inputClassName} type="number" min="1" max="60" value={form.duration} onChange={(event) => update('duration', event.target.value)} aria-invalid={Boolean(errors.duration)} />
             </FormField>
           </div>
         </section>
@@ -214,8 +272,37 @@ function MeetingModal({ isOpen, onClose, onDone }) {
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Participants and notes</h3>
           <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Add attendees and capture the discussion summary.</p>
           <div className="mt-4 grid gap-4">
-            <FormField label="Participant IDs" helperText="Comma-separated user IDs.">
-              <input className={inputClassName} value={form.participant_ids} onChange={(event) => update('participant_ids', event.target.value)} placeholder="Comma-separated user IDs" />
+            <FormField label="Participants" helperText="Select junior team members available to you.">
+              <div className="max-h-52 overflow-y-auto rounded-2xl border border-gray-200 bg-gray-50/70 p-2 dark:border-gray-800 dark:bg-gray-950/40">
+                <input
+                  className={`${inputClassName} mb-2`}
+                  value={participantSearch}
+                  onChange={(event) => setParticipantSearch(event.target.value)}
+                  placeholder="Search participants by name"
+                />
+                {isLoadingUsers ? (
+                  <p className="px-2 py-3 text-sm text-gray-500 dark:text-gray-400">Loading people...</p>
+                ) : visibleParticipantOptions.length ? (
+                  <div className="space-y-1">
+                    {visibleParticipantOptions.map((option) => (
+                      <label key={option.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm transition hover:bg-white dark:hover:bg-gray-900">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                          checked={form.participant_ids.includes(option.id)}
+                          onChange={() => update('participant_ids', toggleMeetingParticipantId(form.participant_ids, option.id))}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-gray-900 dark:text-gray-100">{option.label}</span>
+                          <span className="block text-xs text-gray-500 dark:text-gray-400">{option.roleLabel}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="px-2 py-3 text-sm text-gray-500 dark:text-gray-400">No junior employees available.</p>
+                )}
+              </div>
             </FormField>
             <FormField label="Description" helperText="Use this for agenda or recap notes.">
               <textarea className={inputClassName} rows="4" value={form.description} onChange={(event) => update('description', event.target.value)} />
