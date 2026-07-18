@@ -344,8 +344,10 @@ async def _send_task_side_effects(task: Task, current_user: User, assignee, proj
                 type=NotificationType.TASK_ASSIGNED,
                 title="New Task Assigned",
                 message=f"You have been assigned a new task: {task.title}",
+                priority="info",
                 related_id=str(task.id),
                 related_type="task",
+                action_url=f"/tasks/{task.id}",
             )
             await notification.insert()
         except Exception as e:
@@ -392,9 +394,11 @@ async def _notify_task_assignee(task: Task, current_user: User, assignee: User) 
             user_id=str(assignee.id),
             type=NotificationType.TASK_ASSIGNED,
             title="Task Assigned",
-            message=f"You have been assigned a task: {task.title}",
+            message=f"You have been assigned a new task: {task.title}",
+            priority="info",
             related_id=str(task.id),
             related_type="task",
+            action_url=f"/tasks/{task.id}",
         )
         await notification.insert()
     except Exception as e:

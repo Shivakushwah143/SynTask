@@ -15,6 +15,7 @@ from app.models.meeting import Meeting
 from app.projects.models import Project
 from app.tasks.models import Task
 from app.models.user import User, UserRole
+from app.services.reminder_service import calendar_due_tone
 
 
 CONTENT_STATUS_FLOW = [
@@ -87,6 +88,7 @@ def _can_access(current_user: User, project: Project) -> None:
 
 
 def _serialize_item(item: ContentCalendarItem) -> Dict[str, Any]:
+    reminder_status = calendar_due_tone(item.due_date)
     return {
         "id": str(item.id),
         "company_id": item.company_id,
@@ -120,7 +122,8 @@ def _serialize_item(item: ContentCalendarItem) -> Dict[str, Any]:
         "time": getattr(item, "time", None),
         "assigned_person": getattr(item, "assigned_person", None),
         "reminder": getattr(item, "reminder", None),
-        "color": getattr(item, "color", None),
+        "color": reminder_status["color"],
+        "reminder_status": reminder_status,
         "attachment": getattr(item, "attachment", None),
         "draft_at": item.draft_at,
         "planned_at": item.planned_at,

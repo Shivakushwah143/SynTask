@@ -78,7 +78,7 @@ FastAPI endpoints, Motor, Beanie, Redis, and background helpers are async-first.
 Authentication, role gates, module gates, and company access checks are implemented as FastAPI dependencies.
 
 ### Background Tasks
-Startup launches the deadline checker from `app.core.deadline_checker`. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
+Startup launches the deadline checker from `app.core.deadline_checker` and the centralized reminder scheduler from `app.services.reminder_service`. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
 
 ## Current Architecture Limitations
 - Phase 3 introduced a service layer for users, projects, tasks, sprints, epics, files, notifications, email, and automation. Some legacy endpoint modules still contain business logic and should continue moving behind services incrementally.

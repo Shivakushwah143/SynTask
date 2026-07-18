@@ -29,5 +29,15 @@ export const notificationsAPI = {
     const response = await api.delete(`/notifications/${notificationId}`)
     return response.data
   },
+
+  listReminderToasts: async () => {
+    const response = await api.get('/notifications/reminder-toasts')
+    return response.data
+  },
+
+  acknowledgeReminderToasts: async (notificationIds = []) => {
+    const response = await api.post('/notifications/reminder-toasts/ack', { notification_ids: notificationIds })
+    return response.data
+  },
 }
 

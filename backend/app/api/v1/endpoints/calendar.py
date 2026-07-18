@@ -11,8 +11,28 @@ from app.models.project import Project, ProjectStatus
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, check_company_access
 from app.services.project_service import ProjectService
+from app.services.reminder_service import calendar_due_tone
 
 router = APIRouter()
+
+
+def valid_object_ids(values: list[Any]) -> list[Any]:
+    from bson import ObjectId
+
+    return [ObjectId(str(value)) for value in values if value and ObjectId.is_valid(str(value))]
+
+
+def is_past_calendar_datetime(value: datetime | date | None, now: Optional[datetime] = None) -> bool:
+    if not value:
+        return False
+    today = (now or datetime.utcnow()).date()
+    value_date = value.date() if isinstance(value, datetime) else value
+    return value_date < today or (value_date == today and isinstance(value, datetime) and value.replace(tzinfo=None) < (now or datetime.utcnow()).replace(tzinfo=None))
+
+
+def calendar_error_detail(exc: Exception) -> str:
+    message = str(exc).strip() or exc.__class__.__name__
+    return f"Error fetching calendar events: {message}"
 
 
 def parse_calendar_window(start_date: Optional[str], end_date: Optional[str]):
@@ -65,6 +85,17 @@ def build_calendar_task_query(
             task_query["project_id"] = project_id
 
     return task_query
+
+
+def build_project_name_lookup_query(project_ids: list[str]) -> Dict[str, Any]:
+    logical_ids = [str(project_id) for project_id in project_ids if project_id]
+    object_ids = valid_object_ids(logical_ids)
+    conditions = []
+    if object_ids:
+        conditions.append({"_id": {"$in": object_ids}})
+    if logical_ids:
+        conditions.append({"project_id": {"$in": logical_ids}})
+    return {"$or": conditions or [{"project_id": {"$in": []}}]}
 
 
 async def load_calendar_project_name(
@@ -143,7 +174,10 @@ async def get_calendar_events(
             if is_admin:
                 query = {"company_id": current_user.company_id}
                 if employee_id:
-                    query["_id"] = employee_id
+                    employee_object_ids = valid_object_ids([employee_id])
+                    if not employee_object_ids:
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid employee ID")
+                    query["_id"] = employee_object_ids[0]
                 users = await User.find(query).to_list()
                 user_ids_to_fetch = [str(u.id) for u in users]
             elif current_user.role == UserRole.MANAGER:
@@ -205,9 +239,11 @@ async def get_calendar_events(
         
         users_cache = {}
         if user_ids_set:
-            db_users = await User.find({"_id": {"$in": list(user_ids_set)}}).to_list()
-            for u in db_users:
-                users_cache[str(u.id)] = f"{u.first_name} {u.last_name}"
+            user_object_ids = valid_object_ids(list(user_ids_set))
+            if user_object_ids:
+                db_users = await User.find({"_id": {"$in": user_object_ids}}).to_list()
+                for u in db_users:
+                    users_cache[str(u.id)] = f"{u.first_name} {u.last_name}"
 
         for meeting in meetings:
             meeting_date = meeting.meeting_date.date() if isinstance(meeting.meeting_date, datetime) else meeting.meeting_date
@@ -216,7 +252,7 @@ async def get_calendar_events(
                 participants = [users_cache.get(pid, pid) for pid in meeting.participant_ids]
                 
                 meeting_status = meeting.status.value if hasattr(meeting.status, "value") else str(meeting.status)
-                if meeting_status in {"completed", "cancelled"} or (meeting.meeting_date and meeting.meeting_date < datetime.utcnow()):
+                if meeting_status in {"completed", "cancelled"} or is_past_calendar_datetime(meeting.meeting_date):
                     color = "#9CA3AF"  # Gray for completed/cancelled/past meetings
                 else:
                     color = "#8B5CF6"  # Purple for active meetings
@@ -255,7 +291,11 @@ async def get_calendar_events(
                     {"team_member_ids": {"$in": user_ids_to_fetch}}
                 ]
         if project_id:
-            project_query["_id"] = project_id
+            project_object_ids = valid_object_ids([project_id])
+            if project_object_ids:
+                project_query["_id"] = project_object_ids[0]
+            else:
+                project_query["project_id"] = project_id
             
         projects = await Project.find(project_query).to_list()
         
@@ -344,16 +384,18 @@ async def get_calendar_events(
         task_assignee_ids = {task.assigned_to for task in tasks if task.assigned_to}
         assignee_names_cache = {}
         if task_assignee_ids:
-            task_users = await User.find({"_id": {"$in": list(task_assignee_ids)}}).to_list()
-            for u in task_users:
-                assignee_names_cache[str(u.id)] = f"{u.first_name} {u.last_name}"
+            assignee_object_ids = valid_object_ids(list(task_assignee_ids))
+            if assignee_object_ids:
+                task_users = await User.find({"_id": {"$in": assignee_object_ids}}).to_list()
+                for u in task_users:
+                    assignee_names_cache[str(u.id)] = f"{u.first_name} {u.last_name}"
 
         # Cache unique project names to prevent N+1 queries
         project_ids_set = {str(task.project_id) for task in tasks if task.project_id}
         project_names_cache = {}
         if project_ids_set:
             # We can lookup by either internal ID or logical project_id
-            db_projects = await Project.find({"$or": [{"_id": {"$in": list(project_ids_set)}}, {"project_id": {"$in": list(project_ids_set)}}]}).to_list()
+            db_projects = await Project.find(build_project_name_lookup_query(list(project_ids_set))).to_list()
             for p in db_projects:
                 project_names_cache[str(p.id)] = p.name
                 if p.project_id:
@@ -396,18 +438,12 @@ async def get_calendar_events(
             if t_due_date:
                 t_due_date_parsed = t_due_date.date() if isinstance(t_due_date, datetime) else t_due_date
                 if start <= t_due_date_parsed <= end:
-                    # Upcoming deadline check (due within next 3 days, and not completed)
                     if task_completed:
                         color = "#9CA3AF"  # Gray for Completed
+                        reminder_status = {"label": "Completed", "color": color, "tone": "completed"}
                     else:
-                        if isinstance(t_due_date, datetime):
-                            time_diff = t_due_date - datetime.utcnow()
-                            if timedelta(days=0) <= time_diff <= timedelta(days=3):
-                                color = "#EAB308"  # Yellow - Upcoming Deadline
-                            else:
-                                color = "#F97316"  # Orange - Task Due
-                        else:
-                            color = "#F97316"
+                        reminder_status = calendar_due_tone(t_due_date)
+                        color = reminder_status["color"]
                     
                     events.append({
                         "id": f"task_due_{task.id}",
@@ -423,6 +459,7 @@ async def get_calendar_events(
                         "project_name": proj_name,
                         "priority": priority,
                         "status": task_status,
+                        "reminder_status": reminder_status,
                         "color": color,
                     })
 
@@ -444,5 +481,5 @@ async def get_calendar_events(
         traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching calendar events: {str(e)}"
+            detail=calendar_error_detail(e)
         )

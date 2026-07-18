@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { format, parseISO, isAfter, isBefore, isSameDay, addDays } from 'date-fns'
-import { ArrowRight, Building2, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp, AlertTriangle, Video, Clock } from 'lucide-react'
+import { format, addDays } from 'date-fns'
+import { ArrowRight, Building2, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -109,9 +109,9 @@ const Dashboard = () => {
   const [todayEvents, setTodayEvents] = useState([])
   const [upcomingDeadlines, setUpcomingDeadlines] = useState([])
   const [upcomingMeetingsList, setUpcomingMeetingsList] = useState([])
-  const [todayContent, setTodayContent] = useState([])
-  const [overdueTasksList, setOverdueTasksList] = useState([])
-  const [calendarLoading, setCalendarLoading] = useState(false)
+  const [, setTodayContent] = useState([])
+  const [, setOverdueTasksList] = useState([])
+  const [, setCalendarLoading] = useState(false)
   const [sectionVisibility, setSectionVisibility] = useState(readStoredSectionVisibility)
   const [sectionOrder, setSectionOrder] = useState(readStoredSectionOrder)
   const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
@@ -585,7 +585,7 @@ const Dashboard = () => {
           <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Quick access to work, meetings, and AI guidance.</p>
         </div>
         <div className="card p-5">
-          <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Today's Events</p>
+          <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Today&apos;s Events</p>
           {todayEvents.slice(0, 5).map((e) => (
             <p key={e.id} className="text-xs truncate">{e.title} ({e.type})</p>
           ))}

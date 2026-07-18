@@ -5,6 +5,8 @@ Development: `http://localhost:8000/api/v1`
 
 Interactive Swagger docs are available only outside production at `GET /api/docs`.
 
+When MongoDB or Beanie initialization fails, protected API routes under `/api/v1` return `503` with `{"success":false,"message":"Database unavailable. Check MongoDB connection and restart the backend."}`. Background database workers are skipped until the backend is restarted with a healthy database connection.
+
 ## Authentication
 
 Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions include login, refresh, forgot/reset password flows, company registration, public MSA signing links, selected subscription/payment webhook endpoints, and health/debug endpoints.
@@ -240,7 +242,9 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/notifications/` | `list_notifications` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/notifications/` | `list_notifications` | Lists only the authenticated user's notifications. Reminder notifications include `priority`, `scheduled_for`, and reminder metadata. |
+| GET | `/api/v1/notifications/reminder-toasts` | `list_pending_reminder_toasts` | Runs a duplicate-safe reminder catch-up, then returns unread, unacknowledged due-tomorrow/due-today reminder notifications for the authenticated user's dashboard toast on login. |
+| POST | `/api/v1/notifications/reminder-toasts/ack` | `acknowledge_reminder_toasts` | Marks the authenticated user's reminder toast notifications as shown without marking the notification itself read. |
 | POST | `/api/v1/notifications/mark-all-read` | `mark_all_notifications_as_read` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/notifications/{notification_id}` | `delete_notification` | Uses router/endpoint dependencies where configured. |
 | PATCH | `/api/v1/notifications/{notification_id}/read` | `mark_notification_as_read` | Uses router/endpoint dependencies where configured. |

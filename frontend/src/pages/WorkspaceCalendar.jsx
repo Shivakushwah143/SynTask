@@ -25,14 +25,11 @@ import {
   Filter,
   Search,
   Sparkles,
-  List,
   Video,
-  CheckSquare,
   Flag,
   User,
   ExternalLink,
   Layers,
-  ArrowRight,
   X,
   AlertTriangle
 } from 'lucide-react'
@@ -45,7 +42,6 @@ import { asArray } from './phase4Utils'
 
 const TIMELINE_START_HOUR = 8
 const TIMELINE_END_HOUR = 20
-const HOUR_HEIGHT = 60
 const HOURS = Array.from({ length: TIMELINE_END_HOUR - TIMELINE_START_HOUR + 1 }, (_, i) => TIMELINE_START_HOUR + i)
 
 export default function WorkspaceCalendar() {
@@ -191,11 +187,6 @@ export default function WorkspaceCalendar() {
     }).slice(0, 5)
   }, [events])
 
-  const todaySchedule = useMemo(() => {
-    const today = new Date()
-    return events.filter(e => isSameDay(parseEventDate(e.start), today))
-  }, [events])
-
   // Navigation handlers
   const handlePrev = () => {
     if (view === 'month') setCurrentDate(addMonths(currentDate, -1))
@@ -273,32 +264,6 @@ export default function WorkspaceCalendar() {
   }
 
   // Styles/Colors Mapping helper
-  const getEventBorderClass = (event) => {
-    const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(event.status || '').toLowerCase())
-    if (isCompleted) return 'border-l-4 border-gray-400 bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-    
-    switch (event.type) {
-      case 'meeting':
-        return 'border-l-4 border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-300'
-      case 'project_start':
-        return 'border-l-4 border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
-      case 'project_due':
-        return 'border-l-4 border-red-500 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300'
-      case 'task_assigned':
-        return 'border-l-4 border-green-500 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-300'
-      case 'task_due':
-        // Check for upcoming deadline (Yellow)
-        if (event.color === '#EAB308') {
-          return 'border-l-4 border-yellow-500 bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-300'
-        }
-        return 'border-l-4 border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300'
-      case 'milestone':
-        return 'border-l-4 border-yellow-600 bg-yellow-50 text-yellow-800 dark:bg-yellow-950/20 dark:text-yellow-300'
-      default:
-        return 'border-l-4 border-slate-500 bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-    }
-  }
-
   const getEventBadgeLabel = (type) => {
     switch (type) {
       case 'meeting': return 'Meeting'
@@ -744,7 +709,7 @@ function MonthView({ days, events, selected, setSelected, month, onOpenEvent, pa
       </div>
       
       <div className="grid grid-cols-7 divide-x divide-y divide-surface-border dark:divide-gray-800">
-        {days.map((day, idx) => {
+        {days.map((day) => {
           const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
           const isSelected = isSameDay(day, selected)
           const isCurrentMonth = isSameMonth(day, month)
@@ -969,6 +934,12 @@ function getEventColorStyles(event) {
     case 'task_assigned':
       return 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/50 dark:bg-green-950/20 dark:text-green-300'
     case 'task_due':
+      if (event.color === '#7F1D1D') {
+        return 'border-red-950 bg-red-100 text-red-950 dark:border-red-950 dark:bg-red-950/40 dark:text-red-100'
+      }
+      if (event.color === '#EF4444') {
+        return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300'
+      }
       if (event.color === '#EAB308') {
         return 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-900/50 dark:bg-yellow-950/20 dark:text-yellow-300'
       }
@@ -994,6 +965,12 @@ function getEventStylesWithBorder(event) {
     case 'task_assigned':
       return 'border-l-4 border-green-500 bg-green-50 text-green-700 border-y border-r border-green-100 dark:bg-green-950/10 dark:text-green-300 dark:border-green-900/30'
     case 'task_due':
+      if (event.color === '#7F1D1D') {
+        return 'border-l-4 border-red-950 bg-red-100 text-red-950 border-y border-r border-red-200 dark:bg-red-950/40 dark:text-red-100 dark:border-red-950'
+      }
+      if (event.color === '#EF4444') {
+        return 'border-l-4 border-red-500 bg-red-50 text-red-700 border-y border-r border-red-100 dark:bg-red-950/10 dark:text-red-300 dark:border-red-900/30'
+      }
       if (event.color === '#EAB308') {
         return 'border-l-4 border-yellow-500 bg-yellow-50 text-yellow-700 border-y border-r border-yellow-100 dark:bg-yellow-950/10 dark:text-yellow-300 dark:border-yellow-900/30'
       }

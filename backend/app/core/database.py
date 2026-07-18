@@ -248,13 +248,14 @@ async def init_db():
         
     except Exception as e:
         logger.error(f"Failed to connect to MongoDB: {str(e)}")
-        if settings.ENVIRONMENT == "production":
-            raise
+        if client:
+            client.close()
+            client = None
         logger.warning(
-            "Development startup will continue without MongoDB. "
+            "MongoDB initialization failed. "
             "Set MONGODB_URL to a reachable database to enable persistence."
         )
-        client = None
+        raise
 
 
 async def close_db():

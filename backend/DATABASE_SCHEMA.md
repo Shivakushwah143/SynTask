@@ -597,7 +597,7 @@ Indexes: `['company_id', 'client_id', 'status', 'signature_token', 'created_by']
 
 #### Model: `Notification`
 
-Indexes: `['user_id', 'company_id', 'is_read', 'type']`
+Indexes: `['user_id', 'company_id', 'is_read', 'type', 'priority', 'scheduled_for']`
 
 | Field | Type | Required | Indexed | Description |
 |---|---|---|---|---|
@@ -612,11 +612,16 @@ Indexes: `['user_id', 'company_id', 'is_read', 'type']`
 | `related_type` | `Optional[str]` | No | No | Model field |
 | `action_url` | `Optional[str]` | No | No | Model field |
 | `metadata` | `Optional[Dict[str, Any]]` | No | No | Model field |
+| `priority` | `str` | No | Yes | Notification priority: `info`, `medium`, `high`, or `critical` |
+| `scheduled_for` | `Optional[datetime.datetime]` | No | Yes | Reminder due date bucket used for scheduled notification display |
+| `toast_shown_at` | `Optional[datetime.datetime]` | No | No | Timestamp when a dashboard toast was acknowledged |
 | `is_read` | `bool` | No | Yes | Model field |
 | `read_at` | `Optional[datetime.datetime]` | No | No | Model field |
 | `email_sent` | `bool` | No | No | Model field |
 | `email_sent_at` | `Optional[datetime.datetime]` | No | No | Model field |
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+
+Reminder notifications store `metadata.reminder_key` as `entityType:entityId:userId:reminderType:YYYY-MM-DD`. A partial unique index on `(company_id, user_id, metadata.reminder_key)` applies only when `metadata.reminder_key` is a string, preventing duplicate reminder notifications while preserving tenant isolation and allowing legacy notifications without reminder metadata.
 
 ### `pages`
 

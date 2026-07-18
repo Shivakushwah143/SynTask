@@ -1,10 +1,14 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from types import SimpleNamespace
 
 import pytest
 
 from app.api.v1.endpoints.calendar import (
     build_calendar_task_query,
+    build_project_name_lookup_query,
+    calendar_error_detail,
+    is_past_calendar_datetime,
+    valid_object_ids,
     load_calendar_project_name,
     parse_calendar_window,
     task_to_calendar_event,
@@ -41,6 +45,30 @@ def test_employee_calendar_task_query_is_assigned_only_and_date_scoped():
         {"due_date": {"$gte": start_at, "$lte": end_at}},
         {"due_date": None, "created_at": {"$gte": start_at, "$lte": end_at}},
     ]
+
+
+def test_project_name_lookup_query_keeps_logical_keys_out_of_mongo_id_filter():
+    query = build_project_name_lookup_query(["PROJ-101", "507f1f77bcf86cd799439011"])
+
+    assert {"project_id": {"$in": ["PROJ-101", "507f1f77bcf86cd799439011"]}} in query["$or"]
+    assert [str(item) for item in query["$or"][0]["_id"]["$in"]] == ["507f1f77bcf86cd799439011"]
+
+
+def test_valid_object_ids_filters_and_converts_invalid_ids():
+    ids = valid_object_ids(["employee-1", "507f1f77bcf86cd799439011", None, ""])
+
+    assert [str(item) for item in ids] == ["507f1f77bcf86cd799439011"]
+
+
+def test_is_past_calendar_datetime_handles_timezone_aware_values():
+    meeting_date = datetime(2026, 7, 18, 8, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 18, 9, 0, 0)
+
+    assert is_past_calendar_datetime(meeting_date, now) is True
+
+
+def test_calendar_error_detail_includes_exception_type_when_message_empty():
+    assert calendar_error_detail(Exception()) == "Error fetching calendar events: Exception"
 
 
 def test_assigned_task_serializes_as_employee_calendar_event():

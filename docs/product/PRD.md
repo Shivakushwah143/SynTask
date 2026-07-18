@@ -121,6 +121,9 @@ See [attendance flow](../user-flows/attendance.md).
 - Ticket/chat/meeting visibility is participant, team and tenant scoped.
 - Meeting creation shows searchable selectable junior participants by creator role, stores participant IDs internally, rejects durations outside 1-60 minutes, and limits ordinary meeting visibility to hosts and invited participants.
 - Meeting records support host/admin update, reschedule, start, complete, cancel, and delete actions with meeting domain events.
+- Reminder engine creates company-scoped notifications for assigned task deadlines and assigned content due dates at 3 days, 2 days, tomorrow, today, and daily overdue intervals until completion/submission.
+- Authenticated workspace pages poll for due-tomorrow and due-today task/content reminders, perform duplicate-safe reminder catch-up, and show a sound-backed in-app popup with a cancel/dismiss control; overdue reminders remain in the notification panel.
+- Workspace Calendar and Content Calendar render backend-provided due tones: assigned blue, within 3 days yellow, tomorrow orange, today red, and overdue dark red.
 - Delivery records preference, channel, retry and terminal failure where material.
 - Unread/read and actionable/informational states are clear.
 - Provider failure does not corrupt the primary record.

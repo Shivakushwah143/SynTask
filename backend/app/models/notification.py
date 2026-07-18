@@ -11,6 +11,11 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 
 class NotificationType(str, Enum):
     TASK_ASSIGNED = "task_assigned"
+    TASK_DUE_3_DAYS = "task_due_3_days"
+    TASK_DUE_2_DAYS = "task_due_2_days"
+    TASK_DUE_TOMORROW = "task_due_tomorrow"
+    TASK_DUE_TODAY = "task_due_today"
+    TASK_OVERDUE = "task_overdue"
     TASK_UPDATE = "task_update"
     TASK_UPDATED = "task_updated"
     TASK_COMPLETED = "task_completed"
@@ -22,6 +27,11 @@ class NotificationType(str, Enum):
     TICKET_ESCALATED = "ticket_escalated"
     PROJECT_ASSIGNED = "project_assigned"
     MEETING_INVITED = "meeting_invited"
+    CONTENT_DUE_3_DAYS = "content_due_3_days"
+    CONTENT_DUE_2_DAYS = "content_due_2_days"
+    CONTENT_DUE_TOMORROW = "content_due_tomorrow"
+    CONTENT_DUE_TODAY = "content_due_today"
+    CONTENT_OVERDUE = "content_overdue"
     DEADLINE_APPROACHING = "deadline_approaching"
     MENTION = "mention"
     MESSAGE = "message"
@@ -53,6 +63,9 @@ class Notification(Document):
     
     # Metadata
     metadata: Optional[Dict[str, Any]] = None
+    priority: str = "info"
+    scheduled_for: Optional[datetime] = None
+    toast_shown_at: Optional[datetime] = None
     
     # Status
     is_read: bool = False
@@ -72,8 +85,15 @@ class Notification(Document):
             "company_id",
             "is_read",
             "type",
+            "priority",
+            "scheduled_for",
             "created_at",
             IndexModel([("user_id", ASCENDING), ("is_read", ASCENDING)]),
             IndexModel([("user_id", ASCENDING), ("is_read", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("related_id", ASCENDING), ("related_type", ASCENDING), ("type", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel(
+                [("company_id", ASCENDING), ("user_id", ASCENDING), ("metadata.reminder_key", ASCENDING)],
+                unique=True,
+                partialFilterExpression={"metadata.reminder_key": {"$type": "string"}},
+            ),
         ]
