@@ -34,6 +34,15 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 {"access_token":"...","refresh_token":"...","token_type":"bearer","user":{"id":"...","email":"...","role":"admin"}}
 ```
 
+## Time Settings
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/v1/time/settings` | Yes | Return authenticated user's timezone, clock mode, display format, seconds preference, and server UTC time. |
+| PUT | `/api/v1/time/settings` | Admin/Super Admin | Update authenticated user's timezone, automatic/manual time, display format, and seconds preference. |
+
+First-login browser timezone detection can call `PUT /api/v1/time/settings` with `detected: true` only when the current user has no saved timezone. The endpoint mutates only `current_user`; it accepts no target user or tenant ID.
+
 ## Endpoints by Module
 
 ### 2FA

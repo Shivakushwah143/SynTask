@@ -4,7 +4,7 @@ import { Bell } from 'lucide-react'
 import { notificationsAPI } from '../api/notifications'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
-import { format } from 'date-fns'
+import { timeService } from '../services/timeService'
 
 const NotificationBell = () => {
   const { user, isAuthenticated, clearAuth } = useAuthStore()
@@ -177,7 +177,7 @@ const NotificationBell = () => {
       
       // Check for new notifications and show popup
       const previousNotifications = previousNotificationsRef.current
-      const now = new Date()
+      const now = timeService.now()
       // Only show popups if not explicitly skipped (e.g., when marking as read)
       if (!skipPopups && isMountedRef.current) {
         if (isInitialLoad && !hasShownInitialPopupsRef.current) {
@@ -397,7 +397,7 @@ const NotificationBell = () => {
                         {notif.message}
                       </p>
                       <p className="mt-1 text-xs text-text-muted">
-                        {format(new Date(notif.created_at), 'MMM d, h:mm a')}
+                        {timeService.formatDateTime(notif.created_at)}
                       </p>
                     </div>
                     {!notif.is_read && (

@@ -20,12 +20,13 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { format, formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { useAuthStore } from '../store/authStore'
 import { normalizeRole, ROLE } from '../utils/roles'
 import { PageHeader, EmptyState, Badge, Button, Modal, FormField } from '../components/ui'
 import { inputClassName } from '../components/ui'
+import { timeService } from '../services/timeService'
 
 /* ─── Constants ──────────────────────────────────────────────── */
 const STATUS_TABS = [
@@ -86,6 +87,30 @@ function relativeTo(runAt) {
   if (!runAt) return ''
   try {
     return formatDistanceToNow(new Date(runAt), { addSuffix: true })
+  } catch {
+    return ''
+  }
+}
+
+function formatScheduledTime(value) {
+  if (!value) return 'â€”'
+  try {
+    return timeService.format(value, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  } catch {
+    return value
+  }
+}
+
+function relativeScheduledTime(value) {
+  if (!value) return ''
+  try {
+    return formatDistanceToNow(timeService.instant(value), { addSuffix: true })
   } catch {
     return ''
   }
@@ -152,9 +177,9 @@ function JobDetailDrawer({ job, onClose }) {
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Timing</h3>
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-subtle)]">
-              <Row label="Scheduled for" value={formatRunAt(job.run_at)} sub={relativeTo(job.run_at)} />
-              <Row label="Created at" value={formatRunAt(job.created_at)} />
-              {job.completed_at && <Row label="Completed at" value={formatRunAt(job.completed_at)} />}
+              <Row label="Scheduled for" value={formatScheduledTime(job.run_at)} sub={relativeScheduledTime(job.run_at)} />
+              <Row label="Created at" value={formatScheduledTime(job.created_at)} />
+              {job.completed_at && <Row label="Completed at" value={formatScheduledTime(job.completed_at)} />}
             </div>
           </section>
 
@@ -220,8 +245,7 @@ function EditScheduleModal({ job, onClose, onSaved }) {
   const [value, setValue] = useState(() => {
     if (!job?.run_at) return ''
     try {
-      const d = new Date(job.run_at)
-      return d.toISOString().slice(0, 16)
+      return timeService.toZonedDateTimeInput(job.run_at)
     } catch {
       return ''
     }
@@ -232,12 +256,12 @@ function EditScheduleModal({ job, onClose, onSaved }) {
   const handleSave = async () => {
     setError('')
     if (!value) { setError('Select a new execution time.'); return }
-    const runAt = new Date(value)
-    if (isNaN(runAt)) { setError('Invalid date.'); return }
-    if (runAt <= new Date()) { setError('Must be in the future.'); return }
+    const runAt = timeService.parseZonedInput(value)
+    if (!runAt || Number.isNaN(runAt.getTime())) { setError('Invalid date.'); return }
+    if (runAt <= timeService.now()) { setError('Must be in the future.'); return }
     try {
       setSaving(true)
-      await scheduledJobsAPI.updateSchedule(job.id, { run_at: runAt.toISOString() })
+      await scheduledJobsAPI.updateSchedule(job.id, { run_at: timeService.toUtcISOString(runAt) })
       toast.success('Schedule updated')
       onSaved()
       onClose()
@@ -576,8 +600,8 @@ export default function ScheduledJobs() {
                       )}
                     </td>
                     <td className="px-4 py-3.5 text-gray-700 dark:text-gray-300">
-                      <span>{formatRunAt(job.run_at)}</span>
-                      <span className="block text-xs text-gray-400">{relativeTo(job.run_at)}</span>
+                      <span>{formatScheduledTime(job.run_at)}</span>
+                      <span className="block text-xs text-gray-400">{relativeScheduledTime(job.run_at)}</span>
                     </td>
                     <td className="px-4 py-3.5 text-gray-600 dark:text-gray-400">
                       {job.created_by_name || '—'}

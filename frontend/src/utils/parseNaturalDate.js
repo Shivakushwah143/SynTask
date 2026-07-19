@@ -1,4 +1,5 @@
 import { addDays, addWeeks, isValid, parse as parseDate } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const WEEKDAY_LOOKUP = {
   sunday: 0,
@@ -56,7 +57,7 @@ function parseRelativeWeekday(text, referenceDate) {
  * Parse a natural language date string into a Date object.
  * Supports a limited set of common phrases without an external dependency.
  */
-export function parseNaturalDate(text, referenceDate = new Date()) {
+export function parseNaturalDate(text, referenceDate = timeService.now()) {
   if (!text?.trim()) return null
 
   const normalized = text.trim().toLowerCase()

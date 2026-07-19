@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Bot, Maximize2, Menu, MessageCircle, Minimize2, Search, Video } from 'lucide-react'
 import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
+import GlobalClock from '../GlobalClock'
 import { Button } from '../ui'
 import { useAuthStore } from '../../store/authStore'
 import { ROLE, hasCompanyAdminAccess, isManagerRole, isSuperAdminRole, normalizeRole } from '../../utils/roles'
@@ -68,6 +69,7 @@ export function TopNavigation({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+          <GlobalClock />
           {communicationLinks.length ? (
             <nav className="flex items-center gap-1 rounded-full border border-surface-border/70 bg-surface/90 p-1 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]" aria-label="Global communication">
               {communicationLinks.map((item) => {

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { format } from 'date-fns'
 import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, UserPlus } from 'lucide-react'
 import {
   DndContext,
@@ -33,6 +32,7 @@ import { canCreateTask, canManageProject, hasCompanyAdminAccess, isLeadRole, nor
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import { getProjectRoleAssignmentIds, getProjectRoleNames, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
+import { timeService } from '../services/timeService'
 
 const DEFAULT_STATUSES = [
   { id: 'todo', label: 'To Do' },
@@ -307,7 +307,7 @@ export default function ProjectBoard() {
         description: formData.get('description') || '',
         priority: formData.get('priority') || createTaskPriority || 'medium',
         assigned_to: taskAssigneeId || null,
-        due_date: formData.get('due_date'),
+        due_date: timeService.zonedInputToUtcISOString(formData.get('due_date')),
         estimated_hours: estimatedHours,
         project_id: projectId,
         status: selectedStatus,
@@ -317,15 +317,15 @@ export default function ProjectBoard() {
           toast.error('Schedule time is required')
           return
         }
-        const runAt = new Date(scheduleRunAt)
-        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+        const runAt = timeService.parseZonedInput(scheduleRunAt)
+        if (!runAt || Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
           toast.error('Schedule time must be in the future')
           return
         }
         await scheduledJobsAPI.scheduleJob({
           action_type: 'CREATE_TASK',
           payload: taskPayload,
-          run_at: runAt.toISOString(),
+          run_at: timeService.toUtcISOString(runAt),
         })
         toast.success('Task scheduled successfully')
         setShowCreateModal(false)
@@ -386,7 +386,7 @@ export default function ProjectBoard() {
   const overdueTasks = allProjectTasks.filter((task) => {
     if (!task.due_date) return false
     try {
-      return new Date(task.due_date).getTime() < Date.now() && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
+      return timeService.instantTime(task.due_date) < timeService.now().getTime() && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
     } catch {
       return false
     }
@@ -394,8 +394,8 @@ export default function ProjectBoard() {
   const dueSoonTasks = allProjectTasks.filter((task) => {
     if (!task.due_date) return false
     try {
-      const dueAt = new Date(task.due_date).getTime()
-      const now = Date.now()
+      const dueAt = timeService.instantTime(task.due_date)
+      const now = timeService.now().getTime()
       const inThreeDays = now + (3 * 24 * 60 * 60 * 1000)
       return dueAt >= now && dueAt <= inThreeDays && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
     } catch {
@@ -420,7 +420,7 @@ export default function ProjectBoard() {
   const formatProjectDate = (value) => {
     if (!value) return 'Not set'
     try {
-      return format(new Date(value), 'MMM d, yyyy')
+      return timeService.format(value, { month: 'short', day: 'numeric', year: 'numeric' })
     } catch {
       return 'Not set'
     }
@@ -983,7 +983,7 @@ function SortableProjectTaskCard({ task, statuses, statusColor, updatingTaskId, 
         </button>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {task.due_date ? <Badge label={format(new Date(task.due_date), 'MMM d')} colorKey="scheduled" /> : null}
+        {task.due_date ? <Badge label={timeService.format(task.due_date, { month: 'short', day: 'numeric' })} colorKey="scheduled" /> : null}
         {task.assigned_to_name ? <Badge label={task.assigned_to_name} colorKey="scheduled" /> : <Badge label="Unassigned" colorKey="scheduled" />}
       </div>
       <div className="mt-4 flex items-center justify-between gap-2">

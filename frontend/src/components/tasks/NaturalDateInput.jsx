@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { parseNaturalDate } from '@/utils/parseNaturalDate'
+import { timeService } from '@/services/timeService'
 
 export default function NaturalDateInput({ value = '', onChange, onDateResolved }) {
   const [text, setText] = useState(value || '')
@@ -9,7 +10,7 @@ export default function NaturalDateInput({ value = '', onChange, onDateResolved 
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      const parsed = parseNaturalDate(text)
+      const parsed = parseNaturalDate(text, timeService.now())
       setPreview(parsed)
       onDateResolved?.(parsed?.date ?? null)
     }, 200)
@@ -24,7 +25,7 @@ export default function NaturalDateInput({ value = '', onChange, onDateResolved 
           type="datetime-local"
           onChange={(e) => {
             const val = e.target.value
-            onDateResolved?.(val ? new Date(val) : null)
+            onDateResolved?.(val ? new Date(timeService.toUtcISOString(val)) : null)
           }}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />

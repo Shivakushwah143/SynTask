@@ -29,6 +29,16 @@ flowchart TD
 - Notifications sent: none directly.
 - Related modules updated: many app areas by navigation.
 
+## Global Time Settings
+- How the user reaches it: navbar live clock.
+- What they can do: view active timezone, time format, seconds setting, and automatic/manual time mode.
+- What happens after every action: Admin and Super Admin changes save and immediately update clock/display formatting.
+- Backend APIs called: `GET /api/v1/time/settings`, `PUT /api/v1/time/settings`.
+- Timeline events created: none directly.
+- Notifications sent: none directly.
+- Related modules updated: all modules consume UTC timestamps and display through shared frontend time formatting.
+- Tenant isolation: settings mutate only the authenticated user; no cross-tenant user lookup is exposed.
+
 ## Global Reports
 - How the user reaches it: main navigation.
 - What they can do: inspect charts and switch time period.

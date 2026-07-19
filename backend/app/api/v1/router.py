@@ -1,10 +1,9 @@
 """
 Main API Router - v1
 """
-from datetime import datetime
-
 from fastapi import APIRouter
 from app.core.config import settings
+from app.core.clock import utc_now
 from app.core.redis_client import get_redis_health
 from app.worker.celery_app import is_celery_enabled
 from app.core.database import get_database
@@ -13,7 +12,7 @@ from app.api.v1.endpoints import (
     auth, users, companies, tasks, notifications, dashboard, files, reports, 
     activity, auth_2fa, projects, time_tracking, workflows, automation, backlog, webhooks,
     issue_types, components, versions, watchers, issue_links, changelog, tickets, chat, subscriptions, clients, invoices, msa, ledger, meetings, calendar, timesheet,
-    sales, search, departments, attendance, notification_emails, timeline, leaves, eod
+    sales, search, departments, attendance, notification_emails, timeline, leaves, eod, time
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import creative
@@ -53,7 +52,7 @@ async def health_check():
         "status": "healthy",
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": utc_now().isoformat() + "Z",
     }
 
     checks = {"mongodb": {"ok": True}, "redis": {"ok": False}, "celery": {"ok": False}}
@@ -87,6 +86,7 @@ async def health_check():
 # Include all endpoint routers
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(auth_2fa.router, prefix="/auth/2fa", tags=["2FA"])
+api_router.include_router(time.router, prefix="/time", tags=["Time"])
 
 # Include users router (hierarchy routes are defined first in the router itself)
 api_router.include_router(users.router, prefix="/users", tags=["Users"])

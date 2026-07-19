@@ -121,8 +121,11 @@ Access is the intersection of authentication, active status, company, enabled mo
 | CORE-011 | AI human approval | AI output that changes records or sends communication remains draft/recommendation until approved |
 | CORE-012 | Provider abstraction | AI business logic depends on provider contracts, not provider-specific SDK behavior |
 | CORE-013 | Job idempotency | Background and event jobs are deduplicated and retryable |
+| CORE-014 | Global time consistency | Timestamps are stored in UTC and displayed through saved user timezone and format settings |
 
 Existing module requirements from Phase 1 remain valid: identity, tenant administration, projects, tasks, CRM, clients, finance, attendance, leave, EOD, timesheets, recruitment, support, chat, meetings, notifications, AI and creative assistance continue to require tenant isolation, backend authorization, lifecycle validation, auditability and safe provider failure behavior.
+
+Global time acceptance: browser timezone is detected on first login when no preference exists; navbar clock exposes timezone, automatic/manual time, 12/24-hour format, and seconds display; Admin and Super Admin can edit these settings; non-admin users are read-only; backend business time uses `ClockService`; frontend display and UTC serialization use `timeService`; settings mutate only the authenticated user.
 
 ## 5. AI-enabled Phase 2 scope
 
