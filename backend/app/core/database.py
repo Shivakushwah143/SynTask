@@ -42,6 +42,7 @@ from app.models.ai_conversation import AIConversation
 from app.models.ai_user_state import AIUserState
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
 from app.models.knowledge import KnowledgeRecord
+from app.models.agent import AgentDefinition, AgentRun, AgentRunEvent, ActionProposal, SpecialistDefinition
 from app.rag.models import (
     RAGCitation,
     RAGKnowledgeChunk,
@@ -197,6 +198,11 @@ async def init_db():
                 UserMemory,
                 ClientMemory,
                 KnowledgeRecord,
+                AgentDefinition,
+                SpecialistDefinition,
+                AgentRun,
+                AgentRunEvent,
+                ActionProposal,
                 RAGKnowledgeSource,
                 RAGKnowledgeSourceVersion,
                 RAGKnowledgeChunk,

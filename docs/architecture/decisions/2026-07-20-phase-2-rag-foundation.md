@@ -68,6 +68,10 @@ Product decision for channels and agents:
 - Connectors may normalize inbound events, preserve delivery/audit metadata and submit approved outbound dispatch requests.
 - Departmental agents remain the only owners of business reasoning, context packaging and workflow decisions.
 
+Focused agent planning on 2026-07-20 is centralized in `docs/SynTask_Phase_2_Agent_Platform_Implementation_Plan.md`. That plan supersedes conflicting duplicated agent concepts for the Project Agent, Task Performance Insights Agent and General Email Draft Agent while preserving the RAG rule that agents and specialists must use ContextPackage, MemoryRouter, provider routing, tool registry, approval gateway and audit/evaluation boundaries instead of direct data or connector access.
+
+Milestone 6 begins Shared Agent Platform Foundation only. Agent runs may persist sanitized result metadata, references, proposal IDs, audit events, provider/model metadata and budget usage. They must not persist raw prompts, raw ContextPackages, secrets, protected HR records or full retrieved documents by default.
+
 Milestone 1 release gates remain active: criteria 5, 9, 10 and 18 stay blocked until the real Qdrant integration test runs successfully in Docker or CI. The nine unrelated backend failures observed during Milestone 1 verification remain separate release risks and are not part of the RAG implementation scope.
 
 ## Authority Order

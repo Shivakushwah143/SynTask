@@ -17,6 +17,7 @@ from app.api.v1.endpoints import (
 )
 from app.api.v1.endpoints import ai
 from app.api.v1.endpoints import rag
+from app.api.v1.endpoints import agents
 from app.api.v1.endpoints import creative
 from app.api.v1.endpoints import crm
 from app.api.v1.endpoints import crm_files
@@ -142,6 +143,7 @@ api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"])
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
+api_router.include_router(agents.router, prefix="/agents", tags=["Agent Platform"])
 api_router.include_router(creative.router, prefix="/creative", tags=["Creative Director"])
 api_router.include_router(search.router, tags=["Search"], dependencies=[Depends(require_module("task"))])
 # Sales Tracker module (new)

@@ -208,6 +208,17 @@ class Settings(BaseSettings):
     RAG_PPTX_MAX_SLIDES: int = 300
     RAG_CSV_MAX_ROWS: int = 10000
 
+    # Shared Agent Platform foundation
+    AGENT_PLATFORM_ENABLED: bool = False
+    AGENT_RUN_RETENTION_DAYS: int = 90
+    AGENT_RUN_EVENT_RETENTION_DAYS: int = 180
+    AGENT_SANITIZED_OUTPUT_RETENTION_DAYS: int = 90
+    AGENT_PROPOSAL_RETENTION_DAYS: int = 90
+    AGENT_EVALUATION_RETENTION_DAYS: int = 180
+    AGENT_DEFAULT_RUN_TIMEOUT_SECONDS: int = 30
+    AGENT_DEFAULT_MAX_TOKENS_PER_RUN: int = 4000
+    AGENT_DEFAULT_MAX_COST_PER_RUN: float = 1.0
+
     # Super Admin
     SUPER_ADMIN_EMAIL: str = Field(..., description="Super admin bootstrap email address.")
     SUPER_ADMIN_PASSWORD: str = Field(..., description="Super admin bootstrap password. Minimum 16 characters.")
