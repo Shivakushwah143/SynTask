@@ -11,6 +11,15 @@ When MongoDB or Beanie initialization fails, protected API routes under `/api/v1
 
 Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions include login, refresh, forgot/reset password flows, company registration, public MSA signing links, selected subscription/payment webhook endpoints, and health/debug endpoints.
 
+### Meta webhook inbox
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/v1/integrations/meta/webhook` | Meta verification token | Validates `hub.mode` and the deployment verify token, then returns the exact `hub.challenge`. |
+| POST | `/api/v1/integrations/meta/webhook` | Meta HMAC | Reads a maximum 1 MiB raw body, validates `X-Hub-Signature-256` before JSON parsing, persists tenant-mapped events idempotently, and returns a fast acknowledgement. |
+
+Invalid signatures return `401` without persistence. A valid duplicate returns `200` without duplicate dispatch. The endpoint remains inactive until the global Meta feature flag and the mapped tenant setting are enabled.
+
 ### Core Auth Endpoints
 
 | Method | Path | Auth | Rate Limit | Description |

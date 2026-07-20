@@ -19,6 +19,7 @@ celery_app = Celery(
         "app.worker.tasks.creative_review_tasks",
         "app.worker.tasks.semantic_tasks",
         "app.worker.tasks.recruitment_inbox_tasks",
+        "app.integrations.meta.tasks",
     ],
 )
 
@@ -35,6 +36,12 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_always_eager=settings.CELERY_ALWAYS_EAGER or settings.DISABLE_CELERY,
     task_eager_propagates=True,
+    beat_schedule={
+        "meta-dispatch-due-webhook-events": {
+            "task": "meta.dispatch_due_webhook_events",
+            "schedule": 60.0,
+        },
+    },
 )
 
 
