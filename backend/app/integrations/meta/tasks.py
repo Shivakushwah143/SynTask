@@ -4,12 +4,22 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import random
 from typing import Optional
+from uuid import uuid4
 
 from beanie import PydanticObjectId
 from beanie.odm.queries.update import UpdateResponse
+from pymongo.errors import DuplicateKeyError
 
 from app.core.config import settings
-from app.integrations.meta.models import MetaWebhookEvent, MetaWebhookStatus
+from app.integrations.meta.client import MetaGraphRateLimitError, MetaGraphTransientError
+from app.integrations.meta.insights_service import MetaInsightsConfigurationError, MetaInsightsService
+from app.integrations.meta.models import (
+    MetaIntegrationSettings,
+    MetaSyncRun,
+    MetaSyncStatus,
+    MetaWebhookEvent,
+    MetaWebhookStatus,
+)
 from app.integrations.meta.lead_service import MetaLeadQuarantined, MetaLeadService
 from app.integrations.meta.redaction import sanitize_error_message
 from app.worker.celery_app import celery_app
@@ -29,6 +39,295 @@ class MetaWebhookTerminalFailure(Exception):
 
 class MetaWebhookRetryableFailure(Exception):
     """Generic retry cause; intentionally contains no provider data."""
+
+
+class MetaInsightsActiveRunError(ValueError):
+    """A tenant already has a durable insights sync in progress."""
+
+
+class MetaInsightsRetryableFailure(Exception):
+    """Generic retry cause that cannot carry Graph API details into Celery."""
+
+
+MAX_INSIGHTS_SYNC_RETRIES = 3
+INSIGHTS_DISPATCH_BACKOFF_SECONDS = 60
+INSIGHTS_DISPATCH_LEASE_SECONDS = 300
+INSIGHTS_DISPATCH_BATCH_SIZE = 100
+
+
+async def create_and_enqueue_insights_sync_run(
+    *, company_id: str, requested_by: str
+) -> MetaSyncRun:
+    """Persist a tenant run before queueing its opaque identifier."""
+    if not settings.META_INTEGRATION_ENABLED:
+        raise MetaInsightsConfigurationError("Meta integration is disabled")
+    config = await MetaIntegrationSettings.find_one(
+        {
+            "company_id": company_id,
+            "enabled": True,
+            "insights_sync_enabled": True,
+        }
+    )
+    if config is None or not config.ad_account_id:
+        raise MetaInsightsConfigurationError("Meta insights sync is not configured")
+
+    now = datetime.now(timezone.utc)
+    run = MetaSyncRun(
+        company_id=company_id,
+        sync_type="insights",
+        correlation_id=str(uuid4()),
+        requested_by=requested_by,
+        active_key=f"{company_id}:insights",
+        dispatch_queued_at=now,
+        next_dispatch_at=now + timedelta(seconds=INSIGHTS_DISPATCH_LEASE_SECONDS),
+    )
+    try:
+        await run.insert()
+    except DuplicateKeyError:
+        raise MetaInsightsActiveRunError("An insights sync is already in progress") from None
+    try:
+        process_meta_insights_sync_run.delay(str(run.id))
+    except Exception:
+        await restore_initial_meta_insights_dispatch(
+            str(run.id), company_id, run.active_key, run.dispatch_queued_at, now
+        )
+    return run
+
+
+async def restore_initial_meta_insights_dispatch(
+    run_id: str,
+    company_id: str,
+    active_key: Optional[str],
+    observed_dispatch_queued_at: Optional[datetime],
+    now: datetime,
+) -> Optional[MetaSyncRun]:
+    """Restore only the exact dispatch lease created before the initial delay call."""
+    if not active_key or observed_dispatch_queued_at is None:
+        return None
+    return await MetaSyncRun.find_one(
+        {
+            "_id": PydanticObjectId(run_id),
+            "company_id": company_id,
+            "sync_type": "insights",
+            "status": MetaSyncStatus.PENDING.value,
+            "active_key": active_key,
+            "dispatch_queued_at": observed_dispatch_queued_at,
+        }
+    ).update(
+        {
+            "$set": {
+                "dispatch_queued_at": None,
+                "next_dispatch_at": now + timedelta(seconds=INSIGHTS_DISPATCH_BACKOFF_SECONDS),
+                "updated_at": now,
+                "error_code": "queue_dispatch_failed",
+                "error_message": "Broker dispatch failed",
+            }
+        },
+        response_type=UpdateResponse.NEW_DOCUMENT,
+    )
+
+
+@celery_app.task(name="meta.schedule_insights_sync_runs")
+def schedule_meta_insights_sync_runs_task():
+    """Periodically create one opaque work item per enabled tenant configuration."""
+    return asyncio.run(schedule_meta_insights_sync_runs())
+
+
+async def schedule_meta_insights_sync_runs() -> int:
+    if not settings.META_INTEGRATION_ENABLED:
+        return 0
+    configs = await MetaIntegrationSettings.find(
+        {"enabled": True, "insights_sync_enabled": True}
+    ).to_list()
+    scheduled = 0
+    for config in configs:
+        try:
+            await create_and_enqueue_insights_sync_run(
+                company_id=config.company_id, requested_by="scheduler"
+            )
+            scheduled += 1
+        except MetaInsightsActiveRunError:
+            continue
+        except MetaInsightsConfigurationError:
+            continue
+    return scheduled
+
+
+@celery_app.task(name="meta.dispatch_due_insights_sync_runs")
+def dispatch_due_meta_insights_sync_runs_task():
+    return asyncio.run(dispatch_due_meta_insights_sync_runs())
+
+
+async def dispatch_due_meta_insights_sync_runs() -> int:
+    """Recover durable pending dispatches without sending credentials to Celery."""
+    if not settings.META_INTEGRATION_ENABLED:
+        return 0
+    now = datetime.now(timezone.utc)
+    runs = await (
+        MetaSyncRun.find(
+            {
+                "sync_type": "insights",
+                "status": MetaSyncStatus.PENDING.value,
+                "next_dispatch_at": {"$lte": now},
+            }
+        )
+        .limit(INSIGHTS_DISPATCH_BATCH_SIZE)
+        .to_list()
+    )
+    dispatched = 0
+    for run in runs:
+        reserved = await reserve_due_meta_insights_dispatch(
+            str(run.id), run.company_id, run.next_dispatch_at, now
+        )
+        if reserved is None:
+            continue
+        try:
+            process_meta_insights_sync_run.delay(str(reserved.id))
+            dispatched += 1
+        except Exception:
+            await restore_failed_meta_insights_dispatch(
+                str(reserved.id), reserved.company_id, reserved.dispatch_queued_at, now
+            )
+    return dispatched
+
+
+async def reserve_due_meta_insights_dispatch(
+    run_id: str, company_id: str, observed_next_dispatch_at: Optional[datetime], now: datetime
+) -> Optional[MetaSyncRun]:
+    if observed_next_dispatch_at is None:
+        return None
+    return await MetaSyncRun.find_one(
+        {
+            "_id": PydanticObjectId(run_id),
+            "company_id": company_id,
+            "sync_type": "insights",
+            "status": MetaSyncStatus.PENDING.value,
+            "next_dispatch_at": observed_next_dispatch_at,
+        }
+    ).update(
+        {"$set": {"dispatch_queued_at": now, "next_dispatch_at": now + timedelta(seconds=INSIGHTS_DISPATCH_LEASE_SECONDS), "updated_at": now}},
+        response_type=UpdateResponse.NEW_DOCUMENT,
+    )
+
+
+async def restore_failed_meta_insights_dispatch(
+    run_id: str, company_id: str, observed_dispatch_queued_at: Optional[datetime], now: datetime
+) -> Optional[MetaSyncRun]:
+    if observed_dispatch_queued_at is None:
+        return None
+    return await MetaSyncRun.find_one(
+        {"_id": PydanticObjectId(run_id), "company_id": company_id, "sync_type": "insights", "status": MetaSyncStatus.PENDING.value, "dispatch_queued_at": observed_dispatch_queued_at}
+    ).update(
+        {"$set": {"dispatch_queued_at": None, "next_dispatch_at": now + timedelta(seconds=INSIGHTS_DISPATCH_BACKOFF_SECONDS), "updated_at": now, "error_code": "queue_dispatch_failed", "error_message": "Broker dispatch failed"}},
+        response_type=UpdateResponse.NEW_DOCUMENT,
+    )
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=MAX_INSIGHTS_SYNC_RETRIES - 1,
+    name="meta.process_insights_sync_run",
+)
+def process_meta_insights_sync_run(task, run_id: str):
+    """Run a persisted sync without placing tenant credentials in task arguments."""
+    try:
+        return asyncio.run(
+            _process_insights_sync_run(
+                run_id, terminal_attempt=task.request.retries >= MAX_INSIGHTS_SYNC_RETRIES - 1
+            )
+        )
+    except (MetaGraphRateLimitError, MetaGraphTransientError):
+        attempt = task.request.retries + 1
+        raise task.retry(
+            exc=MetaInsightsRetryableFailure("Meta insights sync retry scheduled"),
+            countdown=min(300, 2**attempt * 30) + random.randint(0, 5),
+            max_retries=MAX_INSIGHTS_SYNC_RETRIES - 1,
+        ) from None
+
+
+async def claim_meta_insights_sync_run(run_id: str, company_id: str) -> Optional[MetaSyncRun]:
+    now = datetime.now(timezone.utc)
+    return await MetaSyncRun.find_one(
+        {
+            "_id": PydanticObjectId(run_id),
+            "company_id": company_id,
+            "sync_type": "insights",
+            "status": MetaSyncStatus.PENDING.value,
+            "$or": [
+                {"dispatch_queued_at": {"$ne": None}},
+                {"dispatch_queued_at": None, "next_dispatch_at": {"$lte": now}},
+            ],
+        }
+    ).update(
+        {"$set": {"status": MetaSyncStatus.RUNNING.value, "started_at": now, "next_dispatch_at": None, "updated_at": now}, "$inc": {"attempt_count": 1}},
+        response_type=UpdateResponse.NEW_DOCUMENT,
+    )
+
+
+async def _process_insights_sync_run(run_id: str, terminal_attempt: bool = False) -> str:
+    """Transition one durable run and keep provider failures sanitized."""
+    run = await MetaSyncRun.find_one(
+        {"_id": PydanticObjectId(run_id), "sync_type": "insights"}
+    )
+    if run is None:
+        return "not_found"
+    if run.status == MetaSyncStatus.COMPLETED:
+        return "completed"
+    if not settings.META_INTEGRATION_ENABLED:
+        return "paused"
+
+    run = await claim_meta_insights_sync_run(run_id, run.company_id)
+    if run is None:
+        return "not_claimed"
+    try:
+        await MetaInsightsService().sync(run)
+    except (MetaGraphRateLimitError, MetaGraphTransientError) as exc:
+        now = datetime.now(timezone.utc)
+        if terminal_attempt:
+            run.status = MetaSyncStatus.FAILED
+            run.active_key = None
+            run.completed_at = now
+            run.error_code = "rate_limited" if isinstance(exc, MetaGraphRateLimitError) else "transient_provider"
+            run.error_message = "Meta insights sync retry limit reached"
+        else:
+            run.status = MetaSyncStatus.PENDING
+            run.error_code = "rate_limited" if isinstance(exc, MetaGraphRateLimitError) else "transient_provider"
+            run.error_message = "Meta insights sync will retry"
+            run.dispatch_queued_at = None
+            run.next_dispatch_at = now + timedelta(seconds=INSIGHTS_DISPATCH_BACKOFF_SECONDS)
+        run.updated_at = now
+        await run.save()
+        if terminal_attempt:
+            return "failed"
+        raise
+    except MetaInsightsConfigurationError:
+        run.status = MetaSyncStatus.FAILED
+        run.active_key = None
+        run.error_code = "configuration"
+        run.error_message = "Meta insights sync is not configured"
+        run.completed_at = datetime.now(timezone.utc)
+        run.updated_at = run.completed_at
+        await run.save()
+        return "failed"
+    except Exception:
+        run.status = MetaSyncStatus.FAILED
+        run.active_key = None
+        run.error_code = "provider_error"
+        run.error_message = "Meta insights sync failed"
+        run.completed_at = datetime.now(timezone.utc)
+        run.updated_at = run.completed_at
+        await run.save()
+        return "failed"
+
+    run.status = MetaSyncStatus.COMPLETED
+    run.active_key = None
+    run.cursor = None
+    run.completed_at = datetime.now(timezone.utc)
+    run.error_code = None
+    run.error_message = None
+    run.updated_at = run.completed_at
+    await run.save()
+    return "completed"
 
 
 @celery_app.task(name="meta.dispatch_due_webhook_events")

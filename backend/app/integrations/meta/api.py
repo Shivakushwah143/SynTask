@@ -3,17 +3,48 @@
 import json
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
 from app.core.config import settings
+from app.api.dependencies import get_current_company_admin
+from app.integrations.meta.config_service import MetaConfigurationError, resolve_target_company_id
 from app.integrations.meta.signatures import verify_meta_signature, verify_verify_token
+from app.integrations.meta.tasks import (
+    MetaInsightsActiveRunError,
+    create_and_enqueue_insights_sync_run,
+)
 from app.integrations.meta.webhook_service import MetaWebhookService, WebhookIngestResult
 
 
 MAX_WEBHOOK_BODY_BYTES = 1_048_576
 router = APIRouter()
 webhook_service = MetaWebhookService()
+
+
+@router.post("/sync")
+async def sync_meta_insights(
+    company_id: str | None = Query(default=None),
+    current_user=Depends(get_current_company_admin),
+):
+    """Queue a persisted, tenant-resolved read-only insights sync."""
+    try:
+        target_company_id = resolve_target_company_id(
+            actor_role=current_user.role.value,
+            actor_company_id=current_user.company_id,
+            selected_company_id=company_id,
+        )
+        run = await create_and_enqueue_insights_sync_run(
+            company_id=target_company_id,
+            requested_by=str(current_user.id),
+        )
+    except MetaConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except MetaInsightsActiveRunError:
+        raise HTTPException(status_code=409, detail="An insights sync is already in progress") from None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Meta insights sync is unavailable") from None
+    return {"status": "queued", "run_id": str(run.id)}
 
 
 @router.get("/webhook", response_class=PlainTextResponse)

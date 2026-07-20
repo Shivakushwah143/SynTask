@@ -558,6 +558,14 @@ Invalid signatures return `401` without persistence. A valid duplicate returns `
 | GET | `/api/v1/workflows/{workflow_id}` | `get_workflow` | Uses router/endpoint dependencies where configured. |
 | PATCH | `/api/v1/workflows/{workflow_id}/activate` | `activate_workflow` | Uses router/endpoint dependencies where configured. |
 
+### Meta Integration
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/integrations/meta/sync` | `sync_meta_insights` | Requires company-admin or super-admin authentication. A super-admin must provide `company_id`; the run is persisted before Celery receives only its run ID. The tenant must have Meta integration and insights sync enabled with an ad account configured. No token is accepted or returned. |
+
+The existing Celery beat schedule evaluates enabled tenant configurations hourly and re-dispatches due persisted runs every minute. Marketing API calls are read-only Graph `GET` requests; campaign, ad-set, ad, budget, bid, publish, pause, resume, create, update, and delete operations are not exposed. Phase 4 adds only optional run lifecycle fields and additive indexes (`active_key` and pending-dispatch) through `scripts/migrate_meta_insights_runs.py`; this safety deviation prevents concurrent tenant runs and recovers broker-dispatch failures without placing tokens in task payloads.
+
 ## Error Responses
 
 | Status | Meaning | Typical Cause |

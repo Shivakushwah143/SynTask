@@ -124,6 +124,13 @@ class MetaSyncRun(Document):
     status: MetaSyncStatus = MetaSyncStatus.PENDING
     correlation_id: str
     cursor: Optional[str] = None
+    # `active_key` is populated only while the run is pending/running. Its
+    # partial unique index is the durable tenant-level overlap reservation.
+    active_key: Optional[str] = None
+    window_since: Optional[str] = None
+    window_until: Optional[str] = None
+    dispatch_queued_at: Optional[datetime] = None
+    next_dispatch_at: Optional[datetime] = None
     records_processed: int = 0
     attempt_count: int = 0
     started_at: Optional[datetime] = None
@@ -147,6 +154,15 @@ class MetaSyncRun(Document):
             ),
             IndexModel([("correlation_id", ASCENDING)], unique=True),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel(
+                [("active_key", ASCENDING)],
+                unique=True,
+                partialFilterExpression={"active_key": {"$type": "string"}},
+            ),
+            IndexModel(
+                [("status", ASCENDING), ("next_dispatch_at", ASCENDING)],
+                partialFilterExpression={"sync_type": "insights"},
+            ),
         ]
 
 

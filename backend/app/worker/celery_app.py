@@ -41,6 +41,14 @@ celery_app.conf.update(
             "task": "meta.dispatch_due_webhook_events",
             "schedule": 60.0,
         },
+        "meta-schedule-insights-sync-runs": {
+            "task": "meta.schedule_insights_sync_runs",
+            "schedule": 3600.0,
+        },
+        "meta-dispatch-due-insights-sync-runs": {
+            "task": "meta.dispatch_due_insights_sync_runs",
+            "schedule": 60.0,
+        },
     },
 )
 
