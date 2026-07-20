@@ -81,6 +81,22 @@ class RAGQdrantStore:
             ),
         )
 
+    async def delete_source(self, *, company_id: str, source_id: str) -> None:
+        from qdrant_client.http import models
+
+        await self.ensure_collection()
+        await self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(key="company_id", match=models.MatchValue(value=company_id)),
+                        models.FieldCondition(key="source_id", match=models.MatchValue(value=source_id)),
+                    ]
+                )
+            ),
+        )
+
     async def search(self, *, vector: list[float], filters: dict[str, Any], limit: int) -> list[Any]:
         from qdrant_client.http import models
 
@@ -100,4 +116,3 @@ class RAGQdrantStore:
             limit=limit,
             with_payload=True,
         )
-

@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.rag.models import RAGDocumentType, RAGKnowledgeSource, RAGKnowledgeSourceVersion, RAGSourceStatus
 from app.rag.parsers import detect_prompt_injection, parse_document
 from app.rag.permissions import RAGScope, can_approve_source
+from app.rag.qdrant_store import RAGQdrantStore
 from app.models.user import User
 
 
@@ -142,6 +143,34 @@ class RAGSourceRegistry:
             version.status = RAGSourceStatus.APPROVED
             version.updated_at = datetime.utcnow()
             await version.save()
+        return source
+
+    async def retire_source(self, *, source_id: str, current_user: User, deleted: bool = False) -> RAGKnowledgeSource:
+        source = await RAGKnowledgeSource.find_one(RAGKnowledgeSource.source_id == source_id)
+        if not source:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RAG source not found")
+        if not await can_approve_source(current_user, source.visibility or {}, source.company_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Source retirement denied")
+        source.status = RAGSourceStatus.DELETED if deleted else RAGSourceStatus.RETIRED
+        source.approval_status = "deleted" if deleted else "retired"
+        now = datetime.utcnow()
+        source.deleted_at = now if deleted else source.deleted_at
+        source.retired_at = now
+        source.updated_at = now
+        await source.save()
+        versions = await RAGKnowledgeSourceVersion.find(
+            RAGKnowledgeSourceVersion.company_id == source.company_id,
+            RAGKnowledgeSourceVersion.source_id == source.source_id,
+        ).to_list()
+        for version in versions:
+            version.status = source.status
+            version.updated_at = now
+            await version.save()
+        try:
+            await RAGQdrantStore().delete_source(company_id=source.company_id, source_id=source.source_id)
+        except Exception as exc:
+            source.failure_reason = f"Source retired; Qdrant cleanup pending: {type(exc).__name__}"
+            await source.save()
         return source
 
 
