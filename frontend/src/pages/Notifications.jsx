@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { Bell, CheckCheck, ChevronRight } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { notificationsAPI } from '../api/notifications'
 import { Badge, Button, EmptyState, PageHeader, SkeletonCard } from '../components/ui'

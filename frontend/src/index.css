@@ -19,15 +19,18 @@
   }
 
   :root {
-    --color-app-bg: linear-gradient(180deg, #faf6ee 0%, #f6f0e5 40%, #f1e9db 100%);
-    --color-app-bg-solid: theme('colors.surface.muted');
-    --color-app-surface: rgba(248, 242, 232, 0.98);
-    --color-app-surface-muted: rgba(239, 230, 216, 0.98);
-    --color-app-surface-subtle: rgba(233, 223, 208, 0.98);
-    --color-app-border: theme('colors.surface.border');
-    --color-app-text: #312a23;
-    --color-app-text-secondary: #4d453d;
-    --color-app-text-muted: #5f554b;
+    --color-app-bg: #F3F0E9;
+    --color-app-bg-solid: #F3F0E9;
+    --color-app-surface: #FAF8F3;
+    --color-app-surface-muted: #F0EDE6;
+    --color-app-surface-subtle: #F7F4EE;
+    --color-app-header: #F8F6F1;
+    --color-app-input: #F7F4EE;
+    --color-app-row: #F7F4EE;
+    --color-app-border: #DED8CC;
+    --color-app-text: #20242C;
+    --color-app-text-secondary: #667085;
+    --color-app-text-muted: #667085;
     --radius-sm: 0.75rem;
     --radius-md: 1rem;
     --radius-lg: 1rem;
@@ -38,8 +41,8 @@
     --shadow-lg: 0 18px 36px -28px rgb(63 49 37 / 0.22);
     --focus-ring: 0 0 0 2px rgb(229 106 31 / 0.22);
     --select-accent: #e56a1f;
-    --select-option-bg: #fff4ec;
-    --select-option-text: #312a23;
+    --select-option-bg: #F0EDE6;
+    --select-option-text: #20242C;
     --icon-scale-primary: 1.2;
   }
 
@@ -66,11 +69,7 @@
   body {
     @apply antialiased;
     margin: 0;
-    background:
-      radial-gradient(circle at top left, rgb(229 106 31 / 0.12), transparent 28%),
-      radial-gradient(circle at top right, rgb(245 177 88 / 0.08), transparent 22%),
-      radial-gradient(circle at bottom left, rgb(59 130 246 / 0.07), transparent 26%),
-      var(--color-app-bg);
+    background: var(--color-app-bg);
     color: var(--color-app-text);
     font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   }
@@ -98,7 +97,7 @@
   }
 
   select {
-    background-color: var(--color-app-surface);
+    background-color: var(--color-app-input);
     border-color: var(--color-app-border);
     color: var(--color-app-text);
   }
@@ -110,7 +109,7 @@
   }
 
   select option {
-    background-color: var(--color-app-surface);
+    background-color: var(--color-app-input);
     color: var(--color-app-text);
   }
 
@@ -180,11 +179,13 @@
   }
   
   .input {
-    @apply min-h-11 w-full rounded-2xl border border-surface-border bg-white/80 px-4 py-2.5 text-sm transition-colors placeholder:text-text-muted focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-gray-100 dark:placeholder:text-[var(--color-app-text-muted)];
+    @apply min-h-11 w-full rounded-2xl border border-surface-border px-4 py-2.5 text-sm transition-colors placeholder:text-text-muted focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:text-gray-100 dark:placeholder:text-[var(--color-app-text-muted)];
+    background-color: var(--color-app-input);
+    color: var(--color-app-text);
   }
 
   select.input {
-    background-color: var(--color-app-surface);
+    background-color: var(--color-app-input);
     color: var(--color-app-text);
   }
   
@@ -324,14 +325,29 @@
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .bg-white {
-    background-color: rgba(252, 250, 244, 0.96);
+    background-color: var(--color-app-surface);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .bg-white\/80,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-white\/85,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-white\/90,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-white\/95 {
-    background-color: rgba(252, 250, 244, 0.96);
+    background-color: color-mix(in srgb, var(--color-app-surface) 96%, transparent);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .from-white {
+    --tw-gradient-from: var(--color-app-surface) var(--tw-gradient-from-position);
+    --tw-gradient-to: color-mix(in srgb, var(--color-app-surface) 0%, transparent) var(--tw-gradient-to-position);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .via-white {
+    --tw-gradient-to: color-mix(in srgb, var(--color-app-surface) 0%, transparent) var(--tw-gradient-to-position);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--color-app-surface) var(--tw-gradient-via-position), var(--tw-gradient-to);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .to-white {
+    --tw-gradient-to: var(--color-app-surface) var(--tw-gradient-to-position);
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-white\/80,
@@ -350,17 +366,17 @@
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/90,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100\/80,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100\/90 {
-    background-color: rgba(241, 238, 230, 0.96);
+    background-color: color-mix(in srgb, var(--color-app-surface-muted) 96%, transparent);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-50\/60 {
-    background-color: rgba(241, 238, 230, 0.95);
+    background-color: var(--color-app-input);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .bg-slate-50,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-slate-100 {
-    background-color: rgba(241, 238, 230, 0.96);
+    background-color: var(--color-app-input);
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-gray-100,
@@ -375,15 +391,26 @@
 
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-100,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-gray-200 {
-    background-color: rgba(236, 231, 219, 0.95);
+    background-color: var(--color-app-surface-muted);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .bg-surface-muted {
-    background-color: rgba(241, 238, 230, 0.96);
+    background-color: var(--color-app-surface-muted);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .bg-surface-subtle {
-    background-color: rgba(234, 228, 216, 0.96);
+    background-color: var(--color-app-surface-subtle);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-surface,
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-surface\/90,
+  :where(html:not(.dark):not([data-theme='dark'])) .bg-surface\/95 {
+    background-color: var(--color-app-surface);
+  }
+
+  :where(html:not(.dark):not([data-theme='dark'])) tbody.bg-white,
+  :where(html:not(.dark):not([data-theme='dark'])) tr.bg-white {
+    background-color: var(--color-app-row);
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-surface,
@@ -427,7 +454,7 @@
   :where(html:not(.dark):not([data-theme='dark'])) .bg-purple-100,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-fuchsia-50,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-fuchsia-100 {
-    background-color: rgba(241, 238, 230, 0.96);
+    background-color: var(--color-app-surface-muted);
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-green-50,
@@ -463,16 +490,16 @@
   :where(html:not(.dark):not([data-theme='dark'])) .bg-fuchsia-100,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-indigo-50,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-indigo-100 {
-    background-color: rgba(241, 238, 230, 0.96);
+    background-color: var(--color-app-surface-muted);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .bg-emerald-50,
   :where(html:not(.dark):not([data-theme='dark'])) .bg-emerald-100 {
-    background-color: rgba(241, 238, 230, 0.96);
+    background-color: var(--color-app-surface-muted);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .bg-emerald-200 {
-    background-color: rgba(233, 226, 212, 0.96);
+    background-color: var(--color-app-surface-subtle);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .border-emerald-100,
@@ -667,7 +694,7 @@
   :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-gray-50:hover,
   :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-gray-100:hover,
   :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-gray-200:hover {
-    background-color: rgba(231, 223, 207, 0.95);
+    background-color: var(--color-app-surface-muted);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-blue-50:hover,
@@ -682,7 +709,7 @@
   :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-purple-100:hover,
   :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-fuchsia-50:hover,
   :where(html:not(.dark):not([data-theme='dark'])) .hover\:bg-fuchsia-100:hover {
-    background-color: rgba(231, 223, 207, 0.95);
+    background-color: var(--color-app-surface-muted);
   }
 
   :where(html:not(.dark):not([data-theme='dark'])) .ring-blue-100,
@@ -721,10 +748,10 @@
 }
 
 .react-hot-toast [role='status'] {
-  border: 1px solid theme('colors.surface.border');
+  border: 1px solid var(--color-app-border);
   border-radius: 9999px;
-  background: rgba(252, 250, 244, 0.98) !important;
-  color: theme('colors.text.primary') !important;
+  background: var(--color-app-surface) !important;
+  color: var(--color-app-text) !important;
   box-shadow: none !important;
 }
 
@@ -733,9 +760,9 @@
 }
 
 .react-hot-toast > div[style] {
-  background: rgba(252, 250, 244, 0.98) !important;
-  color: theme('colors.text.primary') !important;
-  border: 1px solid theme('colors.surface.border');
+  background: var(--color-app-surface) !important;
+  color: var(--color-app-text) !important;
+  border: 1px solid var(--color-app-border);
   border-radius: 9999px !important;
   box-shadow: none !important;
 }
