@@ -15,13 +15,17 @@ flowchart TB
         FastAPI[FastAPI App]
         Auth[Auth Dependencies]
         Routers[API v1 Routers]
+        ContextPackage[Central ContextPackage Service]
+        WorkingMemory[Working Memory Service]
+        RAG[Central RAG Retrieval]
         Uploads[Local uploads/]
         Deadline[Deadline Checker]
     end
 
     subgraph Data
         Mongo[(MongoDB Atlas)]
-        Redis[(Redis Blacklist)]
+        Redis[(Redis Blacklist / Working Memory)]
+        Qdrant[(Qdrant Vector Store)]
     end
 
     subgraph External
@@ -33,6 +37,12 @@ flowchart TB
     Browser --> Nginx --> React
     React --> FastAPI
     FastAPI --> Auth --> Routers
+    Routers --> ContextPackage
+    ContextPackage --> WorkingMemory
+    ContextPackage --> RAG
+    WorkingMemory --> Redis
+    RAG --> Qdrant
+    RAG --> Mongo
     Routers --> Mongo
     FastAPI --> Redis
     Routers --> Uploads
@@ -40,6 +50,28 @@ flowchart TB
     Routers --> SMTP
     Routers --> Zoom
     Routers --> Payments
+```
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant API as FastAPI RAG API
+    participant Auth
+    participant CP as ContextPackage Service
+    participant WM as Redis Working Memory
+    participant RAG as RAG Retrieval Service
+    participant Qdrant
+    participant Mongo
+
+    Agent->>API: Request ContextPackage
+    API->>Auth: Resolve authenticated user scope
+    API->>CP: Build package with server scope
+    CP->>WM: Load tenant/user/session memory
+    CP->>RAG: Retrieve with current permission scope
+    RAG->>Qdrant: Tenant-filtered vector search
+    RAG->>Mongo: Re-authorize citations
+    CP-->>API: Authorized ContextPackage
+    API-->>Agent: Sanitized context boundary
 ```
 
 ```mermaid

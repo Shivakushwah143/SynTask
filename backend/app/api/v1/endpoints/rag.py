@@ -7,24 +7,42 @@ from app.models.user import User
 from app.rag.permissions import resolve_rag_scope
 from app.rag.retrieval import RAGRetrievalService
 from app.rag.schemas import (
+    ContextPackageRequest,
     RAGApproveSourceRequest,
     RAGRetrieveRequest,
     RAGRetrieveResponse,
     RAGSourceResponse,
     RAGVisibilityInput,
+    WorkingMemoryClientUpdateRequest,
+    WorkingMemoryCreateRequest,
+    WorkingMemorySessionResponse,
 )
 from app.rag.source_registry import source_registry
 from app.worker.tasks.rag_tasks import process_rag_source_version
 from app.rag.models import RAGKnowledgeSourceVersion
 from app.rag.qdrant_store import QdrantUnavailable
 from app.core.config import settings
+from app.rag.context_package import ContextPackageBuilder, sanitize_for_model_context
+from app.rag.working_memory import ClientWorkingMemoryUpdate, WorkingMemoryConflict, WorkingMemoryService, WorkingMemoryUnavailable
 
 router = APIRouter()
+working_memory_service = WorkingMemoryService()
+context_package_builder = ContextPackageBuilder(working_memory_service=working_memory_service)
 
 
 def _require_rag_enabled() -> None:
     if not settings.RAG_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="RAG is disabled")
+
+
+def _session_response(snapshot) -> WorkingMemorySessionResponse:
+    return WorkingMemorySessionResponse(
+        session_id=snapshot.session_id,
+        conversation_id=snapshot.conversation_id,
+        status=snapshot.status,
+        version=snapshot.version,
+        expires_at=snapshot.expires_at.isoformat(),
+    )
 
 
 @router.post("/sources/upload", response_model=RAGSourceResponse)
@@ -117,3 +135,83 @@ async def retrieve_rag_context(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/working-memory/sessions", response_model=WorkingMemorySessionResponse)
+async def create_working_memory_session(
+    payload: WorkingMemoryCreateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    _require_rag_enabled()
+    scope = await resolve_rag_scope(current_user)
+    try:
+        snapshot = await working_memory_service.create_session(scope=scope, conversation_id=payload.conversation_id)
+        return _session_response(snapshot)
+    except WorkingMemoryUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@router.patch("/working-memory/sessions/{session_id}", response_model=WorkingMemorySessionResponse)
+async def update_working_memory_session(
+    session_id: str,
+    payload: WorkingMemoryClientUpdateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    _require_rag_enabled()
+    scope = await resolve_rag_scope(current_user)
+    try:
+        snapshot = await working_memory_service.update_client_state(
+            scope=scope,
+            session_id=session_id,
+            update=ClientWorkingMemoryUpdate(**payload.model_dump()),
+        )
+        return _session_response(snapshot)
+    except WorkingMemoryConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except WorkingMemoryUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@router.delete("/working-memory/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_working_memory_session(
+    session_id: str,
+    conversation_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    _require_rag_enabled()
+    scope = await resolve_rag_scope(current_user)
+    try:
+        await working_memory_service.delete_session(scope=scope, session_id=session_id, conversation_id=conversation_id)
+    except WorkingMemoryUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@router.post("/working-memory/sessions/{session_id}/context-package")
+async def build_context_package(
+    session_id: str,
+    payload: ContextPackageRequest,
+    current_user: User = Depends(get_current_user),
+):
+    _require_rag_enabled()
+    scope = await resolve_rag_scope(
+        current_user,
+        project_id=payload.project_id,
+        department_id=payload.department_id,
+        client_id=payload.client_id,
+    )
+    try:
+        package = await context_package_builder.build(
+            scope=scope,
+            session_id=session_id,
+            conversation_id=payload.conversation_id,
+            query=payload.query,
+            top_k=payload.top_k,
+        )
+    except WorkingMemoryUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    response = {"context_package": package.model_dump(mode="json")}
+    if payload.include_model_context:
+        response["model_context"] = sanitize_for_model_context(package).model_dump(mode="json")
+    return response
