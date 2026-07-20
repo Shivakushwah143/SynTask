@@ -39,12 +39,7 @@ export function CreatableSelectField({
         required={required}
       >
         {children}
-        {canCreate && onCreate ? (
-          <>
-            <option disabled value="__syntask_create_divider__">──────────</option>
-            <option value={CREATE_NEW_VALUE}>+ {createLabel}</option>
-          </>
-        ) : null}
+        {canCreate && onCreate ? <option value={CREATE_NEW_VALUE}>+ {createLabel}</option> : null}
       </select>
       {helper ? <p className="mt-1 text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">{helper}</p> : null}
     </div>

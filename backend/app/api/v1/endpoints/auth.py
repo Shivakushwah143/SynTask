@@ -25,7 +25,8 @@ from app.core.token_blacklist import blacklist_token, is_token_blacklisted
 from app.middleware.rate_limiter import limiter
 from app.api.dependencies import get_current_user
 from app.schemas.auth import RefreshTokenRequest, LoginRequest, ChangePasswordRequest
-from app.worker.tasks.email_tasks import send_password_reset_email_task
+from app.core.email import send_password_reset_email as _send_password_reset_email
+from app.services.file_service import FileService
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,11 @@ REFRESH_COOKIE_NAME = "refresh_token"
 class GoogleLoginRequest(BaseModel):
     id_token: str
     remember_me: bool = False
+
+
+async def send_password_reset_email(email: str, reset_token: str, user_name: Optional[str] = None) -> bool:
+    """Module-level seam so tests can monkeypatch the password reset mailer."""
+    return await _send_password_reset_email(email=email, reset_token=reset_token, user_name=user_name)
 
 
 def _split_google_name(name: str, email: str) -> tuple[str, str]:
@@ -404,11 +410,15 @@ async def forgot_password(
     frontend_url = getattr(settings, 'FRONTEND_URL', None) or (settings.ALLOWED_ORIGINS[0] if settings.ALLOWED_ORIGINS else "http://localhost:3000")
     reset_link = f"{frontend_url}/reset-password?token={reset_token}"
     
-    send_password_reset_email_task.delay(user.email, reset_token, user.first_name)
-    logger.info(f"Password reset email queued for {email}")
+    email_sent = await send_password_reset_email(user.email, reset_token, user.first_name)
+    if email_sent:
+        logger.info(f"Password reset email sent for {email}")
+    else:
+        logger.error(f"Password reset email not sent for {email}")
     
     response_data = {
-        "message": "Password reset link has been sent to your email."
+        "message": "Password reset link has been sent to your email." if email_sent else "Password reset link was created, but email delivery is not configured.",
+        "email_sent": email_sent,
     }
     
     # Only include reset_link in development mode if email wasn't sent
@@ -670,7 +680,7 @@ async def upload_avatar(
             )
         
         # Create avatars directory if it doesn't exist
-        upload_dir = Path(settings.UPLOAD_DIR) / "avatars"
+        upload_dir = FileService.resolve_upload_dir() / "avatars"
         upload_dir.mkdir(parents=True, exist_ok=True)
         
         # Generate unique filename
@@ -684,7 +694,7 @@ async def upload_avatar(
         
         # Delete old avatar if exists
         if current_user.avatar:
-            old_avatar_path = Path(settings.UPLOAD_DIR) / current_user.avatar.lstrip('/uploads/avatars/')
+            old_avatar_path = FileService.resolve_upload_dir() / "avatars" / Path(current_user.avatar).name
             if old_avatar_path.exists() and old_avatar_path.is_file():
                 try:
                     old_avatar_path.unlink()
@@ -725,7 +735,7 @@ async def delete_avatar(
             )
         
         # Delete avatar file
-        avatar_path = Path(settings.UPLOAD_DIR) / current_user.avatar.lstrip('/uploads/avatars/')
+        avatar_path = FileService.resolve_upload_dir() / "avatars" / Path(current_user.avatar).name
         if avatar_path.exists() and avatar_path.is_file():
             try:
                 avatar_path.unlink()

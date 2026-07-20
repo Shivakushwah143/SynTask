@@ -137,6 +137,7 @@ describe('CRM lead workspace E2E', () => {
     })
 
     crmApiMock.updateLeadProposal.mockResolvedValue({ message: 'Proposal updated successfully' })
+    salesApiMock.updateLeadForm.mockResolvedValue({ message: 'Lead updated successfully' })
   })
 
   it('moves from lead to proposal to history with real data and mutations', async () => {
@@ -172,5 +173,27 @@ describe('CRM lead workspace E2E', () => {
 
     expect(await screen.findByRole('heading', { name: 'Qualified → Proposal', level: 3 })).toBeInTheDocument()
     expect(screen.getByText('Ada Admin')).toBeInTheDocument()
+  })
+
+  it('requires confirmation before saving lead overview edits', async () => {
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Alpha Co', level: 1 })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Company'), { target: { value: 'Beta Co' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Review changes' }))
+
+    expect(screen.getByRole('heading', { name: 'Confirm lead changes' })).toBeInTheDocument()
+    expect(salesApiMock.updateLeadForm).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => {
+      expect(salesApiMock.updateLeadForm).toHaveBeenCalledWith(
+        'lead-1',
+        expect.objectContaining({ company_name: 'Beta Co' }),
+      )
+    })
   })
 })

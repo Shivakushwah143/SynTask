@@ -26,6 +26,7 @@ from app.api.v1.endpoints import crm_deals
 from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import content_calendar
+from app.api.v1.endpoints import scheduled_jobs
 from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing
 from fastapi import Depends
@@ -128,6 +129,7 @@ api_router.include_router(ledger.router, prefix="/ledger", tags=["Ledger"], depe
 api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("task"))])
+api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"])
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
@@ -155,7 +157,9 @@ api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CR
 api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)
 api_router.include_router(sales_products.router, prefix="/sales/products", tags=["Sales Products"], dependencies=sales_module_dependency)
 api_router.include_router(sales_contacts.router, prefix="/sales/contacts", tags=["Sales Contacts"], dependencies=sales_module_dependency)
-api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Leads"], dependencies=sales_module_dependency)
+# Lead create/list powers CRM as well as Sales, so do not gate whole router by the Sales module.
+# Sensitive bulk import routes keep route-level Sales module and import capability guards.
+api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Leads"])
 api_router.include_router(sales_masters.router, prefix="/sales/masters", tags=["Sales Masters"], dependencies=sales_module_dependency)
 api_router.include_router(sales_reports.router, prefix="/sales/reports", tags=["Sales Reports"], dependencies=sales_module_dependency)
 

@@ -75,6 +75,7 @@ from app.models.attendance import (
 from app.models.timeline import TimelineEvent
 from app.models.leave import LeaveRequest
 from app.models.eod import EODReport
+from app.models.scheduled_job import ScheduledJob
 from app.models.capability import seed_default_capabilities
 from app.recruitment.models import (
     Application, Candidate, CandidateNote, CandidateTimeline, Interview,
@@ -226,6 +227,7 @@ async def init_db():
                 TimelineEvent,
                 LeaveRequest,
                 EODReport,
+                ScheduledJob,
                 RecruitmentJob,
                 Candidate,
                 Application,
@@ -248,6 +250,13 @@ async def init_db():
         
     except Exception as e:
         logger.error(f"Failed to connect to MongoDB: {str(e)}")
+        if client:
+            client.close()
+            client = None
+        logger.warning(
+            "MongoDB initialization failed. "
+            "Set MONGODB_URL to a reachable database to enable persistence."
+        )
         raise
 
 

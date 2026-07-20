@@ -33,6 +33,8 @@ const NotificationBell = () => {
             notificationId: notification?.id || null,
             relatedId: notification?.related_id || null,
             relatedType: notification?.related_type || null,
+            type: notification?.type || null,
+            metadata: notification?.metadata || null,
           },
         })
       )
@@ -89,6 +91,12 @@ const NotificationBell = () => {
     if (!notification.is_read) {
       try {
         await notificationsAPI.markAsRead(notification.id)
+        setNotifications((current) =>
+          current.map((item) =>
+            item.id === notification.id ? { ...item, is_read: true } : item
+          )
+        )
+        setUnreadCount((current) => Math.max(0, current - 1))
         // Refresh notifications after marking as read
         const data = await notificationsAPI.listNotifications(null, 0, 10)
         setNotifications(data.notifications || [])
@@ -314,6 +322,10 @@ const NotificationBell = () => {
     try {
       setLoading(true)
       await notificationsAPI.markAllAsRead()
+      setNotifications((current) =>
+        current.map((notification) => ({ ...notification, is_read: true }))
+      )
+      setUnreadCount(0)
       toast.success('All notifications marked as read')
       // Skip popups when manually marking all as read
       await fetchNotifications(false, true)

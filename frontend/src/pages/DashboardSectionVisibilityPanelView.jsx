@@ -53,6 +53,7 @@ export function DashboardSectionVisibilityPanel({
     return (
       <aside
         ref={panelRef}
+        role="region"
         className="fixed bottom-4 right-4 z-40 xl:bottom-auto xl:top-24"
         aria-label="Dashboard sections"
       >
@@ -60,7 +61,7 @@ export function DashboardSectionVisibilityPanel({
           type="button"
           onClick={onToggleCollapsed}
           aria-expanded="false"
-          aria-label={`Open dashboard sections, ${visibleCount} of ${sections.length} visible`}
+          aria-label="Open dashboard sections"
           className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary-200/70 bg-[rgba(255,248,238,0.76)] px-3 py-2 text-sm font-semibold text-gray-800 opacity-75 shadow-[0_16px_42px_rgba(63,49,37,0.14)] backdrop-blur-xl transition-all duration-200 hover:bg-[rgba(255,248,238,0.98)] hover:opacity-100 hover:shadow-[0_16px_42px_rgba(63,49,37,0.2)] focus-visible:bg-[rgba(255,248,238,0.98)] focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:border-[#5a4635] dark:bg-[rgba(26,20,15,0.76)] dark:text-gray-100 dark:hover:bg-[rgba(26,20,15,0.98)] dark:focus-visible:bg-[rgba(26,20,15,0.98)]"
         >
           <span aria-hidden="true" className="text-base leading-none">☰</span>
@@ -76,6 +77,7 @@ export function DashboardSectionVisibilityPanel({
   return (
     <aside
       ref={panelRef}
+      role="region"
       onWheelCapture={(event) => event.stopPropagation()}
       onTouchMoveCapture={(event) => event.stopPropagation()}
       className="fixed bottom-4 right-4 z-40 w-[min(calc(100vw-2rem),26rem)] overflow-hidden rounded-2xl border border-primary-200/70 bg-[rgba(255,248,238,0.98)] shadow-[0_16px_42px_rgba(63,49,37,0.18)] backdrop-blur-xl transition-all duration-300 dark:border-[#5a4635] dark:bg-[rgba(26,20,15,0.98)] dark:shadow-[0_18px_42px_rgba(0,0,0,0.42)] xl:bottom-auto xl:top-24"

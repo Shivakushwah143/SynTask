@@ -18,6 +18,24 @@ def _is_company_admin(user: User) -> bool:
     return user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
 
 
+def _can_read_departments(user: User) -> bool:
+    return user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]
+
+
+async def _require_department_read_access(current_user: User = Depends(get_current_user)) -> User:
+    if not _can_read_departments(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Department access required",
+        )
+    if not current_user.company_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User must belong to a company",
+        )
+    return current_user
+
+
 async def _require_company_admin_only(current_user: User = Depends(get_current_user)) -> User:
     if not _is_company_admin(current_user):
         raise HTTPException(
@@ -60,7 +78,7 @@ def _serialize_department(department: Department, manager_name: str | None = Non
 
 
 @router.get("/")
-async def list_departments(current_user: User = Depends(_require_company_admin_only)):
+async def list_departments(current_user: User = Depends(_require_department_read_access)):
     departments = await Department.find(
         Department.company_id == current_user.company_id,
         Department.deleted_at == None,  # noqa: E711

@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from .shared import *
 from app.api.deps import Pagination50, PaginationParams
+from app.api.v1.endpoints.tasks import build_employee_project_visibility_query
 
 router = APIRouter()
 
@@ -32,22 +33,22 @@ async def list_projects(
             )
         query = {"company_id": current_user.company_id}
     
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-        if current_user.role == UserRole.MANAGER:
-            scoped_ids = await scoped_user_ids(current_user)
-            query["$or"] = [
-                {"created_by": str(current_user.id)},
-                {"assigned_to": {"$in": scoped_ids}},
-                {"assigned_user_ids": {"$in": scoped_ids}},
-            ]
-        elif current_user.role == UserRole.LEAD:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
+        if current_user.role == UserRole.LEAD:
             query["$or"] = [
                 {"assigned_to": str(current_user.id)},
                 {"assigned_user_ids": str(current_user.id)},
                 {"team_member_ids": str(current_user.id)},
             ]
         elif current_user.role == UserRole.EMPLOYEE:
-            query["team_member_ids"] = str(current_user.id)
+            assigned_tasks = await Task.find({
+                "company_id": current_user.company_id,
+                "assigned_to": str(current_user.id),
+            }).to_list()
+            query.update(build_employee_project_visibility_query(
+                current_user,
+                [task.project_id for task in assigned_tasks if getattr(task, "project_id", None)],
+            ))
     
     if status_filter:
         try:
@@ -100,8 +101,8 @@ async def list_projects(
             "name": project.name,
             "key": project.key,
             "description": project.description,
-            "type": project.type.value,
-            "status": project.status.value,
+            "type": enum_or_string_value(project.type, ProjectType.SOFTWARE.value),
+            "status": enum_or_string_value(project.status),
             "client_id": project.client_id,
             "lead_id": project.lead_id,
             "assigned_to": project.assigned_to,

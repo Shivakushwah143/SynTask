@@ -47,11 +47,13 @@ const Chat = lazy(() => import('./pages/Chat'))
 const Clients = lazy(() => import('./pages/Clients'))
 const ClientWorkspacePage = lazy(() => import('./pages/ClientWorkspace'))
 const Invoices = lazy(() => import('./pages/Invoices'))
-const MSA = lazy(() => import('./pages/MSA'))
-const MSASign = lazy(() => import('./pages/MSASign'))
+// MSA hidden by request. Keep implementation available for later restore.
+// const MSA = lazy(() => import('./pages/MSA'))
+// const MSASign = lazy(() => import('./pages/MSASign'))
 const Ledger = lazy(() => import('./pages/Ledger'))
 const Meetings = lazy(() => import('./pages/Meetings'))
-const Calendar = lazy(() => import('./pages/Calendar'))
+const WorkspaceCalendar = lazy(() => import('./pages/WorkspaceCalendar'))
+const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
@@ -60,6 +62,7 @@ const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 const MarketingChat = lazy(() => import('./pages/MarketingChat'))
 const MarketingCalendar = lazy(() => import('./pages/marketing/calendar/page'))
 const Notifications = lazy(() => import('./pages/Notifications'))
+const ScheduledJobs = lazy(() => import('./pages/ScheduledJobs'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
@@ -183,7 +186,9 @@ function App() {
         <Route path="/admin-request" element={<PublicRoute><AuthLayout maxWidth="max-w-5xl"><AdminRequest /></AuthLayout></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />
         <Route path="/reset-password" element={<PublicRouteAllowAuth><AuthLayout><ResetPassword /></AuthLayout></PublicRouteAllowAuth>} />
+        {/* MSA hidden by request. Keep route commented for later restore.
         <Route path="/msa/sign/:token" element={<PublicRouteAllowAuth><MSASign /></PublicRouteAllowAuth>} />
+        */}
         <Route path="/careers" element={withBoundary(<CareersLandingPage />)} />
         <Route path="/careers/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
@@ -198,7 +203,9 @@ function App() {
           <Route path="clients" element={withBoundary(<Clients />)} />
           <Route path="clients/:clientId/workspace" element={withBoundary(<ClientWorkspacePage />)} />
           <Route path="invoices" element={withBoundary(<Invoices />)} />
+          {/* MSA hidden by request. Keep route commented for later restore.
           <Route path="msa" element={withBoundary(<MSA />)} />
+          */}
           <Route path="ledger" element={withBoundary(<Ledger />)} />
           <Route path="bulk-leads" element={<CompanyAdminGuard>{withBoundary(<BulkLeads />)}</CompanyAdminGuard>} />
           <Route path="projects" element={withBoundary(<Projects />)} />
@@ -208,8 +215,8 @@ function App() {
           <Route path="workflows" element={<CompanyAdminGuard>{withBoundary(<WorkflowAdmin />)}</CompanyAdminGuard>} />
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
-          <Route path="calendar" element={withBoundary(<Calendar />)} />
-          <Route path="content-calendar" element={withBoundary(<Calendar />)} />
+          <Route path="calendar" element={withBoundary(<WorkspaceCalendar />)} />
+          <Route path="content-calendar" element={withBoundary(<ContentCalendar />)} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />
@@ -220,6 +227,7 @@ function App() {
 
         <Route path="reports" element={withBoundary(<Reports />)} />
         <Route path="notifications" element={withBoundary(<Notifications />)} />
+        <Route path="scheduled-jobs" element={withBoundary(<ScheduledJobs />)} />
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
         <Route path="ai-hub" element={withBoundary(<AIHub />)} />
         <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />
@@ -250,7 +258,7 @@ function App() {
           </Route>
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
             <Route index element={<Navigate to="pipeline" replace />} />
-            <Route path="dashboard" element={withBoundary(<CRMDashboardPage />)} />
+            <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
             <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
             <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
             <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />

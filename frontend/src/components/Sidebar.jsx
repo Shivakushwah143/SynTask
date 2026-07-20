@@ -20,7 +20,7 @@ import {
   DollarSign,
   Factory,
   FileBarChart2,
-  FileCheck2,
+  // FileCheck2, // MSA nav hidden by request.
   FolderKanban,
   Gauge,
   GitBranch,
@@ -44,7 +44,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
-import { ROLE, getRoleLabel, isSuperAdminRole, normalizeRole } from "../utils/roles";
+import { ROLE, getRoleLabel, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
 import { HR_MODULES, HR_ROLES } from "../config/hrModules";
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
@@ -226,6 +226,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
+      name: "Scheduled Jobs",
+      href: "/scheduled-jobs",
+      icon: CalendarClock,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
+      module: "task",
+    },
+    {
       name: "Timeline",
       href: "/timeline",
       icon: CalendarClock,
@@ -281,8 +288,8 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
-      name: "Marketing Calendar",
-      href: "/marketing/calendar",
+      name: "Content Calendar",
+      href: "/content-calendar",
       icon: CalendarCheck2,
       roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
       module: "task",
@@ -323,6 +330,8 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.ADMIN],
       module: "task",
     },
+    /*
+    MSA hidden by request. Keep nav item commented for later restore.
     {
       name: "Agreements",
       href: "/msa",
@@ -330,6 +339,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.ADMIN, ROLE.LEAD],
       module: "task",
     },
+    */
     {
       name: "Ledger",
       href: "/ledger",
@@ -341,7 +351,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: "Users",
       href: "/users",
       icon: UserCog,
-      roles: [ROLE.ADMIN, ROLE.SUPER_ADMIN],
+      roles: [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN],
       module: "task",
     },
     {
@@ -415,11 +425,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       icon: GitBranch,
     },
     {
-      name: "CRM Dashboard",
-      href: "/crm/dashboard",
-      icon: Gauge,
-    },
-    {
       name: "Leads",
       href: "/crm/leads",
       icon: UserRoundSearch,
@@ -474,7 +479,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "operations",
       label: "Core Operations",
-      items: ["Service Requests", "Workspace Calendar", "Timesheet"]
+      items: ["Service Requests", "Workspace Calendar", "Scheduled Jobs", "Timesheet"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -519,18 +524,24 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "finance",
       label: "Finance Tools",
-      items: ["Agreements", "Subscriptions"]
+      // MSA hidden by request. Restore "Agreements" here when MSA returns.
+      items: ["Subscriptions"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
     {
       key: "administration",
       label: "Administration",
-      items: ["Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices", "Agreements"]
+      // MSA hidden by request. Restore "Agreements" here when MSA returns.
+      items: ["Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
-  ].filter((group) => group.items.length);
+  ]
+    .filter((group) => group.items.length)
+    // .filter((group) => !(isManagerRole(userRole) && group.key === "operations"))
+    // .filter((group) => !(isManagerRole(userRole) && group.key === "administration"))
+    // .filter((group) => !(isManagerRole(userRole) && group.key === "hr"));
 
   return (
     <>
@@ -661,19 +672,21 @@ const Sidebar = ({ isOpen, onClose }) => {
                 showFavorite
               />
             ))}
-            {navigationGroups.map((group) => (
-              <SidebarNavGroup
-                key={group.key}
-                group={group}
-                location={location}
-                collapsed={collapsed}
-                onClose={onClose}
-                favorites={favorites}
-                onToggleFavorite={toggleFavorite}
-                isOpen={openGroups[group.key] ?? true}
-                onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? true) }))}
-              />
-            ))}
+            {navigationGroups
+              .filter((group) => !(isManagerRole(userRole) && group.key === 'hr'))
+              .map((group) => (
+                <SidebarNavGroup
+                  key={group.key}
+                  group={group}
+                  location={location}
+                  collapsed={collapsed}
+                  onClose={onClose}
+                  favorites={favorites}
+                  onToggleFavorite={toggleFavorite}
+                  isOpen={openGroups[group.key] ?? true}
+                  onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? true) }))}
+                />
+              ))}
           </nav>
 
           {/* User Info */}

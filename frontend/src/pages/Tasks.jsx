@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
+import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
@@ -50,6 +51,8 @@ const Tasks = () => {
   const [showQuickDepartmentModal, setShowQuickDepartmentModal] = useState(false)
   const [dueDateValue, setDueDateValue] = useState('')
   const [estimatedHoursValue, setEstimatedHoursValue] = useState('')
+  const [createMode, setCreateMode] = useState('now')
+  const [scheduleRunAt, setScheduleRunAt] = useState('')
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
   const pageSize = 20
@@ -251,7 +254,8 @@ const Tasks = () => {
     [departments],
   )
 
-  const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks), [tasks])
+  const taskGraphUsers = useMemo(() => [user, ...assignableUsers].filter(Boolean), [assignableUsers, user])
+  const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks, taskGraphUsers), [taskGraphUsers, tasks])
   const taskGraphSummary = useMemo(() => buildTaskGraphSummary(tasks), [tasks])
 
   const closeCreateModal = () => {
@@ -261,6 +265,8 @@ const Tasks = () => {
     setSelectedAssigneeId('')
     setDueDateValue('')
     setEstimatedHoursValue('')
+    setCreateMode('now')
+    setScheduleRunAt('')
   }
 
   const resetFilters = () => {
@@ -311,6 +317,26 @@ const Tasks = () => {
 
       if (isCompanyAdmin && selectedDepartmentId) {
         taskData.department_id = selectedDepartmentId
+      }
+
+      if (createMode === 'schedule') {
+        if (!scheduleRunAt) {
+          toast.error('Schedule time is required')
+          return
+        }
+        const runAt = new Date(scheduleRunAt)
+        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+          toast.error('Schedule time must be in the future')
+          return
+        }
+        await scheduledJobsAPI.scheduleJob({
+          action_type: 'CREATE_TASK',
+          payload: taskData,
+          run_at: runAt.toISOString(),
+        })
+        toast.success('Task scheduled successfully')
+        closeCreateModal()
+        return
       }
 
       const response = await tasksAPI.createTask(taskData)
@@ -830,13 +856,25 @@ const Tasks = () => {
                   placeholder="8"
                 />
               </div>
+              <div className="rounded-xl border border-gray-200 p-3 dark:border-[var(--color-app-border)]">
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setCreateMode('now')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${createMode === 'now' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-[var(--color-app-surface-2)] dark:text-[var(--color-app-text)]'}`}>Create now</button>
+                  <button type="button" onClick={() => setCreateMode('schedule')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${createMode === 'schedule' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-[var(--color-app-surface-2)] dark:text-[var(--color-app-text)]'}`}>Schedule</button>
+                </div>
+                {createMode === 'schedule' && (
+                  <div className="mt-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Schedule for</label>
+                    <input type="datetime-local" value={scheduleRunAt} onChange={(event) => setScheduleRunAt(event.target.value)} required={createMode === 'schedule'} className="input" />
+                  </div>
+                )}
+              </div>
               <div className="flex space-x-3 pt-4">
                 <button
                   type="submit"
                   disabled={submitting}
                   className="btn btn-primary flex-1"
                 >
-                  {submitting ? 'Creating...' : 'Create'}
+                  {submitting ? (createMode === 'schedule' ? 'Scheduling...' : 'Creating...') : (createMode === 'schedule' ? 'Schedule task' : 'Create task')}
                 </button>
                 <button
                   type="button"

@@ -107,16 +107,31 @@ async def _startup_tasks() -> None:
     import asyncio
     from app.core.deadline_checker import run_deadline_checker
     from app.services.hr_mail_sync import run_imap_recruitment_sync_loop
-    try:
-        asyncio.create_task(run_deadline_checker())
-        logger.info("Deadline checker background task started")
-    except Exception as deadline_err:
-        logger.warning(f"Deadline checker startup skipped: {deadline_err}")
-    try:
-        asyncio.create_task(run_imap_recruitment_sync_loop())
-        logger.info("IMAP recruitment sync background task started")
-    except Exception as imap_err:
-        logger.warning(f"IMAP recruitment sync startup skipped: {imap_err}")
+    from app.services.reminder_service import run_reminder_scheduler
+    if app.state.db_ready:
+        try:
+            asyncio.create_task(run_deadline_checker())
+            logger.info("Deadline checker background task started")
+        except Exception as deadline_err:
+            logger.warning(f"Deadline checker startup skipped: {deadline_err}")
+        try:
+            asyncio.create_task(run_reminder_scheduler())
+            logger.info("Reminder scheduler background task started")
+        except Exception as reminder_err:
+            logger.warning(f"Reminder scheduler startup skipped: {reminder_err}")
+        try:
+            asyncio.create_task(run_imap_recruitment_sync_loop())
+            logger.info("IMAP recruitment sync background task started")
+        except Exception as imap_err:
+            logger.warning(f"IMAP recruitment sync startup skipped: {imap_err}")
+        try:
+            from app.services.scheduling_service import SchedulingService
+            asyncio.create_task(SchedulingService.run_scheduled_jobs_loop())
+            logger.info("Scheduled jobs background task started")
+        except Exception as scheduling_err:
+            logger.warning(f"Scheduled jobs startup skipped: {scheduling_err}")
+    else:
+        logger.warning("Database background workers skipped because MongoDB/Beanie is not ready.")
 
 
 async def _shutdown_tasks() -> None:
@@ -221,6 +236,19 @@ async def add_process_time_header(request: Request, call_next):
     
     return response
 
+
+@app.middleware("http")
+async def require_database_ready(request: Request, call_next):
+    if request.url.path.startswith("/api/v1") and not getattr(request.app.state, "db_ready", False):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": "Database unavailable. Check MongoDB connection and restart the backend.",
+            },
+        )
+    return await call_next(request)
+
 # Exception handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -294,9 +322,8 @@ async def debug_backend():
 app.include_router(api_router, prefix="/api/v1")
 
 # CORS-enabled avatar endpoint
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pathlib import Path
-from fastapi.responses import FileResponse
 from app.api.dependencies import get_current_user
 from app.api.v1.endpoints.files import UPLOAD_DIR, serve_upload_file
 from app.models.user import User
@@ -306,10 +333,7 @@ avatar_router = APIRouter()
 @avatar_router.get("/uploads/avatars/{filename}")
 async def serve_avatar(filename: str):
     """Serve avatar files with CORS headers"""
-    avatar_path = Path("uploads") / "avatars" / filename
-    if not avatar_path.exists():
-        raise HTTPException(status_code=404, detail="Avatar not found")
-    return FileResponse(avatar_path, headers={"Access-Control-Allow-Origin": "*"})
+    return serve_upload_file(UPLOAD_DIR / "avatars", Path(filename).name)
 
 app.include_router(avatar_router, prefix="/api/v1", include_in_schema=False)
 app.include_router(avatar_router, include_in_schema=False)

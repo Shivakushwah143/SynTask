@@ -5,6 +5,8 @@ Development: `http://localhost:8000/api/v1`
 
 Interactive Swagger docs are available only outside production at `GET /api/docs`.
 
+When MongoDB or Beanie initialization fails, protected API routes under `/api/v1` return `503` with `{"success":false,"message":"Database unavailable. Check MongoDB connection and restart the backend."}`. Background database workers are skipped until the backend is restarted with a healthy database connection.
+
 ## Authentication
 
 Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions include login, refresh, forgot/reset password flows, company registration, public MSA signing links, selected subscription/payment webhook endpoints, and health/debug endpoints.
@@ -88,7 +90,7 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/calendar/events` | `get_calendar_events` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/calendar/events` | `get_calendar_events` | Returns date-windowed meetings and tasks. `my_calendar` includes only the current user's hosted/participating meetings and assigned tasks; assigned tasks are scheduled by `due_date` or `created_at` fallback. Task project names resolve from the logical project key such as `PROJ-101` or MongoDB `_id`. |
 
 ### Changelog
 
@@ -227,25 +229,42 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/meetings/` | `list_meetings` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/meetings/` | `create_meeting` | Uses router/endpoint dependencies where configured. |
-| DELETE | `/api/v1/meetings/{meeting_id}` | `delete_meeting` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/meetings/{meeting_id}` | `get_meeting` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/meetings/` | `list_meetings` | Lists meetings where the current user is host or participant; supports `status` and `upcoming` filters. |
+| POST | `/api/v1/meetings/` | `create_meeting` | Admin, Manager, Lead, or Super Admin only; duration must be 1-60 minutes; participant IDs must be same-tenant junior users available to the creator role. |
+| PATCH | `/api/v1/meetings/{meeting_id}` | `update_meeting` | Host/Admin/Super Admin update or reschedule meeting details and participants. |
+| GET | `/api/v1/meetings/{meeting_id}` | `get_meeting` | Host or invited participant only; host start URL is returned only to host/Admin/Super Admin. |
+| POST | `/api/v1/meetings/{meeting_id}/start` | `start_meeting` | Host/Admin/Super Admin marks a scheduled meeting ongoing. |
+| POST | `/api/v1/meetings/{meeting_id}/complete` | `complete_meeting` | Host/Admin/Super Admin marks a meeting completed. |
+| POST | `/api/v1/meetings/{meeting_id}/cancel` | `cancel_meeting` | Host/Admin/Super Admin marks a meeting cancelled and attempts Zoom deletion when configured. |
+| DELETE | `/api/v1/meetings/{meeting_id}` | `delete_meeting` | Host/Admin/Super Admin deletes a meeting and publishes `MeetingDeleted`. |
 
 ### Notifications
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/notifications/` | `list_notifications` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/notifications/` | `list_notifications` | Lists only the authenticated user's notifications. Reminder notifications include `priority`, `scheduled_for`, and reminder metadata. |
+| GET | `/api/v1/notifications/reminder-toasts` | `list_pending_reminder_toasts` | Runs a duplicate-safe reminder catch-up, then returns today's due-tomorrow/due-today reminder notifications for the authenticated user's global in-app popup. Read or previously auto-acknowledged reminders can still be returned so users do not miss current due alerts. |
+| POST | `/api/v1/notifications/reminder-toasts/ack` | `acknowledge_reminder_toasts` | Marks the authenticated user's reminder toast notifications as shown when the user clicks or cancels the popup. |
 | POST | `/api/v1/notifications/mark-all-read` | `mark_all_notifications_as_read` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/notifications/{notification_id}` | `delete_notification` | Uses router/endpoint dependencies where configured. |
 | PATCH | `/api/v1/notifications/{notification_id}/read` | `mark_notification_as_read` | Uses router/endpoint dependencies where configured. |
+
+### Scheduled Jobs
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/scheduled-jobs/` | `list_scheduled_jobs` | Company-scoped list with status/search pagination. Admin, Manager, Lead, and Super Admin can view jobs; jobs expose payload summaries and creator names. |
+| POST | `/api/v1/scheduled-jobs/` | `create_scheduled_job` | Schedules `CREATE_PROJECT` or `CREATE_TASK`. Project scheduling is limited to Admin, Manager, and Super Admin; task scheduling also allows Lead. `run_at` must be a future datetime and is stored as UTC. |
+| PATCH | `/api/v1/scheduled-jobs/{job_id}` | `update_scheduled_job` | Edits `run_at` for pending jobs only; same-tenant access required and past datetimes are rejected. |
+| POST | `/api/v1/scheduled-jobs/{job_id}/cancel` | `cancel_scheduled_job` | Cancels pending or failed jobs and notifies the creator. |
+| POST | `/api/v1/scheduled-jobs/{job_id}/retry` | `retry_failed_job` | Moves failed or cancelled jobs back to pending and clears the stored error/retry count. |
+| DELETE | `/api/v1/scheduled-jobs/{job_id}` | `delete_scheduled_job` | Deletes completed, failed, or cancelled jobs only. |
 
 ### Projects
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/projects/` | `list_projects` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/` | `list_projects` | Company-scoped. Admin/Super Admin and Manager list company projects; Employee list includes project membership and projects containing tasks assigned to them. |
 | POST | `/api/v1/projects/` | `create_project` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/projects/for-task-creation` | `get_projects_for_task_creation` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/projects/{project_id}` | `delete_project` | Uses router/endpoint dependencies where configured. |
@@ -429,10 +448,10 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/tasks/` | `list_tasks` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/tasks/` | `list_tasks` | Company-scoped. Admin/Super Admin and Manager list company tasks; Employee list is assigned-only. Response includes `assigned_to_name` for assigned task display. |
 | POST | `/api/v1/tasks/` | `create_task` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/tasks/{task_id}` | `get_task` | Uses router/endpoint dependencies where configured. |
-| PUT | `/api/v1/tasks/{task_id}` | `update_task` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/tasks/{task_id}` | `update_task` | Admin/Super Admin manage company tasks; Manager detail edits/assignment are limited to matching `department_id`; Employees cannot edit details through this endpoint. |
 | POST | `/api/v1/tasks/{task_id}/attachments` | `add_task_attachment` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/tasks/{task_id}/comments` | `get_task_comments` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/tasks/{task_id}/comments` | `add_task_comment` | Uses router/endpoint dependencies where configured. |

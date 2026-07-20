@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple
 
 from beanie import PydanticObjectId
+from beanie.exceptions import CollectionWasNotInitialized
 from fastapi import HTTPException, status
 
 from app.core.security import get_password_hash
@@ -74,7 +75,10 @@ class UserService:
         query = {"ancestors": user_id}
         if company_id:
             query["company_id"] = company_id
-        users = await User.find(query).to_list()
+        try:
+            users = await User.find(query).to_list()
+        except CollectionWasNotInitialized:
+            return []
         return [str(user.id) for user in users]
 
     @staticmethod

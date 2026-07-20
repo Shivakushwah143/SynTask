@@ -174,9 +174,13 @@ async def test_update_lead_reassigns_owner_and_records_transfer(monkeypatch):
             SimpleNamespace(id="user-2", first_name="Lee", last_name="Lead"),
         ]
 
+    async def fake_require_owned_record_access(*args, **kwargs):
+        return None
+
     monkeypatch.setattr("app.crm.lead_engine.SalesProspect.get", fake_get)
     monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
     monkeypatch.setattr("app.crm.lead_engine.OwnershipTransfer", FakeOwnershipTransfer)
+    monkeypatch.setattr("app.crm.lead_engine.require_owned_record_access", fake_require_owned_record_access)
 
     current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
     result = await LeadEngine.update_lead(current_user, "lead-1", {"assigned_to": "user-2"})
@@ -208,8 +212,79 @@ def test_choose_assignee_honors_manual_round_robin_and_least_loaded():
 
 
 @pytest.mark.asyncio
+async def test_create_lead_allows_manager_owner_assignment(monkeypatch):
+    async def fake_find_duplicate(current_user, payload):
+        return None
+
+    async def fake_resolve_company(current_user, payload):
+        return None, payload.get("company_name")
+
+    async def fake_resolve_contact(current_user, payload):
+        return None
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [
+            SimpleNamespace(id="manager-1", first_name="Mina", last_name="Manager", role=UserRole.MANAGER),
+            SimpleNamespace(id="lead-1", first_name="Lee", last_name="Lead", role=UserRole.LEAD),
+        ]
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.find_duplicate", fake_find_duplicate)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_company", fake_resolve_company)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_contact", fake_resolve_contact)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeProspect)
+
+    current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    result = await LeadEngine.create_lead(
+        current_user,
+        {
+            "first_name": "Ada",
+            "last_name": "Admin",
+            "country_code": "+91",
+            "phone": "9999999999",
+            "company_name": "Alpha",
+            "assigned_to": "manager-1",
+        },
+    )
+
+    assert result["lead"]["assigned_to"] == "manager-1"
+
+
+@pytest.mark.asyncio
 async def test_load_assignable_users_rejects_missing_company_context():
     with pytest.raises(HTTPException) as exc_info:
         await AssignmentEngine.load_assignable_users(SimpleNamespace(company_id=None))
 
     assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_load_assignable_users_includes_managers(monkeypatch):
+    captured_query = {}
+
+    class FakeUserQuery:
+        async def to_list(self):
+            return [SimpleNamespace(id="manager-1", role=UserRole.MANAGER)]
+
+    class FakeUserModel:
+        @staticmethod
+        def find(query):
+            captured_query.update(query)
+            return FakeUserQuery()
+
+    async def fake_visible_user_ids(current_user):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.User", FakeUserModel)
+    monkeypatch.setattr("app.crm.lead_engine.visible_user_ids", fake_visible_user_ids)
+
+    users = await AssignmentEngine.load_assignable_users(
+        SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    )
+
+    assert users[0].id == "manager-1"
+    assert UserRole.MANAGER.value in captured_query["role"]["$in"]

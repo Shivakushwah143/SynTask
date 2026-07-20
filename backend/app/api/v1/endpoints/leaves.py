@@ -15,12 +15,18 @@ from app.models.notification import NotificationType
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole
 from app.services.leave_service import (
+    assert_forward_target,
     assert_leave_manage_access,
     assert_leave_view_access,
+    assert_leave_mutable,
     ensure_no_overlap,
     get_current_availability,
+    history_entry,
+    initial_pending_reviewers,
+    leave_visibility_query,
     notify_user,
     parse_leave_date,
+    require_action_comment,
     serialize_leave,
     sync_leave_lifecycle,
 )
@@ -46,11 +52,17 @@ async def create_leave_request(
     end = parse_leave_date(end_date, end_of_day=True)
     if end < start:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="End date cannot be before start date")
+    if not reason.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reason is required")
     await ensure_no_overlap(str(current_user.id), start, end)
+    pending_with_user_ids = await initial_pending_reviewers(current_user)
+    if not pending_with_user_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No leave approver found")
 
     attachment_url = await _save_attachment(attachment) if attachment else None
     leave = LeaveRequest(
         employee_id=str(current_user.id),
+        employee_role=current_user.role.value,
         company_id=current_user.company_id,
         leave_type=leave_type,
         start_date=start,
@@ -58,6 +70,10 @@ async def create_leave_request(
         reason=reason.strip(),
         attachment_url=attachment_url,
         requested_by=str(current_user.id),
+        pending_with_user_ids=pending_with_user_ids,
+        approval_history=[
+            history_entry("submitted", str(current_user.id), target_user_id=",".join(pending_with_user_ids)),
+        ],
     )
     await leave.insert()
 
@@ -74,7 +90,7 @@ async def create_leave_request(
         metadata={"leave_type": leave.leave_type.value, "status": leave.status.value},
         idempotency_key=f"leave:{leave.id}:requested",
     )
-    await _notify_managers(leave, current_user)
+    await _notify_reviewers(leave, current_user, pending_with_user_ids, "Leave request submitted")
 
     return {"message": "Leave request submitted", "leave": serialize_leave(leave, current_user)}
 
@@ -121,7 +137,8 @@ async def get_availability(
     target = await User.get(employee_id) if employee_id else current_user
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
-    await assert_leave_view_access(current_user, target)
+    if employee_id:
+        await assert_leave_view_access(current_user, target)
     await sync_leave_lifecycle(target.company_id)
     data = await get_current_availability(str(target.id), target.company_id)
     data["employee_id"] = str(target.id)
@@ -152,6 +169,28 @@ async def get_leave_calendar(
     }
 
 
+@router.get("/forward-targets")
+async def get_leave_forward_targets(current_user: User = Depends(get_current_user)):
+    if current_user.role != UserRole.MANAGER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only managers can forward leave requests")
+    if not current_user.company_id:
+        return {"users": []}
+    admins = await User.find({"company_id": current_user.company_id, "role": UserRole.ADMIN.value}).to_list()
+    return {
+        "users": [
+            {
+                "id": str(admin.id),
+                "email": admin.email,
+                "first_name": admin.first_name,
+                "last_name": admin.last_name,
+                "role": admin.role.value,
+            }
+            for admin in admins
+            if str(admin.id) != str(current_user.id)
+        ]
+    }
+
+
 @router.post("/{leave_id}/approve")
 async def approve_leave_request(
     leave_id: str,
@@ -159,13 +198,18 @@ async def approve_leave_request(
     current_user: User = Depends(get_current_user),
 ):
     leave, employee = await _load_manageable_leave(leave_id, current_user)
-    if leave.status != LeaveStatus.PENDING:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be approved")
+    if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending or forwarded requests can be approved")
     await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=str(leave.id))
     leave.status = LeaveStatus.APPROVED
     leave.reviewed_by = str(current_user.id)
     leave.reviewed_at = datetime.now()
     leave.review_comment = comment
+    leave.pending_with_user_ids = []
+    leave.approval_history = [
+        *(getattr(leave, "approval_history", []) or []),
+        history_entry("approved", str(current_user.id), comment=comment),
+    ]
     leave.updated_at = datetime.now()
     await leave.save()
 
@@ -194,12 +238,18 @@ async def reject_leave_request(
     current_user: User = Depends(get_current_user),
 ):
     leave, employee = await _load_manageable_leave(leave_id, current_user)
-    if leave.status != LeaveStatus.PENDING:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be rejected")
+    if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending or forwarded requests can be rejected")
+    comment = require_action_comment(comment, "Rejection reason")
     leave.status = LeaveStatus.REJECTED
     leave.reviewed_by = str(current_user.id)
     leave.reviewed_at = datetime.now()
     leave.review_comment = comment
+    leave.pending_with_user_ids = []
+    leave.approval_history = [
+        *(getattr(leave, "approval_history", []) or []),
+        history_entry("rejected", str(current_user.id), comment=comment),
+    ]
     leave.updated_at = datetime.now()
     await leave.save()
     await create_timeline_event(
@@ -218,6 +268,50 @@ async def reject_leave_request(
     return {"message": "Leave rejected", "leave": serialize_leave(leave, employee)}
 
 
+@router.post("/{leave_id}/forward")
+async def forward_leave_request(
+    leave_id: str,
+    target_user_id: str = Form(...),
+    comment: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    leave, employee = await _load_manageable_leave(leave_id, current_user)
+    assert_leave_mutable(leave)
+    if leave.status != LeaveStatus.PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be forwarded")
+    comment = require_action_comment(comment, "Forwarding reason")
+    target_user = await User.get(target_user_id)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Forward target not found")
+    await assert_forward_target(current_user, leave, employee, target_user)
+    leave.pending_with_user_ids = [str(target_user.id)]
+    leave.forwarded_to_user_id = str(target_user.id)
+    leave.forwarded_by = str(current_user.id)
+    leave.forwarded_at = datetime.now()
+    leave.forwarded_to_admin = True
+    leave.forward_comment = comment
+    leave.approval_history = [
+        *(getattr(leave, "approval_history", []) or []),
+        history_entry("forwarded", str(current_user.id), comment=comment, target_user_id=str(target_user.id)),
+    ]
+    leave.updated_at = datetime.now()
+    await leave.save()
+    await create_timeline_event(
+        user_id=leave.employee_id,
+        company_id=leave.company_id,
+        event_type=TimelineEventType.LEAVE_REQUESTED,
+        title="Leave Forwarded",
+        description=leave.leave_type.value.replace("_", " ").title(),
+        related_module=TimelineModule.LEAVE,
+        related_record_id=str(leave.id),
+        actor_id=str(current_user.id),
+        metadata={"leave_type": leave.leave_type.value, "status": leave.status.value, "forwarded_to": str(target_user.id), "comment": comment},
+        idempotency_key=f"leave:{leave.id}:forwarded:{len(leave.approval_history)}",
+    )
+    await notify_user(str(target_user.id), leave.company_id, NotificationType.LEAVE_REQUESTED, "Leave request forwarded", f"{employee.full_name()} leave request was forwarded to you.", str(leave.id))
+    return {"message": "Leave forwarded", "leave": serialize_leave(leave, employee)}
+
+
 @router.post("/{leave_id}/cancel")
 async def cancel_leave_request(
     leave_id: str,
@@ -232,6 +326,11 @@ async def cancel_leave_request(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be cancelled")
     leave.status = LeaveStatus.CANCELLED
     leave.cancelled_at = datetime.now()
+    leave.pending_with_user_ids = []
+    leave.approval_history = [
+        *(getattr(leave, "approval_history", []) or []),
+        history_entry("cancelled", str(current_user.id)),
+    ]
     leave.updated_at = datetime.now()
     await leave.save()
     await create_timeline_event(
@@ -255,16 +354,25 @@ async def _base_query(current_user: User, employee_id: Optional[str]) -> dict:
         if not employee:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
         await assert_leave_view_access(current_user, employee)
-        return {"employee_id": str(employee.id)}
-    if current_user.role == UserRole.EMPLOYEE:
-        return {"employee_id": str(current_user.id)}
-    if current_user.role == UserRole.SUPER_ADMIN:
-        return {}
-    query = {"company_id": current_user.company_id}
-    if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+        return {"employee_id": str(employee.id), "company_id": employee.company_id}
+    if current_user.role == UserRole.MANAGER:
         subordinates = await current_user.get_all_subordinates()
-        ids = [str(user.id) for user in subordinates] + [str(current_user.id)]
-        query["employee_id"] = {"$in": ids}
+        visible_roles = {UserRole.EMPLOYEE}
+        visible_roles.add(UserRole.LEAD)
+        visible_ids = [
+            str(user.id)
+            for user in subordinates
+            if user.role in visible_roles and str(user.id) != str(current_user.id)
+        ]
+        if not visible_ids:
+            return {"employee_id": "__none__"}
+        return {
+            "company_id": current_user.company_id,
+            "employee_id": {"$in": visible_ids},
+        }
+    if current_user.role == UserRole.LEAD:
+        return {"company_id": current_user.company_id, "employee_id": "__none__"}
+    query = leave_visibility_query(current_user, employee_id)
     return query
 
 
@@ -275,7 +383,7 @@ async def _load_manageable_leave(leave_id: str, current_user: User) -> tuple[Lea
     employee = await User.get(leave.employee_id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
-    await assert_leave_manage_access(current_user, employee)
+    await assert_leave_manage_access(current_user, employee, leave)
     return leave, employee
 
 
@@ -291,19 +399,13 @@ async def _employee_map(leaves: list[LeaveRequest]) -> dict[str, User]:
     return {str(user.id): user for user in users}
 
 
-async def _notify_managers(leave: LeaveRequest, employee: User) -> None:
-    managers = []
-    if employee.reports_to:
-        manager = await User.get(employee.reports_to)
-        if manager:
-            managers.append(manager)
-    admins = await User.find({"company_id": employee.company_id, "role": UserRole.ADMIN.value}).to_list()
-    for manager in {str(user.id): user for user in managers + admins}.values():
+async def _notify_reviewers(leave: LeaveRequest, employee: User, reviewer_ids: list[str], title: str) -> None:
+    for reviewer_id in set(reviewer_ids):
         await notify_user(
-            str(manager.id),
+            reviewer_id,
             leave.company_id,
             NotificationType.LEAVE_REQUESTED,
-            "Leave request submitted",
+            title,
             f"{employee.full_name()} submitted a leave request.",
             str(leave.id),
         )

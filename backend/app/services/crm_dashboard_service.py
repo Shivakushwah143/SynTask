@@ -12,6 +12,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
+from bson import ObjectId
+
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal
 from app.models.sales_product import SalesProduct
@@ -85,6 +87,17 @@ def _proposal_amount(proposal: CRMProposal) -> float:
 
 def _deal_amount(deal: CRMDeal) -> float:
     return _safe_amount(getattr(deal, "value", 0))
+
+
+def _user_label(user: User, fallback: str = "") -> str:
+    first_name = getattr(user, "first_name", "") or ""
+    last_name = getattr(user, "last_name", "") or ""
+    full_name = f"{first_name} {last_name}".strip()
+    return full_name or getattr(user, "email", None) or fallback or str(getattr(user, "id", ""))
+
+
+def _valid_object_ids(values: List[str]) -> List[ObjectId]:
+    return [ObjectId(value) for value in values if ObjectId.is_valid(str(value))]
 
 
 def _stage_weight(stage: str) -> float:
@@ -164,8 +177,10 @@ async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
     owner_map = {}
     owner_ids = [owner_id for owner_id in owner_counts.keys() if owner_id and owner_id != "unassigned"]
     if owner_ids:
-        owners = await User.find({"_id": {"$in": owner_ids}, "company_id": current_user.company_id}).to_list()
-        owner_map = {str(owner.id): f"{owner.first_name} {owner.last_name}".strip() or owner.email or str(owner.id) for owner in owners}
+        owner_object_ids = _valid_object_ids(owner_ids)
+        owner_query_ids = owner_object_ids or owner_ids
+        owners = await User.find({"_id": {"$in": owner_query_ids}, "company_id": current_user.company_id}).to_list()
+        owner_map = {str(owner.id): _user_label(owner, str(owner.id)) for owner in owners}
 
     leaderboard = sorted(
         [

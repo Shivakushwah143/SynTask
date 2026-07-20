@@ -5,13 +5,19 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status, Depends
+from pydantic import BaseModel, Field
 
 from app.models.notification import Notification
 from app.models.user import User
 from app.api.dependencies import get_current_user
 from app.api.deps import Pagination20, PaginationParams
+from app.services.reminder_service import reminder_service
 
 router = APIRouter()
+
+
+class ToastAcknowledgePayload(BaseModel):
+    notification_ids: list[str] = Field(default_factory=list)
 
 
 def _notification_type_value(value: Any) -> str:
@@ -31,6 +37,9 @@ def _serialize_notification(notification: Notification) -> dict[str, Any]:
         "action_url": notification.action_url,
         "related_id": notification.related_id,
         "related_type": notification.related_type,
+        "priority": getattr(notification, "priority", "info"),
+        "scheduled_for": getattr(notification, "scheduled_for", None),
+        "toast_shown_at": getattr(notification, "toast_shown_at", None),
         "metadata": notification.metadata or {},
         "created_at": notification.created_at,
     }
@@ -75,6 +84,36 @@ async def list_notifications(
         "skip": skip,
         "limit": limit
     }
+
+
+@router.get("/reminder-toasts")
+async def list_pending_reminder_toasts(
+    current_user: User = Depends(get_current_user)
+):
+    """List unacknowledged due-today/tomorrow reminder notifications for login/dashboard toasts."""
+    try:
+        await reminder_service.check_all_reminders()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("Login reminder catch-up failed")
+    notifications = await reminder_service.get_pending_toast_notifications(
+        str(current_user.id),
+        current_user.company_id,
+    )
+    return {
+        "notifications": [_serialize_notification(notif) for notif in notifications],
+        "total": len(notifications),
+    }
+
+
+@router.post("/reminder-toasts/ack")
+async def acknowledge_reminder_toasts(
+    payload: ToastAcknowledgePayload,
+    current_user: User = Depends(get_current_user)
+):
+    updated = await reminder_service.acknowledge_toasts(str(current_user.id), payload.notification_ids)
+    return {"updated": updated}
 
 
 @router.patch("/{notification_id}/read")

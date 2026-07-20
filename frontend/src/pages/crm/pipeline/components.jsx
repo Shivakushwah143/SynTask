@@ -8,7 +8,14 @@ import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, getStageDealValue, getStageKey } from './utils'
 
-const leadColumnStyle = 'w-[260px] flex-none snap-start'
+const leadColumnStyle = 'w-[300px] flex-none snap-start'
+export const pipelineLeadCardClassNames = {
+  column: leadColumnStyle,
+  actions: 'mt-4 flex flex-col gap-2 border-t border-surface-border/70 pt-3 dark:border-gray-800',
+  actionButton: 'min-h-10 w-full justify-between rounded-lg border border-surface-border/80 bg-surface px-3 text-xs font-semibold text-text-primary hover:bg-surface-muted dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800',
+  nextButton: 'min-h-10 w-full justify-center rounded-lg px-3 text-xs font-semibold shadow-sm',
+  stagePill: 'inline-flex min-h-8 w-full items-center justify-center rounded-lg bg-surface-muted px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary dark:bg-gray-800 dark:text-gray-300',
+}
 const stageAccents = ['#ea580c', '#d97706', '#b45309', '#f59e0b', '#ca8a04', '#f97316', '#a16207']
 const iconTileStyles = [
   'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200',
@@ -78,9 +85,9 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
 }) {
   return (
     <div className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="grid flex-1 gap-3 md:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(150px,1fr))]">
-          <label className="block">
+      <div className="grid gap-3">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(150px,1fr))]">
+          <label className="block min-w-0">
             <span className="sr-only">Search</span>
             <div className="relative">
               <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
@@ -93,7 +100,7 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               />
             </div>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="sr-only">Owner</span>
             <select
               className="input"
@@ -109,7 +116,7 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               ))}
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="sr-only">Priority</span>
             <select
               className="input"
@@ -124,7 +131,7 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               <option value="low">Low</option>
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="sr-only">Current Stage</span>
             <select
               className="input"
@@ -141,10 +148,75 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
             </select>
           </label>
         </div>
+      </div>
+      <div className="space-y-4">
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,1fr)]">
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Tags</span>
+            <input
+              className="input"
+              value={filters.tags}
+              onChange={(event) => onChange({ tags: event.target.value })}
+              placeholder="Enter comma-separated tags"
+              aria-label="Filter by tags"
+            />
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Min deal value</span>
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              value={filters.minValue}
+              onChange={(event) => onChange({ minValue: event.target.value })}
+              placeholder={currency === 'INR' ? '0' : 'Min value'}
+              aria-label="Minimum deal value"
+            />
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Max deal value</span>
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              value={filters.maxValue}
+              onChange={(event) => onChange({ maxValue: event.target.value })}
+              placeholder="No cap"
+              aria-label="Maximum deal value"
+            />
+          </label>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0">
+              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created from</span>
+              <input
+                className="input"
+                type="date"
+                value={filters.createdFrom}
+                onChange={(event) => onChange({ createdFrom: event.target.value })}
+                aria-label="Filter by created from date"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created to</span>
+              <input
+                className="input"
+                type="date"
+                value={filters.createdTo}
+                onChange={(event) => onChange({ createdTo: event.target.value })}
+                aria-label="Filter by created to date"
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-end border-t border-surface-border/70 pt-4 dark:border-gray-800">
         <Button
           type="button"
           variant="secondary"
           size="sm"
+          className="w-full justify-center sm:w-auto sm:whitespace-nowrap"
           onClick={() => {
             if (onResetFilters) {
               onResetFilters()
@@ -166,68 +238,6 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
           <Filter className="h-4 w-4" />
           Reset filters
         </Button>
-      </div>
-      <div className="space-y-4">
-        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,1fr)]">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Tags</span>
-            <input
-              className="input"
-              value={filters.tags}
-              onChange={(event) => onChange({ tags: event.target.value })}
-              placeholder="Enter comma-separated tags"
-              aria-label="Filter by tags"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Min deal value</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={filters.minValue}
-              onChange={(event) => onChange({ minValue: event.target.value })}
-              placeholder={currency === 'INR' ? '0' : 'Min value'}
-              aria-label="Minimum deal value"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Max deal value</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={filters.maxValue}
-              onChange={(event) => onChange({ maxValue: event.target.value })}
-              placeholder="No cap"
-              aria-label="Maximum deal value"
-            />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created from</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.createdFrom}
-                onChange={(event) => onChange({ createdFrom: event.target.value })}
-                aria-label="Filter by created from date"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created to</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.createdTo}
-                onChange={(event) => onChange({ createdTo: event.target.value })}
-                aria-label="Filter by created to date"
-              />
-            </label>
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -387,7 +397,7 @@ export const PipelineColumn = memo(function PipelineColumn({
   return (
     <section
       ref={setDroppableRef}
-      className={`flex max-h-[calc(100vh-15rem)] flex-none flex-col overflow-hidden rounded-xl border border-surface-border/80 bg-surface/95 shadow-sm transition-shadow dark:border-gray-800 dark:bg-gray-900 ${leadColumnStyle} snap-start ${isOver ? 'ring-2 ring-primary-500/30 shadow-lg' : ''}`}
+      className={`flex max-h-[calc(100vh-15rem)] flex-none flex-col overflow-hidden rounded-xl border border-surface-border/80 bg-surface/95 shadow-sm transition-shadow dark:border-gray-800 dark:bg-gray-900 ${pipelineLeadCardClassNames.column} snap-start ${isOver ? 'ring-2 ring-primary-500/30 shadow-lg' : ''}`}
       aria-label={`${stage.name} stage`}
     >
       <div className="h-1.5 w-full" style={{ backgroundColor: accent }} />
@@ -617,7 +627,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
     <article
       ref={setNodeRef}
       style={leadStyle}
-      className="group rounded-xl border border-surface-border/80 bg-surface/95 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-900"
+      className="group rounded-xl border border-surface-border bg-surface p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md focus-within:ring-2 focus-within:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-900"
       aria-label={`${lead.company_name || contactLabel} lead card`}
     >
       <div className="flex items-start gap-3">
@@ -651,11 +661,11 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
         </button>
       </div>
 
-      <div className="mt-3 grid gap-1.5 text-xs text-text-secondary dark:text-gray-400">
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
         <LeadMetaRow label="Owner" value={ownerLabel} />
         <LeadMetaRow label="Value" value={formatCurrency(dealValue, currency)} strong />
-        <LeadMetaRow label="Priority" value={<Badge label={priority} colorKey={priority} />} />
-        <LeadMetaRow label="Days in stage" value={String(Math.max(Number(lead.days_in_stage || 0), 0))} />
+        <LeadMetaRow label="Priority" value={<Badge label={priority} colorKey={priority} className="text-[10px]" />} />
+        <LeadMetaRow label="Days" value={String(Math.max(Number(lead.days_in_stage || 0), 0))} />
         <LeadMetaRow label="Created" value={formatShortDate(lead.created_at || lead.createdAt || lead.created_date)} />
         <LeadMetaRow label="Stage" value={stage.name} />
       </div>
@@ -674,35 +684,35 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
         </div>
       ) : null}
 
-      <div className="mt-4 flex items-center justify-between gap-2">
-        <div className="relative" ref={actionButtonRef}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="px-2"
-            aria-label={`Open actions for ${lead.company_name || contactLabel}`}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-            Actions
-            <ChevronDown className="h-3.5 w-3.5" />
-          </Button>
-          {menuNode}
-        </div>
+      <div className={pipelineLeadCardClassNames.actions}>
         {canMoveNext ? (
           <Button
             type="button"
             variant="primary"
             size="sm"
-            className="min-w-0 flex-1 justify-center px-2 text-xs"
+            className={pipelineLeadCardClassNames.nextButton}
             aria-label={`Move ${lead.company_name || contactLabel} to ${nextStageLabel}`}
             onClick={() => onMoveLeadToStage?.(lead, stage.nextStageKey)}
           >
-            Next: {nextStageLabel}
+            Move to {nextStageLabel}
           </Button>
         ) : null}
-        <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-text-muted dark:text-gray-500">
+        <div className="relative" ref={actionButtonRef}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={pipelineLeadCardClassNames.actionButton}
+            aria-label={`Open actions for ${lead.company_name || contactLabel}`}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            More actions
+            <ChevronDown className="h-3.5 w-3.5" />
+          </Button>
+          {menuNode}
+        </div>
+        <span className={pipelineLeadCardClassNames.stagePill}>
           {stage.name}
         </span>
       </div>
@@ -712,9 +722,9 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
 
 function LeadMetaRow({ label, value, strong = false }) {
   return (
-    <div className="flex items-start justify-between gap-3">
-      <span>{label}</span>
-      <span className={strong ? 'font-semibold text-text-primary dark:text-gray-100' : 'text-text-secondary dark:text-gray-200'}>
+    <div className="min-w-0 rounded-lg border border-surface-border/70 bg-surface-muted/70 px-2.5 py-2 dark:border-gray-800 dark:bg-gray-950/40">
+      <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted dark:text-gray-500">{label}</span>
+      <span className={strong ? 'mt-1 block truncate font-semibold text-text-primary dark:text-gray-100' : 'mt-1 block truncate text-text-secondary dark:text-gray-200'}>
         {value}
       </span>
     </div>

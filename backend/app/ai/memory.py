@@ -71,7 +71,7 @@ class AIMemoryService:
             ProjectMemory.memory_type == "active_project",
         )
         content = (
-            f"{project.name} is a {project.type.value} project with status {project.status.value}. "
+            f"{project.name} is a {getattr(project.type, 'value', project.type)} project with status {project.status.value}. "
             f"Lead: {project.lead_id or project.assigned_to or 'unassigned'}."
         )
         now = datetime.now()
@@ -92,7 +92,7 @@ class AIMemoryService:
             memory_type="active_project",
             source="system_project",
             importance=3,
-            tags=["project", project.status.value, project.type.value],
+            tags=["project", project.status.value, getattr(project.type, "value", project.type)],
             metadata={
                 "project_object_id": str(project.id),
                 "project_key": project.key,

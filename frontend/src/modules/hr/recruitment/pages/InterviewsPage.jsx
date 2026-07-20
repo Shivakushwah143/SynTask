@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "react-query";
 import toast from "react-hot-toast";
 import { CalendarPlus, MessageSquare, XCircle } from "lucide-react";
 import { recruitmentApi } from "../../../../api/recruitment";
+import { usersAPI } from "../../../../api/users";
 import { Button, PageHeader } from "../../../../components/ui";
 import { INTERVIEW_STATUSES } from "../constants";
 import { DecisionDialog, FeedbackDialog, InterviewDialog } from "../dialogs/RecruitmentDialogs";
@@ -23,7 +24,13 @@ export default function InterviewsPage() {
   const [decisionOpen, setDecisionOpen] = useState(false);
   const params = compactParams({ page: 1, page_size: 100, ...filters });
   const query = useQuery(["recruitment", "interviews", params], () => recruitmentApi.getInterviews(params));
+  const candidatesQuery = useQuery(["recruitment", "interviewCandidates"], () => recruitmentApi.getCandidates({ page: 1, page_size: 100 }), { staleTime: 5 * 60 * 1000 });
+  const jobsQuery = useQuery(["recruitment", "interviewJobs"], () => recruitmentApi.getJobs({ page: 1, page_size: 100 }), { staleTime: 5 * 60 * 1000 });
+  const interviewersQuery = useQuery(["recruitment", "interviewers"], () => usersAPI.getAssignableUsers(), { staleTime: 5 * 60 * 1000 });
   const interviews = toArray(query.data);
+  const candidates = toArray(candidatesQuery.data);
+  const jobs = toArray(jobsQuery.data);
+  const interviewers = toArray(interviewersQuery.data);
   const byLane = useMemo(() => lanes.reduce((acc, lane) => ({ ...acc, [lane]: interviews.filter((item) => String(item.status || item.feedback_status || "scheduled").toLowerCase() === lane) }), {}), [interviews]);
   const invalidate = () => qc.invalidateQueries(["recruitment", "interviews"]);
   const save = useMutation((payload) => recruitmentApi.createInterview(payload), { onSuccess: () => { toast.success("Interview scheduled"); setScheduleOpen(false); invalidate(); } });
@@ -47,7 +54,15 @@ export default function InterviewsPage() {
       <RecruitmentDrawer open={!!selected} title={selected?.round || "Interview"} description={fmtDateTime(selected?.scheduled_at || selected?.schedule_at)} onClose={() => setSelected(null)}>
         <div className="space-y-4"><StatusBadge status={selected?.decision || selected?.status || selected?.feedback_status} /><p className="text-sm text-text-muted">{selected?.notes || "No notes recorded."}</p><div className="flex flex-wrap gap-2"><Button onClick={() => setFeedbackOpen(true)}><MessageSquare className="h-4 w-4" /> Feedback</Button><Button variant="secondary" onClick={() => setDecisionOpen(true)}>Decision</Button><Button variant="secondary" onClick={() => cancel.mutate(idOf(selected))}><XCircle className="h-4 w-4" /> Cancel</Button></div></div>
       </RecruitmentDrawer>
-      <InterviewDialog open={scheduleOpen} onClose={() => setScheduleOpen(false)} onSubmit={(payload) => save.mutate(payload)} loading={save.isLoading} />
+      <InterviewDialog
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        onSubmit={(payload) => save.mutate(payload)}
+        loading={save.isLoading}
+        candidates={candidates}
+        jobs={jobs}
+        interviewers={interviewers}
+      />
       <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} onSubmit={(payload) => feedback.mutate(payload)} loading={feedback.isLoading} />
       <DecisionDialog open={decisionOpen} onClose={() => setDecisionOpen(false)} onSubmit={(payload) => decision.mutate(payload)} loading={decision.isLoading} />
     </div>

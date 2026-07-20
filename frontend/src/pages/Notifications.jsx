@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { Bell, CheckCheck, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useNavigate } from 'react-router-dom'
 import { notificationsAPI } from '../api/notifications'
 import { Badge, Button, EmptyState, PageHeader, SkeletonCard } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
@@ -14,13 +13,13 @@ const Notifications = () => {
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
 
-  const handleAuthFailure = () => {
+  const handleAuthFailure = useCallback(() => {
     clearAuth()
     toast.error('Session expired. Please login again.')
     navigate('/login', { replace: true })
-  }
+  }, [clearAuth, navigate])
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true)
       const data = await notificationsAPI.listNotifications(null, 0, 50)
@@ -35,11 +34,11 @@ const Notifications = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [handleAuthFailure])
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
   const markAllRead = async () => {
     try {
@@ -123,6 +122,9 @@ const Notifications = () => {
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-gray-900 dark:text-gray-100">{notification.title}</p>
                       {!notification.is_read ? <Badge label="New" colorKey="info" /> : null}
+                      {notification.priority && notification.priority !== 'info' ? (
+                        <Badge label={notification.priority} colorKey={notification.priority === 'critical' ? 'urgent' : notification.priority} />
+                      ) : null}
                     </div>
                     <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{notification.message}</p>
                     <p className="mt-2 text-xs text-gray-400">

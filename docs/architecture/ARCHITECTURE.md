@@ -40,6 +40,8 @@ flowchart TD
 | Lead | Employee management | hierarchy helpers |
 | Employee | Assigned task/ticket execution | authenticated endpoint access |
 
+Project/task delivery access is company-scoped before role rules apply. Company Admin and Super Admin can list and manage all company tasks. Managers can list all company projects and tasks, but task detail edits and assignment changes are limited to tasks whose `department_id` matches the manager's `department_id`; negative tests cover cross-department edit denial. Employees list tasks assigned to them and can see projects that contain those assigned tasks, but task/project detail editing is disabled except for allowed task progress/status, comments, and attachments.
+
 ## Authentication Flow
 ```mermaid
 sequenceDiagram
@@ -76,7 +78,7 @@ FastAPI endpoints, Motor, Beanie, Redis, and background helpers are async-first.
 Authentication, role gates, module gates, and company access checks are implemented as FastAPI dependencies.
 
 ### Background Tasks
-Startup launches the deadline checker from `app.core.deadline_checker`. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
+Startup launches the deadline checker from `app.core.deadline_checker`, the centralized reminder scheduler from `app.services.reminder_service`, and the one-minute scheduled-job runner from `app.services.scheduling_service`. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. The scheduled-job runner locks due `scheduled_jobs` records atomically before invoking the existing project/task creation services, then records notifications and timeline events. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
 
 ## Current Architecture Limitations
 - Phase 3 introduced a service layer for users, projects, tasks, sprints, epics, files, notifications, email, and automation. Some legacy endpoint modules still contain business logic and should continue moving behind services incrementally.

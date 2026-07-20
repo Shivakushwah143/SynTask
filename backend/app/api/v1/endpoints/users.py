@@ -449,15 +449,13 @@ async def get_assignable_users(
                         users.append(emp)
 
     elif current_user.role == UserRole.MANAGER:
-        subordinates = await current_user.get_all_subordinates()
-        scope_ids = {str(item.id) for item in subordinates}
         all_users = await User.find({
             "company_id": current_user.company_id,
             "status": UserStatus.ACTIVE,
         }).to_list()
         users = [
             item for item in all_users
-            if str(item.id) in scope_ids and item.role in [UserRole.LEAD, UserRole.EMPLOYEE]
+            if item.role in [UserRole.LEAD, UserRole.EMPLOYEE]
         ]
     
     return {
@@ -684,9 +682,14 @@ async def create_lead(
     team_name: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_company_admin)
+    current_user: User = Depends(get_current_company_admin_or_lead)
 ):
-    """Create a Lead (Company Admin only)"""
+    """Create a Lead (Admin or Manager only)."""
+    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only Admins and Managers can create leads"
+        )
     # Check if email already exists
     existing = await User.find_one({"email": email})
     if existing:
@@ -704,7 +707,7 @@ async def create_lead(
         first_name=first_name,
         last_name=last_name,
         company_id=current_user.company_id,
-        reports_to=None,
+        reports_to=str(current_user.id) if current_user.role == UserRole.MANAGER else None,
         ancestors=[],
         team_name=team_name,
         department_id=department_id if department_doc else None,
@@ -776,19 +779,30 @@ async def create_employee(
 
     department_doc = await _resolve_department(current_user.company_id, department_id)
     
-    # If current user is a Lead, automatically assign employee to this Lead
+    # If current user is a Lead, automatically assign employee to this Lead.
+    # Managers may create employees, but the employee must sit under one of
+    # their leads so the Manager -> Lead -> Employee hierarchy remains intact.
     final_lead_id = lead_id
     if current_user.role == UserRole.LEAD:
         final_lead_id = str(current_user.id)
+    elif current_user.role == UserRole.MANAGER and not final_lead_id:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Manager must assign employee to a lead"
+        )
     
-    # Validate lead_id if provided (for Company Admin)
-    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
-    if final_lead_id and is_admin:
+    # Validate lead_id if provided (for Company Admin or Manager)
+    if final_lead_id and current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
         lead = await User.get(final_lead_id)
         if not lead or lead.role != UserRole.LEAD or lead.company_id != current_user.company_id:
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Invalid Lead ID"
+            )
+        if current_user.role == UserRole.MANAGER and str(current_user.id) not in [lead.reports_to, *(lead.ancestors or [])]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Manager can assign employees only to their leads"
             )
     
     # Create Employee

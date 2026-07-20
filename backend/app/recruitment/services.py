@@ -304,6 +304,12 @@ class JobService:
     @staticmethod
     async def archive_job(job: RecruitmentJob, actor_id: str) -> RecruitmentJob:
         """Archive a job."""
+        if job.lifecycle_status == JobLifecycleStatus.ARCHIVED:
+            if job.status != JobStatus.ARCHIVED:
+                job.status = JobStatus.ARCHIVED
+                job.updated_at = datetime.now()
+                await job.save()
+            return job
         return await JobService.transition_job(job, JobLifecycleStatus.ARCHIVED, actor_id)
 
     @staticmethod
@@ -1337,12 +1343,14 @@ class ResumePoolService:
             filters["candidate_id"] = {"$in": [str(candidate.id) for candidate in candidates]}
         resumes, total = await ResumeRepository.list_pool(company_id, filters, skip, limit)
         candidate_ids = list({resume.candidate_id for resume in resumes if resume.candidate_id})
-        candidates = await Candidate.find({"company_id": company_id, "_id": {"$in": candidate_ids}}).to_list() if candidate_ids else []
+        candidate_object_ids = [ObjectId(candidate_id) for candidate_id in candidate_ids if ObjectId.is_valid(candidate_id)]
+        candidates = await Candidate.find({"company_id": company_id, "_id": {"$in": candidate_object_ids}}).to_list() if candidate_object_ids else []
         candidate_map = {str(candidate.id): candidate for candidate in candidates}
         return [
             {
                 **resume.model_dump(),
                 "id": str(resume.id),
+                "candidate_name": candidate_map[resume.candidate_id].full_name if resume.candidate_id in candidate_map else None,
                 "candidate": CandidateWorkspaceService.candidate_payload(candidate_map[resume.candidate_id]) if resume.candidate_id in candidate_map else None,
             }
             for resume in resumes

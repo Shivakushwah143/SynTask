@@ -4,6 +4,7 @@ import { Clock3, Plus, Receipt, Search, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { projectsApi } from '../api/projects'
+import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
@@ -30,6 +31,34 @@ const PROJECT_WORKFLOW = {
   archived: [],
 }
 
+const DEFAULT_PROJECT_TYPES = [
+  { value: 'software', label: 'Software' },
+  { value: 'business', label: 'Business' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'operations', label: 'Operations' },
+]
+
+const PROJECT_TYPE_STORAGE_KEY = 'syntask_project_type_options'
+
+const formatProjectTypeLabel = (value) => (value || '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+const slugifyProjectType = (value) => (value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_+|_+$/g, '')
+
+const loadStoredProjectTypes = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROJECT_TYPE_STORAGE_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.value && item?.label) : []
+  } catch {
+    return []
+  }
+}
+
 export default function Projects() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
@@ -42,6 +71,8 @@ export default function Projects() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filters, setFilters] = useState({ status: '', type: '', owner: '' })
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createMode, setCreateMode] = useState('now')
+  const [scheduleRunAt, setScheduleRunAt] = useState('')
   const [assignableUsers, setAssignableUsers] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
   const [showDetails, setShowDetails] = useState(false)
@@ -55,6 +86,14 @@ export default function Projects() {
   const [assignmentUserId, setAssignmentUserId] = useState('')
   const [assigningProject, setAssigningProject] = useState(false)
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
+  const [showProjectTypeModal, setShowProjectTypeModal] = useState(false)
+  const [projectTypeName, setProjectTypeName] = useState('')
+  const [projectTypeError, setProjectTypeError] = useState('')
+  const [projectTypeOptions, setProjectTypeOptions] = useState(() => {
+    const merged = new Map(DEFAULT_PROJECT_TYPES.map((item) => [item.value, item]))
+    loadStoredProjectTypes().forEach((item) => merged.set(item.value, item))
+    return Array.from(merged.values())
+  })
   const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
   const [formErrors, setFormErrors] = useState({})
 
@@ -90,6 +129,24 @@ export default function Projects() {
   useEffect(() => {
     loadAssignableUsers()
   }, [loadAssignableUsers])
+
+  useEffect(() => {
+    const merged = new Map(projectTypeOptions.map((item) => [item.value, item]))
+    projects.forEach((project) => {
+      const value = slugifyProjectType(project.type)
+      if (value && !merged.has(value)) {
+        merged.set(value, { value, label: formatProjectTypeLabel(project.type) })
+      }
+    })
+    if (merged.size !== projectTypeOptions.length) {
+      setProjectTypeOptions(Array.from(merged.values()))
+    }
+  }, [projectTypeOptions, projects])
+
+  useEffect(() => {
+    const customTypes = projectTypeOptions.filter((item) => !DEFAULT_PROJECT_TYPES.some((base) => base.value === item.value))
+    localStorage.setItem(PROJECT_TYPE_STORAGE_KEY, JSON.stringify(customTypes))
+  }, [projectTypeOptions])
 
   useEffect(() => {
     const projectId = sessionStorage.getItem('open_project_id')
@@ -221,11 +278,36 @@ export default function Projects() {
       if (payload.start_date) payload.start_date = new Date(payload.start_date).toISOString()
       if (payload.delivery_date) payload.delivery_date = new Date(payload.delivery_date).toISOString()
       
+      if (createMode === 'schedule') {
+        if (!scheduleRunAt) {
+          toast.error('Schedule time is required')
+          return
+        }
+        const runAt = new Date(scheduleRunAt)
+        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+          toast.error('Schedule time must be in the future')
+          return
+        }
+        await scheduledJobsAPI.scheduleJob({
+          action_type: 'CREATE_PROJECT',
+          payload,
+          run_at: runAt.toISOString(),
+        })
+        toast.success('Project scheduled successfully')
+        setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+        setCreateMode('now')
+        setScheduleRunAt('')
+        setShowCreateModal(false)
+        return
+      }
+
       const response = await projectsApi.createProject(payload)
       toast.success('Project created successfully')
       
       // Reset form
       setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+      setCreateMode('now')
+      setScheduleRunAt('')
       
       // Close modal first
       setShowCreateModal(false)
@@ -246,6 +328,30 @@ export default function Projects() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleCreateProjectType = (event) => {
+    event.preventDefault()
+    const label = projectTypeName.trim()
+    const value = slugifyProjectType(label)
+    if (!label || !value) {
+      setProjectTypeError('Enter a valid project type.')
+      return
+    }
+    const duplicate = projectTypeOptions.find((item) => item.value === value || item.label.toLowerCase() === label.toLowerCase())
+    if (duplicate) {
+      setFormData((state) => ({ ...state, type: duplicate.value }))
+      setProjectTypeName('')
+      setProjectTypeError('')
+      setShowProjectTypeModal(false)
+      return
+    }
+    const nextOption = { value, label: formatProjectTypeLabel(label) }
+    setProjectTypeOptions((state) => [...state, nextOption])
+    setFormData((state) => ({ ...state, type: nextOption.value }))
+    setProjectTypeName('')
+    setProjectTypeError('')
+    setShowProjectTypeModal(false)
   }
 
   return (
@@ -281,13 +387,10 @@ export default function Projects() {
             </select>
             <select className={inputClassName} value={filters.type} onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}>
               <option value="">All types</option>
-              <option value="software">Software</option>
-              <option value="marketing">Marketing</option>
-              <option value="business">Business</option>
-              <option value="operations">Operations</option>
+              {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <select className={inputClassName} value={filters.owner} onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}>
-              <option value="">All owners</option>
+              <option value="">All assigned</option>
               {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
             </select>
           </div>
@@ -365,12 +468,16 @@ export default function Projects() {
           </FormField>
           <div className="grid gap-4 lg:grid-cols-2">
             <FormField label="Type">
-              <select className={inputClassName} value={formData.type} onChange={(event) => setFormData((state) => ({ ...state, type: event.target.value }))}>
-                <option value="software">Software</option>
-                <option value="business">Business</option>
-                <option value="marketing">Marketing</option>
-                <option value="operations">Operations</option>
-              </select>
+              <CreatableSelectField
+                value={formData.type}
+                onChange={(value) => setFormData((state) => ({ ...state, type: value }))}
+                className={inputClassName}
+                createLabel="Add project type"
+                onCreate={() => setShowProjectTypeModal(true)}
+                canCreate={canCreateProjects}
+              >
+                {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </CreatableSelectField>
             </FormField>
             <FormField label="Assigned to">
               <CreatableSelectField
@@ -392,9 +499,41 @@ export default function Projects() {
               <input type="datetime-local" className={inputClassName} value={formData.delivery_date} onChange={(event) => setFormData((state) => ({ ...state, delivery_date: event.target.value }))} />
             </FormField>
           </div>
+          <div className="rounded-xl border border-gray-200 p-3 dark:border-[var(--color-app-border)]">
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant={createMode === 'now' ? 'primary' : 'secondary'} onClick={() => setCreateMode('now')}>Create now</Button>
+              <Button type="button" variant={createMode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setCreateMode('schedule')}>Schedule</Button>
+            </div>
+            {createMode === 'schedule' && (
+              <FormField label="Schedule for" required>
+                <input type="datetime-local" className={inputClassName} value={scheduleRunAt} onChange={(event) => setScheduleRunAt(event.target.value)} required={createMode === 'schedule'} />
+              </FormField>
+            )}
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            <Button type="submit" loading={submitting} loadingText="Creating">Create</Button>
+            <Button type="submit" loading={submitting} loadingText={createMode === 'schedule' ? 'Scheduling' : 'Creating'}>{createMode === 'schedule' ? 'Schedule project' : 'Create project'}</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={showProjectTypeModal} onClose={() => setShowProjectTypeModal(false)} title="Add project type">
+        <form onSubmit={handleCreateProjectType} className="space-y-4">
+          <FormField label="Type name" error={projectTypeError} required>
+            <input
+              autoFocus
+              className={inputClassName}
+              value={projectTypeName}
+              onChange={(event) => {
+                setProjectTypeName(event.target.value)
+                setProjectTypeError('')
+              }}
+              placeholder="Research, design, support"
+            />
+          </FormField>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" type="button" onClick={() => setShowProjectTypeModal(false)}>Cancel</Button>
+            <Button type="submit">Add type</Button>
           </div>
         </form>
       </Modal>
@@ -505,7 +644,7 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
               <ProgressRing value={project.progress} />
               <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold leading-5 text-primary-600 dark:text-primary-400">{project.name}</p>
-              <p className="truncate text-sm text-gray-500 dark:text-gray-400">{project.owner}</p>
+              <p className="text-sm leading-5 text-gray-500 dark:text-gray-400">{project.owner}</p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {project.key ? <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">{project.key}</span> : null}
                 <Badge label={project.status.replace(/_/g, ' ')} colorKey={project.status} />
