@@ -2,7 +2,7 @@
 
 Database: `alphanexis_task_management`
 
-This document is generated from all Beanie `Document` models under `backend/app/models`. Current code defines **52 unique MongoDB collection names** across **57 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **56 unique MongoDB collection names** across **61 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
 
 ## Collection Summary
 
@@ -24,6 +24,10 @@ This document is generated from all Beanie `Document` models under `backend/app/
 | `issue_links` | IssueLink | IssueLink persistence collection. |
 | `issue_types` | IssueType | IssueType persistence collection. |
 | `meetings` | Meeting | Meeting scheduling and Zoom metadata. |
+| `meta_integration_settings` | MetaIntegrationSettings | Tenant-scoped Meta connection state and encrypted tokens. |
+| `meta_marketing_insights` | MetaMarketingInsight | Read-only tenant campaign performance snapshots. |
+| `meta_sync_runs` | MetaSyncRun | Meta synchronization status, cursors, attempts, and redacted errors. |
+| `meta_webhook_events` | MetaWebhookEvent | Durable inbound Meta event inbox with idempotency and correlation IDs. |
 | `msas` | MSA | Master service agreements and signature workflow data. |
 | `notifications` | Notification | In-app notification records. |
 | `pages` | Page | Page persistence collection. |
@@ -882,7 +886,7 @@ Indexes: `['company_id', 'category_id', 'name', 'deleted']`
 
 #### Model: `SalesProspect`
 
-Indexes: `['company_id', 'assigned_to', 'assigned_by', 'current_stage', 'status', 'category_id', 'contact_id', 'deleted', ('country_code', 'phone')]`
+Indexes: includes a partial unique `('company_id', 'meta_lead_id')` index for Meta Lead Ads replay protection.
 
 | Field | Type | Required | Indexed | Description |
 |---|---|---|---|---|
@@ -908,6 +912,14 @@ Indexes: `['company_id', 'assigned_to', 'assigned_by', 'current_stage', 'status'
 | `company_name` | `Optional[str]` | No | No | Model field |
 | `relationship_type` | `Optional[str]` | No | No | Model field |
 | `channel` | `Optional[str]` | No | No | Model field |
+| `meta_lead_id` | `Optional[str]` | No | Yes | Tenant-scoped Meta replay key |
+| `meta_campaign_id` | `Optional[str]` | No | No | Meta campaign attribution |
+| `meta_adset_id` | `Optional[str]` | No | No | Meta ad-set attribution |
+| `meta_ad_id` | `Optional[str]` | No | No | Meta ad attribution |
+| `meta_form_id` | `Optional[str]` | No | No | Meta Lead Ads form attribution |
+| `meta_created_time` | `Optional[datetime.datetime]` | No | No | Provider lead creation time |
+| `meta_consent` | `Optional[bool]` | No | No | Provider consent value when supplied |
+| `meta_attribution` | `Dict[str, Any]` | No | No | Provider attribution snapshot |
 | `designation` | `Optional[str]` | No | No | Model field |
 | `nationality` | `Optional[List[str]]` | No | No | Model field |
 | `language` | `Optional[List[str]]` | No | No | Model field |

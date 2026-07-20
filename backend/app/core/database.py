@@ -86,6 +86,12 @@ from app.models.leave import LeaveRequest
 from app.models.eod import EODReport
 from app.models.scheduled_job import ScheduledJob
 from app.models.capability import seed_default_capabilities
+from app.integrations.meta.models import (
+    MetaIntegrationSettings,
+    MetaMarketingInsight,
+    MetaSyncRun,
+    MetaWebhookEvent,
+)
 from app.recruitment.models import (
     Application, Candidate, CandidateNote, CandidateTimeline, Interview,
     InterviewFeedback, Offer, RecruitmentAttachment, RecruitmentAudit,
@@ -248,6 +254,10 @@ async def init_db():
                 LeaveRequest,
                 EODReport,
                 ScheduledJob,
+                MetaIntegrationSettings,
+                MetaWebhookEvent,
+                MetaSyncRun,
+                MetaMarketingInsight,
                 RecruitmentJob,
                 Candidate,
                 Application,

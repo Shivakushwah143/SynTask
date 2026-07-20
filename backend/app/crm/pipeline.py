@@ -279,6 +279,14 @@ def _serialize_lead(
         "stage_entered_at": stage_entered_at,
         "stage_last_changed_at": getattr(prospect, "stage_last_changed_at", None),
         "days_in_stage": days_in_stage,
+        "meta_lead_id": getattr(prospect, "meta_lead_id", None),
+        "meta_campaign_id": getattr(prospect, "meta_campaign_id", None),
+        "meta_adset_id": getattr(prospect, "meta_adset_id", None),
+        "meta_ad_id": getattr(prospect, "meta_ad_id", None),
+        "meta_form_id": getattr(prospect, "meta_form_id", None),
+        "meta_created_time": getattr(prospect, "meta_created_time", None),
+        "meta_consent": getattr(prospect, "meta_consent", None),
+        "meta_attribution": getattr(prospect, "meta_attribution", None) or {},
     }
 
 
