@@ -12,6 +12,9 @@ flowchart LR
     API --> Email[SMTP]
     API --> Zoom[Zoom API]
     API --> Payments[Stripe / Razorpay]
+    Meta[Meta Cloud] --> MetaBoundary[Meta Integration - disabled by default]
+    MetaBoundary --> Mongo
+    MetaBoundary --> Redis
     Redis --> Celery[Future Celery Workers]
 ```
 
@@ -76,6 +79,11 @@ FastAPI endpoints, Motor, Beanie, Redis, and background helpers are async-first.
 
 ### Dependency Injection
 Authentication, role gates, module gates, and company access checks are implemented as FastAPI dependencies.
+
+### Meta Integration Foundation
+Meta support lives under `backend/app/integrations/meta` rather than CRM controllers. Phase 1 adds tenant-scoped settings, durable webhook inbox, sync-run, and marketing-insight documents. Deployment-wide Meta credentials come from environment variables; tenant tokens are encrypted with the existing Fernet helper before database storage. `META_INTEGRATION_ENABLED` defaults to `False`, and tenant settings default disabled, so deploying the foundation changes no CRM behavior.
+
+Tenant mapping is anchored by unique `company_id` and Page/Form indexes. Super-admin configuration requires explicit tenant selection; company admins cannot select another tenant. Existing outbound `Webhook` and `WebhookDelivery` models remain unchanged because inbound Meta events have different signature, idempotency, retry, and processing lifecycles.
 
 ### Background Tasks
 Startup launches the deadline checker from `app.core.deadline_checker`, the centralized reminder scheduler from `app.services.reminder_service`, and the one-minute scheduled-job runner from `app.services.scheduling_service`. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. The scheduled-job runner locks due `scheduled_jobs` records atomically before invoking the existing project/task creation services, then records notifications and timeline events. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
