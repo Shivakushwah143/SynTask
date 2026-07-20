@@ -48,7 +48,7 @@ export function TopNavigation({
   const canUseAssistant = hasCompanyAdminAccess(userRole) || isManagerRole(userRole)
 
   return (
-    <header className="sticky top-0 z-30 min-w-0 border-b border-primary-200/70 bg-[rgba(252,250,244,0.98)] shadow-[0_8px_24px_rgba(63,49,37,0.08)] backdrop-blur-xl dark:border-[#5a4635] dark:bg-[rgb(36_28_20_/_0.96)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.35)]">
+    <header className="sticky top-0 z-30 min-w-0 border-b border-surface-border bg-[var(--color-app-header)] shadow-[0_8px_24px_rgba(63,49,37,0.08)] backdrop-blur-xl dark:border-[#5a4635] dark:bg-[rgb(36_28_20_/_0.96)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.35)]">
       <div className="flex h-16 min-w-0 items-center justify-between gap-3 px-3 sm:px-5 lg:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
           <button

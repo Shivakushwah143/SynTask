@@ -569,13 +569,13 @@ const Sidebar = ({ isOpen, onClose }) => {
           </button>
 
           {/* Logo */}
-          <div className={`flex h-18 items-center border-b border-white/10 px-4 ${collapsed ? "lg:justify-center lg:px-0" : "justify-between"}`}>
+          <div className={`flex h-20 items-center border-b border-white/10 px-4 ${collapsed ? "lg:justify-center lg:px-0" : "justify-between"}`}>
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fffaf4] text-primary-600 shadow-none dark:bg-[#241c14] dark:ring-1 dark:ring-white/10">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#fffaf4] text-primary-600 shadow-none dark:bg-[#241c14] dark:ring-1 dark:ring-white/10">
                 <img
                   src="/logo.svg"
                   alt="SynTask Logo"
-                  className="h-6 w-6 object-contain flex-shrink-0"
+                  className="h-10 w-10 flex-shrink-0 object-contain"
                   onError={(e) => {
                     e.target.style.display = "none";
                   }}
