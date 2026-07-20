@@ -16,6 +16,7 @@ from app.api.v1.endpoints import (
     sales, search, departments, attendance, notification_emails, timeline, leaves, eod
 )
 from app.api.v1.endpoints import ai
+from app.api.v1.endpoints import rag
 from app.api.v1.endpoints import creative
 from app.api.v1.endpoints import crm
 from app.api.v1.endpoints import crm_files
@@ -140,6 +141,7 @@ api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recr
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"])
+api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 api_router.include_router(creative.router, prefix="/creative", tags=["Creative Director"])
 api_router.include_router(search.router, tags=["Search"], dependencies=[Depends(require_module("task"))])
 # Sales Tracker module (new)
@@ -168,4 +170,3 @@ api_router.include_router(superadmin_plans.router, prefix="/superadmin/plans", t
 api_router.include_router(superadmin_tenants.router, prefix="/superadmin/tenants", tags=["Super Admin - Tenants"])
 api_router.include_router(superadmin_usage.router, prefix="/superadmin/usage", tags=["Super Admin - Usage"])
 api_router.include_router(superadmin_billing.router, prefix="/superadmin/billing", tags=["Super Admin - Billing"])
-

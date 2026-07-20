@@ -26,9 +26,13 @@ def _validate_uploaded_file(filename: str, file_content: bytes) -> str:
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/csv",
+        "text/html",
         "text/plain",
+        "text/markdown",
         "application/zip",
     }
     if detected_mime not in allowed_mime_types:

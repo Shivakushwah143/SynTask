@@ -42,6 +42,14 @@ from app.models.ai_conversation import AIConversation
 from app.models.ai_user_state import AIUserState
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
 from app.models.knowledge import KnowledgeRecord
+from app.rag.models import (
+    RAGCitation,
+    RAGKnowledgeChunk,
+    RAGKnowledgeSource,
+    RAGKnowledgeSourceVersion,
+    RAGRetrievalRun,
+)
+from app.rag.feedback import RAGFeedback
 from app.models.creative_review import (
     CreativeAssetMetadata,
     CreativeCampaignReview,
@@ -189,6 +197,12 @@ async def init_db():
                 UserMemory,
                 ClientMemory,
                 KnowledgeRecord,
+                RAGKnowledgeSource,
+                RAGKnowledgeSourceVersion,
+                RAGKnowledgeChunk,
+                RAGRetrievalRun,
+                RAGCitation,
+                RAGFeedback,
                 CreativeAssetMetadata,
                 CreativeCampaignReview,
                 CreativeReview,
