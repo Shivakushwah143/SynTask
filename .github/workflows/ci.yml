@@ -30,7 +30,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       qdrant:
-        image: qdrant/qdrant:v1.10.1
+        image: qdrant/qdrant:v1.14.1
         ports:
           - 6333:6333
         options: >-
@@ -47,6 +47,8 @@ jobs:
       RAG_ENABLED: "true"
       QDRANT_URL: http://127.0.0.1:6333
       RUN_QDRANT_INTEGRATION: "1"
+      RUN_REDIS_INTEGRATION: "1"
+      RUN_MONGO_INTEGRATION: "1"
       SUPER_ADMIN_EMAIL: admin@example.com
       SUPER_ADMIN_PASSWORD: DevTestPassword123!
       VITE_API_URL: http://localhost:8000/api/v1

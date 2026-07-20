@@ -49,6 +49,7 @@ from app.rag.models import (
     RAGKnowledgeSourceVersion,
     RAGRetrievalRun,
 )
+from app.rag.feedback import RAGFeedback
 from app.models.creative_review import (
     CreativeAssetMetadata,
     CreativeCampaignReview,
@@ -201,6 +202,7 @@ async def init_db():
                 RAGKnowledgeChunk,
                 RAGRetrievalRun,
                 RAGCitation,
+                RAGFeedback,
                 CreativeAssetMetadata,
                 CreativeCampaignReview,
                 CreativeReview,

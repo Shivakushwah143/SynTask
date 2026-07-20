@@ -29,6 +29,11 @@ class RAGDocumentType(str, Enum):
     TXT = "txt"
     MARKDOWN = "markdown"
     PDF = "pdf"
+    DOCX = "docx"
+    PPTX = "pptx"
+    XLSX = "xlsx"
+    CSV = "csv"
+    HTML = "html"
 
 
 class RAGKnowledgeSource(Document):

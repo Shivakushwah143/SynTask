@@ -80,7 +80,18 @@ class DuplicateVersion(FakeVersion):
 
 @pytest.mark.parametrize(
     ("filename", "expected"),
-    [("a.txt", "txt"), ("a.md", "markdown"), ("a.markdown", "markdown"), ("a.pdf", "pdf")],
+    [
+        ("a.txt", "txt"),
+        ("a.md", "markdown"),
+        ("a.markdown", "markdown"),
+        ("a.pdf", "pdf"),
+        ("a.docx", "docx"),
+        ("a.pptx", "pptx"),
+        ("a.xlsx", "xlsx"),
+        ("a.csv", "csv"),
+        ("a.html", "html"),
+        ("a.htm", "html"),
+    ],
 )
 def test_document_type_for_supported_formats(filename, expected):
     assert document_type_for(filename).value == expected
@@ -88,7 +99,7 @@ def test_document_type_for_supported_formats(filename, expected):
 
 def test_document_type_for_rejects_unsupported_format():
     with pytest.raises(HTTPException):
-        document_type_for("a.docx")
+        document_type_for("a.doc")
 
 
 def test_checksum_bytes_is_deterministic():
