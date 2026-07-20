@@ -10,6 +10,7 @@ from beanie.odm.queries.update import UpdateResponse
 
 from app.core.config import settings
 from app.integrations.meta.models import MetaWebhookEvent, MetaWebhookStatus
+from app.integrations.meta.lead_service import MetaLeadQuarantined, MetaLeadService
 from app.integrations.meta.redaction import sanitize_error_message
 from app.worker.celery_app import celery_app
 
@@ -219,6 +220,14 @@ async def _process_event(event_id: str) -> str:
         await _execute_event(event)
     except Exception as exc:
         now = datetime.now(timezone.utc)
+        if isinstance(exc, MetaLeadQuarantined):
+            event.status = MetaWebhookStatus.FAILED
+            event.next_retry_at = None
+            event.error_code = exc.code
+            event.error_message = "Meta lead requires manual review"
+            event.updated_at = now
+            await event.save()
+            raise MetaWebhookTerminalFailure() from None
         event.error_code = "processing_failed"
         event.error_message = sanitize_error_message(exc)
         event.updated_at = now
@@ -245,8 +254,10 @@ async def _process_event(event_id: str) -> str:
 
 
 async def _execute_event(event: MetaWebhookEvent) -> None:
-    """Phase 2 ends after inbox processing; Phase 3 adds lead handling here."""
-    return None
+    """Route supported Meta webhook events to the Phase 3 lead adapter."""
+    if event.event_type != "leadgen":
+        return None
+    await MetaLeadService().process_event(event)
 
 
 def _status_value(status: MetaWebhookStatus | str) -> str:
