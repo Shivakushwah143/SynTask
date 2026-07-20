@@ -130,3 +130,83 @@ sequenceDiagram
     React->>API: POST /auth/logout
     API->>Redis: Blacklist token until expiry
 ```
+
+```mermaid
+flowchart TB
+    User[Authenticated user] --> Orchestrator[Central Agent Orchestrator]
+    Orchestrator --> Registry[Agent Registry]
+    Orchestrator --> SpecialistRegistry[Specialist Registry]
+    Orchestrator --> ContextPackage[Central ContextPackage]
+    ContextPackage --> MemoryRouter[Central MemoryRouter]
+    MemoryRouter --> StructuredMemory[Structured Memory]
+    MemoryRouter --> RAG[Governed RAG]
+    MemoryRouter --> WorkingMemory[Working Memory]
+    Orchestrator --> ProviderRouter[Central Provider Router]
+    Orchestrator --> ToolRegistry[Central Tool Registry]
+    Orchestrator --> ApprovalGateway[Approval Gateway]
+    Orchestrator --> Audit[Audit and Evaluation]
+
+    Registry --> ProjectAgent[Versioned Project Agent]
+    ProjectAgent --> LogicalRun[Project-scoped logical run]
+    LogicalRun --> SpecialistProfile[Task specialist profile]
+    SpecialistProfile --> ProjectAgent
+
+    StructuredMemory --> Mongo[(MongoDB)]
+    RAG --> Qdrant[(Qdrant)]
+    WorkingMemory --> Redis[(Redis)]
+```
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Orchestrator as Agent Orchestrator
+    participant PA as Project Agent
+    participant CP as ContextPackage
+    participant MR as MemoryRouter
+    participant SM as Structured Memory
+    participant RAG
+    participant SR as Specialist Registry
+    participant SP as Specialist Profile
+    participant PR as Provider Router
+    participant Audit
+
+    User->>Orchestrator: Request with project_id and optional task_id
+    Orchestrator->>PA: Load versioned Project Agent
+    Orchestrator->>CP: Build authorized project context
+    CP->>MR: Route structured, RAG and working memory
+    MR->>SM: Read current project/task facts
+    MR->>RAG: Retrieve approved project/client docs
+    Orchestrator->>SR: Deterministic specialist selection
+    SR-->>Orchestrator: Evaluated specialist profile or unavailable
+    Orchestrator->>SP: Delegate bounded task guidance
+    SP-->>Orchestrator: Schema-valid specialist output
+    Orchestrator->>PR: Generate consolidated response
+    Orchestrator->>Audit: Record run, versions, context, cost, citations
+    Orchestrator-->>User: Read-only guidance and proposed actions
+```
+
+```mermaid
+flowchart LR
+    Manager[Authorized manager/admin] --> Metrics[Deterministic Metric Service]
+    Metrics --> Tasks[Tasks]
+    Metrics --> Time[Time logs and timesheets]
+    Metrics --> EOD[EOD reports]
+    Metrics --> Leave[Authorized leave data]
+    Metrics --> MetricOutput[Metric facts with formulas]
+    MetricOutput --> InsightsAgent[Task Performance Insights Agent]
+    PolicyDocs[Approved performance policies] --> RAGPolicy[RAG policy context]
+    RAGPolicy --> InsightsAgent
+    InsightsAgent --> Explanation[Explanation, warnings, confidence]
+```
+
+```mermaid
+flowchart LR
+    Employee[Authenticated employee] --> EmailAgent[General Email Draft Agent]
+    EmailAgent --> ContextPackage[ContextPackage]
+    ContextPackage --> Records[Authorized project/client/task/meeting records]
+    ContextPackage --> Templates[Approved templates and tone guides]
+    EmailAgent --> Draft[Draft-only output]
+    Draft --> Review[User review]
+    Review -. later milestone .-> Approval[Approval Gateway]
+    Approval -. later milestone .-> EmailConnector[Microsoft 365/Gmail/SMTP Connector]
+```
