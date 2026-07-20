@@ -116,7 +116,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB
     ALLOWED_EXTENSIONS: List[str] = [
         ".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", 
-        ".doc", ".docx", ".xls", ".xlsx", ".txt", ".md", ".markdown", ".zip"
+        ".doc", ".docx", ".pptx", ".xls", ".xlsx", ".csv", ".html", ".htm", ".txt", ".md", ".markdown", ".zip"
     ]
     UPLOAD_DIR: str = "uploads"
     
@@ -193,6 +193,20 @@ class Settings(BaseSettings):
     RAG_CONTEXT_PACKAGE_MAX_CHARS: int = 6000
     RAG_LOG_RAW_CONTEXT: bool = False
     RAG_LOG_FULL_PROMPTS: bool = False
+    RAG_QUERY_UNDERSTANDING_VERSION: str = "query-understanding-v1"
+    RAG_QUERY_MAX_REWRITES: int = 3
+    RAG_QUERY_MAX_SUBQUERIES: int = 3
+    RAG_HYBRID_COLLECTION: str = "syntask_rag_hybrid_v1_text_embedding_3_small_1536"
+    RAG_DENSE_VECTOR_NAME: str = "dense"
+    RAG_SPARSE_VECTOR_NAME: str = "sparse"
+    RAG_SPARSE_ENCODER_VERSION: str = "sparse-hash-v1"
+    RAG_HYBRID_PREFETCH_LIMIT: int = 20
+    RAG_MIN_EVIDENCE_SCORE: float = 0.2
+    RAG_OFFICE_MAX_UNCOMPRESSED_BYTES: int = 50_000_000
+    RAG_XLSX_MAX_SHEETS: int = 30
+    RAG_XLSX_MAX_ROWS: int = 5000
+    RAG_PPTX_MAX_SLIDES: int = 300
+    RAG_CSV_MAX_ROWS: int = 10000
 
     # Super Admin
     SUPER_ADMIN_EMAIL: str = Field(..., description="Super admin bootstrap email address.")

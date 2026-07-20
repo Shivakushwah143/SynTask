@@ -16,8 +16,16 @@ flowchart TB
         Auth[Auth Dependencies]
         Routers[API v1 Routers]
         ContextPackage[Central ContextPackage Service]
+        QueryUnderstanding[QueryUnderstanding Service]
+        StructuredMemory[Structured Memory Service]
         WorkingMemory[Working Memory Service]
         RAG[Central RAG Retrieval]
+        HybridRAG[Hybrid Retrieval Service]
+        Profiles[Retrieval Profiles]
+        Evidence[Evidence Decision Service]
+        ProviderRouter[Provider Router]
+        AgentRuntime[Future Agent Runtime]
+        ConnectorGateway[Future Connector Gateway]
         Uploads[Local uploads/]
         Deadline[Deadline Checker]
     end
@@ -32,17 +40,30 @@ flowchart TB
         SMTP[SMTP]
         Zoom[Zoom API]
         Payments[Stripe / Razorpay]
+        WhatsApp[WhatsApp Connector]
+        Meta[Meta Connector]
+        LinkedIn[LinkedIn Connector]
     end
 
     Browser --> Nginx --> React
     React --> FastAPI
     FastAPI --> Auth --> Routers
     Routers --> ContextPackage
+    ContextPackage --> QueryUnderstanding
+    ContextPackage --> StructuredMemory
     ContextPackage --> WorkingMemory
     ContextPackage --> RAG
+    ContextPackage --> HybridRAG
+    HybridRAG --> Profiles
+    HybridRAG --> Evidence
+    AgentRuntime --> ContextPackage
+    AgentRuntime --> ProviderRouter
+    ConnectorGateway --> AgentRuntime
     WorkingMemory --> Redis
     RAG --> Qdrant
+    HybridRAG --> Qdrant
     RAG --> Mongo
+    StructuredMemory --> Mongo
     Routers --> Mongo
     FastAPI --> Redis
     Routers --> Uploads
@@ -50,6 +71,9 @@ flowchart TB
     Routers --> SMTP
     Routers --> Zoom
     Routers --> Payments
+    WhatsApp --> ConnectorGateway
+    Meta --> ConnectorGateway
+    LinkedIn --> ConnectorGateway
 ```
 
 ```mermaid
@@ -58,8 +82,10 @@ sequenceDiagram
     participant API as FastAPI RAG API
     participant Auth
     participant CP as ContextPackage Service
+    participant QU as QueryUnderstanding
+    participant SM as Structured Memory
     participant WM as Redis Working Memory
-    participant RAG as RAG Retrieval Service
+    participant RAG as Hybrid RAG Retrieval Service
     participant Qdrant
     participant Mongo
 
@@ -67,8 +93,11 @@ sequenceDiagram
     API->>Auth: Resolve authenticated user scope
     API->>CP: Build package with server scope
     CP->>WM: Load tenant/user/session memory
-    CP->>RAG: Retrieve with current permission scope
-    RAG->>Qdrant: Tenant-filtered vector search
+    CP->>QU: Classify route and bounded rewrites
+    CP->>SM: Read current authorized business facts when required
+    SM->>Mongo: Existing domain models and permission checks
+    CP->>RAG: Retrieve with current permission scope/profile
+    RAG->>Qdrant: Tenant-filtered dense/sparse query_points
     RAG->>Mongo: Re-authorize citations
     CP-->>API: Authorized ContextPackage
     API-->>Agent: Sanitized context boundary

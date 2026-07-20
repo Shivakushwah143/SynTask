@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import settings
+from app.rag.sparse import SparseHashEncoder
 
 
 class QdrantUnavailable(RuntimeError):
@@ -53,6 +54,42 @@ class RAGQdrantStore:
         if vector_size and int(vector_size) != self.dimensions:
             raise ValueError("Configured embedding dimensions do not match existing Qdrant collection")
 
+    async def ensure_hybrid_collection(self) -> None:
+        from qdrant_client.http import models
+
+        collections = await self.client.get_collections()
+        existing = {item.name for item in collections.collections}
+        if self.collection_name not in existing:
+            await self.client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config={
+                    settings.RAG_DENSE_VECTOR_NAME: models.VectorParams(size=self.dimensions, distance=models.Distance.COSINE),
+                },
+                sparse_vectors_config={
+                    settings.RAG_SPARSE_VECTOR_NAME: models.SparseVectorParams(
+                        index=models.SparseIndexParams(on_disk=False),
+                    ),
+                },
+            )
+            for field in ["company_id", "tenant_id", "source_id", "version_id", "chunk_id", "approval_status", "project_id", "department_id", "client_id", "deleted", "status", "source_authority", "expires_at"]:
+                try:
+                    await self.client.create_payload_index(
+                        collection_name=self.collection_name,
+                        field_name=field,
+                        field_schema=models.PayloadSchemaType.KEYWORD if field not in {"deleted"} else models.PayloadSchemaType.BOOL,
+                    )
+                except Exception:
+                    pass
+            return
+
+        info = await self.client.get_collection(self.collection_name)
+        vectors = getattr(info.config.params, "vectors", None)
+        if not isinstance(vectors, dict) or settings.RAG_DENSE_VECTOR_NAME not in vectors:
+            raise ValueError("Hybrid Qdrant collection must use named dense vectors")
+        dense = vectors[settings.RAG_DENSE_VECTOR_NAME]
+        if int(getattr(dense, "size", 0) or 0) != self.dimensions:
+            raise ValueError("Hybrid Qdrant dense vector dimensions do not match configuration")
+
     async def upsert(self, *, point_id: str, vector: list[float], payload: dict[str, Any]) -> None:
         from qdrant_client.http import models
 
@@ -63,6 +100,28 @@ class RAGQdrantStore:
         await self.client.upsert(
             collection_name=self.collection_name,
             points=[models.PointStruct(id=point_id, vector=vector, payload=payload)],
+        )
+
+    async def upsert_hybrid(self, *, point_id: str, dense_vector: list[float], sparse_text: str, payload: dict[str, Any]) -> None:
+        from qdrant_client.http import models
+
+        self._validate_vector(dense_vector)
+        if not payload.get("company_id") or not payload.get("tenant_id"):
+            raise ValueError("Qdrant payload requires tenant/company metadata")
+        await self.ensure_hybrid_collection()
+        sparse = SparseHashEncoder().encode(sparse_text)
+        await self.client.upsert(
+            collection_name=self.collection_name,
+            points=[
+                models.PointStruct(
+                    id=point_id,
+                    vector={
+                        settings.RAG_DENSE_VECTOR_NAME: dense_vector,
+                        settings.RAG_SPARSE_VECTOR_NAME: models.SparseVector(indices=sparse["indices"], values=sparse["values"]),
+                    },
+                    payload={**payload, "sparse_encoder_version": settings.RAG_SPARSE_ENCODER_VERSION},
+                )
+            ],
         )
 
     async def delete_source_version(self, *, company_id: str, version_id: str) -> None:
@@ -109,10 +168,58 @@ class RAGQdrantStore:
             if value is None:
                 continue
             must.append(models.FieldCondition(key=key, match=models.MatchValue(value=value)))
-        return await self.client.search(
+        response = await self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=vector,
+            query=vector,
             query_filter=models.Filter(must=must),
             limit=limit,
             with_payload=True,
         )
+        return list(getattr(response, "points", response) or [])
+
+    async def hybrid_search(
+        self,
+        *,
+        dense_vector: list[float],
+        sparse_query_text: str,
+        filters: dict[str, Any],
+        limit: int,
+        score_threshold: float | None = None,
+    ) -> list[Any]:
+        from qdrant_client.http import models
+
+        self._validate_vector(dense_vector)
+        if not filters.get("company_id") or not filters.get("tenant_id"):
+            raise ValueError("Tenant scope is required before retrieval")
+        await self.ensure_hybrid_collection()
+        must = []
+        for key, value in filters.items():
+            if value is None:
+                continue
+            must.append(models.FieldCondition(key=key, match=models.MatchValue(value=value)))
+        query_filter = models.Filter(must=must)
+        sparse = SparseHashEncoder().encode(sparse_query_text)
+        prefetch_limit = max(limit, settings.RAG_HYBRID_PREFETCH_LIMIT)
+        response = await self.client.query_points(
+            collection_name=self.collection_name,
+            prefetch=[
+                models.Prefetch(
+                    query=dense_vector,
+                    using=settings.RAG_DENSE_VECTOR_NAME,
+                    filter=query_filter,
+                    limit=prefetch_limit,
+                    score_threshold=score_threshold,
+                ),
+                models.Prefetch(
+                    query=models.SparseVector(indices=sparse["indices"], values=sparse["values"]),
+                    using=settings.RAG_SPARSE_VECTOR_NAME,
+                    filter=query_filter,
+                    limit=prefetch_limit,
+                    score_threshold=score_threshold,
+                ),
+            ],
+            query=models.FusionQuery(fusion=models.Fusion.RRF),
+            limit=limit,
+            with_payload=True,
+        )
+        return list(getattr(response, "points", response) or [])

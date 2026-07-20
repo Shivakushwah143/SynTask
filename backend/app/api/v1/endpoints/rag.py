@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from typing import Any
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 
 from app.api.dependencies import get_current_user
 from app.models.user import User
@@ -23,11 +25,15 @@ from app.rag.models import RAGKnowledgeSourceVersion
 from app.rag.qdrant_store import QdrantUnavailable
 from app.core.config import settings
 from app.rag.context_package import ContextPackageBuilder, sanitize_for_model_context
+from app.rag.feedback import RAGFeedbackInput, RAGFeedbackService
+from app.rag.governance import RAGGovernanceService
 from app.rag.working_memory import ClientWorkingMemoryUpdate, WorkingMemoryConflict, WorkingMemoryService, WorkingMemoryUnavailable
 
 router = APIRouter()
 working_memory_service = WorkingMemoryService()
 context_package_builder = ContextPackageBuilder(working_memory_service=working_memory_service)
+governance_service = RAGGovernanceService()
+feedback_service = RAGFeedbackService()
 
 
 def _require_rag_enabled() -> None:
@@ -43,6 +49,87 @@ def _session_response(snapshot) -> WorkingMemorySessionResponse:
         version=snapshot.version,
         expires_at=snapshot.expires_at.isoformat(),
     )
+
+
+def _source_response(source, version_id: str = "") -> RAGSourceResponse:
+    return RAGSourceResponse(
+        source_id=source.source_id,
+        version_id=version_id,
+        status=source.status.value if hasattr(source.status, "value") else str(source.status),
+        approval_status=source.approval_status,
+        title=source.title,
+        document_type=source.document_type.value if hasattr(source.document_type, "value") else str(source.document_type),
+        failure_reason=source.failure_reason,
+    )
+
+
+@router.get("/sources")
+async def list_rag_sources(
+    department_id: str | None = None,
+    project_id: str | None = None,
+    client_id: str | None = None,
+    source_type: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+    approval_status: str | None = None,
+    owner_id: str | None = None,
+    confidentiality_level: str | None = None,
+    document_type: str | None = None,
+    skip: int = 0,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+):
+    _require_rag_enabled()
+    filters = {
+        "department_id": department_id,
+        "project_id": project_id,
+        "client_id": client_id,
+        "source_type": source_type,
+        "status": status_filter,
+        "approval_status": approval_status,
+        "owner_id": owner_id,
+        "confidentiality_level": confidentiality_level,
+        "document_type": document_type,
+    }
+    return await governance_service.list_sources(current_user=current_user, filters=filters, skip=skip, limit=min(limit, 100))
+
+
+@router.get("/sources/{source_id}/chunks")
+async def preview_rag_source_chunks(source_id: str, limit: int = 5, current_user: User = Depends(get_current_user)):
+    _require_rag_enabled()
+    return {"chunks": await governance_service.preview_chunks(current_user=current_user, source_id=source_id, limit=min(limit, 20))}
+
+
+@router.get("/sources/{source_id}/versions")
+async def list_rag_source_versions(source_id: str, current_user: User = Depends(get_current_user)):
+    _require_rag_enabled()
+    return {"versions": await governance_service.versions(current_user=current_user, source_id=source_id)}
+
+
+@router.get("/sources/{source_id}/citations")
+async def list_rag_source_citations(source_id: str, current_user: User = Depends(get_current_user)):
+    _require_rag_enabled()
+    return {"citations": await governance_service.citations(current_user=current_user, source_id=source_id)}
+
+
+@router.post("/sources/{source_id}/reject", response_model=RAGSourceResponse)
+async def reject_rag_source(source_id: str, payload: dict[str, Any], current_user: User = Depends(get_current_user)):
+    _require_rag_enabled()
+    source = await governance_service.reject(current_user=current_user, source_id=source_id, reason=str(payload.get("reason") or "Rejected"))
+    return _source_response(source)
+
+
+@router.post("/sources/{source_id}/disable", response_model=RAGSourceResponse)
+async def disable_rag_source(source_id: str, current_user: User = Depends(get_current_user)):
+    _require_rag_enabled()
+    source = await governance_service.disable_source(current_user=current_user, source_id=source_id)
+    return _source_response(source)
+
+
+@router.post("/feedback")
+async def submit_rag_feedback(payload: RAGFeedbackInput, current_user: User = Depends(get_current_user)):
+    _require_rag_enabled()
+    feedback = await feedback_service.submit(current_user=current_user, payload=payload)
+    return {"feedback_id": feedback.feedback_id, "review_status": feedback.review_status}
 
 
 @router.post("/sources/upload", response_model=RAGSourceResponse)

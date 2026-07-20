@@ -27,7 +27,17 @@ def document_type_for(filename: str) -> RAGDocumentType:
         return RAGDocumentType.MARKDOWN
     if ext == ".pdf":
         return RAGDocumentType.PDF
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only TXT, Markdown and PDF are supported in Milestone 1")
+    if ext == ".docx":
+        return RAGDocumentType.DOCX
+    if ext == ".pptx":
+        return RAGDocumentType.PPTX
+    if ext == ".xlsx":
+        return RAGDocumentType.XLSX
+    if ext == ".csv":
+        return RAGDocumentType.CSV
+    if ext in {".html", ".htm"}:
+        return RAGDocumentType.HTML
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported RAG document type")
 
 
 class RAGSourceRegistry:

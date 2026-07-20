@@ -34,4 +34,4 @@ async def test_real_redis_working_memory_session_lifecycle():
 
     await service.delete_session(scope=scope, session_id=session.session_id, conversation_id="conv-real")
     assert await service.get_session(scope=scope, session_id=session.session_id, conversation_id="conv-real") is None
-    await redis.close()
+    await redis.aclose()

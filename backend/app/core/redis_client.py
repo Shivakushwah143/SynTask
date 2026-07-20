@@ -110,5 +110,11 @@ async def get_redis() -> Optional[aioredis.Redis]:
 async def close_redis() -> None:
     global _redis_client
     if _redis_client:
-        await _redis_client.close()
-        _redis_client = None   
+        try:
+            await _redis_client.aclose()
+        except RuntimeError as exc:
+            if "Event loop is closed" not in str(exc):
+                raise
+            logger.warning("Redis close skipped because owning event loop is already closed")
+        finally:
+            _redis_client = None   

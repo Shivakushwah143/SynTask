@@ -22,6 +22,7 @@ class RAGScope:
     client_id: Optional[str] = None
     allowed_user_ids: list[str] = field(default_factory=list)
     allowed_roles: list[str] = field(default_factory=list)
+    current_user: Any | None = field(default=None, repr=False, compare=False)
 
     def visibility_filter(self) -> dict[str, Any]:
         filters: dict[str, Any] = {
@@ -87,6 +88,7 @@ async def resolve_rag_scope(
         client_id=requested_client_id,
         allowed_user_ids=list((visibility or {}).get("allowed_user_ids") or []),
         allowed_roles=list((visibility or {}).get("allowed_roles") or []),
+        current_user=current_user,
     )
 
 
