@@ -44,4 +44,6 @@ Thumbs.db
 # Generated local state
 .agent/
 .codex/
+.superpowers/
+.worktrees/
 
