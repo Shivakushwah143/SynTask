@@ -34,7 +34,8 @@ class VectorStore(ABC):
         raise NotImplementedError
 
 
-class QdrantVectorStore(VectorStore):
+class FakeQdrantVectorStore(VectorStore):
+    """Test-only in-memory fake; never use as production Qdrant."""
     def __init__(self) -> None:
         self._records: dict[str, VectorRecord] = {}
 
@@ -108,3 +109,7 @@ class QdrantVectorStore(VectorStore):
             scored.append({"score": score, **record.payload})
         scored.sort(key=lambda item: item["score"], reverse=True)
         return scored[:limit]
+
+
+# Backward-compatible alias for existing semantic tests and imports.
+QdrantVectorStore = FakeQdrantVectorStore

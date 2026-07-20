@@ -116,7 +116,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB
     ALLOWED_EXTENSIONS: List[str] = [
         ".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", 
-        ".doc", ".docx", ".xls", ".xlsx", ".txt", ".zip"
+        ".doc", ".docx", ".xls", ".xlsx", ".txt", ".md", ".markdown", ".zip"
     ]
     UPLOAD_DIR: str = "uploads"
     
@@ -165,6 +165,27 @@ class Settings(BaseSettings):
     AI_TEMPERATURE: float = 0.2
     AI_MODEL_GROQ: str = "llama-3.1-70b-versatile"
     AI_MODEL_OPENAI: str = "gpt-4o-mini"
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    OPENAI_EMBEDDING_DIMENSIONS: int = 1536
+
+    # Central RAG foundation
+    RAG_ENABLED: bool = False
+    QDRANT_URL: Optional[str] = None
+    QDRANT_API_KEY: Optional[str] = None
+    QDRANT_COLLECTION: str = "syntask_rag_text_embedding_3_small_1536"
+    QDRANT_DEPLOYMENT_MODE: str = "shared"  # shared, dedicated, customer_hosted
+    QDRANT_TIMEOUT_SECONDS: int = 10
+    RAG_MAX_UPLOAD_SIZE: int = 26214400
+    RAG_PDF_MAX_PAGES: int = 200
+    RAG_CHUNK_MAX_TOKENS: int = 700
+    RAG_CHUNK_OVERLAP_TOKENS: int = 80
+    RAG_RETRIEVAL_TOP_K: int = 5
+    RAG_CITATION_EXCERPT_CHARS: int = 600
+    RAG_AUDIT_RETENTION_DAYS: int = 90
+    RAG_WORKING_MEMORY_IDLE_TTL_SECONDS: int = 1800
+    RAG_WORKING_MEMORY_ABSOLUTE_TTL_SECONDS: int = 28800
+    RAG_LOG_RAW_CONTEXT: bool = False
+    RAG_LOG_FULL_PROMPTS: bool = False
 
     # Super Admin
     SUPER_ADMIN_EMAIL: str = Field(..., description="Super admin bootstrap email address.")
@@ -192,6 +213,9 @@ class Settings(BaseSettings):
 
         if errors:
             raise ValueError("Unsafe production configuration: " + "; ".join(errors))
+
+        if self.RAG_ENABLED and not self.QDRANT_URL:
+            raise ValueError("QDRANT_URL must be set when RAG_ENABLED is true in production")
 
         return self
     

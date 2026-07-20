@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.worker.tasks.webhook_tasks",
         "app.worker.tasks.creative_review_tasks",
         "app.worker.tasks.semantic_tasks",
+        "app.worker.tasks.rag_tasks",
         "app.worker.tasks.recruitment_inbox_tasks",
     ],
 )
