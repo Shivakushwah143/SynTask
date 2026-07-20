@@ -2,7 +2,7 @@
 
 Database: `alphanexis_task_management`
 
-This document is generated from all Beanie `Document` models under `backend/app/models`. Current code defines **52 unique MongoDB collection names** across **57 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **56 unique MongoDB collection names** across **61 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
 
 ## Collection Summary
 
@@ -24,6 +24,10 @@ This document is generated from all Beanie `Document` models under `backend/app/
 | `issue_links` | IssueLink | IssueLink persistence collection. |
 | `issue_types` | IssueType | IssueType persistence collection. |
 | `meetings` | Meeting | Meeting scheduling and Zoom metadata. |
+| `meta_integration_settings` | MetaIntegrationSettings | Tenant-scoped Meta connection state and encrypted tokens. |
+| `meta_marketing_insights` | MetaMarketingInsight | Read-only tenant campaign performance snapshots. |
+| `meta_sync_runs` | MetaSyncRun | Meta synchronization status, cursors, attempts, and redacted errors. |
+| `meta_webhook_events` | MetaWebhookEvent | Durable inbound Meta event inbox with idempotency and correlation IDs. |
 | `msas` | MSA | Master service agreements and signature workflow data. |
 | `notifications` | Notification | In-app notification records. |
 | `pages` | Page | Page persistence collection. |
