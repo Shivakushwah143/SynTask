@@ -1,7 +1,9 @@
 import httpx
 import pytest
+from datetime import datetime, timezone
 
 from app.integrations.meta.api import _settings_view
+from app.integrations.meta.api import _insights_payload, _iso_date
 from app.integrations.meta.client import MetaGraphClient, MetaGraphClientError
 
 
@@ -12,6 +14,46 @@ def test_empty_settings_view_never_contains_secrets():
     assert view["enabled"] is False
     assert "page_access_token_encrypted" not in view
     assert "system_user_token_encrypted" not in view
+
+
+def test_insights_payload_summarizes_marketing_metrics():
+    class Row:
+        campaign_id = "campaign-1"
+        campaign_name = "Campaign"
+        adset_id = "adset-1"
+        adset_name = "Ad set"
+        ad_id = "ad-1"
+        ad_name = "Ad"
+        date_start = datetime(2026, 7, 21, tzinfo=timezone.utc)
+        date_stop = datetime(2026, 7, 21, tzinfo=timezone.utc)
+        currency = "INR"
+        spend = 100
+        impressions = 1000
+        clicks = 50
+        leads = 4
+        conversions = 2
+        revenue = 400
+        cpl = 25
+        roas = 4
+
+    payload = _insights_payload([Row()])
+
+    assert payload["summary"] == {
+        "spend": 100.0,
+        "impressions": 1000,
+        "clicks": 50,
+        "leads": 4,
+        "conversions": 2,
+        "revenue": 400.0,
+        "cpl": 25.0,
+        "roas": 4.0,
+    }
+    assert payload["items"][0]["campaign_id"] == "campaign-1"
+
+
+def test_iso_date_rejects_ambiguous_dates():
+    with pytest.raises(Exception):
+        _iso_date("21-07-2026")
 
 
 @pytest.mark.asyncio

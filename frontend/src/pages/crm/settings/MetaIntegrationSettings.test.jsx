@@ -14,6 +14,27 @@ vi.mock('../../../api/meta', () => ({
       system_user_token_masked: null,
     }),
     getHealth: vi.fn().mockResolvedValue({ status: 'not_configured' }),
+    getInsights: vi.fn().mockResolvedValue({
+      summary: {
+        spend: 100,
+        impressions: 1000,
+        clicks: 50,
+        leads: 4,
+        cpl: 25,
+        roas: 4,
+      },
+      items: [{
+        campaign_id: 'campaign-1',
+        campaign_name: 'Launch campaign',
+        spend: 100,
+        clicks: 50,
+        leads: 4,
+        cpl: 25,
+      }],
+    }),
+    getSyncRuns: vi.fn().mockResolvedValue({
+      items: [{ status: 'completed', records_processed: 1 }],
+    }),
     updateSettings: vi.fn().mockResolvedValue({ enabled: true }),
     testConnection: vi.fn().mockResolvedValue({ status: 'connected' }),
     syncNow: vi.fn().mockResolvedValue({ status: 'queued' }),
@@ -39,6 +60,9 @@ describe('MetaIntegrationSettings', () => {
     renderSettings()
     expect(await screen.findByText('••••1234')).toBeInTheDocument()
     expect(screen.getByText('app-1')).toBeInTheDocument()
+    expect(screen.getByText('Marketing performance')).toBeInTheDocument()
+    expect(screen.getByText('Launch campaign')).toBeInTheDocument()
+    expect(screen.getByText(/completed \(1 records\)/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /test connection/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sync now/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^send/i })).not.toBeInTheDocument()

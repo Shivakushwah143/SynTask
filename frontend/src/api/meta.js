@@ -6,6 +6,8 @@ export const metaApi = {
   getSettings: (companyId) => axios.get('/integrations/meta/settings', { params: params(companyId) }),
   updateSettings: (payload, companyId) => axios.put('/integrations/meta/settings', payload, { params: params(companyId) }),
   getHealth: (companyId) => axios.get('/integrations/meta/health', { params: params(companyId) }),
+  getInsights: (companyId) => axios.get('/integrations/meta/insights', { params: params(companyId) }),
+  getSyncRuns: (companyId) => axios.get('/integrations/meta/sync-runs', { params: params(companyId) }),
   testConnection: (companyId) => axios.post('/integrations/meta/test-connection', null, { params: params(companyId) }),
   syncNow: (companyId) => axios.post('/integrations/meta/sync', null, { params: params(companyId) }),
 }

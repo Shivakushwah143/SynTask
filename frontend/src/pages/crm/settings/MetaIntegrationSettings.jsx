@@ -31,10 +31,14 @@ export function MetaIntegrationSettings() {
   const tenantSelected = user?.role !== 'super_admin' || Boolean(companyId)
   const settingsQuery = useQuery(['meta-settings', companyId], () => metaApi.getSettings(companyId), { enabled: allowed && tenantSelected, retry: false })
   const healthQuery = useQuery(['meta-health', companyId], () => metaApi.getHealth(companyId), { enabled: allowed && tenantSelected, retry: false })
+  const insightsQuery = useQuery(['meta-insights', companyId], () => metaApi.getInsights(companyId), { enabled: allowed && tenantSelected, retry: false })
+  const runsQuery = useQuery(['meta-sync-runs', companyId], () => metaApi.getSyncRuns(companyId), { enabled: allowed && tenantSelected, retry: false })
   const testMutation = useMutation(() => metaApi.testConnection(companyId), {
     onSuccess: (data) => {
       setResult(data?.status === 'connected' ? 'Connected' : 'Connection test completed')
       queryClient.invalidateQueries(['meta-health', companyId])
+      queryClient.invalidateQueries(['meta-insights', companyId])
+      queryClient.invalidateQueries(['meta-sync-runs', companyId])
     },
     onError: () => setResult('Connection test failed'),
   })
@@ -52,6 +56,7 @@ export function MetaIntegrationSettings() {
     onSuccess: () => {
       toast.success('Meta sync queued')
       setResult('Sync queued')
+      queryClient.invalidateQueries(['meta-sync-runs', companyId])
     },
     onError: () => setResult('Sync could not be queued'),
   })
@@ -135,6 +140,12 @@ export function MetaIntegrationSettings() {
         <Button type="button" variant="secondary" onClick={() => syncMutation.mutate()} disabled={syncMutation.isLoading}>Sync Now</Button>
       </div>
       {result ? <p className="mt-3 text-sm text-slate-700" role="status">{result}</p> : null}
+      <MetaInsightsPanel
+        insights={insightsQuery.data}
+        runs={runsQuery.data?.items || []}
+        isLoading={insightsQuery.isLoading || runsQuery.isLoading}
+        isError={insightsQuery.isError || runsQuery.isError}
+      />
     </section>
   )
 }
@@ -158,4 +169,70 @@ function Toggle({ label, checked, onChange }) {
       {label}
     </label>
   )
+}
+
+function MetaInsightsPanel({ insights, runs, isLoading, isError }) {
+  if (isLoading) return <div className="mt-6 text-sm text-slate-500">Loading marketing insights...</div>
+  if (isError) return <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">Marketing insights could not be loaded.</div>
+  const summary = insights?.summary || {}
+  const items = insights?.items || []
+  return (
+    <div className="mt-6 border-t border-slate-200 pt-5">
+      <h3 className="text-base font-semibold text-slate-900">Marketing performance</h3>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <Metric label="Spend" value={money(summary.spend)} />
+        <Metric label="Impressions" value={number(summary.impressions)} />
+        <Metric label="Clicks" value={number(summary.clicks)} />
+        <Metric label="Leads" value={number(summary.leads)} />
+        <Metric label="CPL" value={money(summary.cpl)} />
+        <Metric label="ROAS" value={ratio(summary.roas)} />
+      </div>
+      <div className="mt-4 overflow-x-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead className="text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-2">Campaign</th>
+              <th className="px-3 py-2">Spend</th>
+              <th className="px-3 py-2">Clicks</th>
+              <th className="px-3 py-2">Leads</th>
+              <th className="px-3 py-2">CPL</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {items.slice(0, 5).map((item) => (
+              <tr key={`${item.campaign_id}-${item.ad_id || 'campaign'}-${item.date_start || ''}`}>
+                <td className="px-3 py-2 font-medium text-slate-900">{item.campaign_name || item.campaign_id}</td>
+                <td className="px-3 py-2">{money(item.spend)}</td>
+                <td className="px-3 py-2">{number(item.clicks)}</td>
+                <td className="px-3 py-2">{number(item.leads)}</td>
+                <td className="px-3 py-2">{money(item.cpl)}</td>
+              </tr>
+            ))}
+            {!items.length ? (
+              <tr><td className="px-3 py-4 text-slate-500" colSpan={5}>No marketing data synced yet.</td></tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-4 text-sm text-slate-600">
+        Last run: {runs[0] ? `${runs[0].status} (${runs[0].records_processed || 0} records)` : 'No sync runs yet'}
+      </div>
+    </div>
+  )
+}
+
+function Metric({ label, value }) {
+  return <div className="rounded-lg border border-slate-200 p-3"><div className="text-xs text-slate-500">{label}</div><div className="mt-1 text-sm font-semibold text-slate-900">{value}</div></div>
+}
+
+function number(value) {
+  return value || value === 0 ? Number(value).toLocaleString() : 'Not available'
+}
+
+function money(value) {
+  return value || value === 0 ? Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 }) : 'Not available'
+}
+
+function ratio(value) {
+  return value || value === 0 ? `${Number(value).toFixed(2)}x` : 'Not available'
 }

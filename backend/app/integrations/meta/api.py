@@ -1,7 +1,7 @@
 """Public, signed Meta webhook routes."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from beanie import PydanticObjectId
@@ -14,7 +14,7 @@ from app.api.dependencies import get_current_company_admin
 from app.integrations.meta.config_service import MetaConfigurationError, resolve_target_company_id, validate_activation
 from app.integrations.meta.config_service import MetaIntegrationConfigService, mask_secret
 from app.integrations.meta.client import MetaGraphClient, MetaGraphClientError
-from app.integrations.meta.models import MetaIntegrationSettings
+from app.integrations.meta.models import MetaIntegrationSettings, MetaMarketingInsight, MetaSyncRun
 from app.integrations.meta.schemas import MetaIntegrationSettingsUpdate
 from app.models.user import User, UserStatus
 from app.integrations.meta.signatures import verify_meta_signature, verify_verify_token
@@ -79,6 +79,58 @@ def _settings_view(config: MetaIntegrationSettings | None, company_id: str) -> d
     }
 
 
+def _iso_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date must use YYYY-MM-DD") from None
+
+
+def _insights_payload(rows: list[MetaMarketingInsight]) -> dict:
+    spend = round(sum(float(row.spend or 0) for row in rows), 2)
+    impressions = sum(int(row.impressions or 0) for row in rows)
+    clicks = sum(int(row.clicks or 0) for row in rows)
+    leads = sum(int(row.leads or 0) for row in rows)
+    conversions = sum(int(row.conversions or 0) for row in rows)
+    revenue_values = [float(row.revenue) for row in rows if row.revenue is not None]
+    revenue = round(sum(revenue_values), 2) if revenue_values else None
+    return {
+        "summary": {
+            "spend": spend,
+            "impressions": impressions,
+            "clicks": clicks,
+            "leads": leads,
+            "conversions": conversions,
+            "revenue": revenue,
+            "cpl": round(spend / leads, 2) if leads > 0 else None,
+            "roas": round(revenue / spend, 2) if revenue is not None and spend > 0 else None,
+        },
+        "items": [
+            {
+                "campaign_id": row.campaign_id,
+                "campaign_name": row.campaign_name,
+                "adset_id": row.adset_id,
+                "adset_name": row.adset_name,
+                "ad_id": row.ad_id,
+                "ad_name": row.ad_name,
+                "date_start": row.date_start,
+                "date_stop": row.date_stop,
+                "currency": row.currency,
+                "spend": row.spend,
+                "impressions": row.impressions,
+                "clicks": row.clicks,
+                "leads": row.leads,
+                "conversions": row.conversions,
+                "cpl": row.cpl,
+                "roas": row.roas,
+            }
+            for row in rows
+        ],
+    }
+
+
 @router.get("/settings")
 async def get_meta_settings(
     company_id: str | None = Query(default=None),
@@ -89,6 +141,64 @@ async def get_meta_settings(
     response = _settings_view(config, target)
     response["app_id"] = settings.META_APP_ID
     return response
+
+
+@router.get("/insights")
+async def get_meta_insights(
+    company_id: str | None = Query(default=None),
+    since: str | None = Query(default=None),
+    until: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    current_user=Depends(get_current_company_admin),
+):
+    target = _target_company(current_user, company_id)
+    query: dict = {"company_id": target}
+    since_date = _iso_date(since)
+    until_date = _iso_date(until)
+    if since_date or until_date:
+        window = {}
+        if since_date:
+            window["$gte"] = since_date
+        if until_date:
+            window["$lte"] = until_date
+        query["date_start"] = window
+    rows = await (
+        MetaMarketingInsight.find(query)
+        .sort("-date_start")
+        .limit(limit)
+        .to_list()
+    )
+    return _insights_payload(rows)
+
+
+@router.get("/sync-runs")
+async def get_meta_sync_runs(
+    company_id: str | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=50),
+    current_user=Depends(get_current_company_admin),
+):
+    target = _target_company(current_user, company_id)
+    runs = await (
+        MetaSyncRun.find({"company_id": target, "sync_type": "insights"})
+        .sort("-created_at")
+        .limit(limit)
+        .to_list()
+    )
+    return {
+        "items": [
+            {
+                "id": str(run.id),
+                "status": run.status,
+                "records_processed": run.records_processed,
+                "window_since": run.window_since,
+                "window_until": run.window_until,
+                "error_code": run.error_code,
+                "created_at": run.created_at,
+                "completed_at": run.completed_at,
+            }
+            for run in runs
+        ]
+    }
 
 
 @router.put("/settings")
