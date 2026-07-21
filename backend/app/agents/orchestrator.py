@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Iterable
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -18,9 +18,14 @@ from app.agents.state_machine import AgentRunStateMachine
 from app.agents.tools import tool_registry
 from app.ai.provider_router import ProviderRouter
 from app.models.agent import ActionProposal, AgentRun, AgentRunEvent, AgentRunState
+from app.models.eod import EODReport
+from app.models.leave import LeaveRequest
+from app.models.project import Project
+from app.models.task import Task
 from app.models.user import User
 from app.rag.context_package import ContextPackageBuilder, sanitize_for_model_context
 from app.rag.permissions import RAGScope
+from app.services.task_performance_metrics import TaskPerformanceMetricService
 
 
 SENSITIVE_METADATA_KEYS = {"prompt", "raw_context", "context_package", "secret", "password", "token"}
@@ -122,6 +127,12 @@ class AgentOrchestrator:
                 return self._response(run)
             await self._advance(run, AgentRunState.PROCESSING, actor_id=str(current_user.id), reason="provider")
             model_context = sanitize_for_model_context(package).model_dump(mode="json")
+            model_context = await self._provider_context_for_run(
+                definition=definition,
+                context=model_context,
+                payload=payload,
+                current_user=current_user,
+            )
             tool_registry.assert_no_unregistered_tools(definition.allowed_tool_ids)
             estimated_tokens = max(1, len(payload.query.split()) + len(str(model_context).split()))
             reservation = self.budget_controller.reserve(
@@ -147,7 +158,12 @@ class AgentOrchestrator:
             )
             run.estimated_cost = result.estimated_cost
             await self._advance(run, AgentRunState.VALIDATING, actor_id=str(current_user.id), reason="validate")
-            parsed = self._validate_provider_output(definition=definition, parsed=result.parsed or {}, input_payload=payload.input_payload)
+            parsed = self._validate_provider_output(
+                definition=definition,
+                parsed=result.parsed or {},
+                input_payload=payload.input_payload,
+                immutable_context=model_context.get("task_performance"),
+            )
             run.sanitized_result = self._sanitize_result(parsed)
             if parsed.get("proposed_actions"):
                 proposal_ids = await self._create_proposals(run=run, actions=parsed.get("proposed_actions") or [], definition=definition)
@@ -214,13 +230,13 @@ class AgentOrchestrator:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Agent tool policy invalid")
 
     async def _handle_repair_or_fail(self, *, run: AgentRun, current_user: User, reason: str) -> None:
+        run.error_category = reason
         try:
             self.state_machine.validate_repair_allowed(run)
             await self._advance(run, AgentRunState.REPAIRING, actor_id=str(current_user.id), reason=reason)
             run.repair_attempts += 1
             await self._advance(run, AgentRunState.FAILED, actor_id=str(current_user.id), reason="repair_failed")
         except Exception:
-            run.error_category = reason
             if run.state != AgentRunState.FAILED:
                 await self._advance(run, AgentRunState.FAILED, actor_id=str(current_user.id), reason=reason)
         await run.save()
@@ -281,13 +297,172 @@ class AgentOrchestrator:
             return TaskPerformanceAgentOutput
         return GenericAgentOutput
 
-    def _validate_provider_output(self, *, definition, parsed: dict[str, Any], input_payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _validate_provider_output(
+        self,
+        *,
+        definition,
+        parsed: dict[str, Any],
+        input_payload: dict[str, Any] | None = None,
+        immutable_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         parsed = self._apply_draft_warning_guards(definition=definition, parsed=parsed, input_payload=input_payload or {})
         schema = self._output_schema(definition)
         validated = schema.model_validate(parsed).model_dump(mode="json")
+        if definition.output_schema_version == TASK_PERFORMANCE_OUTPUT_SCHEMA_VERSION:
+            self._validate_task_performance_immutable_output(validated=validated, immutable_context=immutable_context or {})
         if definition.approval_policy.get("draft_only") is True and validated.get("proposed_actions"):
             raise ValueError("Draft-only agents cannot create proposed actions")
         return validated
+
+    def _provider_context(self, *, definition, context: dict[str, Any], payload: AgentRunCreateRequest, current_user: User) -> dict[str, Any]:
+        if definition.output_schema_version != TASK_PERFORMANCE_OUTPUT_SCHEMA_VERSION:
+            return context
+        immutable = self._task_performance_immutable_context(payload=payload, current_user=current_user)
+        return {**context, "task_performance": immutable}
+
+    async def _provider_context_for_run(self, *, definition, context: dict[str, Any], payload: AgentRunCreateRequest, current_user: User) -> dict[str, Any]:
+        if definition.output_schema_version != TASK_PERFORMANCE_OUTPUT_SCHEMA_VERSION:
+            return context
+        records = await self._task_performance_records(payload=payload, current_user=current_user)
+        immutable = self._task_performance_immutable_context(
+            payload=payload,
+            current_user=current_user,
+            tasks=records["tasks"],
+            eod_reports=records["eod_reports"],
+            leave_requests=records["leave_requests"],
+            authorized_user_ids=records["authorized_user_ids"],
+        )
+        return {**context, "task_performance": immutable}
+
+    async def _task_performance_records(self, *, payload: AgentRunCreateRequest, current_user: User) -> dict[str, list[Any]]:
+        input_payload = payload.input_payload or {}
+        scope = input_payload.get("scope") or {}
+        authorized_user_ids = await self._task_performance_authorized_user_ids(current_user=current_user, scope=scope)
+        if not authorized_user_ids:
+            return {"tasks": [], "eod_reports": [], "leave_requests": [], "authorized_user_ids": []}
+        task_query: dict[str, Any] = {"company_id": current_user.company_id, "assigned_to": {"$in": sorted(authorized_user_ids)}}
+        if scope.get("project_id"):
+            task_query["project_id"] = scope["project_id"]
+        if scope.get("department_id"):
+            task_query["department_id"] = scope["department_id"]
+        return {
+            "tasks": await Task.find(task_query).to_list(),
+            "eod_reports": await EODReport.find({"company_id": current_user.company_id, "employee_id": {"$in": sorted(authorized_user_ids)}}).to_list(),
+            "leave_requests": await LeaveRequest.find({"company_id": current_user.company_id, "employee_id": {"$in": sorted(authorized_user_ids)}}).to_list(),
+            "authorized_user_ids": sorted(authorized_user_ids),
+        }
+
+    async def _task_performance_authorized_user_ids(self, *, current_user: User, scope: dict[str, Any]) -> set[str]:
+        tenant_id = current_user.company_id
+        if scope.get("user_id"):
+            user = await User.find_one({"company_id": tenant_id, "_id": scope["user_id"]})
+            return {str(user.id)} if user else set()
+        if scope.get("project_id"):
+            project = await Project.find_one(Project.company_id == tenant_id, Project.project_id == scope["project_id"])
+            if not project:
+                return set()
+            return {str(user_id) for user_id in [project.lead_id, project.assigned_to, *project.assigned_user_ids, *project.team_member_ids] if user_id}
+        if scope.get("department_id"):
+            users = await User.find({"company_id": tenant_id, "department_id": scope["department_id"]}).to_list()
+            return {str(user.id) for user in users}
+        users = await User.find(User.company_id == tenant_id).to_list()
+        return {str(user.id) for user in users}
+
+    def _task_performance_immutable_context(
+        self,
+        *,
+        payload: AgentRunCreateRequest,
+        current_user: User,
+        tasks: Iterable[Any] = (),
+        eod_reports: Iterable[Any] = (),
+        leave_requests: Iterable[Any] = (),
+        authorized_user_ids: Iterable[str] | None = None,
+    ) -> dict[str, Any]:
+        input_payload = payload.input_payload or {}
+        metric_keys = input_payload.get("metric_keys") or []
+        date_range = input_payload.get("date_range") or {}
+        preferences = input_payload.get("preferences") or {}
+        scope = input_payload.get("scope") or {}
+        timezone_name = str(preferences.get("timezone") or "UTC")
+        service = TaskPerformanceMetricService(
+            tenant_id=str(current_user.company_id),
+            authorized_user_ids=list(authorized_user_ids or [str(getattr(current_user, "id", "")), str(scope.get("user_id") or "")]),
+        )
+        metric_results = service.calculate(metric_keys, tasks=tasks, eod_reports=eod_reports, leave_requests=leave_requests)
+        metrics = [item.as_dict() for item in metric_results.values()]
+        for metric in metrics:
+            metric["period"] = {
+                "start": str(date_range.get("start") or ""),
+                "end": str(date_range.get("end") or ""),
+            }
+            metric["timezone"] = timezone_name
+            metric["freshness"] = {"as_of": service.generated_at.isoformat(), "stale": False}
+        return {
+            "immutable": True,
+            "instruction": (
+                "Explain these verified deterministic metrics only. Do not recalculate, replace, round differently, omit, "
+                "reorder deceptively, or alter metric values. Separate verified metrics, employee-reported EOD context, "
+                "missing/conflicting data, hypotheses, and proposal-only recommendations."
+            ),
+            "metrics": metrics,
+            "employee_reported_context": [],
+            "missing_and_conflicting_data": self._task_performance_data_quality(metrics),
+            "period": {
+                "start": str(date_range.get("start") or ""),
+                "end": str(date_range.get("end") or ""),
+                "timezone": timezone_name,
+            },
+        }
+
+    def _task_performance_data_quality(self, metrics: list[dict[str, Any]]) -> dict[str, list[str]]:
+        return {
+            "missing_fields": sorted({field for metric in metrics for field in (metric.get("missing_fields") or [])}),
+            "conflicts": sorted({item for metric in metrics for item in (metric.get("conflicts") or [])}),
+            "warnings": sorted({item for metric in metrics for item in (metric.get("warnings") or [])}),
+        }
+
+    def _validate_task_performance_immutable_output(self, *, validated: dict[str, Any], immutable_context: dict[str, Any]) -> None:
+        expected_metrics = immutable_context.get("metrics") or []
+        actual_metrics = validated.get("metrics") or []
+        expected_by_key = {item["key"]: item for item in expected_metrics}
+        actual_by_key = {item.get("key"): item for item in actual_metrics}
+        if set(expected_by_key) != set(actual_by_key):
+            raise ValueError("Task Performance output omitted or added immutable metrics")
+        expected_keys = [item.get("key") for item in expected_metrics]
+        actual_keys = [item.get("key") for item in actual_metrics]
+        if expected_keys != actual_keys:
+            raise ValueError("Task Performance output changed immutable metric order")
+        immutable_fields = [
+            "key",
+            "version",
+            "status",
+            "formula",
+            "value",
+            "numerator",
+            "denominator",
+            "sample_size",
+            "excluded_record_count",
+            "missing_fields",
+            "conflicts",
+            "warnings",
+            "confidence",
+            "source_record_references",
+            "unit",
+            "freshness",
+            "period",
+            "timezone",
+        ]
+        for key, expected in expected_by_key.items():
+            actual = actual_by_key[key]
+            for field in immutable_fields:
+                if actual.get(field) != expected.get(field):
+                    raise ValueError(f"Task Performance provider output changed immutable metric {key}.{field}")
+        for insight in validated.get("insights") or []:
+            if insight.get("fact_or_hypothesis") not in {"fact", "hypothesis"}:
+                raise ValueError("Task Performance insight must label fact_or_hypothesis")
+        for recommendation in validated.get("recommendations") or []:
+            if recommendation.get("mutation_status") != "proposal_only":
+                raise ValueError("Task Performance recommendations must remain proposal_only")
 
     def _apply_draft_warning_guards(self, *, definition, parsed: dict[str, Any], input_payload: dict[str, Any]) -> dict[str, Any]:
         if definition.output_schema_version != EMAIL_DRAFT_OUTPUT_SCHEMA_VERSION:

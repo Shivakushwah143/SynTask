@@ -171,6 +171,10 @@ class TaskPerformanceMetricOutput(BaseModel):
     warnings: list[str] = Field(default_factory=list, max_length=50)
     confidence: float = Field(ge=0.0, le=1.0)
     source_record_references: list[dict[str, str]] = Field(default_factory=list, max_length=200)
+    unit: Optional[str] = None
+    freshness: dict[str, object] = Field(default_factory=dict)
+    period: dict[str, str] = Field(default_factory=dict)
+    timezone: str = "UTC"
 
 
 class TaskPerformanceInsight(BaseModel):
@@ -295,4 +299,3 @@ def task_performance_agent_definition(created_by: str = "system") -> AgentDefini
         created_by=created_by,
         retired_at=None,
     )
-

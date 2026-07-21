@@ -1448,7 +1448,7 @@ Milestone 9 passes only when:
 * [x] Permission and hierarchy validation implemented.
 * [x] ContextPackage profile implemented.
 * [x] RAG policy/definition retrieval implemented.
-* [ ] Explanation-only ProviderRouter flow implemented.
+* [x] Explanation-only ProviderRouter flow implemented.
 * [x] Read-only API implemented.
 * [x] Run retrieval/history implemented where applicable.
 * [x] Proposal-only recommendation handling implemented.
@@ -1464,7 +1464,7 @@ Milestone 9 passes only when:
 * [x] Frontend tests passing.
 * [x] Evaluation dataset implemented.
 * [x] Evaluation validation tests passing.
-* [ ] Real-service integration tests passing.
+* [x] Real-service integration tests passing.
 * [ ] Milestone 6, 7, and 8 regression tests passing.
 * [ ] Full backend/frontend verification completed.
 * [ ] Mutation-count proof completed.
@@ -1782,6 +1782,13 @@ Completed on 2026-07-21:
 * API scope validation added for tenant, role, department, project, hierarchy, and individual user scope.
 * Context/RAG profile added: `task_performance_policy` / `task-performance-policy-v1`.
 * Orchestrator output-schema routing added for `task-performance-output-v1`.
+* Explanation-only ProviderRouter flow implemented. Deterministic metric-service results are injected into provider context as immutable verified metrics for Task Performance runs only.
+* Provider context separates verified deterministic metrics, employee-reported EOD context, missing/conflicting data, hypotheses instructions, and proposal-only recommendation instructions.
+* Immutable metric validation preserves metric key, version, status, formula, numerator, denominator, value, unit, sample size, exclusions, missing fields, conflicts, warnings, freshness, confidence, period, timezone, and source record references.
+* Provider output validation rejects omitted metrics, added metrics, reordered metrics, changed canonical values, changed metadata, non-`proposal_only` recommendations, and prohibited HR decision language. One repair attempt maximum remains enforced by the existing orchestrator repair gate.
+* Real-service Task Performance integration tests added for MongoDB-backed task, EOD, leave, project, department, user, agent-run, event, idempotency, and proposal-only behavior.
+* Real-service Qdrant policy retrieval test added to prove approved RAG guidance cannot override immutable deterministic metric values.
+* Redis was not used in this stage because Working Memory is not part of this checklist item.
 * AI Hub UI entry added with scope, date, metric selectors, result view, data-quality/fairness warnings, and no mutation/ranking/employment-decision controls.
 * Evaluation dataset added at `backend/tests/agents/evaluation/task_performance_eval_cases.json`.
 
@@ -1795,6 +1802,7 @@ Files changed:
 * `backend/app/rag/retrieval_profiles.py`
 * `backend/tests/services/test_task_performance_metrics.py`
 * `backend/tests/agents/test_task_performance_contract.py`
+* `backend/tests/agents/integration/test_task_performance_real_services.py`
 * `backend/tests/agents/test_task_performance_api_boundaries.py`
 * `backend/tests/agents/test_task_performance_evaluation_dataset.py`
 * `backend/tests/agents/evaluation/task_performance_eval_cases.json`
@@ -1803,6 +1811,10 @@ Files changed:
 * `docs/milestones/MILESTONE_09_TASK_PERFORMANCE_INSIGHTS_AGENT.md`
 
 Focused tests:
+
+* `python -m pytest backend\tests\agents\test_task_performance_contract.py backend\tests\agents\test_task_performance_api_boundaries.py backend\tests\agents\test_task_performance_evaluation_dataset.py backend\tests\services\test_task_performance_metrics.py -q` - 20 passed, 6 warnings in 17.85s.
+* `$env:RUN_MONGO_INTEGRATION='1'; $env:RUN_QDRANT_INTEGRATION='1'; python -m pytest backend\tests\agents\integration\test_task_performance_real_services.py -q` - 3 passed, 90 warnings in 59.77s.
+* `python -m pytest backend\tests\agents\test_task_performance_contract.py backend\tests\agents\test_task_performance_api_boundaries.py backend\tests\agents\test_task_performance_evaluation_dataset.py backend\tests\services\test_task_performance_metrics.py -q` - 20 passed, 6 warnings in 16.85s.
 
 * `python -m pytest backend\tests\services\test_task_performance_metrics.py backend\tests\agents\test_task_performance_contract.py backend\tests\agents\test_task_performance_api_boundaries.py backend\tests\agents\test_task_performance_evaluation_dataset.py -q` — 15 passed, 3 warnings in 17.45s.
 * `npm.cmd -C frontend run build` — passed in 17.49s.
@@ -1819,10 +1831,8 @@ Blocked verification:
 
 Known blockers:
 
-* Explanation-only ProviderRouter flow is not fully complete because current run path can validate Task Performance output schema, but does not yet inject deterministic metric-service results into the provider prompt/context as immutable verified metrics.
 * Full backend suite remains failing.
 * Frontend lint remains failing due existing unrelated lint errors.
-* Real-service verification has not passed.
 * Milestone 8 remains blocked pending real-service and full-suite verification.
 
 For every completed checklist item record:
