@@ -33,7 +33,7 @@ Do not duplicate or replace canonical documentation.
 * Shared Agent Platform: Completed in Milestone 6.
 * Read-only Project Agent: Completed in Milestone 7.
 * General Email Draft Agent: Blocked in Milestone 8 pending real-service and full-suite verification.
-* Task Performance Insights Agent: Planned for Milestone 9.
+* Task Performance Insights Agent: In Progress in Milestone 9.
 
 Search existing documentation for outdated milestone status tables and update them consistently.
 
@@ -45,7 +45,7 @@ Agent architecture planning: Complete
 Shared Agent Platform: Completed — Milestone 6
 Project Agent: Completed — Milestone 7 read-only pilot
 General Email Draft Agent: Blocked — Milestone 8 pending real-service and full-suite verification
-Task Performance Insights Agent: Planned — Milestone 9
+Task Performance Insights Agent: In Progress — Milestone 9
 ```
 
 After Milestone 8 acceptance:
