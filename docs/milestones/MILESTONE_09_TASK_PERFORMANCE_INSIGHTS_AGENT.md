@@ -1,6 +1,6 @@
 # Milestone 09: Task Performance Insights Agent
 
-Status: In Progress
+Status: Blocked
 
 ## Objective
 
@@ -1427,43 +1427,43 @@ Milestone 9 passes only when:
 * [x] Repository and documentation preflight completed.
 * [x] Outdated milestone/status displays updated.
 * [x] Metric source models and permission paths inspected.
-* [ ] Metric dictionary finalized and versioned.
-* [ ] Deterministic metric service implemented.
-* [ ] Completion-rate metric implemented.
-* [ ] On-time completion metric implemented.
-* [ ] Overdue-rate metric implemented.
-* [ ] Blocked-task metric implemented.
-* [ ] Cycle-time metric implemented.
-* [ ] Estimate-variance metric implemented.
-* [ ] Workload-count metric implemented.
-* [ ] Workload-effort metric implemented.
-* [ ] EOD-completion metric implemented.
-* [ ] Task-to-EOD consistency metric implemented.
-* [ ] Dependency-delay metric implemented.
-* [ ] Reopen/rework metric implemented or safely unavailable.
-* [ ] Scope-change metric implemented or safely unavailable.
-* [ ] Agent definition implemented.
-* [ ] Request schema implemented.
-* [ ] Output schema implemented.
-* [ ] Permission and hierarchy validation implemented.
-* [ ] ContextPackage profile implemented.
-* [ ] RAG policy/definition retrieval implemented.
+* [x] Metric dictionary finalized and versioned.
+* [x] Deterministic metric service implemented.
+* [x] Completion-rate metric implemented.
+* [x] On-time completion metric implemented.
+* [x] Overdue-rate metric implemented.
+* [x] Blocked-task metric implemented.
+* [x] Cycle-time metric implemented.
+* [x] Estimate-variance metric implemented.
+* [x] Workload-count metric implemented.
+* [x] Workload-effort metric implemented.
+* [x] EOD-completion metric implemented.
+* [x] Task-to-EOD consistency metric implemented.
+* [x] Dependency-delay metric implemented.
+* [x] Reopen/rework metric implemented or safely unavailable.
+* [x] Scope-change metric implemented or safely unavailable.
+* [x] Agent definition implemented.
+* [x] Request schema implemented.
+* [x] Output schema implemented.
+* [x] Permission and hierarchy validation implemented.
+* [x] ContextPackage profile implemented.
+* [x] RAG policy/definition retrieval implemented.
 * [ ] Explanation-only ProviderRouter flow implemented.
-* [ ] Read-only API implemented.
-* [ ] Run retrieval/history implemented where applicable.
-* [ ] Proposal-only recommendation handling implemented.
-* [ ] Fairness and prohibited-decision controls implemented.
-* [ ] Metric unit tests passing.
-* [ ] Permission tests passing.
-* [ ] EOD conflict tests passing.
-* [ ] Fairness and safety tests passing.
-* [ ] Existing AI/Agents UI entry implemented.
-* [ ] Scope/date/metric selectors implemented.
-* [ ] Metric result view implemented.
-* [ ] Data-quality and fairness warnings implemented.
-* [ ] Frontend tests passing.
-* [ ] Evaluation dataset implemented.
-* [ ] Evaluation validation tests passing.
+* [x] Read-only API implemented.
+* [x] Run retrieval/history implemented where applicable.
+* [x] Proposal-only recommendation handling implemented.
+* [x] Fairness and prohibited-decision controls implemented.
+* [x] Metric unit tests passing.
+* [x] Permission tests passing.
+* [x] EOD conflict tests passing.
+* [x] Fairness and safety tests passing.
+* [x] Existing AI/Agents UI entry implemented.
+* [x] Scope/date/metric selectors implemented.
+* [x] Metric result view implemented.
+* [x] Data-quality and fairness warnings implemented.
+* [x] Frontend tests passing.
+* [x] Evaluation dataset implemented.
+* [x] Evaluation validation tests passing.
 * [ ] Real-service integration tests passing.
 * [ ] Milestone 6, 7, and 8 regression tests passing.
 * [ ] Full backend/frontend verification completed.
@@ -1587,6 +1587,243 @@ Implementation implications:
 Tests:
 
 * `python -m pytest backend\tests\api\test_task_role_visibility.py backend\tests\api\test_leave_workflow_permissions.py backend\tests\test_eod_service.py backend\tests\test_rbac_visibility.py -q` — 29 passed, 3 warnings in 7.18s.
+
+### Metric Dictionary Finalized and Versioned
+
+Completed on 2026-07-21.
+
+Dictionary version: `task_performance_metrics.v1`
+
+Dictionary invariants:
+
+* Deterministic, read-only metrics only.
+* All source records require authorization before calculation.
+* Tenant boundary is `company_id`; agent tenant value must come from authenticated user context.
+* EOD text and EOD task references are employee-reported context, not canonical task truth.
+* Approved leave is non-punitive exclusion/context.
+* Attendance is availability/context only, not productivity scoring.
+* Missing values remain missing and never become zero.
+* Unsupported metrics return `unavailable`, not estimates.
+* No employee rankings, secret scores, protected-characteristic analysis, attendance-only scoring, or employment-decision support.
+
+Final initial metric dictionary:
+
+1. `task_completion_rate.v1`
+   * Formula: completed eligible assigned tasks / total eligible assigned tasks.
+   * Eligible records: authorized `Task` records with `company_id`, `assigned_to`, and date-range membership by `completed_at`, `due_date`, `start_date`, `created_at`, or `updated_at` according to requested period mode.
+   * Exclusions: cancelled tasks; unassigned tasks; unauthorized records.
+   * Required fields: `company_id`, `assigned_to`, `status`.
+   * Missing-data behavior: unavailable when no eligible assigned tasks; report missing assignee/date fields.
+   * Timezone behavior: date-range comparisons use tenant timezone once configured; stored datetimes must be normalized before comparison.
+   * Confidence behavior: high when denominator > 0 and required fields exist; lower when date membership uses fallback fields.
+   * Availability: available.
+
+2. `task_on_time_completion_rate.v1`
+   * Formula: completed tasks with `completed_at <= due_date` / completed tasks with due dates.
+   * Eligible records: authorized completed `Task` records with `due_date`.
+   * Exclusions: cancelled tasks; completed tasks without `due_date`; tasks without `completed_at`; unauthorized records.
+   * Required fields: `company_id`, `assigned_to`, `status`, `due_date`, `completed_at`.
+   * Missing-data behavior: unavailable when denominator is zero; report missing `due_date` and `completed_at`.
+   * Timezone behavior: compare normalized `completed_at` and `due_date` in tenant timezone.
+   * Confidence behavior: high when due and completion timestamps exist; lower when approved extension evidence is unavailable or incomplete.
+   * Availability: available with caveat.
+
+3. `task_overdue_rate.v1`
+   * Formula: open overdue tasks / open tasks with due dates.
+   * Eligible records: authorized `Task` records where status is not completed or cancelled and `due_date` exists.
+   * Exclusions: completed tasks; cancelled tasks; open tasks without `due_date`; unauthorized records.
+   * Required fields: `company_id`, `assigned_to`, `status`, `due_date`.
+   * Missing-data behavior: unavailable when no open tasks with due dates; report missing due dates.
+   * Timezone behavior: overdue comparison uses tenant-local current time.
+   * Confidence behavior: lower when blocked/dependency data is missing.
+   * Availability: available.
+
+4. `blocked_task_rate.v1`
+   * Formula: blocked eligible tasks / eligible tasks.
+   * Eligible records: authorized non-cancelled `Task` records.
+   * Exclusions: cancelled tasks; unauthorized records.
+   * Required fields: `company_id`, `assigned_to`, `status`, `dependencies`, `health_status`; EOD `blockers` only as employee-reported context.
+   * Missing-data behavior: unavailable when no deterministic blocker rule can identify blocked state.
+   * Timezone behavior: date-range membership follows task date fields in tenant timezone.
+   * Confidence behavior: unavailable/low without canonical blocker state; EOD-only blockers cannot make numerator.
+   * Availability: unavailable for canonical rate.
+
+5. `task_cycle_time.v1`
+   * Formula: `completed_at - start_timestamp`.
+   * Eligible records: authorized completed `Task` records with `completed_at` and reliable `start_date`.
+   * Exclusions: cancelled tasks; tasks without `completed_at`; tasks without reliable `start_date`; unauthorized records.
+   * Required fields: `company_id`, `assigned_to`, `status`, `start_date`, `completed_at`.
+   * Missing-data behavior: unavailable for records missing start or completion timestamps; report exclusion counts.
+   * Timezone behavior: compare normalized timestamps in tenant timezone.
+   * Confidence behavior: reduced when `start_date` is planned date rather than first in-progress timestamp.
+   * Availability: available with caveat.
+
+6. `estimate_variance_hours.v1`
+   * Formula: `actual_hours - estimated_hours`.
+   * Eligible records: authorized `Task` records with comparable hour estimates and actuals.
+   * Exclusions: records missing either field; story-point-only tasks; cancelled tasks; unauthorized records.
+   * Required fields: `company_id`, `assigned_to`, `estimated_hours`, `actual_hours`.
+   * Missing-data behavior: unavailable when no comparable hour records; report missing estimates/actuals.
+   * Timezone behavior: date-range membership follows task date fields in tenant timezone.
+   * Confidence behavior: high when both fields exist; lower when `actual_hours` lacks audit detail.
+   * Availability: available.
+
+7. `estimate_variance_story_points.v1`
+   * Formula: unavailable because no actual story-point field exists.
+   * Eligible records: none for variance.
+   * Exclusions: all story-point-only variance requests.
+   * Required fields: `story_points` plus confirmed comparable actual story-point field; actual field absent.
+   * Missing-data behavior: return unavailable with missing actual story-point field.
+   * Timezone behavior: not applicable until available.
+   * Confidence behavior: unavailable.
+   * Availability: unavailable.
+
+8. `workload_count.v1`
+   * Formula: count of active assigned tasks per authorized user.
+   * Eligible records: authorized `Task` records with `assigned_to` and status not completed/cancelled.
+   * Exclusions: completed tasks; cancelled tasks; unassigned tasks for per-user count; unauthorized records.
+   * Required fields: `company_id`, `assigned_to`, `status`.
+   * Missing-data behavior: unassigned active tasks reported separately, not assigned to a user.
+   * Timezone behavior: current-state metric; generated timestamp uses tenant timezone.
+   * Confidence behavior: high when assignments exist; lower when task complexity fields are missing.
+   * Availability: available.
+
+9. `workload_effort_hours.v1`
+   * Formula: sum of `estimated_hours` for active assigned tasks per authorized user.
+   * Eligible records: authorized active assigned `Task` records with `estimated_hours`.
+   * Exclusions: completed tasks; cancelled tasks; tasks missing `estimated_hours`; unauthorized records.
+   * Required fields: `company_id`, `assigned_to`, `status`, `estimated_hours`.
+   * Missing-data behavior: unavailable for users with no estimated active tasks; report active tasks missing estimates.
+   * Timezone behavior: current-state metric; generated timestamp uses tenant timezone.
+   * Confidence behavior: lower when many active tasks lack estimates.
+   * Availability: available.
+
+10. `workload_effort_story_points.v1`
+    * Formula: sum of `story_points` for active assigned tasks per authorized user.
+    * Eligible records: authorized active assigned `Task` records with `story_points`.
+    * Exclusions: completed tasks; cancelled tasks; tasks missing `story_points`; unauthorized records.
+    * Required fields: `company_id`, `assigned_to`, `status`, `story_points`.
+    * Missing-data behavior: unavailable for users with no story-pointed active tasks; report active tasks missing story points.
+    * Timezone behavior: current-state metric; generated timestamp uses tenant timezone.
+    * Confidence behavior: lower when many active tasks lack story points.
+    * Availability: available.
+
+11. `eod_completion_rate.v1`
+    * Formula: submitted expected EODs / expected working days.
+    * Eligible records: authorized active users and `EODReport` rows within date range.
+    * Exclusions: approved leave days; future dates; unauthorized users.
+    * Required fields: `User.company_id`, `User.status`, `EODReport.employee_id`, `EODReport.report_date`, `LeaveRequest.employee_id`, `LeaveRequest.status`, `LeaveRequest.start_date`, `LeaveRequest.end_date`.
+    * Missing-data behavior: unavailable when expected working-day calendar is not configured.
+    * Timezone behavior: report dates use tenant-local dates.
+    * Confidence behavior: unavailable until working-day/holiday policy is confirmed; approved leave reduces expected days, never performance.
+    * Availability: unavailable for canonical rate.
+
+12. `task_eod_consistency.v1`
+    * Formula: compare EOD task-reference lists and EOD reported text against authorized canonical `Task` records.
+    * Eligible records: authorized `EODReport` rows and referenced authorized `Task` records.
+    * Exclusions: unauthorized EOD/task records; missing task references remain missing.
+    * Required fields: `EODReport.completed_task_ids`, `in_progress_task_ids`, `assigned_today_task_ids`, `worked_on`, `blockers`, `Task.id`, `Task.status`, `Task.assigned_to`, `Task.company_id`.
+    * Missing-data behavior: report missing references and conflicts; do not overwrite task truth with EOD text.
+    * Timezone behavior: EOD `report_date` uses tenant-local date; task timestamps normalized when date comparisons are needed.
+    * Confidence behavior: lower when EOD text is vague or task references are missing.
+    * Availability: available as consistency/context metric.
+
+13. `dependency_delay_rate.v1`
+    * Formula: tasks delayed by incomplete dependencies / tasks with dependencies.
+    * Eligible records: authorized `Task` records with `dependencies`.
+    * Exclusions: tasks without dependencies; unauthorized records.
+    * Required fields: `company_id`, `dependencies`, `status`, `due_date`, dependency task `status`.
+    * Missing-data behavior: unavailable when dependency target records/history cannot be resolved or delay cause is not deterministic.
+    * Timezone behavior: due-date comparisons use tenant timezone.
+    * Confidence behavior: unavailable/low without dependency history and explicit delay timestamps.
+    * Availability: unavailable for delay rate.
+
+14. `reopen_rework_rate.v1`
+    * Formula: reopened or reworked tasks / completed tasks.
+    * Eligible records: none confirmed.
+    * Exclusions: all records until status-transition/reopen history exists.
+    * Required fields: status transition history or explicit reopened/rework field; absent in inspected models.
+    * Missing-data behavior: return unavailable.
+    * Timezone behavior: not applicable until available.
+    * Confidence behavior: unavailable.
+    * Availability: unavailable.
+
+15. `scope_change_impact.v1`
+    * Formula: unavailable because no reliable task/project scope-change event dictionary is confirmed for metric calculation.
+    * Eligible records: none confirmed.
+    * Exclusions: all records until canonical scope-change records are identified.
+    * Required fields: versioned scope-change records with timestamps and affected task/project IDs; absent in inspected models.
+    * Missing-data behavior: return unavailable.
+    * Timezone behavior: not applicable until available.
+    * Confidence behavior: unavailable.
+    * Availability: unavailable.
+
+Checks:
+
+* `rg -n "task_completion_rate|task_on_time_completion_rate|task_overdue_rate|blocked_task_rate|task_cycle_time|estimate_variance_hours|estimate_variance_story_points|workload_count|workload_effort_hours|workload_effort_story_points|eod_completion_rate|task_eod_consistency|dependency_delay_rate|reopen_rework_rate|scope_change_impact" docs\milestones\MILESTONE_09_TASK_PERFORMANCE_INSIGHTS_AGENT.md` — all 15 metric keys present.
+* `rg -n "secret score|employee ranking|attendance-based productivity|hiring|firing|salary|discipline|protected-characteristic|EOD.*employee-reported|Approved leave" docs\milestones\MILESTONE_09_TASK_PERFORMANCE_INSIGHTS_AGENT.md` — safety, EOD, leave, attendance, and employment-decision constraints present.
+* `rg -n "\[[ xX]\]" docs\milestones\MILESTONE_09_TASK_PERFORMANCE_INSIGHTS_AGENT.md` — dictionary item checked; next incomplete item is deterministic metric service.
+
+### Task Performance Implementation and Verification
+
+Status: Blocked.
+
+Completed on 2026-07-21:
+
+* Deterministic metric service added at `backend/app/services/task_performance_metrics.py`.
+* Metric dictionary implemented in code as `METRIC_DEFINITIONS` with version `task_performance_metrics.v1`.
+* Available deterministic metrics: `task_completion_rate.v1`, `task_on_time_completion_rate.v1`, `task_overdue_rate.v1`, `task_cycle_time.v1`, `estimate_variance_hours.v1`, `workload_count.v1`, `workload_effort_hours.v1`, `workload_effort_story_points.v1`, `task_eod_consistency.v1`.
+* Safely unavailable metrics: `blocked_task_rate.v1`, `estimate_variance_story_points.v1`, `eod_completion_rate.v1`, `dependency_delay_rate.v1`, `reopen_rework_rate.v1`, `scope_change_impact.v1`.
+* Task Performance Agent contract added at `backend/app/agents/task_performance.py`.
+* Request schema rejects client tenant/user overrides, unsupported metric keys, invalid date ranges, and prohibited employment-decision/ranking/secret-score requests.
+* Output schema enforces `read_only: true`, proposal-only recommendations, bounded confidence, metric source references, EOD employee-reported separation, data-quality warnings, and prohibited employment-decision/ranking/secret-score language.
+* Backend feature flag added: `TASK_PERFORMANCE_AGENT_ENABLED`.
+* Read-only API run entry added: `POST /api/v1/agents/task-performance/runs`.
+* API scope validation added for tenant, role, department, project, hierarchy, and individual user scope.
+* Context/RAG profile added: `task_performance_policy` / `task-performance-policy-v1`.
+* Orchestrator output-schema routing added for `task-performance-output-v1`.
+* AI Hub UI entry added with scope, date, metric selectors, result view, data-quality/fairness warnings, and no mutation/ranking/employment-decision controls.
+* Evaluation dataset added at `backend/tests/agents/evaluation/task_performance_eval_cases.json`.
+
+Files changed:
+
+* `backend/app/services/task_performance_metrics.py`
+* `backend/app/agents/task_performance.py`
+* `backend/app/agents/orchestrator.py`
+* `backend/app/api/v1/endpoints/agents.py`
+* `backend/app/core/config.py`
+* `backend/app/rag/retrieval_profiles.py`
+* `backend/tests/services/test_task_performance_metrics.py`
+* `backend/tests/agents/test_task_performance_contract.py`
+* `backend/tests/agents/test_task_performance_api_boundaries.py`
+* `backend/tests/agents/test_task_performance_evaluation_dataset.py`
+* `backend/tests/agents/evaluation/task_performance_eval_cases.json`
+* `frontend/src/api/agents.js`
+* `frontend/src/pages/AIHub.jsx`
+* `docs/milestones/MILESTONE_09_TASK_PERFORMANCE_INSIGHTS_AGENT.md`
+
+Focused tests:
+
+* `python -m pytest backend\tests\services\test_task_performance_metrics.py backend\tests\agents\test_task_performance_contract.py backend\tests\agents\test_task_performance_api_boundaries.py backend\tests\agents\test_task_performance_evaluation_dataset.py -q` — 15 passed, 3 warnings in 17.45s.
+* `npm.cmd -C frontend run build` — passed in 17.49s.
+
+Safety proof:
+
+* `rg -n "rank_employees|score_employee|fire|firing|terminate|termination|salary|disciplinary|promotion|bonus|create_task|update_task|delete_task|assign_task|change_task_status|schedule_agent_run|send_connector_message" backend\app\agents\task_performance.py backend\app\services\task_performance_metrics.py frontend\src\pages\AIHub.jsx frontend\src\api\agents.js` — matches only forbidden tool IDs, prohibited-output/request terms, and visible no-mutation/no-employment-decision UI text.
+
+Blocked verification:
+
+* `python -m pytest backend\tests\agents backend\tests\services\test_task_performance_metrics.py backend\tests\rag\test_context_package.py backend\tests\rag\test_milestone4_retrieval.py -q` — 63 passed, 7 failed, 5 skipped, 35 warnings.
+* `python -m pytest backend\tests -q` — 386 passed, 22 failed, 9 skipped, 54 warnings.
+* `npm.cmd -C frontend run lint` — failed with 22 existing lint errors and 16 warnings outside Task Performance files.
+
+Known blockers:
+
+* Explanation-only ProviderRouter flow is not fully complete because current run path can validate Task Performance output schema, but does not yet inject deterministic metric-service results into the provider prompt/context as immutable verified metrics.
+* Full backend suite remains failing.
+* Frontend lint remains failing due existing unrelated lint errors.
+* Real-service verification has not passed.
+* Milestone 8 remains blocked pending real-service and full-suite verification.
 
 For every completed checklist item record:
 

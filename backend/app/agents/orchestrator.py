@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from app.agents.email_draft import EMAIL_DRAFT_OUTPUT_SCHEMA_VERSION, EmailDraftAgentOutput, detect_sensitive_terms
+from app.agents.task_performance import TASK_PERFORMANCE_OUTPUT_SCHEMA_VERSION, TaskPerformanceAgentOutput
 from app.agents.budget import AgentBudgetController, BudgetExceeded
 from app.agents.registry import AgentRegistry
 from app.agents.schemas import AgentRunCreateRequest, AgentRunResponse, GenericAgentOutput
@@ -276,6 +277,8 @@ class AgentOrchestrator:
     def _output_schema(self, definition):
         if definition.output_schema_version == EMAIL_DRAFT_OUTPUT_SCHEMA_VERSION:
             return EmailDraftAgentOutput
+        if definition.output_schema_version == TASK_PERFORMANCE_OUTPUT_SCHEMA_VERSION:
+            return TaskPerformanceAgentOutput
         return GenericAgentOutput
 
     def _validate_provider_output(self, *, definition, parsed: dict[str, Any], input_payload: dict[str, Any] | None = None) -> dict[str, Any]:
