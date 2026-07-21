@@ -63,6 +63,15 @@ async def get_current_user(token: str = Depends(get_token_from_header)) -> User:
     return user
 
 
+def _module_access_allowed(module_name: str, user_modules: list[str]) -> bool:
+    normalized_modules = set(user_modules or [])
+    if module_name == "task":
+        return "task" in normalized_modules or "tasks_projects" in normalized_modules
+    if module_name == "tasks_projects":
+        return "tasks_projects" in normalized_modules or "task" in normalized_modules
+    return module_name in normalized_modules
+
+
 def require_module(module_name: str):
     """Dependency factory to ensure the current user has access to a specific module."""
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
@@ -72,7 +81,7 @@ def require_module(module_name: str):
         if module_name == "sales" and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user
         modules = getattr(current_user, "modules", []) or []
-        if module_name not in modules:
+        if not _module_access_allowed(module_name, modules):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access to module '{module_name}' is forbidden"
