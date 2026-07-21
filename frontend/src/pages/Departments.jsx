@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { Button, ConfirmDialog, EmptyState, FormField, Modal, Table, inputClassName } from '../components/ui'
 import { hasCompanyAdminAccess, getRoleLabel } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 const emptyForm = {
   name: '',
@@ -191,7 +192,7 @@ const Departments = () => {
     {
       key: 'created_at',
       header: 'Created Date',
-      render: (row) => format(new Date(row.created_at), 'MMM d, yyyy'),
+      render: (row) => format(timeService.instant(row.created_at), 'MMM d, yyyy'),
     },
     {
       key: 'actions',

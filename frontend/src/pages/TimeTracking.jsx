@@ -5,6 +5,7 @@ import { useConfirmation } from '../hooks/useConfirmation'
 import { timeTrackingApi } from '../api/timeTracking'
 import { tasksAPI } from '../api/tasks'
 import toast from 'react-hot-toast'
+import { timeService } from '@/services/timeService'
 
 const TimeTracking = () => {
   const { confirm } = useConfirmation()
@@ -205,7 +206,7 @@ const TimeTracking = () => {
                             <div className="text-sm text-gray-500 mt-1">{log.description}</div>
                           )}
                           <div className="text-xs text-gray-400 mt-1">
-                            {format(new Date(log.date), 'MMM d, yyyy')}
+                            {format(timeService.instant(log.date), 'MMM d, yyyy')}
                           </div>
                         </div>
                         <button

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
 
 from app.ai.tools import ToolContext, ToolRegistry
+from app.core.clock import utc_now
 from app.models.user import User
 from app.schemas.ai import (
     AILeadIntelligenceMatch,
@@ -297,6 +298,6 @@ class LeadIntelligenceAgent:
             source="tool_layer",
             provider="deterministic",
             model="lead-intelligence-v1",
-            generated_at=datetime.now(timezone.utc),
+            generated_at=utc_now(),
             context=lead_context,
         )

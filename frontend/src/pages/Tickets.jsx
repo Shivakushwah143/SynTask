@@ -28,6 +28,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ROLE, normalizeRole } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 // Sortable Ticket Card Component
 const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
@@ -91,7 +92,7 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
           {ticket.created_at ? (
             <div className="flex items-center text-xs text-text-secondary dark:text-gray-400">
               <Calendar className="mr-1 h-3.5 w-3.5" />
-              {format(new Date(ticket.created_at), 'MMM d')}
+              {format(timeService.instant(ticket.created_at), 'MMM d')}
             </div>
           ) : null}
         </div>

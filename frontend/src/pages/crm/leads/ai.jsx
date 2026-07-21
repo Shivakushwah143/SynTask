@@ -9,6 +9,7 @@ import { Badge, Button, Modal, inputClassName } from '../../../components/ui'
 import { EmailComposer } from '../../../components/EmailComposer'
 import { formatShortDate } from '../pipeline/utils'
 import { sanitizeHtml } from '../../../utils/sanitizeHtml'
+import { timeService } from '@/services/timeService'
 
 const WORKSPACE_QUERY_KEY = 'crm-lead-workspace'
 const defaultDraft = (lead = null) => ({
@@ -86,7 +87,7 @@ export function LeadAISalesTab({ leadId, lead, onRefresh }) {
           executionStatus: response?.execution_status || current.executionStatus,
           delivery: response?.delivery || null,
           ai,
-          lastGeneratedAt: response?.generated_at || new Date().toISOString(),
+          lastGeneratedAt: response?.generated_at || timeService.toUtcISOString(timeService.now()),
         }))
         setPendingApproval(variables?.execution_mode === 'manual')
         toast.success(variables?.execution_mode === 'auto' ? 'Sales action executed' : 'AI generated')

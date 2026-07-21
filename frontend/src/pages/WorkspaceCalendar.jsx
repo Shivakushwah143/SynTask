@@ -39,6 +39,7 @@ import { useAuthStore } from '../store/authStore'
 import { Badge, Button, Skeleton } from '../components/ui'
 import { ROLE, normalizeRole } from '../utils/roles'
 import { asArray } from './phase4Utils'
+import { timeService } from '@/services/timeService'
 
 const TIMELINE_START_HOUR = 8
 const TIMELINE_END_HOUR = 20
@@ -52,8 +53,8 @@ export default function WorkspaceCalendar() {
   
   // States
   const [view, setView] = useState('month') // 'month' | 'week' | 'day'
-  const [currentDate, setCurrentDate] = useState(new Date())
-  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(timeService.now())
+  const [selectedDate, setSelectedDate] = useState(timeService.now())
   const [search, setSearch] = useState('')
   const [viewType, setViewType] = useState('my_calendar') // 'my_calendar' | 'team_calendar'
   const [selectedEvent, setSelectedEvent] = useState(null)
@@ -105,9 +106,9 @@ export default function WorkspaceCalendar() {
 
   // Helper to parse dates safely
   const parseEventDate = (dateStr) => {
-    if (!dateStr) return new Date()
+    if (!dateStr) return timeService.now()
     const parsed = parseISO(dateStr)
-    return isValid(parsed) ? parsed : new Date()
+    return isValid(parsed) ? parsed : timeService.now()
   }
 
   // Filter & Search Logic
@@ -166,7 +167,7 @@ export default function WorkspaceCalendar() {
 
   // Mini-sidebar stats
   const overdueTasks = useMemo(() => {
-    const today = new Date()
+    const today = timeService.now()
     return events.filter(e => {
       if (e.type !== 'task_due') return false
       const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(e.status || '').toLowerCase())
@@ -177,7 +178,7 @@ export default function WorkspaceCalendar() {
   }, [events])
 
   const upcomingDeadlines = useMemo(() => {
-    const today = new Date()
+    const today = timeService.now()
     return events.filter(e => {
       if (e.type !== 'task_due' && e.type !== 'project_due') return false
       const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(e.status || '').toLowerCase())
@@ -201,7 +202,7 @@ export default function WorkspaceCalendar() {
   }
 
   const handleToday = () => {
-    const now = new Date()
+    const now = timeService.now()
     setCurrentDate(now)
     setSelectedDate(now)
   }
@@ -713,12 +714,12 @@ function MonthView({ days, events, selected, setSelected, month, onOpenEvent, pa
           const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
           const isSelected = isSameDay(day, selected)
           const isCurrentMonth = isSameMonth(day, month)
-          const isToday = isSameDay(day, new Date())
+          const isToday = isSameDay(day, timeService.now())
           const isWeekend = day.getDay() === 0 || day.getDay() === 6
           
           return (
             <div
-              key={day.toISOString()}
+              key={timeService.toUtcISOString(day)}
               onClick={() => setSelected(day)}
               className={`min-h-32 p-1.5 text-left transition-colors flex flex-col justify-between hover:bg-slate-50 dark:hover:bg-gray-900/40 cursor-pointer ${
                 isSelected ? 'bg-primary-50/30 dark:bg-primary-950/10' : ''
@@ -780,9 +781,9 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
     <div className="overflow-x-auto">
       <div className="grid min-w-[700px] grid-cols-7 divide-x divide-surface-border bg-slate-50/50 dark:divide-gray-800 dark:bg-black border-b border-surface-border dark:border-gray-800">
         {days.map((day) => {
-          const isToday = isSameDay(day, new Date())
+          const isToday = isSameDay(day, timeService.now())
           return (
-            <div key={day.toISOString()} className={`p-4 text-center ${isToday ? 'bg-primary-50/20 dark:bg-primary-950/20' : ''}`}>
+            <div key={timeService.toUtcISOString(day)} className={`p-4 text-center ${isToday ? 'bg-primary-50/20 dark:bg-primary-950/20' : ''}`}>
               <p className="text-xs font-semibold text-gray-500 uppercase">{format(day, 'EEE')}</p>
               <p className={`mt-1 text-lg font-bold inline-block px-2 py-0.5 rounded-full ${
                 isToday ? 'bg-primary-600 text-white' : 'text-gray-900 dark:text-gray-100'
@@ -796,7 +797,7 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
         {days.map((day) => {
           const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
           return (
-            <div key={day.toISOString()} className="p-2 space-y-2 bg-white dark:bg-black">
+            <div key={timeService.toUtcISOString(day)} className="p-2 space-y-2 bg-white dark:bg-black">
               {dayEvents.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-[10px] text-gray-300 dark:text-gray-700 italic select-none py-10">
                   No Events
@@ -879,7 +880,7 @@ function DayView({ day, events, onOpenEvent, parseEventDate }) {
         
         <div className="divide-y divide-surface-border dark:divide-gray-800">
           {HOURS.map((hour) => {
-            const formattedHour = format(new Date(2026, 0, 1, hour), 'ha')
+            const formattedHour = format(timeService.instant(2026, 0, 1, hour), 'ha')
             const hourEvents = timedEvents.filter((e) => {
               const [h] = e.time.split(':').map(Number)
               return h === hour

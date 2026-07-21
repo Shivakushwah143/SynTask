@@ -20,6 +20,7 @@ from app.api.dependencies import (
 from app.core.zoom import ZoomService
 from app.core.config import settings
 from app.services.timeline_service import create_timeline_event
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,7 @@ def parse_meeting_datetime(meeting_date: str, meeting_time: str) -> datetime:
 
 
 def validate_future_meeting_datetime(meeting_datetime: datetime) -> None:
-    if meeting_datetime < datetime.now():
+    if meeting_datetime < utc_now():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Meeting date and time must be in the future",
@@ -335,7 +336,7 @@ async def list_meetings(
             )
 
     if upcoming:
-        query["meeting_date"] = {"$gte": datetime.now()}
+        query["meeting_date"] = {"$gte": utc_now()}
     
     query["$or"] = [
         {"host_id": str(current_user.id)},
@@ -416,7 +417,7 @@ async def update_meeting(
             validate_meeting_participant_role(current_user, participant)
         meeting.participant_ids = participant_list
 
-    meeting.updated_at = datetime.utcnow()
+    meeting.updated_at = utc_now()
     await meeting.save()
 
     await publish_event(
@@ -443,8 +444,8 @@ async def start_meeting(meeting_id: str, current_user: User = Depends(get_curren
     if meeting.status == MeetingStatus.CANCELLED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled meetings cannot be started")
     meeting.status = MeetingStatus.ONGOING
-    meeting.started_at = datetime.utcnow()
-    meeting.updated_at = datetime.utcnow()
+    meeting.started_at = utc_now()
+    meeting.updated_at = utc_now()
     await meeting.save()
     return {"success": True, "message": "Meeting started", "meeting": await serialize_meeting_response(meeting, current_user)}
 
@@ -458,8 +459,8 @@ async def complete_meeting(meeting_id: str, current_user: User = Depends(get_cur
     if meeting.status == MeetingStatus.CANCELLED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled meetings cannot be completed")
     meeting.status = MeetingStatus.COMPLETED
-    meeting.ended_at = datetime.utcnow()
-    meeting.updated_at = datetime.utcnow()
+    meeting.ended_at = utc_now()
+    meeting.updated_at = utc_now()
     await meeting.save()
     return {"success": True, "message": "Meeting completed", "meeting": await serialize_meeting_response(meeting, current_user)}
 
@@ -473,7 +474,7 @@ async def cancel_meeting(meeting_id: str, current_user: User = Depends(get_curre
     if meeting.zoom_meeting_id and settings.ZOOM_API_KEY_COMPUTED:
         await zoom_service.delete_meeting(meeting.zoom_meeting_id, current_user.email)
     meeting.status = MeetingStatus.CANCELLED
-    meeting.updated_at = datetime.utcnow()
+    meeting.updated_at = utc_now()
     await meeting.save()
     return {"success": True, "message": "Meeting cancelled", "meeting": await serialize_meeting_response(meeting, current_user)}
 

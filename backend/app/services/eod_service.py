@@ -15,6 +15,7 @@ from app.models.task import Task, TaskStatus
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole
 from app.services.timeline_service import create_timeline_event
+from app.core.clock import utc_now
 
 
 def build_eod_date_bounds(report_date: date) -> tuple[datetime, datetime]:
@@ -124,7 +125,7 @@ async def create_or_update_eod_report(
     report.in_progress_task_ids = [str(task.id) for task in summary["in_progress_tasks"]]
     report.assigned_today_task_ids = [str(task.id) for task in summary["assigned_today_tasks"]]
     report.total_working_seconds = summary["total_working_seconds"]
-    report.updated_at = datetime.now()
+    report.updated_at = utc_now()
 
     if created:
         await report.insert()

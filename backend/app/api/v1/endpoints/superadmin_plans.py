@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.models.subscription_plan import SubscriptionPlan, PlanStatus, BillingCycle
 from app.models.user import User
 from app.api.dependencies import get_current_super_admin
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -179,7 +180,7 @@ async def update_plan(
     for key, value in update_data.items():
         setattr(plan, key, value)
     
-    plan.updated_at = datetime.now()
+    plan.updated_at = utc_now()
     await plan.save()
     return _plan_to_response(plan)
 
@@ -221,7 +222,7 @@ async def delete_plan(
     
     plan.deleted = True
     plan.status = PlanStatus.ARCHIVED
-    plan.updated_at = datetime.now()
+    plan.updated_at = utc_now()
     await plan.save()
     return None
 

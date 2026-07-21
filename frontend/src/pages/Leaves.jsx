@@ -7,6 +7,7 @@ import { usersAPI } from '../api/users'
 import { PageHeader, Button, Badge, FormField, Modal, inputClassName } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
 import { ROLE, hasCompanyAdminAccess, isManagerRole, normalizeRole } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 const LEAVE_TYPES = [
   ['full_day', 'Full Day'],
@@ -92,8 +93,8 @@ export default function Leaves() {
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.leave_type ? { leave_type: filters.leave_type } : {}),
         ...(filters.employee_id ? { employee_id: filters.employee_id } : {}),
-        ...(filters.start_date ? { start_date: new Date(filters.start_date).toISOString() } : {}),
-        ...(filters.end_date ? { end_date: new Date(`${filters.end_date}T23:59:59`).toISOString() } : {}),
+        ...(filters.start_date ? { start_date: timeService.toUtcISOString(filters.start_date) } : {}),
+        ...(filters.end_date ? { end_date: timeService.zonedInputToUtcISOString(`${filters.end_date}T23:59:59`) } : {}),
       }
       const [leaveData, calendarData, availabilityData] = await Promise.all([
         leavesAPI.list(params),
@@ -486,5 +487,5 @@ function availabilityLabel(value) {
 }
 
 function dateRange(leave) {
-  return `${format(new Date(leave.start_date), 'MMM d, yyyy')} - ${format(new Date(leave.end_date), 'MMM d, yyyy')}`
+  return `${format(timeService.instant(leave.start_date), 'MMM d, yyyy')} - ${format(timeService.instant(leave.end_date), 'MMM d, yyyy')}`
 }

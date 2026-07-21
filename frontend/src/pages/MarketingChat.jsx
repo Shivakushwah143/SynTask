@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom'
 import { aiAPI } from '../api/ai'
 import { useAuthStore } from '../store/authStore'
 import { Badge, Button, PageHeader } from '../components/ui'
+import { timeService } from '@/services/timeService'
 
 export default function MarketingChat() {
   const { user } = useAuthStore()
@@ -88,7 +89,7 @@ export default function MarketingChat() {
         { role: 'assistant', content: response.message },
       ])
       setSuggestedActions(Array.isArray(response.suggested_actions) ? response.suggested_actions : [])
-      setLastUpdated(response.generated_at || new Date().toISOString())
+      setLastUpdated(response.generated_at || timeService.toUtcISOString(timeService.now()))
     } catch (chatError) {
       setError(chatError.response?.data?.detail || chatError.message || 'Failed to generate assistant response')
     } finally {
@@ -177,7 +178,7 @@ export default function MarketingChat() {
 
             <dl className="mt-5 space-y-3 text-sm text-gray-600 dark:text-gray-300">
               <StatRow label="Messages" value={messages.length} />
-              <StatRow label="Last updated" value={lastUpdated ? format(new Date(lastUpdated), 'MMM d, HH:mm') : '-'} />
+              <StatRow label="Last updated" value={lastUpdated ? format(timeService.instant(lastUpdated), 'MMM d, HH:mm') : '-'} />
             </dl>
           </section>
 

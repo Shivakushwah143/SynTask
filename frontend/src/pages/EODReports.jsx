@@ -6,8 +6,9 @@ import { eodAPI } from '../api/eod'
 import { Badge, Button, EmptyState, FormField, PageHeader, SkeletonCard, inputClassName } from '../components/ui'
 import { ROLE, normalizeRole } from '../utils/roles'
 import { useAuthStore } from '../store/authStore'
+import { timeService } from '@/services/timeService'
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => timeService.toUtcISOString(timeService.now()).slice(0, 10)
 
 export const canReviewEODReports = (role) => [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(normalizeRole(role))
 
@@ -119,7 +120,7 @@ export default function EODReports() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold text-text-primary">Today&apos;s EOD</h2>
-                <p className="mt-1 text-sm text-text-muted">{format(new Date(), 'EEEE, MMM d, yyyy')}</p>
+                <p className="mt-1 text-sm text-text-muted">{format(timeService.now(), 'EEEE, MMM d, yyyy')}</p>
               </div>
               {status === 'submitted' ? <Edit3 className="h-5 w-5 text-primary-600" /> : <ClipboardCheck className="h-5 w-5 text-primary-600" />}
             </div>

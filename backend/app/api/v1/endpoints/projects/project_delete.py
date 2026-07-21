@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.events import publish_event
 from app.events.factories import build_domain_event
 from .shared import *
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -54,7 +55,7 @@ async def delete_project(
                 "name": project.name,
                 "description": project.description,
                 "status": project.status.value if getattr(project, "status", None) else None,
-                "updated_at": datetime.now().isoformat(),
+                "updated_at": utc_now().isoformat(),
             },
             project_id=str(project.project_id or project.id),
             metadata={"source": "project_delete"},

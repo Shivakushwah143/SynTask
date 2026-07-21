@@ -15,6 +15,7 @@ import { timelineAPI } from '../api/timeline'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole, isManagerRole } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 const EVENT_OPTIONS = [
   ['task_assigned', 'Task Assigned'],
@@ -95,8 +96,8 @@ const Timeline = () => {
         limit: 25,
         ...(filters.event_type ? { event_type: filters.event_type } : {}),
         ...(filters.related_module ? { related_module: filters.related_module } : {}),
-        ...(filters.start_date ? { start_date: new Date(filters.start_date).toISOString() } : {}),
-        ...(filters.end_date ? { end_date: new Date(`${filters.end_date}T23:59:59`).toISOString() } : {}),
+        ...(filters.start_date ? { start_date: timeService.toUtcISOString(filters.start_date) } : {}),
+        ...(filters.end_date ? { end_date: timeService.zonedInputToUtcISOString(`${filters.end_date}T23:59:59`) } : {}),
       }
       const data = await timelineAPI.getEmployeeTimeline(selectedUserId, params)
       setEvents((current) => (append ? [...current, ...(data.events || [])] : data.events || []))
@@ -203,7 +204,7 @@ const Timeline = () => {
 const TimelineItem = ({ event }) => {
   const meta = EVENT_META[event.event_type] || { icon: Clock3, tone: 'bg-surface-muted text-text-secondary' }
   const Icon = meta.icon
-  const timestamp = new Date(event.timestamp)
+  const timestamp = timeService.instant(event.timestamp)
 
   return (
     <div className="grid grid-cols-[5.5rem_2rem_1fr] gap-3 border-b border-surface-border py-4 last:border-0">

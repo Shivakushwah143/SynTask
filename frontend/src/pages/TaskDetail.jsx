@@ -21,6 +21,7 @@ import { normalizeRole } from '../utils/roles'
 import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } from './taskNavigation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const dedupeUsersById = (items = []) => {
   const seen = new Set()
@@ -139,7 +140,7 @@ const TaskDetail = () => {
         description: data.description || '',
         priority: data.priority,
         assigned_to: data.assigned_to || '',
-        due_date: data.due_date ? format(new Date(data.due_date), "yyyy-MM-dd'T'HH:mm") : '',
+        due_date: data.due_date ? format(timeService.instant(data.due_date), "yyyy-MM-dd'T'HH:mm") : '',
         estimated_hours: data.estimated_hours ?? '',
         tags: data.tags ? data.tags.join(', ') : '',
         issue_type_id: data.issue_type_id || '',
@@ -1009,7 +1010,7 @@ const TaskDetail = () => {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-gray-900">{comment.user_name}</span>
                             <span className="text-xs text-gray-500">
-                              {format(new Date(comment.created_at), 'MMMM d, yyyy')} at {format(new Date(comment.created_at), 'h:mm a')}
+                              {format(timeService.instant(comment.created_at), 'MMMM d, yyyy')} at {format(timeService.instant(comment.created_at), 'h:mm a')}
                             </span>
                           </div>
                           <p className="text-sm text-gray-700">{comment.content}</p>
@@ -1038,7 +1039,7 @@ const TaskDetail = () => {
                           <span className="text-gray-600">{change.new_value || 'None'}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {format(new Date(change.created_at), 'MMMM d, yyyy')} at {format(new Date(change.created_at), 'h:mm a')}
+                          {format(timeService.instant(change.created_at), 'MMMM d, yyyy')} at {format(timeService.instant(change.created_at), 'h:mm a')}
                         </div>
                       </div>
                     </div>
@@ -1193,7 +1194,7 @@ const TaskDetail = () => {
                     <label className="text-xs font-medium text-gray-500 block mb-1">Due date</label>
                     {task.due_date ? (
                       <p className="text-sm text-gray-700">
-                        {format(new Date(task.due_date), 'MMM d, yyyy')}
+                        {format(timeService.instant(task.due_date), 'MMM d, yyyy')}
                       </p>
                     ) : (
                       <p className="text-sm text-gray-500">None</p>
@@ -1288,7 +1289,7 @@ const TaskDetail = () => {
                         <div>
                           <p className="font-medium text-gray-900">{request.status}</p>
                           <p className="mt-1 text-xs text-gray-500">
-                            {request.requested_due_date ? format(new Date(request.requested_due_date), 'MMM d, yyyy') : 'No date'}
+                            {request.requested_due_date ? format(timeService.instant(request.requested_due_date), 'MMM d, yyyy') : 'No date'}
                           </p>
                         </div>
                         <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">{request.status}</span>

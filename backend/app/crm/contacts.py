@@ -9,6 +9,7 @@ from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_company import CRMCompany
 from app.models.sales_contact import SalesContact
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -69,7 +70,7 @@ async def _ensure_primary_contact(company_id: str, tenant_id: str) -> Optional[S
         company = await CRMCompany.get(company_id)
         if company and not company.deleted:
             company.primary_contact_id = None
-            company.updated_at = datetime.now()
+            company.updated_at = utc_now()
             await company.save()
         return None
 
@@ -77,18 +78,18 @@ async def _ensure_primary_contact(company_id: str, tenant_id: str) -> Optional[S
     if not primary:
         primary = contacts[0]
         primary.is_primary_contact = True
-        primary.updated_at = datetime.now()
+        primary.updated_at = utc_now()
         await primary.save()
 
     company = await CRMCompany.get(company_id)
     if company and not company.deleted:
         company.primary_contact_id = str(primary.id)
-        company.updated_at = datetime.now()
+        company.updated_at = utc_now()
         await company.save()
     for contact in contacts:
         if str(contact.id) != str(primary.id) and contact.is_primary_contact:
             contact.is_primary_contact = False
-            contact.updated_at = datetime.now()
+            contact.updated_at = utc_now()
             await contact.save()
     return primary
 
@@ -205,7 +206,7 @@ class CRMContactService:
         if duplicate:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact with this phone number already exists")
 
-        now = datetime.now()
+        now = utc_now()
         contact = SalesContact(
             first_name=first_name,
             last_name=last_name,
@@ -266,7 +267,7 @@ class CRMContactService:
     async def update_contact(current_user: User, contact_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         contact = await _contact_or_404(current_user, contact_id)
         tenant_id = await _tenant_company_id(current_user)
-        now = datetime.now()
+        now = utc_now()
         previous_company_id = contact.crm_company_id
 
         if "first_name" in payload and payload["first_name"] is not None:
@@ -369,7 +370,7 @@ class CRMContactService:
     async def delete_contact(current_user: User, contact_id: str) -> Dict[str, Any]:
         contact = await _contact_or_404(current_user, contact_id)
         tenant_id = await _tenant_company_id(current_user)
-        now = datetime.now()
+        now = utc_now()
         contact.deleted = True
         contact.deleted_by = str(getattr(current_user, "id", ""))
         contact.deleted_at = now

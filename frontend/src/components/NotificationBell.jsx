@@ -207,7 +207,7 @@ const NotificationBell = () => {
             // 4. We haven't shown a popup for this notification ID before
             const isNew = !previousIds.has(n.id)
             const isUnread = !n.is_read
-            const createdAt = new Date(n.created_at)
+            const createdAt = timeService.instant(n.created_at)
             const isCreatedAfterLastFetch = createdAt > lastFetchTime
             const notShownBefore = !lastNotificationIdsRef.current.has(n.id)
             

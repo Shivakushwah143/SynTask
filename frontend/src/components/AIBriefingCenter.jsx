@@ -26,6 +26,7 @@ import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
 import { ROLE, normalizeRole } from '../utils/roles'
 import { buildBriefingChartData } from './aiBriefingData'
+import { timeService } from '@/services/timeService'
 
 // ===== CONSTANTS & CONFIGURATIONS =====
 const STATUS_TONE = {
@@ -59,12 +60,12 @@ const KEYBOARD_SHORTCUTS = [
 const FONT_SIZES = { small: '14px', medium: '16px', large: '18px' }
 
 // ===== UTILITY FUNCTIONS =====
-const todayKey = () => new Date().toISOString().slice(0, 10)
+const todayKey = () => timeService.toUtcISOString(timeService.now()).slice(0, 10)
 
 const isOverdue = (item) => {
   if (!item?.due_date) return false
-  const due = new Date(item.due_date)
-  const now = new Date()
+  const due = timeService.instant(item.due_date)
+  const now = timeService.now()
   return due < now && !COMPLETED_STATUSES.includes(String(item.status || '').toLowerCase())
 }
 

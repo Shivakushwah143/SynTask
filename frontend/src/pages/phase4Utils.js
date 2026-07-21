@@ -1,5 +1,6 @@
 import { format } from 'date-fns'
 import { formatCurrency } from './crm/pipeline/utils'
+import { timeService } from '@/services/timeService'
 
 export const asArray = (value, keys = []) => {
   if (Array.isArray(value)) return value
@@ -17,14 +18,14 @@ export const getId = (item) => item?.id || item?._id
 
 export const formatDate = (value) => {
   if (!value) return '-'
-  const date = new Date(value)
+  const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return String(value)
   return format(date, 'MMM d, yyyy')
 }
 
 export const formatDateTime = (value) => {
   if (!value) return '-'
-  const date = new Date(value)
+  const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return String(value)
   return format(date, 'MMM d, yyyy h:mm a')
 }

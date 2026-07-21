@@ -6,6 +6,7 @@ import { crmApi } from '../../../api/crm'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
 import { formatCurrency } from '../pipeline/utils'
+import { timeService } from '@/services/timeService'
 
 const toCsvValue = (value) => {
   const text = value === null || value === undefined ? '' : String(value)
@@ -48,8 +49,8 @@ export default function CRMReportsPage() {
   const filteredWindow = useMemo(() => {
     if (!startDate && !endDate) return 'All time'
     const parts = []
-    if (startDate) parts.push(format(new Date(startDate), 'MMM d, yyyy'))
-    if (endDate) parts.push(format(new Date(endDate), 'MMM d, yyyy'))
+    if (startDate) parts.push(format(timeService.instant(startDate), 'MMM d, yyyy'))
+    if (endDate) parts.push(format(timeService.instant(endDate), 'MMM d, yyyy'))
     return parts.join(' - ')
   }, [endDate, startDate])
 
@@ -78,7 +79,7 @@ export default function CRMReportsPage() {
   }, [kpis, revenue, stageConversion])
 
   const onExport = () => {
-    downloadCsv(exportRows, `crm-reports-${Date.now()}.csv`)
+    downloadCsv(exportRows, `crm-reports-${timeService.now().getTime()}.csv`)
   }
 
   const loading = dashboardQuery.isLoading

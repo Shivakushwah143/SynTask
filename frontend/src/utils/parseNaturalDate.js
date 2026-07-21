@@ -26,7 +26,7 @@ function parseTimeFromText(text, baseDate) {
   if (meridiem === 'pm' && hours < 12) hours += 12
   if (meridiem === 'am' && hours === 12) hours = 0
 
-  const date = new Date(baseDate)
+  const date = timeService.instant(baseDate)
   date.setHours(hours, minutes, 0, 0)
   return { date, hasTime: true }
 }
@@ -37,7 +37,7 @@ function parseAbsoluteDate(text, referenceDate) {
     if (isValid(parsed)) return parsed
   }
 
-  const nativeDate = new Date(text)
+  const nativeDate = timeService.instant(text)
   return isValid(nativeDate) ? nativeDate : null
 }
 
@@ -46,7 +46,7 @@ function parseRelativeWeekday(text, referenceDate) {
   if (!match) return null
 
   const targetDay = WEEKDAY_LOOKUP[match[1].toLowerCase()]
-  const date = new Date(referenceDate)
+  const date = timeService.instant(referenceDate)
   const currentDay = date.getDay()
   let offset = targetDay - currentDay
   if (offset <= 0) offset += 7
@@ -64,16 +64,16 @@ export function parseNaturalDate(text, referenceDate = timeService.now()) {
   let baseDate = null
 
   if (normalized.startsWith('today')) {
-    baseDate = new Date(referenceDate)
+    baseDate = timeService.instant(referenceDate)
   } else if (normalized.startsWith('tomorrow')) {
-    baseDate = addDays(new Date(referenceDate), 1)
+    baseDate = addDays(timeService.instant(referenceDate), 1)
   } else if (normalized.startsWith('in ')) {
     const match = normalized.match(/^in\s+(\d+)\s+(day|days|week|weeks)$/)
     if (match) {
       const amount = Number(match[1])
       baseDate = match[2].startsWith('week')
-        ? addWeeks(new Date(referenceDate), amount)
-        : addDays(new Date(referenceDate), amount)
+        ? addWeeks(timeService.instant(referenceDate), amount)
+        : addDays(timeService.instant(referenceDate), amount)
     }
   }
 

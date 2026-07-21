@@ -12,6 +12,7 @@ from app.models.subscription_plan import SubscriptionPlan as SubscriptionPlanDoc
 from app.core.security import get_password_hash
 from app.api.dependencies import get_current_user, get_current_super_admin
 from app.api.deps import Pagination20, PaginationParams
+from app.core.clock import utc_now
 
 
 router = APIRouter()
@@ -261,7 +262,7 @@ async def approve_company(
     # Update company
     company.status = CompanyStatus.ACTIVE
     company.admin_id = str(admin.id)
-    company.approved_at = datetime.now()
+    company.approved_at = utc_now()
     company.approved_by = str(current_user.id)
     await company.save()
     
@@ -273,7 +274,7 @@ async def approve_company(
     
     if plan_doc:
         amount = plan_doc.price_monthly if billing_cycle_val == "monthly" else plan_doc.price_yearly
-        start_date = datetime.now()
+        start_date = utc_now()
         sub = CompanySubscription(
             company_id=company_id,
             plan_id=str(plan_doc.id),
@@ -338,7 +339,7 @@ async def update_company_status(
         )
     
     company.status = new_status
-    company.updated_at = datetime.now()
+    company.updated_at = utc_now()
     await company.save()
     
     return {"message": "Company status updated successfully"}

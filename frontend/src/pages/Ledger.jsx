@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { formatCurrency } from './crm/pipeline/utils'
 import { Button, Modal, Table } from '../components/ui'
+import { timeService } from '@/services/timeService'
 
 const Ledger = () => {
   const [ledgerData, setLedgerData] = useState(null)
@@ -22,7 +23,7 @@ const Ledger = () => {
   
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
-    payment_date: format(new Date(), 'yyyy-MM-dd'),
+    payment_date: format(timeService.now(), 'yyyy-MM-dd'),
     payment_method: 'cash',
     reference_number: '',
     notes: '',
@@ -88,7 +89,7 @@ const Ledger = () => {
       setShowPaymentModal(false)
       setPaymentForm({
         amount: '',
-        payment_date: format(new Date(), 'yyyy-MM-dd'),
+        payment_date: format(timeService.now(), 'yyyy-MM-dd'),
         payment_method: 'cash',
         reference_number: '',
         notes: '',
@@ -201,7 +202,7 @@ const Ledger = () => {
             setSelectedInvoice(invoice)
             setPaymentForm({
               amount: invoice.outstanding_amount > 0 ? invoice.outstanding_amount.toString() : '',
-              payment_date: format(new Date(), 'yyyy-MM-dd'),
+              payment_date: format(timeService.now(), 'yyyy-MM-dd'),
               payment_method: 'cash',
               reference_number: '',
               notes: '',

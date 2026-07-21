@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Clock, CheckSquare, Ticket, MessageSquare, User } from 'lucide-react'
 import { activityAPI } from '../api/activity'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const ActivityLog = () => {
   const [activities, setActivities] = useState([])
@@ -107,7 +108,7 @@ const ActivityLog = () => {
                     <div className="flex items-center justify-between">
             <p className="font-medium text-text-primary">{activity.title}</p>
             <span className="text-xs text-text-muted">
-                        {format(new Date(activity.timestamp), 'MMM d, h:mm a')}
+                        {format(timeService.instant(activity.timestamp), 'MMM d, h:mm a')}
                       </span>
                     </div>
           <div className="flex items-center mt-1 text-sm text-text-secondary">

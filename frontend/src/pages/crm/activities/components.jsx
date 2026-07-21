@@ -20,6 +20,7 @@ import {
 import { Link } from 'react-router-dom'
 import { Badge, Button, EmptyState, Modal, Skeleton, inputClassName } from '../../../components/ui'
 import { CRMEmptyState, CRMSection, CRMStatCard } from '../../../components/crm'
+import { timeService } from '@/services/timeService'
 
 export const ACTIVITY_TYPE_OPTIONS = [
   { value: '', label: 'All types' },
@@ -83,7 +84,7 @@ export function getActivityLabel(activityType) {
 export function formatActivityDate(value) {
   if (!value) return 'Soon'
   try {
-    return format(new Date(value), 'MMM d, yyyy - h:mm a')
+    return format(timeService.instant(value), 'MMM d, yyyy - h:mm a')
   } catch {
     return String(value)
   }
@@ -92,7 +93,7 @@ export function formatActivityDate(value) {
 export function formatActivityDay(value) {
   if (!value) return 'Recent'
   try {
-    return format(new Date(value), 'EEEE, MMM d, yyyy')
+    return format(timeService.instant(value), 'EEEE, MMM d, yyyy')
   } catch {
     return String(value)
   }
@@ -111,27 +112,27 @@ export function getActivityTone(activity) {
 
 export function isTaskDueToday(task) {
   if (!task?.due_date) return false
-  const date = new Date(task.due_date)
+  const date = timeService.instant(task.due_date)
   if (Number.isNaN(date.getTime())) return false
-  const now = new Date()
+  const now = timeService.now()
   return date.toDateString() === now.toDateString()
 }
 
 export function isTaskOverdue(task) {
   if (!task?.due_date) return false
-  const date = new Date(task.due_date)
+  const date = timeService.instant(task.due_date)
   if (Number.isNaN(date.getTime())) return false
-  return date.getTime() < Date.now() && String(task.status || '').toLowerCase() !== 'completed'
+  return date.getTime() < timeService.now().getTime() && String(task.status || '').toLowerCase() !== 'completed'
 }
 
 export function isTaskUpcoming(task) {
   if (!task?.due_date) return false
-  const date = new Date(task.due_date)
+  const date = timeService.instant(task.due_date)
   if (Number.isNaN(date.getTime())) return false
-  const now = new Date()
-  const inSevenDays = new Date()
+  const now = timeService.now()
+  const inSevenDays = timeService.now()
   inSevenDays.setDate(now.getDate() + 7)
-  return date.getTime() > Date.now() && date.getTime() <= inSevenDays.getTime()
+  return date.getTime() > timeService.now().getTime() && date.getTime() <= inSevenDays.getTime()
 }
 
 function getPriorityTone(priority) {

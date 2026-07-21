@@ -10,6 +10,7 @@ import { CreatableSelectField } from '../components/ui'
 import { QuickCreateClientModal } from '../components/relatedRecords/QuickCreateModals'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const Invoices = () => {
   const { user } = useAuthStore()
@@ -31,7 +32,7 @@ const Invoices = () => {
     invoice_type: 'proforma',
     include_tax: false,
     client_id: '',
-    invoice_date: format(new Date(), 'yyyy-MM-dd'),
+    invoice_date: format(timeService.now(), 'yyyy-MM-dd'),
     due_date: '',
     tax_rate: 18,
     notes: '',
@@ -185,8 +186,8 @@ const Invoices = () => {
         invoice_type: formData.invoice_type,
         include_tax: formData.include_tax,
         client_id: formData.client_id,
-        invoice_date: formData.invoice_date ? new Date(formData.invoice_date).toISOString() : null,
-        due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
+        invoice_date: formData.invoice_date ? timeService.toUtcISOString(formData.invoice_date) : null,
+        due_date: formData.due_date ? timeService.toUtcISOString(formData.due_date) : null,
         items: formData.items.map(item => ({
           description: item.description,
           quantity: parseFloat(item.quantity) || 1,
@@ -219,7 +220,7 @@ const Invoices = () => {
       invoice_type: 'proforma',
       include_tax: false,
       client_id: '',
-      invoice_date: format(new Date(), 'yyyy-MM-dd'),
+      invoice_date: format(timeService.now(), 'yyyy-MM-dd'),
       due_date: '',
       tax_rate: 18,
       notes: '',
@@ -270,9 +271,9 @@ const Invoices = () => {
       setRecordingPayment(true)
       const result = await invoicesAPI.recordPayment(invoice.id, {
         amount: outstandingAmount,
-        payment_date: format(new Date(), 'yyyy-MM-dd'),
+        payment_date: format(timeService.now(), 'yyyy-MM-dd'),
         payment_method: 'local_test_payment',
-        reference_number: `LOCAL-${Date.now()}`,
+        reference_number: `LOCAL-${timeService.now().getTime()}`,
         notes: 'Local test payment recorded before Razorpay go-live',
       })
       setSelectedInvoice(result.invoice)
@@ -489,7 +490,7 @@ const Invoices = () => {
                     </span>
                   </td>
                   <td className="py-3 pr-4 text-xs text-gray-700">
-                    {invoice.invoice_date ? format(new Date(invoice.invoice_date), 'MMM d, yyyy') : '-'}
+                    {invoice.invoice_date ? format(timeService.instant(invoice.invoice_date), 'MMM d, yyyy') : '-'}
                   </td>
                   <td className="py-3 pr-4 text-sm font-semibold text-gray-900">
                     ₹{invoice.total_amount?.toLocaleString() || '0'}

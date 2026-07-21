@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import { AlertTriangle, ArrowDownWideNarrow, Clock3, Copy, Gauge, RefreshCw, ShieldAlert } from 'lucide-react'
+import { timeService } from '@/services/timeService'
 import {
   clearApiPerformanceMetrics,
   getApiPerformanceMetrics,
@@ -16,7 +17,7 @@ const formatBytes = (value) => {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const formatTime = (ts) => timeService.format(ts, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 const metricTotals = (metrics) => {
   const totalCalls = metrics.length

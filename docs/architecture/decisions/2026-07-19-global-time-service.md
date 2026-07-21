@@ -31,3 +31,5 @@ Negative cross-tenant case: endpoint only mutates `current_user`, so users canno
 ## Consequences
 
 New date/time UI and backend services must use centralized services instead of direct business-time calls to `new Date()`, `Date.now()`, `datetime.now()`, or `datetime.utcnow()`.
+
+Automated guard tests enforce this decision: `frontend/src/services/timeAudit.test.js` scans frontend source for direct native date/time formatting outside `timeService`, and `backend/tests/test_time_audit.py` scans backend application code for direct clock and manual timezone conversion calls outside `ClockService`.

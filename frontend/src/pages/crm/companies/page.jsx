@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { Button, ConfirmDialog, EmptyState, FormField, inputClassName, Modal, PhoneInput, SkeletonTable, Table, phoneValidationMessage } from '../../../components/ui'
 import { CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
+import { timeService } from '@/services/timeService'
 
 const COMPANY_TEMPLATE = {
   name: '',
@@ -152,7 +153,7 @@ export default function CRMCompaniesPage() {
     { key: 'contacts', header: 'Contacts', render: (row) => String(row.contact_count || 0) },
     { key: 'leads', header: 'Leads', render: (row) => String(row.lead_count || 0) },
     { key: 'primary', header: 'Primary contact', render: (row) => row.primary_contact_name || '-' },
-    { key: 'updated', header: 'Updated', render: (row) => (row.updated_at ? format(new Date(row.updated_at), 'MMM d, yyyy') : '-') },
+    { key: 'updated', header: 'Updated', render: (row) => (row.updated_at ? format(timeService.instant(row.updated_at), 'MMM d, yyyy') : '-') },
     {
       key: 'actions',
       header: '',

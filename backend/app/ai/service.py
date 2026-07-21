@@ -21,6 +21,7 @@ from app.ai.role_engine import RoleEngine, RoleResolution
 from app.ai.tool_executor import ToolExecutor
 from app.ai.tools import ToolRegistry, build_default_tool_registry
 from app.core.config import settings
+from app.core.clock import utc_now
 from app.models.task import TaskStatus
 from app.models.user import User, UserRole
 from app.schemas.ai import (
@@ -355,7 +356,7 @@ class AIService:
             prompt_version=resolution.prompt_version,
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.now(),
+            generated_at=utc_now(),
             context=context,
         )
 
@@ -541,7 +542,7 @@ class AIService:
             prompt_version=resolution.prompt_version,
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.now(),
+            generated_at=utc_now(),
             context=context,
         )
 
@@ -566,7 +567,7 @@ class AIService:
             prompt_role_key=f"chat-{resolution.role_key}",
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.now(),
+            generated_at=utc_now(),
             context=context,
         )
 
@@ -664,7 +665,7 @@ class AIService:
             prompt_version=resolution.prompt_version,
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.now(),
+            generated_at=utc_now(),
             context=context,
         )
 
@@ -729,7 +730,7 @@ class AIService:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -865,7 +866,7 @@ class AIService:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1026,7 +1027,7 @@ class AIService:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1181,7 +1182,7 @@ class AIService:
                 prompt_role_key=prompt_package.prompt_role_key,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1377,7 +1378,7 @@ class AIService:
                 prompt_role_key=prompt_package.prompt_role_key,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1474,7 +1475,7 @@ class AIService:
                 prompt_role_key="marketing_chat-fallback",
                 fallback_chain=[],
                 fallback_used=True,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={},
             )
             
@@ -1541,4 +1542,3 @@ class AIService:
             )
             for log in logs
         ]
-

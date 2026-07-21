@@ -15,6 +15,7 @@ from app.api.dependencies import (
     check_company_access,
 )
 from app.core.config import settings
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -189,7 +190,7 @@ async def get_messages(
     for message in messages:
         if user_id_str not in message.read_by and message.sender_id != user_id_str:
             message.read_by.append(user_id_str)
-            message.read_at[user_id_str] = datetime.now()
+            message.read_at[user_id_str] = utc_now()
             await message.save()
     
     # Update conversation unread count
@@ -318,9 +319,9 @@ async def send_message(
     
     # Update conversation
     conversation.last_message = content[:100] if content else f"📎 {file_name}"
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     
     # Update unread counts for other participants and create notifications
     for participant_id in conversation.participants:
@@ -428,7 +429,7 @@ async def mark_message_read(
     # Mark as read if not already read
     if user_id_str not in message.read_by and message.sender_id != user_id_str:
         message.read_by.append(user_id_str)
-        message.read_at[user_id_str] = datetime.now()
+        message.read_at[user_id_str] = utc_now()
         await message.save()
     
     return {"status": "read"}
@@ -459,7 +460,7 @@ async def delete_message(
     
     message.is_deleted = True
     message.content = "[Message deleted]"
-    message.updated_at = datetime.now()
+    message.updated_at = utc_now()
     await message.save()
     
     return {"status": "deleted"}
@@ -719,7 +720,7 @@ async def add_members_to_group(
     
     # Add new members
     conversation.participants.extend(new_member_ids)
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     await conversation.save()
     
     # Create system message about new members
@@ -737,7 +738,7 @@ async def add_members_to_group(
     
     # Update conversation
     conversation.last_message = system_message.content
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
     
     # Initialize unread count for new members
@@ -832,7 +833,7 @@ async def remove_member_from_group(
     if user_id in conversation.group_admins:
         conversation.group_admins.remove(user_id)
     
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     await conversation.save()
     
     # Create system message
@@ -854,7 +855,7 @@ async def remove_member_from_group(
     
     # Update conversation
     conversation.last_message = system_message.content
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
     
     # Remove unread count for removed user
@@ -929,7 +930,7 @@ async def add_group_admin(
     
     # Add as admin
     conversation.group_admins.append(user_id)
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     await conversation.save()
     
     # Create system message
@@ -946,7 +947,7 @@ async def add_group_admin(
     
     # Update conversation
     conversation.last_message = system_message.content
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
     await conversation.save()
     
@@ -1016,7 +1017,7 @@ async def remove_group_admin(
     
     # Remove admin
     conversation.group_admins.remove(user_id)
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     await conversation.save()
     
     # Create system message
@@ -1038,7 +1039,7 @@ async def remove_group_admin(
     
     # Update conversation
     conversation.last_message = system_message.content
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
     await conversation.save()
     

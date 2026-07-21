@@ -15,6 +15,7 @@ import toast from 'react-hot-toast'
 import { creativeAPI } from '../api/creative'
 import { projectsApi } from '../api/projects'
 import { Badge, Button, EmptyState, PageHeader, inputClassName } from '../components/ui'
+import { timeService } from '@/services/timeService'
 
 export default function CreativeDirector() {
   const [projects, setProjects] = useState([])
@@ -321,7 +322,7 @@ export default function CreativeDirector() {
                         Compare the selected asset against prior review history and keep the current version visible while discussing changes.
                       </p>
                       <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                        <p>Latest review: {reviewDetail.review.completed_at ? format(new Date(reviewDetail.review.completed_at), 'MMM d, HH:mm') : 'Not completed'}</p>
+                        <p>Latest review: {reviewDetail.review.completed_at ? format(timeService.instant(reviewDetail.review.completed_at), 'MMM d, HH:mm') : 'Not completed'}</p>
                         <p>Selected asset: {selectedFile?.name || selectedFile?.original_name || 'No asset selected'}</p>
                         <p>Project: {selectedProject?.name || 'No project selected'}</p>
                       </div>

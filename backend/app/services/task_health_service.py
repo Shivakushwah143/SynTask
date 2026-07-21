@@ -11,7 +11,7 @@ from fastapi import HTTPException, status
 from app.models.task import Task, TaskExtensionRequest, TaskExtensionStatus, TaskHealthStatus, TaskStatus
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole, UserStatus
-from app.core.clock import utc_now
+from app.core.clock import parse_to_utc, utc_now
 from app.services.timeline_service import create_timeline_event
 
 
@@ -44,7 +44,7 @@ def calculate_task_health(task: Task, now: Optional[datetime] = None) -> TaskHea
 
 
 def _as_naive(value: datetime) -> datetime:
-    return value.replace(tzinfo=None) if getattr(value, "tzinfo", None) else value
+    return parse_to_utc(value) or value
 
 
 async def sync_task_health(task: Task, now: Optional[datetime] = None) -> Task:

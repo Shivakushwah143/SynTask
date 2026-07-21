@@ -25,7 +25,7 @@ export default function NaturalDateInput({ value = '', onChange, onDateResolved 
           type="datetime-local"
           onChange={(e) => {
             const val = e.target.value
-            onDateResolved?.(val ? new Date(timeService.toUtcISOString(val)) : null)
+            onDateResolved?.(val ? timeService.instant(timeService.toUtcISOString(val)) : null)
           }}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />

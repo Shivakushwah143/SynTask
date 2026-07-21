@@ -14,6 +14,7 @@ from app.models.notification import Notification, NotificationType
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole
 from app.services.timeline_service import create_timeline_event
+from app.core.clock import parse_to_utc, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ def history_entry(action: str, actor_id: str, *, comment: Optional[str] = None, 
         "actor_id": str(actor_id),
         "target_user_id": str(target_user_id) if target_user_id else None,
         "comment": comment,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now().isoformat(),
     }
 
 
@@ -157,7 +158,7 @@ def parse_leave_date(value: str, *, end_of_day: bool = False) -> datetime:
         parsed = datetime.strptime(value, "%Y-%m-%d")
     if "T" not in value:
         return datetime.combine(parsed.date(), time.max if end_of_day else time.min)
-    return parsed.replace(tzinfo=None)
+    return parse_to_utc(parsed)
 
 
 async def ensure_no_overlap(employee_id: str, start_date: datetime, end_date: datetime, exclude_id: Optional[str] = None) -> None:
@@ -183,7 +184,7 @@ def availability_for_leave(leave: Optional[LeaveRequest]) -> str:
 
 
 async def get_current_availability(employee_id: str, company_id: Optional[str]) -> Dict[str, Any]:
-    now = datetime.now()
+    now = utc_now()
     query: Dict[str, Any] = {
         "employee_id": employee_id,
         "status": LeaveStatus.APPROVED.value,
@@ -200,7 +201,7 @@ async def get_current_availability(employee_id: str, company_id: Optional[str]) 
 
 
 async def sync_leave_lifecycle(company_id: Optional[str] = None) -> None:
-    now = datetime.now()
+    now = utc_now()
     query: Dict[str, Any] = {"status": LeaveStatus.APPROVED.value}
     if company_id:
         query["company_id"] = company_id
@@ -293,4 +294,3 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
 
 def _leave_title(leave: LeaveRequest) -> str:
     return leave.leave_type.value.replace("_", " ").title()
-

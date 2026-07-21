@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { notificationsAPI } from '../api/notifications'
 import { Badge, Button, EmptyState, PageHeader, SkeletonCard } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
+import { timeService } from '@/services/timeService'
 
 const Notifications = () => {
   const navigate = useNavigate()
@@ -129,7 +130,7 @@ const Notifications = () => {
                     </div>
                     <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{notification.message}</p>
                     <p className="mt-2 text-xs text-gray-400">
-                      {notification.created_at ? format(new Date(notification.created_at), 'MMM d, h:mm a') : 'Recently'}
+                      {notification.created_at ? format(timeService.instant(notification.created_at), 'MMM d, h:mm a') : 'Recently'}
                     </p>
                   </div>
                   {notification.action_url ? (

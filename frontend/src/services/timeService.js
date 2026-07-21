@@ -40,15 +40,21 @@ export const useTimeStore = create((set, get) => ({
 }))
 
 export const timeService = {
+  settings() {
+    return useTimeStore.getState().settings
+  },
+  getTimezone(settings = useTimeStore.getState().settings) {
+    return settings.timezone || detectBrowserTimezone()
+  },
   now(settings = useTimeStore.getState().settings) {
     if (!settings.automatic_time && settings.manual_time) {
-      return new Date(settings.manual_time)
+      return this.instant(settings.manual_time)
     }
     return new Date()
   },
   toUtcISOString(value) {
     if (!value) return null
-    return new Date(value).toISOString()
+    return this.instant(value).toISOString()
   },
   zonedInputToUtcISOString(value, settings = useTimeStore.getState().settings) {
     if (!value) return null
@@ -56,7 +62,7 @@ export const timeService = {
     const [year, month, day] = datePart.split('-').map(Number)
     const [hour = 0, minute = 0, second = 0] = timePart.split(':').map(Number)
     const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
-    const parts = new Intl.DateTimeFormat('en-US', {
+    const parts = this.dateTimeFormat('en-US', {
       timeZone: settings.timezone,
       year: 'numeric',
       month: '2-digit',
@@ -80,12 +86,12 @@ export const timeService = {
   },
   parseZonedInput(value, settings) {
     const iso = this.zonedInputToUtcISOString(value, settings)
-    return iso ? new Date(iso) : null
+    return iso ? timeService.instant(iso) : null
   },
   toZonedDateTimeInput(value, settings = useTimeStore.getState().settings) {
     if (!value) return ''
     const date = this.instant(value)
-    const parts = new Intl.DateTimeFormat('en-CA', {
+    const parts = this.dateTimeFormat('en-CA', {
       timeZone: settings.timezone,
       year: 'numeric',
       month: '2-digit',
@@ -103,14 +109,27 @@ export const timeService = {
   instantTime(value) {
     return this.instant(value).getTime()
   },
+  addDays(value, days) {
+    return new Date(this.instantTime(value) + days * 24 * 60 * 60 * 1000)
+  },
+  instantFromParts(year, monthIndex, day, hour = 0, minute = 0, second = 0) {
+    return new Date(year, monthIndex, day, hour, minute, second)
+  },
   format(value, options = {}, settings = useTimeStore.getState().settings) {
     if (!value) return ''
-    const date = value instanceof Date ? value : new Date(value)
-    return new Intl.DateTimeFormat(undefined, {
+    const date = value instanceof Date ? value : this.instant(value)
+    return this.dateTimeFormat(undefined, {
       timeZone: settings.timezone,
       hour12: settings.hour_format !== '24',
       ...options,
     }).format(date)
+  },
+  dateTimeFormat(locale, options = {}, settings = useTimeStore.getState().settings) {
+    return new Intl.DateTimeFormat(locale, {
+      timeZone: settings.timezone,
+      hour12: settings.hour_format !== '24',
+      ...options,
+    })
   },
   formatDateTime(value, settings) {
     return this.format(value, {

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { aiAPI } from '../../api/ai'
+import { timeService } from '@/services/timeService'
 
 const STARTER_PROMPTS = [
   { label: 'What did HR do yesterday?', icon: Sparkles },
@@ -48,7 +49,7 @@ export function AIAssistantDialog({ isOpen, onClose }) {
       id: 'welcome',
       role: 'assistant',
       content: 'Hello! I can help with HR insights, tasks, CRM updates, blockers, and more. What would you like to know?',
-      createdAt: new Date(),
+      createdAt: timeService.now(),
     },
   ])
   const [input, setInput] = useState('')
@@ -69,10 +70,10 @@ export function AIAssistantDialog({ isOpen, onClose }) {
     if (!text || isSending) return
 
     const userMessage = {
-      id: `user-${Date.now()}`,
+      id: `user-${timeService.now().getTime()}`,
       role: 'user',
       content: text,
-      createdAt: new Date(),
+      createdAt: timeService.now(),
     }
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
@@ -89,11 +90,11 @@ export function AIAssistantDialog({ isOpen, onClose }) {
       setMessages((current) => [
         ...current,
         {
-          id: `assistant-${Date.now()}`,
+          id: `assistant-${timeService.now().getTime()}`,
           role: 'assistant',
           content: response.message || 'I could not generate a response.',
           actions: response.suggested_actions || response.actions || [],
-          createdAt: new Date(),
+          createdAt: timeService.now(),
         },
       ])
     } catch (error) {
@@ -101,11 +102,11 @@ export function AIAssistantDialog({ isOpen, onClose }) {
       setMessages((current) => [
         ...current,
         {
-          id: `assistant-error-${Date.now()}`,
+          id: `assistant-error-${timeService.now().getTime()}`,
           role: 'assistant',
           content: 'I could not reach the assistant right now. Please try again.',
           isError: true,
-          createdAt: new Date(),
+          createdAt: timeService.now(),
         },
       ])
     } finally {
@@ -290,6 +291,5 @@ export function AIAssistantDialog({ isOpen, onClose }) {
 }
 
 function formatMessageTime(value) {
-  const date = value instanceof Date ? value : new Date(value || Date.now())
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return timeService.formatTime(value || timeService.now())
 }

@@ -22,6 +22,7 @@ from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
 from app.models.user import User, UserRole, UserStatus
 from app.core.rbac_visibility import require_owned_record_access, visible_user_ids
+from app.core.clock import utc_now
 
 
 CSV_EMAIL_ALIASES = {"email_address", "email_id", "e_mail"}
@@ -57,7 +58,7 @@ DEFAULT_STAGE_LOOKUP = {
 
 
 def _now() -> datetime:
-    return datetime.now()
+    return utc_now()
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:

@@ -76,8 +76,13 @@ function payloadSummary(job) {
 function formatRunAt(runAt) {
   if (!runAt) return '—'
   try {
-    const d = new Date(runAt)
-    return format(d, 'MMM d, yyyy · HH:mm')
+    return timeService.format(runAt, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
   } catch {
     return runAt
   }
@@ -86,7 +91,7 @@ function formatRunAt(runAt) {
 function relativeTo(runAt) {
   if (!runAt) return ''
   try {
-    return formatDistanceToNow(new Date(runAt), { addSuffix: true })
+    return formatDistanceToNow(timeService.instant(runAt), { addSuffix: true })
   } catch {
     return ''
   }

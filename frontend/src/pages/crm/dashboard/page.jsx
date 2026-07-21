@@ -15,6 +15,7 @@ import { canAccessOwner } from '../../../config/domainOwnership'
 import { useAuthStore } from '../../../store/authStore'
 import { isSuperAdminRole, normalizeRole } from '../../../utils/roles'
 import { formatCurrency } from '../pipeline/utils'
+import { timeService } from '@/services/timeService'
 
 const workflowIcons = {
   lead: UserRoundSearch,
@@ -36,7 +37,7 @@ const workflowIcons = {
 const formatDateTime = (value) => {
   if (!value) return 'Scheduled soon'
   try {
-    return format(new Date(value), 'MMM d, h:mm a')
+    return format(timeService.instant(value), 'MMM d, h:mm a')
   } catch {
     return String(value)
   }
@@ -101,20 +102,20 @@ export default function CRMDashboardPage() {
   const revenueTrend = buildRevenueTrend(closedVsTarget)
   const stageGraph = buildStageGraph(Array.isArray(pipelineAnalytics.deals_by_stage) ? pipelineAnalytics.deals_by_stage : [])
 
-  const today = new Date()
+  const today = timeService.now()
   const todayActivities = activities.filter((item) => {
     if (!item?.timestamp) return false
-    const timestamp = new Date(item.timestamp)
+    const timestamp = timeService.instant(item.timestamp)
     return !Number.isNaN(timestamp.getTime()) && isSameDay(timestamp, today)
   })
 
   const upcomingMeetings = meetings
     .filter((meeting) => {
       if (!meeting?.meeting_date) return false
-      const meetingDate = new Date(meeting.meeting_date)
+      const meetingDate = timeService.instant(meeting.meeting_date)
       return !Number.isNaN(meetingDate.getTime()) && meetingDate >= today
     })
-    .sort((left, right) => new Date(left.meeting_date) - new Date(right.meeting_date))
+    .sort((left, right) => timeService.instant(left.meeting_date) - timeService.instant(right.meeting_date))
     .slice(0, 5)
 
   const stageBreakdown = dashboard?.sales?.pipeline?.stage_breakdown || []

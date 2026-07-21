@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format, formatDistanceToNow } from 'date-fns'
 import GroupModal from '../components/GroupModal'
+import { timeService } from '@/services/timeService'
 
 const Chat = () => {
   const { user } = useAuthStore()
@@ -441,7 +442,7 @@ const Chat = () => {
                     </div>
                     {conversation.last_message_at && (
                       <div className="text-xs text-text-muted mt-1">
-                        {formatDistanceToNow(new Date(conversation.last_message_at), { addSuffix: true })}
+                        {formatDistanceToNow(timeService.instant(conversation.last_message_at), { addSuffix: true })}
                       </div>
                     )}
                   </div>
@@ -551,7 +552,7 @@ const Chat = () => {
                         )}
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                         <div className={`text-xs mt-1 ${isOwn ? 'text-primary-100' : 'text-text-muted'}`}>
-                          {format(new Date(message.created_at), 'HH:mm')}
+                          {format(timeService.instant(message.created_at), 'HH:mm')}
                         </div>
                       </div>
                     </div>

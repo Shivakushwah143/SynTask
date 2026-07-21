@@ -31,6 +31,7 @@ from app.services.leave_service import (
     sync_leave_lifecycle,
 )
 from app.services.timeline_service import create_timeline_event
+from app.core.clock import utc_now
 
 router = APIRouter()
 UPLOAD_DIR = Path(__file__).parent.parent.parent.parent / settings.UPLOAD_DIR / "leaves"
@@ -160,7 +161,7 @@ async def get_leave_calendar(
         query["start_date"] = {"$lte": end_date}
     leaves = await LeaveRequest.find(query).sort("start_date").to_list()
     employees = await _employee_map(leaves)
-    today = datetime.now()
+    today = utc_now()
     today_items = [leave for leave in leaves if leave.start_date <= today <= leave.end_date]
     return {
         "today": [serialize_leave(leave, employees.get(leave.employee_id)) for leave in today_items],
@@ -203,14 +204,14 @@ async def approve_leave_request(
     await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=str(leave.id))
     leave.status = LeaveStatus.APPROVED
     leave.reviewed_by = str(current_user.id)
-    leave.reviewed_at = datetime.now()
+    leave.reviewed_at = utc_now()
     leave.review_comment = comment
     leave.pending_with_user_ids = []
     leave.approval_history = [
         *(getattr(leave, "approval_history", []) or []),
         history_entry("approved", str(current_user.id), comment=comment),
     ]
-    leave.updated_at = datetime.now()
+    leave.updated_at = utc_now()
     await leave.save()
 
     is_wfh = leave.leave_type == LeaveType.WORK_FROM_HOME
@@ -243,14 +244,14 @@ async def reject_leave_request(
     comment = require_action_comment(comment, "Rejection reason")
     leave.status = LeaveStatus.REJECTED
     leave.reviewed_by = str(current_user.id)
-    leave.reviewed_at = datetime.now()
+    leave.reviewed_at = utc_now()
     leave.review_comment = comment
     leave.pending_with_user_ids = []
     leave.approval_history = [
         *(getattr(leave, "approval_history", []) or []),
         history_entry("rejected", str(current_user.id), comment=comment),
     ]
-    leave.updated_at = datetime.now()
+    leave.updated_at = utc_now()
     await leave.save()
     await create_timeline_event(
         user_id=leave.employee_id,
@@ -287,14 +288,14 @@ async def forward_leave_request(
     leave.pending_with_user_ids = [str(target_user.id)]
     leave.forwarded_to_user_id = str(target_user.id)
     leave.forwarded_by = str(current_user.id)
-    leave.forwarded_at = datetime.now()
+    leave.forwarded_at = utc_now()
     leave.forwarded_to_admin = True
     leave.forward_comment = comment
     leave.approval_history = [
         *(getattr(leave, "approval_history", []) or []),
         history_entry("forwarded", str(current_user.id), comment=comment, target_user_id=str(target_user.id)),
     ]
-    leave.updated_at = datetime.now()
+    leave.updated_at = utc_now()
     await leave.save()
     await create_timeline_event(
         user_id=leave.employee_id,
@@ -325,13 +326,13 @@ async def cancel_leave_request(
     if leave.status != LeaveStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be cancelled")
     leave.status = LeaveStatus.CANCELLED
-    leave.cancelled_at = datetime.now()
+    leave.cancelled_at = utc_now()
     leave.pending_with_user_ids = []
     leave.approval_history = [
         *(getattr(leave, "approval_history", []) or []),
         history_entry("cancelled", str(current_user.id)),
     ]
-    leave.updated_at = datetime.now()
+    leave.updated_at = utc_now()
     await leave.save()
     await create_timeline_event(
         user_id=leave.employee_id,

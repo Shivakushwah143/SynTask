@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/authStore'
 import { useConfirmation } from '../hooks/useConfirmation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMembers }) => {
   const { user } = useAuthStore()
@@ -482,7 +483,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                         )}
                       </div>
                       <span className="text-xs text-gray-500">
-                        {format(new Date(comment.created_at), 'MMM d, h:mm a')}
+                        {format(timeService.instant(comment.created_at), 'MMM d, h:mm a')}
                       </span>
                     </div>
                     <p className="text-sm text-gray-700 ml-6">{comment.content}</p>

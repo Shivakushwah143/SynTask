@@ -38,6 +38,7 @@ import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
 import DonutLegendChart from '../components/charts/DonutLegendChart'
 import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthData, buildTaskDuePriorityData } from './dashboardData'
 import { DashboardSectionVisibilityPanel } from './DashboardSectionVisibilityPanelView.jsx'
+import { timeService } from '@/services/timeService'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const PROJECT_STATUS_COLORS = {
@@ -203,7 +204,7 @@ const Dashboard = () => {
     const fetchCalendarData = async () => {
       setCalendarLoading(true);
       try {
-        const today = new Date();
+        const today = timeService.now();
         const startStr = format(today, 'yyyy-MM-dd');
         const endStr = format(addDays(today, 30), 'yyyy-MM-dd');
         // Workspace calendar events
@@ -227,21 +228,21 @@ const Dashboard = () => {
 
         const upcomingDead = workspaceEvents.filter((e) => {
           if (e.type !== 'task_due' || !e.start) return false;
-          const dueDate = new Date(e.start);
+          const dueDate = timeService.instant(e.start);
           return dueDate > today && dueDate <= addDays(today, 3) && e.status !== 'completed';
         });
         setUpcomingDeadlines(upcomingDead);
 
         const upcomingMeet = workspaceEvents.filter((e) => {
           if (e.type !== 'meeting' || !e.start) return false;
-          const meetDate = new Date(e.start);
+          const meetDate = timeService.instant(e.start);
           return meetDate >= today;
         });
         setUpcomingMeetingsList(upcomingMeet);
 
         const overdue = workspaceEvents.filter((e) => {
           if (e.type !== 'task_due' || !e.start) return false;
-          const dueDate = new Date(e.start);
+          const dueDate = timeService.instant(e.start);
           return dueDate < today && e.status !== 'completed';
         });
         setOverdueTasksList(overdue);
@@ -274,7 +275,7 @@ const Dashboard = () => {
     }
   }, [sectionOrder])
 
-  const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d').toUpperCase(), [])
+  const todayLabel = useMemo(() => format(timeService.now(), 'EEEE, MMM d').toUpperCase(), [])
 
   const handleExport = async () => {
     try {
@@ -338,10 +339,10 @@ const Dashboard = () => {
         primary: revenueMode === 'Accrual' ? Number(closedSeries[index] || 0) : Number(targetSeries[index] || 0),
         secondary: revenueMode === 'Accrual' ? Number(targetSeries[index] || 0) : Number(closedSeries[index] || 0),
       }))
-    : MONTH_LABELS.slice(0, new Date().getMonth() + 1).map((label, index) => ({
+    : MONTH_LABELS.slice(0, timeService.now().getMonth() + 1).map((label, index) => ({
         label,
-        primary: index === new Date().getMonth() ? Number(metrics?.revenue || 0) : 0,
-        secondary: index === new Date().getMonth() ? Number(metrics?.won_deals || 0) : 0,
+        primary: index === timeService.now().getMonth() ? Number(metrics?.revenue || 0) : 0,
+        secondary: index === timeService.now().getMonth() ? Number(metrics?.won_deals || 0) : 0,
       }))
 
   const revenueTrend = canSeeSalesWidgets
@@ -416,7 +417,7 @@ const Dashboard = () => {
     { key: 'name', header: 'Project' },
     { key: 'status', header: 'Status', render: (row) => <Badge label={row.status || 'active'} colorKey={row.status || 'active'} /> },
     { key: 'task_count', header: 'Tasks' },
-    { key: 'delivery_date', header: 'Delivery', render: (row) => row.delivery_date ? format(new Date(row.delivery_date), 'MMM d') : '—' },
+    { key: 'delivery_date', header: 'Delivery', render: (row) => row.delivery_date ? format(timeService.instant(row.delivery_date), 'MMM d') : '—' },
   ]
 
   const formatDuration = (totalSeconds) => {
@@ -963,7 +964,7 @@ const Dashboard = () => {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-text-primary dark:text-text-primary">{item.title}</p>
                   <p className="truncate text-xs text-text-muted dark:text-text-secondary">
-                    {role === ROLE.EMPLOYEE ? `Created ${item.created_at ? format(new Date(item.created_at), 'MMM d') : 'recently'}` : item.due_date ? `Due ${format(new Date(item.due_date), 'MMM d')}` : 'No due date'}
+                    {role === ROLE.EMPLOYEE ? `Created ${item.created_at ? format(timeService.instant(item.created_at), 'MMM d') : 'recently'}` : item.due_date ? `Due ${format(timeService.instant(item.due_date), 'MMM d')}` : 'No due date'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -994,7 +995,7 @@ const Dashboard = () => {
               <div key={meeting.id} className="rounded-xl border border-border bg-surface px-4 py-3 dark:border-border dark:bg-black/80">
                 <p className="text-sm font-medium text-text-primary dark:text-text-primary">{meeting.title}</p>
                 <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">
-                  {meeting.meeting_date ? format(new Date(meeting.meeting_date), 'MMM d, h:mm a') : 'Date not set'}
+                  {meeting.meeting_date ? format(timeService.instant(meeting.meeting_date), 'MMM d, h:mm a') : 'Date not set'}
                 </p>
                 {meeting.status ? <div className="mt-2"><Badge label={meeting.status} colorKey={meeting.status} /></div> : null}
               </div>
@@ -1053,7 +1054,7 @@ const Dashboard = () => {
               <div key={item.id} className="rounded-xl border border-border bg-surface px-4 py-3 dark:border-border dark:bg-black/80">
                 <p className="text-sm font-medium text-text-primary dark:text-text-primary">{item.title}</p>
                 <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">
-                  {item.updated_at ? format(new Date(item.updated_at), 'MMM d, h:mm a') : item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}
+                  {item.updated_at ? format(timeService.instant(item.updated_at), 'MMM d, h:mm a') : item.created_at ? format(timeService.instant(item.created_at), 'MMM d, h:mm a') : 'Recently'}
                 </p>
               </div>
             ))}
@@ -1078,7 +1079,7 @@ const Dashboard = () => {
             {(recent?.projects || []).slice(0, 4).map((item) => (
               <button key={item.id} type="button" onClick={() => navigate(item.id ? `/projects/${item.id}/board` : '/projects')} className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800">
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.name}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.created_at ? format(timeService.instant(item.created_at), 'MMM d, h:mm a') : 'Recently'}</p>
               </button>
             ))}
             {!(recent?.projects || []).length ? <EmptyState title="No operating signals" description="Project movement will appear here as work changes." /> : null}

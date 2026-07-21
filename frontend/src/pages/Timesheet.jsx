@@ -10,6 +10,7 @@ import { attendanceAPI } from '../api/attendance'
 import { Badge, Button, EmptyState, FormField, inputClassName, PageHeader, SkeletonTable, Table } from '../components/ui'
 import { asArray, formatDate, toFormData } from './phase4Utils'
 import { addWeeks, eachDayOfInterval, endOfWeek, format, parseISO, startOfWeek, isSameDay } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const STANDARD_WORK_SECONDS = 8 * 3600
 
@@ -156,7 +157,7 @@ const AttendanceSummaryBlock = ({ summary }) => {
 
 export default function Timesheet() {
   const queryClient = useQueryClient()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = timeService.toUtcISOString(timeService.now()).slice(0, 10)
   const [form, setForm] = useState({
     date: today,
     hours_spent_today: 1,
@@ -171,7 +172,7 @@ export default function Timesheet() {
 
   const mine = useQuery('my-timesheet', timesheetApi.getMine)
   const entries = asArray(mine.data, ['entries', 'timesheet'])
-  const weekStart = useMemo(() => startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 }), [weekOffset])
+  const weekStart = useMemo(() => startOfWeek(addWeeks(timeService.now(), weekOffset), { weekStartsOn: 1 }), [weekOffset])
   const weekDays = useMemo(() => eachDayOfInterval({ start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 1 }) }), [weekStart])
   const rows = useMemo(() => {
     const map = new Map()
@@ -189,8 +190,8 @@ export default function Timesheet() {
     const nextDraft = {}
     rows.forEach((row) => {
       weekDays.forEach((day) => {
-        const entry = row.entries.find((item) => isSameDay(new Date(item.date), day))
-        nextDraft[`${row.label}-${day.toISOString().slice(0, 10)}`] = entry ? String(entry.hours_spent_today || entry.hours_spent || '') : ''
+        const entry = row.entries.find((item) => isSameDay(timeService.instant(item.date), day))
+        nextDraft[`${row.label}-${timeService.toUtcISOString(day).slice(0, 10)}`] = entry ? String(entry.hours_spent_today || entry.hours_spent || '') : ''
       })
     })
     setWeeklyDraft(nextDraft)
@@ -233,7 +234,7 @@ export default function Timesheet() {
     create.mutate(form)
   }
 
-  const weekEntryFor = (row, day) => row.entries.find((entry) => isSameDay(new Date(entry.date), day))
+  const weekEntryFor = (row, day) => row.entries.find((entry) => isSameDay(timeService.instant(entry.date), day))
   const weeklyTotal = (day) => rows.reduce((sum, row) => {
     const entry = weekEntryFor(row, day)
     return sum + Number(entry?.hours_spent_today || entry?.hours_spent || 0)
@@ -245,11 +246,11 @@ export default function Timesheet() {
       const payloads = []
       rows.forEach((row) => {
         weekDays.forEach((day) => {
-          const key = `${row.label}-${day.toISOString().slice(0, 10)}`
+          const key = `${row.label}-${timeService.toUtcISOString(day).slice(0, 10)}`
           const hours = Number(weeklyDraft[key] || 0)
           if (hours > 0) {
             payloads.push({
-              date: day.toISOString().slice(0, 10),
+              date: timeService.toUtcISOString(day).slice(0, 10),
               hours_spent_today: hours,
               miscellaneous_description: row.label,
               is_miscellaneous: true,
@@ -324,7 +325,7 @@ export default function Timesheet() {
           <div className="min-w-[900px]">
             <div className="grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2 border-b border-gray-200 pb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:text-gray-400">
               <div>Project / Task</div>
-              {weekDays.map((day) => <div key={day.toISOString()} className="text-center">{format(day, 'EEE dd')}</div>)}
+              {weekDays.map((day) => <div key={timeService.toUtcISOString(day)} className="text-center">{format(day, 'EEE dd')}</div>)}
             </div>
             <div className="space-y-2 pt-3">
               {rows.length ? rows.map((row) => (
@@ -333,10 +334,10 @@ export default function Timesheet() {
                     {row.label}
                   </div>
                   {weekDays.map((day) => {
-                    const key = `${row.label}-${day.toISOString().slice(0, 10)}`
+                    const key = `${row.label}-${timeService.toUtcISOString(day).slice(0, 10)}`
                     return (
                       <input
-                        key={day.toISOString()}
+                        key={timeService.toUtcISOString(day)}
                         className={`${inputClassName} text-center`}
                         type="number"
                         min="0"
@@ -354,7 +355,7 @@ export default function Timesheet() {
             </div>
             <div className="mt-3 grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2 text-xs text-gray-500 dark:text-gray-400">
               <div className="font-medium">Daily total</div>
-              {weekDays.map((day) => <div key={day.toISOString()} className="text-center font-semibold">{weeklyTotal(day)}</div>)}
+              {weekDays.map((day) => <div key={timeService.toUtcISOString(day)} className="text-center font-semibold">{weeklyTotal(day)}</div>)}
             </div>
           </div>
         </div>

@@ -7,6 +7,7 @@ import { salesApi } from '../../api/sales'
 import { usersAPI } from '../../api/users'
 import { Badge, Button, EmptyState, PageHeader, SkeletonTable, inputClassName } from '../../components/ui'
 import { asArray, formatDate, formatMoney, getId } from '../phase4Utils'
+import { timeService } from '@/services/timeService'
 
 const priorityTone = {
   high: 'danger',
@@ -66,7 +67,7 @@ export default function SalesPipeline() {
         const aPriority = priorityRank[normalizeText(a.priority || a.interest_level)] ?? 3
         const bPriority = priorityRank[normalizeText(b.priority || b.interest_level)] ?? 3
         if (aPriority !== bPriority) return aPriority - bPriority
-        return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0)
+        return timeService.instant(b.updated_at || b.created_at || 0) - timeService.instant(a.updated_at || a.created_at || 0)
       })
   }, [ownerFilter, priorityFilter, prospects, search, stageFilter])
 
@@ -76,7 +77,7 @@ export default function SalesPipeline() {
         ? (() => { try { return JSON.parse(prospect.custom_fields) || {} } catch { return {} } })()
         : (prospect.custom_fields || {})
       return salesApi.updateLeadForm(getId(prospect), {
-        custom_fields: JSON.stringify({ ...customFields, meeting_scheduled: true, meeting_scheduled_at: new Date().toISOString() }),
+        custom_fields: JSON.stringify({ ...customFields, meeting_scheduled: true, meeting_scheduled_at: timeService.toUtcISOString(timeService.now()) }),
       })
     },
     {

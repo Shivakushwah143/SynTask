@@ -6,6 +6,7 @@ import {
 import { PageHeader, Button, Badge } from '../../components/ui'
 import { useMonitoringSocket } from '../../hooks/useMonitoringSocket'
 import { format, parseISO } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const formatTime = (totalSeconds) => {
   const s = Math.max(0, Math.floor(totalSeconds))
@@ -123,7 +124,7 @@ const Attendance = () => {
             </div>
 
             <h3 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mb-0.5">{status}</h3>
-            <p className="text-xs text-gray-500 mb-1">{format(new Date(), 'eeee, MMMM dd')}</p>
+            <p className="text-xs text-gray-500 mb-1">{format(timeService.now(), 'eeee, MMMM dd')}</p>
 
             {/* Login time + late indicator */}
             {loginTime && (
