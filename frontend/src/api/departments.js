@@ -1,5 +1,12 @@
 import api from './axios'
 
+export const DEPARTMENTS_CHANGED_EVENT = 'syntask:departments-changed'
+
+export const notifyDepartmentsChanged = (detail = {}) => {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(DEPARTMENTS_CHANGED_EVENT, { detail }))
+}
+
 export const departmentsAPI = {
   listDepartments: async () => {
     const response = await api.get('/departments/')

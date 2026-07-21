@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { AlertCircle, CheckCircle2, ShieldCheck, Users, Building2 } from 'lucide-react'
 import api from '../api/axios'
 import { useAuthStore } from '../store/authStore'
 
 const AdminPermissions = () => {
   const { user } = useAuthStore()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const departmentIdFromUrl = searchParams.get('department') || ''
   const [overview, setOverview] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState('')
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState(departmentIdFromUrl)
   const [selectedUserId, setSelectedUserId] = useState('')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -20,7 +23,15 @@ const AdminPermissions = () => {
       const { data } = await api.get('/admin/permissions/overview')
       setOverview(data)
       if (data.departments?.length) {
-        setSelectedDepartmentId((current) => current || data.departments[0].id)
+        setSelectedDepartmentId((current) => {
+          if (departmentIdFromUrl && data.departments.some((dept) => dept.id === departmentIdFromUrl)) {
+            return departmentIdFromUrl
+          }
+          if (current && data.departments.some((dept) => dept.id === current)) {
+            return current
+          }
+          return data.departments[0].id
+        })
       }
       if (data.employees?.length) {
         setSelectedUserId((current) => current || data.employees[0].id)
@@ -35,6 +46,20 @@ const AdminPermissions = () => {
   useEffect(() => {
     loadOverview()
   }, [])
+
+  useEffect(() => {
+    if (!overview?.departments?.length) return
+
+    setSelectedDepartmentId((current) => {
+      if (departmentIdFromUrl && overview.departments.some((dept) => dept.id === departmentIdFromUrl)) {
+        return departmentIdFromUrl
+      }
+      if (current && overview.departments.some((dept) => dept.id === current)) {
+        return current
+      }
+      return overview.departments[0].id
+    })
+  }, [departmentIdFromUrl, overview?.departments])
 
   const selectedDepartment = overview?.departments?.find((dept) => dept.id === selectedDepartmentId) || null
   const selectedUser = overview?.employees?.find((employee) => employee.id === selectedUserId) || null
@@ -176,7 +201,23 @@ const AdminPermissions = () => {
           <div className="mt-4 space-y-4">
             <label className="block text-sm font-medium text-slate-700">
               Select department
-              <select className="mt-2 w-full rounded-2xl border border-slate-300 px-3 py-2" value={selectedDepartmentId} onChange={(e) => setSelectedDepartmentId(e.target.value)}>
+              <select
+                className="mt-2 w-full rounded-2xl border border-slate-300 px-3 py-2"
+                value={selectedDepartmentId}
+                onChange={(event) => {
+                  const nextDepartmentId = event.target.value
+                  setSelectedDepartmentId(nextDepartmentId)
+                  setSearchParams((current) => {
+                    const nextParams = new URLSearchParams(current)
+                    if (nextDepartmentId) {
+                      nextParams.set('department', nextDepartmentId)
+                    } else {
+                      nextParams.delete('department')
+                    }
+                    return nextParams
+                  })
+                }}
+              >
                 {overview?.departments?.map((dept) => (
                   <option key={dept.id} value={dept.id}>{dept.name}</option>
                 ))}
