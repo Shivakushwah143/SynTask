@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, UserPlus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -70,6 +70,16 @@ const TASK_PRIORITY_SELECT_STYLES = {
   critical: 'border-rose-300 text-rose-700 focus:border-rose-500 focus:ring-rose-500/20 dark:border-rose-700 dark:text-rose-300',
 }
 
+const PROJECT_AGENT_OPERATIONS = [
+  { value: 'project_summary', label: 'Project summary' },
+  { value: 'decompose_scope', label: 'Decompose scope' },
+  { value: 'identify_risks', label: 'Identify risks' },
+  { value: 'execution_guidance', label: 'Execution guidance' },
+  { value: 'review_plan', label: 'Review plan' },
+  { value: 'estimate_work', label: 'Estimate work' },
+  { value: 'comprehensive_project_review', label: 'Full review' },
+]
+
 const normalizeStatusId = (value) => String(value || '').trim().toLowerCase()
 
 const normalizeBoardColumns = (columns) => {
@@ -136,6 +146,7 @@ export default function ProjectBoard() {
   const [showFilters, setShowFilters] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
+  const [showProjectAgentModal, setShowProjectAgentModal] = useState(false)
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
   const [assignmentManagerId, setAssignmentManagerId] = useState('')
   const [assignmentLeaderId, setAssignmentLeaderId] = useState('')
@@ -146,6 +157,10 @@ export default function ProjectBoard() {
   const [selectedStatus, setSelectedStatus] = useState('todo')
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES)
   const [submitting, setSubmitting] = useState(false)
+  const [projectAgentSubmitting, setProjectAgentSubmitting] = useState(false)
+  const [projectAgentOperation, setProjectAgentOperation] = useState('project_summary')
+  const [projectAgentRequest, setProjectAgentRequest] = useState('')
+  const [projectAgentRun, setProjectAgentRun] = useState(null)
   const [assigningProject, setAssigningProject] = useState(false)
   const [updatingTaskId, setUpdatingTaskId] = useState(null)
   const [activeTaskId, setActiveTaskId] = useState(null)
@@ -379,6 +394,38 @@ export default function ProjectBoard() {
     }
   }
 
+  const handleProjectAgentRun = async (event) => {
+    event.preventDefault()
+    const request = projectAgentRequest.trim()
+    if (!request) {
+      toast.error('Request is required')
+      return
+    }
+    try {
+      setProjectAgentSubmitting(true)
+      const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `project-agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const response = await projectsApi.createProjectAgentRun({
+        schema_version: '1.0',
+        project_id: projectId,
+        operation: projectAgentOperation,
+        user_request: request,
+        selected_record_ids: {},
+        preferences: { detail_level: 'standard' },
+        session_id: `project:${projectId}`,
+        conversation_id: `project-agent:${projectId}`,
+        idempotency_key: idempotencyKey,
+      })
+      setProjectAgentRun(response.data)
+      toast.success('Project Agent request started')
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Project Agent unavailable')
+    } finally {
+      setProjectAgentSubmitting(false)
+    }
+  }
+
   const currentTasks = Object.values(filteredBoard).flat()
   const allProjectTasks = Object.values(boardData?.tasks_by_status || {}).flat()
   const completedTasks = allProjectTasks.filter((task) => ['completed', 'done'].includes((task.status || '').toLowerCase())).length
@@ -526,6 +573,10 @@ export default function ProjectBoard() {
             <Button variant="secondary" size="sm" onClick={() => setShowFilters((value) => !value)}>
               <Filter className="h-4 w-4" />
               Filters
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowProjectAgentModal(true)}>
+              <Sparkles className="h-4 w-4" />
+              Project Agent
             </Button>
             {canCreateProjectTask ? (
               <Button size="sm" onClick={() => { setSelectedStatus('todo'); setShowCreateModal(true) }}>
@@ -820,6 +871,56 @@ export default function ProjectBoard() {
           setTaskAssigneeId(created.id)
         }}
       />
+
+      <Modal isOpen={showProjectAgentModal} onClose={() => setShowProjectAgentModal(false)} title="Project Agent" size="xl">
+        <form onSubmit={handleProjectAgentRun} className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Read-only pilot</p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Creates an Agent run scoped to this project. No task or project records are changed.</p>
+          </div>
+          <FormField label="Operation">
+            <select className={inputClassName} value={projectAgentOperation} onChange={(event) => setProjectAgentOperation(event.target.value)}>
+              {PROJECT_AGENT_OPERATIONS.map((operation) => (
+                <option key={operation.value} value={operation.value}>{operation.label}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Request" required>
+            <textarea
+              rows={4}
+              className={inputClassName}
+              value={projectAgentRequest}
+              onChange={(event) => setProjectAgentRequest(event.target.value)}
+              placeholder="Summarize risks, dependencies, and next steps for this project."
+            />
+          </FormField>
+          {projectAgentRun ? (
+            <section className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge label={projectAgentRun.state || 'queued'} colorKey={projectAgentRun.state || 'scheduled'} />
+                <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{projectAgentRun.run_id}</span>
+              </div>
+              {projectAgentRun.error_category ? (
+                <p className="mt-2 text-sm text-rose-600 dark:text-rose-300">{projectAgentRun.error_category}</p>
+              ) : null}
+              {projectAgentRun.sanitized_result?.summary ? (
+                <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{projectAgentRun.sanitized_result.summary}</p>
+              ) : null}
+              {projectAgentRun.sanitized_result?.warnings?.length ? (
+                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {projectAgentRun.sanitized_result.warnings.join(', ')}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowProjectAgentModal(false)}>Close</Button>
+            <Button type="submit" loading={projectAgentSubmitting} loadingText="Starting">
+              Start run
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal isOpen={canCreateProjectTask && showCreateModal} onClose={() => setShowCreateModal(false)} title="Create task">
         <form onSubmit={handleCreateTask} className="space-y-4">

@@ -23,6 +23,11 @@ class RAGSourceStatus(str, Enum):
 
 class RAGSourceType(str, Enum):
     MANUAL_UPLOAD = "manual_upload"
+    EMAIL_TEMPLATE = "email_template"
+    COMMUNICATION_POLICY = "communication_policy"
+    BRAND_GUIDELINE = "brand_guideline"
+    CLIENT_COMMUNICATION_GUIDANCE = "client_communication_guidance"
+    APPROVED_SIGNATURE = "approved_signature"
 
 
 class RAGDocumentType(str, Enum):
@@ -75,6 +80,7 @@ class RAGKnowledgeSource(Document):
             "approval_status",
             IndexModel([("company_id", ASCENDING), ("checksum", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("source_type", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("source_id", ASCENDING)], unique=True),
         ]
 

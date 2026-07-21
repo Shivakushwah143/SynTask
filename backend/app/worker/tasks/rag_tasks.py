@@ -41,6 +41,7 @@ async def _process_source_version(source_id: str, version_id: str) -> dict:
                 "company_id": source.company_id,
                 "tenant_id": source.tenant_id,
                 "source_id": source.source_id,
+                "source_type": source.source_type.value if hasattr(source.source_type, "value") else str(source.source_type),
                 "version_id": version.version_id,
                 "chunk_id": draft.chunk_id,
                 "document_type": source.document_type.value,
@@ -104,4 +105,3 @@ def process_rag_source_version(self, source_id: str, version_id: str):
         return _run(_process_source_version(source_id, version_id))
     except Exception as exc:
         raise self.retry(exc=exc)
-
