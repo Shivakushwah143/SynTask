@@ -20,7 +20,6 @@ import {
   DollarSign,
   Factory,
   FileBarChart2,
-  // FileCheck2, // MSA nav hidden by request.
   FolderKanban,
   Gauge,
   GitBranch,
@@ -47,6 +46,7 @@ import {
 import { useAuthStore } from "../store/authStore";
 import { ROLE, getRoleLabel, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
 import { HR_MODULES, HR_ROLES } from "../config/hrModules";
+
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
 const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
@@ -97,8 +97,6 @@ const Sidebar = ({ isOpen, onClose }) => {
     }
   });
 
-  // Desktop-only "rail" mode: shrinks to icons, expands on toggle.
-  // Mobile drawer (isOpen/onClose) is unaffected by this and always shows the full sidebar.
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === "true";
@@ -119,15 +117,15 @@ const Sidebar = ({ isOpen, onClose }) => {
     try {
       localStorage.setItem(COLLAPSE_KEY, String(collapsed));
     } catch {
-      // ignore (e.g. storage disabled)
+      // ignore
     }
   }, [collapsed]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('syntask-sidebar-favorites', JSON.stringify(favorites))
+      localStorage.setItem('syntask-sidebar-favorites', JSON.stringify(favorites));
     } catch {
-      // ignore storage write failures
+      // ignore
     }
   }, [favorites]);
 
@@ -135,7 +133,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     try {
       localStorage.setItem(FAVORITES_OPEN_KEY, String(favoritesOpen));
     } catch {
-      // ignore storage write failures
+      // ignore
     }
   }, [favoritesOpen]);
 
@@ -143,7 +141,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     try {
       localStorage.setItem(NAV_GROUPS_OPEN_KEY, JSON.stringify(openGroups));
     } catch {
-      // ignore storage write failures
+      // ignore
     }
   }, [openGroups]);
 
@@ -151,7 +149,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     try {
       localStorage.setItem(WIDTH_KEY, String(sidebarWidth));
     } catch {
-      // ignore storage write failures
+      // ignore
     }
   }, [sidebarWidth]);
 
@@ -218,7 +216,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.MANAGER],
       module: "task",
     },
-
     {
       name: "Notifications",
       href: "/notifications",
@@ -331,16 +328,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.ADMIN],
       module: "task",
     },
-    /*
-    MSA hidden by request. Keep nav item commented for later restore.
-    {
-      name: "Agreements",
-      href: "/msa",
-      icon: FileCheck2,
-      roles: [ROLE.ADMIN, ROLE.LEAD],
-      module: "task",
-    },
-    */
     {
       name: "Ledger",
       href: "/ledger",
@@ -447,11 +434,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/crm/contacts",
       icon: UserCheck,
     },
-    // {
-    //   name: "CRM Activities",
-    //   href: "/crm/activities",
-    //   icon: CalendarClock,
-    // },
     {
       name: "CRM Calendar",
       href: "/crm/calendar",
@@ -532,7 +514,6 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "finance",
       label: "Finance Tools",
-      // MSA hidden by request. Restore "Agreements" here when MSA returns.
       items: ["Subscriptions"]
         .map((name) => itemByName[name])
         .filter(Boolean),
@@ -540,16 +521,54 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "administration",
       label: "Administration",
-      // MSA hidden by request. Restore "Agreements" here when MSA returns.
       items: ["Users", "Departments", "Admin Permissions", "Workflows", "Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
   ]
-    .filter((group) => group.items.length)
-    // .filter((group) => !(isManagerRole(userRole) && group.key === "operations"))
-    // .filter((group) => !(isManagerRole(userRole) && group.key === "administration"))
-    // .filter((group) => !(isManagerRole(userRole) && group.key === "hr"));
+    .filter((group) => group.items.length);
+
+  // Color mapping for icons
+  const getIconColor = (itemName) => {
+    const colorMap = {
+      'Dashboard': 'text-blue-400',
+      'Projects': 'text-indigo-400',
+      'Tasks': 'text-violet-400',
+      'Service Requests': 'text-purple-400',
+      'Workspace Calendar': 'text-pink-400',
+      'Timesheet': 'text-rose-400',
+      'Attendance': 'text-orange-400',
+      'Live Attendance': 'text-amber-400',
+      'Attendance Reports': 'text-yellow-400',
+      'Notifications': 'text-red-400',
+      'Scheduled Jobs': 'text-cyan-400',
+      'Timeline': 'text-teal-400',
+      'Leaves': 'text-emerald-400',
+      'Daily EOD': 'text-green-400',
+      'Workspace Reports': 'text-lime-400',
+      'Leads': 'text-blue-300',
+      'AI Command Center': 'text-purple-300',
+      'Creative Studio': 'text-pink-300',
+      'Marketing Assistant': 'text-rose-300',
+      'Content Calendar': 'text-indigo-300',
+      'CRM': 'text-cyan-400',
+      'HR': 'text-emerald-400',
+      'Bulk Lead Import': 'text-orange-400',
+      'Clients': 'text-blue-400',
+      'Invoices': 'text-green-400',
+      'Ledger': 'text-yellow-400',
+      'Users': 'text-gray-400',
+      'Workflows': 'text-purple-400',
+      'Departments': 'text-indigo-400',
+      'Admin Permissions': 'text-red-400',
+      'My Team': 'text-pink-400',
+      'Company Directory': 'text-blue-400',
+      'Subscriptions': 'text-emerald-400',
+      'Audit Log': 'text-orange-400',
+      'Settings': 'text-gray-400',
+    };
+    return colorMap[itemName] || 'text-gray-400';
+  };
 
   return (
     <>
@@ -562,7 +581,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - Zoho CRM Style with Colors */}
       <div
         className={`
           fixed lg:static inset-y-0 left-0 z-50
@@ -572,46 +591,50 @@ const Sidebar = ({ isOpen, onClose }) => {
         `}
         style={{ '--sidebar-width': `${collapsed ? 76 : sidebarWidth}px` }}
       >
-        <div className="relative flex h-full flex-col overflow-visible border-r border-black/10 bg-[linear-gradient(180deg,rgba(12,10,8,1)_0%,rgba(24,19,15,1)_100%)] text-[#f6eadb] shadow-[0_22px_50px_rgba(0,0,0,0.18)] dark:border-[#3b3026]">
+        <div className="relative flex h-full flex-col overflow-visible border-r border-[#1a1a1a] bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] text-white shadow-2xl">
+          
+          {/* Animated gradient border top */}
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-gradient-x"></div>
+
           {/* Desktop collapse toggle */}
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="absolute -right-3.5 top-[22px] z-10 hidden h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-[#fffaf3] text-[#7a6f61] shadow-none transition-all hover:scale-105 hover:border-primary-500 hover:text-primary-600 lg:flex dark:border-[#4a3d31] dark:bg-[#201912] dark:text-[#d9cdbc] dark:hover:border-primary-500 dark:hover:text-primary-200"
+            className="absolute -right-3.5 top-5 z-10 hidden h-7 w-7 items-center justify-center rounded-full border border-[#2a2a2a] bg-[#1a1a1a] text-gray-400 shadow-lg transition-all hover:scale-105 hover:border-primary-500 hover:text-primary-400 lg:flex"
           >
             {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3.5 w-3.5" />
             ) : (
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3.5 w-3.5" />
             )}
           </button>
 
-          {/* Logo */}
-          <div className={`flex h-20 items-center border-b border-white/10 px-4 ${collapsed ? "lg:justify-center lg:px-0" : "justify-between"}`}>
+          {/* Logo with colored accent */}
+          <div className={`flex h-16 items-center border-b border-[#1a1a1a] px-4 ${collapsed ? "lg:justify-center lg:px-0" : "justify-between"}`}>
             <div className="flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#fffaf4] text-primary-600 shadow-none dark:bg-[#241c14] dark:ring-1 dark:ring-white/10">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/20">
                 <img
                   src="/logo.svg"
                   alt="SynTask Logo"
-                  className="h-10 w-10 flex-shrink-0 object-contain"
+                  className="h-6 w-6 flex-shrink-0 object-contain invert"
                   onError={(e) => {
                     e.target.style.display = "none";
                   }}
                 />
               </div>
               <div className={collapsed ? "lg:hidden" : ""}>
-                <h1 className="text-base font-bold tracking-tight text-[#fffaf4]">
+                <h1 className="text-sm font-bold tracking-tight text-white">
                   SynTask
                 </h1>
-                <p className="text-xs text-[#d4c6b5]">Workspace OS</p>
+                <p className="text-[10px] text-gray-400">Workspace OS</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setSidebarWidth(prevWidth)}
-                className="hidden min-h-7 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d9cdbc] transition-colors hover:bg-white/10 lg:inline-flex dark:bg-[#241c14]/70"
+                className="hidden min-h-6 rounded border border-[#1a1a1a] bg-[#0f0f0f] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-gray-400 transition-colors hover:border-primary-500/30 hover:bg-primary-500/10 hover:text-primary-400 lg:inline-flex"
                 aria-label="Decrease sidebar width"
               >
                 -
@@ -619,7 +642,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 onClick={() => setSidebarWidth(nextWidth)}
-                className="hidden min-h-7 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d9cdbc] transition-colors hover:bg-white/10 lg:inline-flex dark:bg-[#241c14]/70"
+                className="hidden min-h-6 rounded border border-[#1a1a1a] bg-[#0f0f0f] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-gray-400 transition-colors hover:border-primary-500/30 hover:bg-primary-500/10 hover:text-primary-400 lg:inline-flex"
                 aria-label="Increase sidebar width"
               >
                 +
@@ -627,47 +650,48 @@ const Sidebar = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-full p-2 text-[#d9cdbc] transition-colors hover:bg-white/10 lg:hidden"
+                className="rounded p-2 text-gray-400 transition-colors hover:bg-white/10 lg:hidden"
                 aria-label="Close navigation"
               >
-                <X className="h-5 w-5 text-[#d9cdbc]" />
+                <X className="h-5 w-5" />
               </button>
             </div>
           </div>
 
-          {/* Navigation */}
-          <nav className={`flex-1 space-y-3 px-3 py-4 ${collapsed ? "overflow-visible" : "overflow-y-auto"}`}>
+          {/* Navigation with colored items */}
+          <nav className={`flex-1 space-y-2 px-2 py-3 ${collapsed ? "overflow-visible" : "overflow-y-auto"}`}>
             {favoriteItems.length ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.055] p-2 shadow-none dark:bg-[#241c14]/45">
+              <div className="mb-2">
                 <button
                   type="button"
                   onClick={() => setFavoritesOpen((open) => !open)}
                   aria-expanded={favoritesOpen}
-                  className={`flex w-full items-center justify-between rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d4c6b5] transition-colors hover:bg-white/10 hover:text-[#fffaf4] ${collapsed ? "lg:hidden" : ""}`}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-gray-400 transition-colors hover:bg-white/5 hover:text-yellow-400 ${collapsed ? "lg:hidden" : ""}`}
                 >
-                  <span>Favorites</span>
+                  <span>⭐ Favorites</span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] text-primary-600 shadow-none dark:bg-primary-500 dark:text-white">
+                    <span className="rounded-full bg-yellow-500/20 px-1.5 py-0.5 text-[9px] text-yellow-400">
                       {favoriteItems.length}
                     </span>
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${favoritesOpen ? '' : '-rotate-90'}`} />
+                    <ChevronDown className={`h-3 w-3 transition-transform ${favoritesOpen ? '' : '-rotate-90'}`} />
                   </span>
                 </button>
-                <div className={`space-y-1 ${favoritesOpen ? '' : 'hidden'}`}>
+                <div className={`space-y-0.5 ${favoritesOpen ? '' : 'hidden'}`}>
                   {favoriteItems.map((item) => (
                     <Link
                       key={item.name}
                       to={item.href}
                       onClick={onClose}
-                    className="flex min-h-10 items-center rounded-xl px-3 py-2 text-sm font-medium text-[#f6eadb] transition-colors hover:bg-white/10 hover:text-white"
+                      className="flex min-h-8 items-center rounded-lg px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:bg-white/5 hover:text-yellow-400"
                     >
-                    <Star className="mr-2 h-4 w-4 text-primary-400" />
+                      <Star className={`mr-2 h-4 w-4 ${getIconColor(item.name)}`} />
                       <span className={collapsed ? "lg:hidden" : ""}>{item.name}</span>
                     </Link>
                   ))}
                 </div>
               </div>
             ) : null}
+            
             {dashboardNavigation.map((item) => (
               <SidebarNavItem
                 key={item.name}
@@ -678,8 +702,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                 favorites={favorites}
                 onToggleFavorite={toggleFavorite}
                 showFavorite
+                iconColor={getIconColor(item.name)}
               />
             ))}
+            
             {navigationGroups
               .filter((group) => !(isManagerRole(userRole) && group.key === 'hr'))
               .map((group) => (
@@ -693,12 +719,13 @@ const Sidebar = ({ isOpen, onClose }) => {
                   onToggleFavorite={toggleFavorite}
                   isOpen={openGroups[group.key] ?? true}
                   onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? true) }))}
+                  getIconColor={getIconColor}
                 />
               ))}
           </nav>
 
-          {/* User Info */}
-          <div className="border-t border-white/10 p-4">
+          {/* User Info with colored accent */}
+          <div className="border-t border-[#1a1a1a] p-3">
             <Link
               to="/settings"
               title={
@@ -706,7 +733,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   ? `${user?.first_name || ""} ${user?.last_name || ""}`.trim()
                   : undefined
               }
-              className={`group relative flex items-center rounded-3xl border border-white/10 bg-white/[0.06] p-3 transition-all hover:border-white/20 hover:bg-white/[0.12] cursor-pointer ${
+              className={`group relative flex items-center rounded-lg p-2 transition-all hover:bg-white/5 ${
                 collapsed ? "lg:justify-center" : ""
               }`}
               onClick={onClose}
@@ -716,34 +743,33 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <img
                     src={getApiAssetUrl(user.avatar)}
                     alt={user?.first_name}
-                    className="h-10 w-10 rounded-full object-cover border border-white/10 shadow-none"
+                    className="h-8 w-8 rounded-full object-cover border-2 border-primary-500/30"
                     onError={(e) => {
-                      // Fallback to initials if image fails to load
                       e.target.style.display = "none";
                       const fallback = e.target.nextSibling;
                       if (fallback) fallback.style.display = "flex";
                     }}
                   />
                 ) : null}
-                <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-[#fff4eb] shadow-none ${user?.avatar ? "hidden" : ""} dark:bg-[#241c14] dark:ring-1 dark:ring-white/10`}>
-                  <span className="text-sm font-semibold text-primary-600">
+                <div className={`flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 text-white shadow-lg shadow-primary-500/20 ${user?.avatar ? "hidden" : ""}`}>
+                  <span className="text-xs font-semibold">
                     {user?.first_name?.[0]}
                     {user?.last_name?.[0]}
                   </span>
                 </div>
               </div>
               <div
-                className={`ml-3 flex-1 min-w-0 ${collapsed ? "lg:hidden" : ""}`}
+                className={`ml-2.5 flex-1 min-w-0 ${collapsed ? "lg:hidden" : ""}`}
               >
-                <p className="text-sm font-medium text-[#fffaf4] truncate">
+                <p className="text-sm font-medium text-white truncate">
                   {user?.first_name} {user?.last_name}
                 </p>
-                <p className="text-xs text-[#cfc2b2] capitalize truncate">
+                <p className="text-[10px] text-gray-400 capitalize truncate">
                   {getRoleLabel(user?.role)}
                 </p>
               </div>
+              <div className={`h-1.5 w-1.5 rounded-full bg-green-400 shadow-lg shadow-green-400/30 ${collapsed ? "lg:hidden" : ""}`}></div>
 
-              {/* Tooltip shown only in collapsed desktop rail mode */}
               {collapsed && <SidebarTooltip label={`${user?.first_name || ''} ${user?.last_name || ''}`.trim()} />}
             </Link>
           </div>
@@ -755,6 +781,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
 export default Sidebar;
 
+// Updated SidebarNavGroup with colors
 function SidebarNavGroup({
   group,
   location,
@@ -764,26 +791,30 @@ function SidebarNavGroup({
   onToggleFavorite,
   isOpen,
   onToggle,
+  getIconColor,
 }) {
   const isGroupActive = group.items.some((item) => isNavItemActive(item, location))
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.055] p-2 shadow-none dark:bg-[#241c14]/45">
+    <div className="mb-1">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={isOpen}
-        className={`flex w-full items-center justify-between rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors hover:bg-white/10 hover:text-white ${collapsed ? "lg:hidden" : ""} ${isGroupActive ? "text-[#fffaf4]" : "text-[#d4c6b5]"}`}
+        className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-gray-400 transition-colors hover:bg-white/5 hover:text-white ${collapsed ? "lg:hidden" : ""} ${isGroupActive ? "text-white" : ""}`}
       >
-        <span>{group.label}</span>
+        <span className="flex items-center gap-2">
+          <span className="w-1 h-1 rounded-full bg-primary-400"></span>
+          {group.label}
+        </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] text-primary-600 shadow-none dark:bg-primary-500 dark:text-white">
+          <span className="rounded-full bg-primary-500/20 px-1.5 py-0.5 text-[9px] text-primary-400">
             {group.items.length}
           </span>
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+          <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
         </span>
       </button>
-      <div className={`space-y-1 ${isOpen || collapsed ? '' : 'hidden'}`}>
+      <div className={`space-y-0.5 ${isOpen || collapsed ? '' : 'hidden'}`}>
         {group.items.map((item) => (
           <SidebarNavItem
             key={`${group.key}-${item.name}`}
@@ -795,6 +826,7 @@ function SidebarNavGroup({
             onToggleFavorite={onToggleFavorite}
             showFavorite={group.key !== "crm"}
             nested={!collapsed}
+            iconColor={getIconColor ? getIconColor(item.name) : 'text-gray-400'}
           />
         ))}
       </div>
@@ -802,6 +834,7 @@ function SidebarNavGroup({
   )
 }
 
+// Updated SidebarNavItem with colors
 function SidebarNavItem({
   item,
   location,
@@ -811,37 +844,42 @@ function SidebarNavItem({
   onToggleFavorite,
   showFavorite = false,
   nested = false,
+  iconColor = 'text-gray-400',
 }) {
   const isActive = isNavItemActive(item, location)
 
   return (
-    <div className="group flex items-center gap-1">
+    <div className="group flex items-center gap-0.5">
       <Link
         to={item.href}
         aria-current={isActive ? "page" : undefined}
         aria-label={item.name}
         onClick={onClose}
-        className={`group relative flex min-h-10 flex-1 items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+        className={`group relative flex min-h-8 flex-1 items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
           collapsed ? "lg:justify-center lg:px-0" : nested ? "ml-1" : ""
         } ${
           isActive
-            ? "bg-primary-500 text-white shadow-none"
-            : "text-[#eee1d0] hover:bg-white/10 hover:text-white"
+            ? "bg-gradient-to-r from-primary-500/10 to-transparent text-primary-400"
+            : "text-gray-300 hover:bg-white/5 hover:text-white"
         }`}
       >
-        <item.icon className={`h-5 w-5 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-white" : ""}`} />
+        <item.icon className={`h-4 w-4 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-primary-400" : iconColor}`} />
         <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.name}</span>
-        {isActive && !collapsed ? <span className="ml-auto h-2 w-2 rounded-full bg-white/90" /> : null}
+        {isActive && !collapsed ? (
+          <span className="ml-auto flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary-400 shadow-lg shadow-primary-400/50 animate-pulse"></span>
+          </span>
+        ) : null}
         {collapsed && <SidebarTooltip label={item.name} />}
       </Link>
       {showFavorite ? (
         <button
           type="button"
           onClick={() => onToggleFavorite(item.href)}
-          className={`hidden min-h-8 min-w-8 rounded-full p-1.5 text-[#b9ad9e] transition hover:bg-white/10 hover:text-primary-300 ${collapsed ? 'lg:hidden' : 'lg:inline-flex'}`}
+          className={`hidden min-h-7 min-w-7 rounded p-1 text-gray-400 transition hover:bg-white/5 hover:text-yellow-400 ${collapsed ? 'lg:hidden' : 'lg:inline-flex'}`}
           aria-label={favorites.includes(item.href) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
         >
-          <Star className={`h-4 w-4 ${favorites.includes(item.href) ? 'fill-primary-400 text-primary-400' : ''}`} />
+          <Star className={`h-3.5 w-3.5 ${favorites.includes(item.href) ? 'fill-yellow-400 text-yellow-400' : ''}`} />
         </button>
       ) : null}
     </div>
@@ -875,16 +913,15 @@ function SidebarTooltip({ label }) {
         ml-2
         -translate-y-1/2
         whitespace-nowrap
-        rounded-xl
+        rounded-lg
         border
-        border-white/10
-        bg-[#201912]
+        border-[#2a2a2a]
+        bg-[#1a1a1a]
         px-3
         py-1.5
         text-xs
-        text-[#fffaf4]
+        text-white
         opacity-0
-        shadow-none
         invisible
         transition-all
         duration-200
