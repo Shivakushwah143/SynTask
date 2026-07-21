@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Check, Clock, Home, Paperclip, Plus, X, Send, Forward } from 'lucide-react'
+import { CalendarDays, Check, Clock, Home, Paperclip, Plus, X, Send, Forward, Users, Activity, Calendar, TrendingUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { leavesAPI } from '../api/leaves'
@@ -54,6 +54,31 @@ export const canForwardLeaveRequest = (leave, user) => {
   return userRole === ROLE.MANAGER && [ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole) && canReviewLeaveRequest(leave, user)
 }
 
+// Stat Card Component
+const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+    teal: 'from-teal-500 to-cyan-500',
+  }
+
+  return (
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    </div>
+  )
+}
+
 export default function Leaves() {
   const { user } = useAuthStore()
   const canManage = hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role)
@@ -84,6 +109,12 @@ export default function Leaves() {
       return role === ROLE.ADMIN && id !== currentUserId && id !== requesterId
     })
   }, [actionState.leave?.employee_id, forwardTargetUsers, user?.id])
+
+  // Calculate stats
+  const totalLeaves = leaves.length
+  const pendingLeaves = leaves.filter(l => l.status === 'pending').length
+  const approvedLeaves = leaves.filter(l => l.status === 'approved').length
+  const rejectedLeaves = leaves.filter(l => l.status === 'rejected').length
 
   const loadData = useCallback(async () => {
     try {
@@ -212,105 +243,262 @@ export default function Leaves() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Leave Management"
-        description={canRequestLeave ? 'Request leave, review approvals, and see current availability.' : 'Review leave requests, approve or reject pending items, and see current availability.'}
-      />
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+              <CalendarDays className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl">Leave Management</h1>
+              <p className="mt-1 text-indigo-100">
+                {canRequestLeave ? 'Request leave, review approvals, and see current availability.' : 'Review leave requests, approve or reject pending items, and see current availability.'}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              onClick={loadData}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
 
+      {/* Stats Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Total Requests"
+          value={totalLeaves}
+          icon={Activity}
+          color="indigo"
+          subtitle="All leave requests"
+        />
+        <StatCard
+          label="Pending"
+          value={pendingLeaves}
+          icon={Clock}
+          color="amber"
+          subtitle="Awaiting review"
+        />
+        <StatCard
+          label="Approved"
+          value={approvedLeaves}
+          icon={Check}
+          color="emerald"
+          subtitle="Approved requests"
+        />
+        <StatCard
+          label="Rejected"
+          value={rejectedLeaves}
+          icon={X}
+          color="rose"
+          subtitle="Rejected requests"
+        />
+      </div>
+
+      {/* Quick Status Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <StatusCard icon={Clock} label="Availability" value={availabilityLabel(availability.availability)} colorKey={availability.availability} />
-        <StatusCard icon={CalendarDays} label="On Leave Today" value={calendar.today?.filter((item) => item.leave_type !== 'work_from_home').length || 0} colorKey="pending" />
-        <StatusCard icon={Home} label="WFH Today" value={calendar.today?.filter((item) => item.leave_type === 'work_from_home').length || 0} colorKey="approved" />
+        <StatusCard 
+          icon={Clock} 
+          label="Availability" 
+          value={availabilityLabel(availability.availability)} 
+          colorKey={availability.availability} 
+        />
+        <StatusCard 
+          icon={CalendarDays} 
+          label="On Leave Today" 
+          value={calendar.today?.filter((item) => item.leave_type !== 'work_from_home').length || 0} 
+          colorKey="pending" 
+        />
+        <StatusCard 
+          icon={Home} 
+          label="WFH Today" 
+          value={calendar.today?.filter((item) => item.leave_type === 'work_from_home').length || 0} 
+          colorKey="approved" 
+        />
       </div>
 
       <div className={contentGridClassName}>
         {canRequestLeave ? (
-          <form onSubmit={submitLeave} className="card space-y-4">
-            <div className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-primary-600" />
-              <h2 className="section-header">New Request</h2>
+          <form onSubmit={submitLeave} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-3 dark:border-gray-700">
+              <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+                <Plus className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <h2 className="font-bold text-gray-900 dark:text-white">New Request</h2>
             </div>
-            <FormField label="Leave type" required>
-              <select className={inputClassName} value={form.leave_type} onChange={(event) => setForm({ ...form, leave_type: event.target.value })}>
-                {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </FormField>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Start date" required>
-                <input className={inputClassName} type="date" required value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} />
+            <div className="space-y-4">
+              <FormField label="Leave type" required>
+                <select 
+                  className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                  value={form.leave_type} 
+                  onChange={(event) => setForm({ ...form, leave_type: event.target.value })}
+                >
+                  {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
               </FormField>
-              <FormField label="End date" required>
-                <input className={inputClassName} type="date" required value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField label="Start date" required>
+                  <input 
+                    className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                    type="date" 
+                    required 
+                    value={form.start_date} 
+                    onChange={(event) => setForm({ ...form, start_date: event.target.value })} 
+                  />
+                </FormField>
+                <FormField label="End date" required>
+                  <input 
+                    className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                    type="date" 
+                    required 
+                    value={form.end_date} 
+                    onChange={(event) => setForm({ ...form, end_date: event.target.value })} 
+                  />
+                </FormField>
+              </div>
+              <FormField label="Reason" required>
+                <textarea 
+                  className={`${inputClassName} min-h-28 resize-y bg-gray-50 dark:bg-gray-900/50`} 
+                  required 
+                  value={form.reason} 
+                  onChange={(event) => setForm({ ...form, reason: event.target.value })} 
+                  placeholder="Please provide details for your leave request..."
+                />
               </FormField>
+              <FormField label="Attachment">
+                <input 
+                  className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+                  type="file" 
+                  onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} 
+                />
+              </FormField>
+              <Button type="submit" loading={submitting} className="w-full">
+                <Send className="h-4 w-4 mr-2" />
+                Submit Request
+              </Button>
             </div>
-            <FormField label="Reason" required>
-              <textarea className={`${inputClassName} min-h-28 resize-y`} required value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
-            </FormField>
-            <FormField label="Attachment">
-              <input className={inputClassName} type="file" onChange={(event) => setForm({ ...form, attachment: event.target.files?.[0] || null })} />
-            </FormField>
-            <Button type="submit" loading={submitting} className="w-full">Submit Request</Button>
           </form>
         ) : null}
 
         <section className="space-y-4">
-          <div className="card">
-            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="section-header">Requests</h2>
-                <p className="text-xs text-text-muted">{selectedEmployeeName}</p>
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+                    <Users className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-gray-900 dark:text-white">Requests</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{selectedEmployeeName}</p>
+                  </div>
+                </div>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-                <select className="input" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+            </div>
+
+            <div className="p-4">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5 mb-4">
+                <select 
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  value={filters.status} 
+                  onChange={(event) => setFilters({ ...filters, status: event.target.value })}
+                >
                   <option value="">All status</option>
                   {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
                 </select>
-                <select className="input" value={filters.leave_type} onChange={(event) => setFilters({ ...filters, leave_type: event.target.value })}>
+                <select 
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  value={filters.leave_type} 
+                  onChange={(event) => setFilters({ ...filters, leave_type: event.target.value })}
+                >
                   <option value="">All types</option>
                   {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
                 {canManage ? (
-                  <select className="input" value={filters.employee_id} onChange={(event) => setFilters({ ...filters, employee_id: event.target.value })}>
+                  <select 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                    value={filters.employee_id} 
+                    onChange={(event) => setFilters({ ...filters, employee_id: event.target.value })}
+                  >
                     <option value="">All employees</option>
                     {users.map((item) => <option key={item.id} value={item.id}>{`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}</option>)}
                   </select>
                 ) : null}
-                <input className="input" type="date" value={filters.start_date} onChange={(event) => setFilters({ ...filters, start_date: event.target.value })} />
-                <input className="input" type="date" value={filters.end_date} onChange={(event) => setFilters({ ...filters, end_date: event.target.value })} />
+                <input 
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  type="date" 
+                  value={filters.start_date} 
+                  onChange={(event) => setFilters({ ...filters, start_date: event.target.value })} 
+                />
+                <input 
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  type="date" 
+                  value={filters.end_date} 
+                  onChange={(event) => setFilters({ ...filters, end_date: event.target.value })} 
+                />
               </div>
-            </div>
 
-            {loading ? (
-              <div className="flex h-40 items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-              </div>
-            ) : leaves.length ? (
-              <div className="space-y-3">
-                {leaves.map((leave) => (
-                  <LeaveRow
-                    key={leave.id}
-                    leave={leave}
-                    currentUserId={user?.id}
-                    currentUser={user}
-                    currentRole={user?.role}
-                    onApprove={() => openAction('approve', leave)}
-                    onReject={() => openAction('reject', leave)}
-                    onForward={() => openAction('forward', leave)}
-                    onCancel={() => openAction('cancel', leave)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="py-12 text-center text-sm text-text-muted">No leave requests found</div>
-            )}
+              {loading ? (
+                <div className="flex h-40 items-center justify-center">
+                  <div className="text-center">
+                    <div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p className="text-gray-500 dark:text-gray-400">Loading requests...</p>
+                  </div>
+                </div>
+              ) : leaves.length ? (
+                <div className="space-y-3">
+                  {leaves.map((leave) => (
+                    <LeaveRow
+                      key={leave.id}
+                      leave={leave}
+                      currentUserId={user?.id}
+                      currentUser={user}
+                      currentRole={user?.role}
+                      onApprove={() => openAction('approve', leave)}
+                      onReject={() => openAction('reject', leave)}
+                      onForward={() => openAction('forward', leave)}
+                      onCancel={() => openAction('cancel', leave)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="py-12 text-center">
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800">
+                    <CalendarDays className="h-8 w-8 text-gray-400" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">No leave requests found</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Try adjusting your filters or create a new request.</p>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="card">
-            <h2 className="section-header">Approved Leave Calendar</h2>
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <CalendarList title="Today" items={calendar.today || []} />
-              <CalendarList title="Upcoming" items={(calendar.upcoming || []).slice(0, 8)} />
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="border-b border-gray-200 bg-gradient-to-r from-emerald-50/50 to-white p-4 dark:border-gray-700 dark:from-emerald-950/20 dark:to-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
+                  <Calendar className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900 dark:text-white">Approved Leave Calendar</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Today's and upcoming leaves</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <CalendarList title="Today" items={calendar.today || []} />
+                <CalendarList title="Upcoming" items={(calendar.upcoming || []).slice(0, 8)} />
+              </div>
             </div>
           </div>
         </section>
@@ -373,13 +561,13 @@ export default function Leaves() {
             </>
           ) : null}
           {actionState.leave ? (
-            <div className="rounded-xl border border-primary-200/70 bg-primary-50/80 p-4 text-sm text-primary-950 shadow-sm dark:border-primary-500/25 dark:bg-primary-950/20 dark:text-primary-100">
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-4 text-sm text-indigo-950 shadow-sm dark:border-indigo-500/25 dark:bg-indigo-950/20 dark:text-indigo-100">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-semibold">{actionState.leave.employee_name || 'Employee'}</p>
                 <Badge label={actionState.leave.status} colorKey={actionState.leave.status} />
               </div>
               <p className="mt-1">{typeLabel(actionState.leave.leave_type)} · {dateRange(actionState.leave)}</p>
-              <p className="mt-3 leading-6 text-text-secondary dark:text-primary-100/85">{actionState.leave.reason}</p>
+              <p className="mt-3 leading-6 text-gray-600 dark:text-indigo-100/85">{actionState.leave.reason}</p>
             </div>
           ) : null}
           <div className="flex flex-wrap justify-end gap-2 pt-2">
@@ -394,29 +582,43 @@ export default function Leaves() {
   )
 }
 
+// Missing import for RefreshCw
+import { RefreshCw } from 'lucide-react'
+
 function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onForward, onCancel }) {
   const canCancel = leave.status === 'pending' && String(leave.employee_id) === String(currentUserId)
   const canReview = canReviewLeaveRequest(leave, currentUser)
   const canForward = canForwardLeaveRequest(leave, currentUser)
+  
+  const statusColors = {
+    pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    forwarded: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    rejected: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+    cancelled: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+  }
+
   return (
-    <div className="rounded-2xl border border-surface-border bg-surface-muted/70 p-4 dark:bg-[var(--color-app-surface-muted)]">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 transition-all hover:border-indigo-200 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800/50 dark:hover:border-indigo-700">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
+        <div className="flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold text-text-primary">{typeLabel(leave.leave_type)}</p>
-            <Badge label={leave.status} colorKey={leave.status} />
+            <p className="font-semibold text-gray-900 dark:text-white">{typeLabel(leave.leave_type)}</p>
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[leave.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
+              {leave.status}
+            </span>
           </div>
-          <p className="mt-1 text-sm text-text-secondary">{leave.employee_name || 'Employee'}</p>
-          <p className="mt-1 text-xs text-text-muted">{dateRange(leave)}</p>
-          <p className="mt-2 text-sm text-text-secondary">{leave.reason}</p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{leave.employee_name || 'Employee'}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{dateRange(leave)}</p>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{leave.reason}</p>
           {leave.forwarded_to_admin ? (
-            <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
               <Forward className="h-3.5 w-3.5" />
               Forwarded to admin
             </p>
           ) : null}
           {leave.attachment_url ? (
-            <a className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 dark:text-primary-300" href={leave.attachment_url} target="_blank" rel="noreferrer">
+            <a className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300" href={leave.attachment_url} target="_blank" rel="noreferrer">
               <Paperclip className="h-3.5 w-3.5" />
               Attachment
             </a>
@@ -425,15 +627,23 @@ function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onFo
         <div className="flex flex-wrap gap-2">
           {canReview ? (
             <>
-              <Button size="sm" onClick={onApprove}><Check className="h-4 w-4" /> Approve</Button>
-              <Button size="sm" variant="danger" onClick={onReject}><X className="h-4 w-4" /> Reject</Button>
+              <Button size="sm" onClick={onApprove} className="gap-1.5">
+                <Check className="h-4 w-4" /> Approve
+              </Button>
+              <Button size="sm" variant="danger" onClick={onReject} className="gap-1.5">
+                <X className="h-4 w-4" /> Reject
+              </Button>
             </>
           ) : null}
           {canForward ? (
-            <Button size="sm" variant="secondary" onClick={onForward}><Send className="h-4 w-4" /> Forward</Button>
+            <Button size="sm" variant="secondary" onClick={onForward} className="gap-1.5">
+              <Send className="h-4 w-4" /> Forward
+            </Button>
           ) : null}
           {canCancel ? (
-            <Button size="sm" variant="secondary" onClick={onCancel}>Cancel</Button>
+            <Button size="sm" variant="secondary" onClick={onCancel} className="gap-1.5">
+              Cancel
+            </Button>
           ) : null}
         </div>
       </div>
@@ -443,34 +653,47 @@ function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onFo
 
 function CalendarList({ title, items }) {
   return (
-    <div className="rounded-2xl border border-surface-border p-4">
-      <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+    <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-900/30">
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h3>
       <div className="mt-3 space-y-3">
         {items.length ? items.map((item) => (
-          <div key={item.id} className="flex items-center justify-between gap-3">
+          <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg bg-white p-3 shadow-sm dark:bg-gray-800">
             <div>
-              <p className="text-sm font-medium text-text-primary">{item.employee_name || 'Employee'}</p>
-              <p className="text-xs text-text-muted">{typeLabel(item.leave_type)} · {dateRange(item)}</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{item.employee_name || 'Employee'}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{typeLabel(item.leave_type)} · {dateRange(item)}</p>
             </div>
-            <Badge label={item.leave_type === 'work_from_home' ? 'WFH' : item.leave_type === 'half_day' ? 'Half-day' : 'Leave'} colorKey={item.leave_type === 'work_from_home' ? 'approved' : 'pending'} />
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              item.leave_type === 'work_from_home' 
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' 
+                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+            }`}>
+              {item.leave_type === 'work_from_home' ? 'WFH' : item.leave_type === 'half_day' ? 'Half-day' : 'Leave'}
+            </span>
           </div>
-        )) : <p className="text-sm text-text-muted">No items</p>}
+        )) : <p className="text-sm text-gray-500 dark:text-gray-400">No items</p>}
       </div>
     </div>
   )
 }
 
 function StatusCard({ icon: Icon, label, value, colorKey }) {
+  const colors = {
+    working: 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/50 dark:bg-emerald-950/20',
+    wfh: 'border-blue-200 bg-blue-50/50 dark:border-blue-800/50 dark:bg-blue-950/20',
+    leave: 'border-amber-200 bg-amber-50/50 dark:border-amber-800/50 dark:bg-amber-950/20',
+  }
+
   return (
-    <div className="card flex items-center justify-between">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{label}</p>
-        <p className="mt-2 text-2xl font-bold text-text-primary">{value}</p>
+    <div className={`rounded-2xl border ${colors[colorKey] || 'border-gray-200 bg-white'} p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{label}</p>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+        </div>
+        <div className="rounded-xl bg-indigo-100 p-3 text-indigo-700 shadow-sm dark:bg-indigo-950/35 dark:text-indigo-200">
+          <Icon className="h-5 w-5" />
+        </div>
       </div>
-      <div className="rounded-2xl bg-primary-100 p-3 text-primary-700 dark:bg-primary-950/35 dark:text-primary-200">
-        <Icon className="h-5 w-5" />
-      </div>
-      <span className="sr-only">{colorKey}</span>
     </div>
   )
 }

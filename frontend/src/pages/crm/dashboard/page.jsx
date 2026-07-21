@@ -140,120 +140,63 @@ export default function CRMDashboardPage() {
 
   return (
     <CRMPage>
-      {/* Hero Section with Gradient */}
-      <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <h1 className="text-2xl font-bold md:text-3xl">CRM Dashboard</h1>
-          <p className="mt-2 text-indigo-100">Welcome back, {user?.first_name || 'User'}! Here's your sales performance overview.</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link to="/crm/pipeline" className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30">
+      <section className="relative mb-8 overflow-hidden rounded-[28px] border border-primary-200/70 bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 p-6 text-white shadow-[0_18px_60px_rgba(15,23,42,0.06)] md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-100">CRM</p>
+            <h1 className="mt-2 text-2xl font-semibold md:text-3xl">CRM Dashboard</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100">Welcome back, {user?.first_name || 'User'}! Here's your sales performance overview.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link to="/crm/pipeline" className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30">
               <TrendingUp className="h-4 w-4" />
               View Pipeline
             </Link>
-            <Link to="/crm/leads" className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20">
+            <Link to="/crm/leads" className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20">
               <Users className="h-4 w-4" />
               Manage Leads
             </Link>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Quick Stats - 6 Cards */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <div className="group rounded-xl border border-indigo-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Leads</span>
-            <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
-              <Users className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : totalLeads}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Active prospects</p>
-        </div>
-
-        <div className="group rounded-xl border border-emerald-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Pipeline Value</span>
-            <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-              <DollarSign className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : formatCurrency(pipelineValue, currency)}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Total pipeline</p>
-        </div>
-
-        <div className="group rounded-xl border border-blue-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">This Month</span>
-            <div className="rounded-lg bg-blue-50 p-2 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-              <TrendingUp className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : formatCurrency(thisMonthRevenue, currency)}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {Number(monthOverMonth) >= 0 ? '↑' : '↓'} {Math.abs(Number(monthOverMonth))}% from last month
-          </p>
-        </div>
-
-        <div className="group rounded-xl border border-amber-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Win Rate</span>
-            <div className="rounded-lg bg-amber-50 p-2 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
-              <Target className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : `${winRate}%`}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{wonDeals} won out of {totalDeals} deals</p>
-        </div>
-
-        <div className="group rounded-xl border border-purple-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Avg Deal Size</span>
-            <div className="rounded-lg bg-purple-50 p-2 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
-              <Award className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : formatCurrency(avgDealSize, currency)}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Average value</p>
-        </div>
-
-        <div className="group rounded-xl border border-rose-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Deals</span>
-            <div className="rounded-lg bg-rose-50 p-2 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
-              <ClipboardList className="h-4 w-4" />
-            </div>
-          </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{loading ? '...' : totalDeals}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Total deals</p>
-        </div>
+        <CRMStatCard icon={Users} label="Leads" value={loading ? '...' : totalLeads} helper="Active prospects" tone="blue" />
+        <CRMStatCard icon={DollarSign} label="Pipeline Value" value={loading ? '...' : formatCurrency(pipelineValue, currency)} helper="Total pipeline" tone="emerald" />
+        <CRMStatCard icon={TrendingUp} label="This Month" value={loading ? '...' : formatCurrency(thisMonthRevenue, currency)} helper={`${Number(monthOverMonth) >= 0 ? '↑' : '↓'} ${Math.abs(Number(monthOverMonth))}% from last month`} tone="blue" />
+        <CRMStatCard icon={Target} label="Win Rate" value={loading ? '...' : `${winRate}%`} helper={`${wonDeals} won out of ${totalDeals} deals`} tone="amber" />
+        <CRMStatCard icon={Award} label="Avg Deal Size" value={loading ? '...' : formatCurrency(avgDealSize, currency)} helper="Average value" tone="slate" />
+        <CRMStatCard icon={ClipboardList} label="Deals" value={loading ? '...' : totalDeals} helper="Total deals" tone="emerald" />
       </div>
 
-      {/* Workflow Shortcuts - 4 Cards */}
       <div className="mb-6">
         <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-white">Quick Actions</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {workflowShortcuts.slice(0, 4).map((step, index) => {
             const Icon = workflowIcons[step.key] || CheckCircle2
-            const colors = ['indigo', 'purple', 'pink', 'blue']
+            const palette = [
+              'border-indigo-200 bg-indigo-50/70 text-indigo-600 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-300',
+              'border-violet-200 bg-violet-50/70 text-violet-600 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-300',
+              'border-fuchsia-200 bg-fuchsia-50/70 text-fuchsia-600 dark:border-fuchsia-900/50 dark:bg-fuchsia-950/30 dark:text-fuchsia-300',
+              'border-sky-200 bg-sky-50/70 text-sky-600 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-300',
+            ]
             return (
               <Link
                 key={step.key}
                 to={step.href}
-                className={`group relative overflow-hidden rounded-xl border border-${colors[index % 4]}-100 bg-white p-4 shadow-sm transition-all hover:shadow-lg hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800`}
+                className="group relative overflow-hidden rounded-[22px] border border-primary-200/70 bg-white/90 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-[#5a4635] dark:bg-[rgb(29_24_19_/_0.88)]"
               >
-                <div className={`absolute right-0 top-0 -mr-8 -mt-8 h-16 w-16 rounded-full bg-${colors[index % 4]}-100/30 blur-xl`}></div>
                 <div className="relative z-10 flex items-start gap-3">
-                  <div className={`rounded-lg bg-${colors[index % 4]}-50 p-2.5 text-${colors[index % 4]}-600 dark:bg-${colors[index % 4]}-900/30 dark:text-${colors[index % 4]}-400`}>
+                  <div className={`rounded-2xl border p-2.5 ${palette[index % palette.length]}`}>
                     <Icon className="h-5 w-5" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{step.label}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Step {index + 1}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{step.label}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Step {index + 1}</p>
                   </div>
-                  <ArrowRight className="h-4 w-4 text-gray-400 transition group-hover:translate-x-1 group-hover:text-indigo-600" />
+                  <ArrowRight className="h-4 w-4 text-gray-400 transition group-hover:translate-x-1 group-hover:text-primary-600" />
                 </div>
               </Link>
             )
