@@ -576,46 +576,97 @@ const Sidebar = ({ isOpen, onClose }) => {
   ]
     .filter((group) => group.items.length);
 
-  // Color mapping for icons
+  // Enhanced color mapping for icons with more vibrant colors
   const getIconColor = (itemName) => {
     const colorMap = {
-      'Dashboard': 'text-blue-400',
+      // Dashboard - Cyan/Blue
+      'Dashboard': 'text-cyan-400',
+      
+      // Project Management - Indigo/Purple
       'Projects': 'text-indigo-400',
       'Tasks': 'text-violet-400',
       'Service Requests': 'text-purple-400',
-      'Workspace Calendar': 'text-pink-400',
-      'Timesheet': 'text-rose-400',
+      'Workspace Calendar': 'text-fuchsia-400',
+      
+      // Time & Attendance - Orange/Yellow
+      'Timesheet': 'text-amber-400',
       'Attendance': 'text-orange-400',
       'Live Attendance': 'text-amber-400',
       'Attendance Reports': 'text-yellow-400',
-      'Notifications': 'text-red-400',
-      'Scheduled Jobs': 'text-cyan-400',
-      'Timeline': 'text-teal-400',
+      
+      // Communications - Pink/Rose
+      'Notifications': 'text-rose-400',
+      'Timeline': 'text-pink-400',
       'Leaves': 'text-emerald-400',
-      'Daily EOD': 'text-green-400',
+      'Daily EOD': 'text-teal-400',
+      
+      // Reports - Lime/Green
       'Workspace Reports': 'text-lime-400',
-      'Leads': 'text-blue-300',
-      'AI Command Center': 'text-purple-300',
-      'Creative Studio': 'text-pink-300',
-      'Marketing Assistant': 'text-rose-300',
-      'Content Calendar': 'text-indigo-300',
+      
+      // CRM - Blue/Cyan
+      'Leads': 'text-sky-400',
       'CRM': 'text-cyan-400',
+      'CRM Pipeline': 'text-cyan-300',
+      'CRM Companies': 'text-blue-400',
+      'CRM Contacts': 'text-indigo-400',
+      'CRM Calendar': 'text-fuchsia-400',
+      'CRM Reports': 'text-lime-400',
+      'CRM Configuration': 'text-gray-400',
+      
+      // AI & Marketing - Purple/Pink
+      'AI Command Center': 'text-purple-400',
+      'Creative Studio': 'text-pink-400',
+      'Marketing Assistant': 'text-rose-400',
+      'Content Calendar': 'text-indigo-300',
+      
+      // HR - Emerald/Green
       'HR': 'text-emerald-400',
+      'Recruitment Dashboard': 'text-green-400',
+      'Jobs': 'text-emerald-300',
+      'Inbox': 'text-blue-300',
+      'Candidates': 'text-purple-300',
+      'Resume Pool': 'text-amber-300',
+      'Interviews': 'text-pink-300',
+      'Recruitment Reports': 'text-lime-300',
+      
+      // Finance - Gold/Green
       'Bulk Lead Import': 'text-orange-400',
       'Clients': 'text-blue-400',
-      'Invoices': 'text-green-400',
+      'Invoices': 'text-emerald-400',
       'Ledger': 'text-yellow-400',
+      'Subscriptions': 'text-teal-400',
+      
+      // Administration - Red/Gray
       'Users': 'text-gray-400',
       'Workflows': 'text-purple-400',
       'Departments': 'text-indigo-400',
       'Admin Permissions': 'text-red-400',
       'My Team': 'text-pink-400',
       'Company Directory': 'text-blue-400',
-      'Subscriptions': 'text-emerald-400',
       'Audit Log': 'text-orange-400',
       'Settings': 'text-gray-400',
+      
+      // Default
+      'default': 'text-gray-400'
     };
-    return colorMap[itemName] || 'text-gray-400';
+    return colorMap[itemName] || colorMap['default'];
+  };
+
+  // Group color mapping for section headers
+  const getGroupColor = (groupKey) => {
+    const groupColors = {
+      'operations': 'text-cyan-400',
+      'delivery': 'text-indigo-400',
+      'people': 'text-orange-400',
+      'communication': 'text-pink-400',
+      'crm': 'text-blue-400',
+      'hr': 'text-emerald-400',
+      'ai-marketing': 'text-purple-400',
+      'finance': 'text-yellow-400',
+      'administration': 'text-red-400',
+      'your-departments': 'text-teal-400',
+    };
+    return groupColors[groupKey] || 'text-gray-400';
   };
 
   return (
@@ -629,7 +680,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         />
       )}
 
-      {/* Sidebar - Zoho CRM Style with Colors */}
+      {/* Sidebar - Enhanced with more colors */}
       <div
         className={`
           fixed lg:static inset-y-0 left-0 z-50
@@ -641,8 +692,8 @@ const Sidebar = ({ isOpen, onClose }) => {
       >
         <div className="relative flex h-full flex-col overflow-visible border-r border-[#1a1a1a] bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] text-white shadow-2xl">
           
-          {/* Animated gradient border top */}
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-gradient-x"></div>
+          {/* Animated gradient border top - Rainbow effect */}
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-cyan-400 via-emerald-400 via-yellow-400 via-rose-400 to-purple-500 animate-gradient-x"></div>
 
           {/* Desktop collapse toggle */}
           <button
@@ -658,10 +709,10 @@ const Sidebar = ({ isOpen, onClose }) => {
             )}
           </button>
 
-          {/* Logo with colored accent */}
+          {/* Logo with colorful gradient */}
           <div className={`flex h-16 items-center border-b border-[#1a1a1a] px-4 ${collapsed ? "lg:justify-center lg:px-0" : "justify-between"}`}>
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/20">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-blue-500/20">
                 <img
                   src="/logo.svg"
                   alt="SynTask Logo"
@@ -706,7 +757,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             </div>
           </div>
 
-          {/* Navigation with colored items */}
+          {/* Navigation with colorful items */}
           <nav className={`flex-1 space-y-2 px-2 py-3 ${collapsed ? "overflow-visible" : "overflow-y-auto"}`}>
             {favoriteItems.length ? (
               <div className="mb-2">
@@ -751,6 +802,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 onToggleFavorite={toggleFavorite}
                 showFavorite
                 iconColor={getIconColor(item.name)}
+                groupKey="dashboard"
               />
             ))}
             
@@ -768,6 +820,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                   isOpen={openGroups[group.key] ?? true}
                   onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? true) }))}
                   getIconColor={getIconColor}
+                  groupColor={getGroupColor(group.key)}
+                  groupKey={group.key}
                 />
               ))}
           </nav>
@@ -799,7 +853,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                     }}
                   />
                 ) : null}
-                <div className={`flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 text-white shadow-lg shadow-primary-500/20 ${user?.avatar ? "hidden" : ""}`}>
+                <div className={`flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-primary-500/20 ${user?.avatar ? "hidden" : ""}`}>
                   <span className="text-xs font-semibold">
                     {user?.first_name?.[0]}
                     {user?.last_name?.[0]}
@@ -829,7 +883,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
 export default Sidebar;
 
-// Updated SidebarNavGroup with colors
+// Updated SidebarNavGroup with colorful headers
 function SidebarNavGroup({
   group,
   location,
@@ -840,8 +894,27 @@ function SidebarNavGroup({
   isOpen,
   onToggle,
   getIconColor,
+  groupColor = 'text-gray-400',
+  groupKey,
 }) {
   const isGroupActive = group.items.some((item) => isNavItemActive(item, location))
+  
+  // Get group-specific dot color
+  const getGroupDotColor = (key) => {
+    const dotColors = {
+      'operations': 'bg-cyan-400',
+      'delivery': 'bg-indigo-400',
+      'people': 'bg-orange-400',
+      'communication': 'bg-pink-400',
+      'crm': 'bg-blue-400',
+      'hr': 'bg-emerald-400',
+      'ai-marketing': 'bg-purple-400',
+      'finance': 'bg-yellow-400',
+      'administration': 'bg-red-400',
+      'your-departments': 'bg-teal-400',
+    };
+    return dotColors[key] || 'bg-gray-400';
+  };
 
   return (
     <div className="mb-1">
@@ -849,14 +922,14 @@ function SidebarNavGroup({
         type="button"
         onClick={onToggle}
         aria-expanded={isOpen}
-        className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-gray-400 transition-colors hover:bg-white/5 hover:text-white ${collapsed ? "lg:hidden" : ""} ${isGroupActive ? "text-white" : ""}`}
+        className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.08em] transition-colors hover:bg-white/5 hover:text-white ${collapsed ? "lg:hidden" : ""} ${isGroupActive ? "text-white" : groupColor}`}
       >
         <span className="flex items-center gap-2">
-          <span className="w-1 h-1 rounded-full bg-primary-400"></span>
+          <span className={`w-1.5 h-1.5 rounded-full ${getGroupDotColor(groupKey)}`}></span>
           {group.label}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="rounded-full bg-primary-500/20 px-1.5 py-0.5 text-[9px] text-primary-400">
+          <span className={`rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] ${groupColor}`}>
             {group.items.length}
           </span>
           <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
@@ -875,6 +948,7 @@ function SidebarNavGroup({
             showFavorite={group.key !== "crm"}
             nested={!collapsed}
             iconColor={getIconColor ? getIconColor(item.name) : 'text-gray-400'}
+            groupKey={group.key}
           />
         ))}
       </div>
@@ -882,7 +956,7 @@ function SidebarNavGroup({
   )
 }
 
-// Updated SidebarNavItem with colors
+// Updated SidebarNavItem with colored icons and hover effects
 function SidebarNavItem({
   item,
   location,
@@ -893,6 +967,7 @@ function SidebarNavItem({
   showFavorite = false,
   nested = false,
   iconColor = 'text-gray-400',
+  groupKey,
 }) {
   const isActive = isNavItemActive(item, location)
 
@@ -907,11 +982,11 @@ function SidebarNavItem({
           collapsed ? "lg:justify-center lg:px-0" : nested ? "ml-1" : ""
         } ${
           isActive
-            ? "bg-gradient-to-r from-primary-500/10 to-transparent text-primary-400"
+            ? "bg-gradient-to-r from-primary-500/15 to-transparent text-primary-400 shadow-sm"
             : "text-gray-300 hover:bg-white/5 hover:text-white"
         }`}
       >
-        <item.icon className={`h-4 w-4 flex-shrink-0 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-primary-400" : iconColor}`} />
+        <item.icon className={`h-4 w-4 flex-shrink-0 transition-colors duration-200 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-primary-400" : iconColor} group-hover:scale-110`} />
         <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.name}</span>
         {isActive && !collapsed ? (
           <span className="ml-auto flex items-center gap-1">
@@ -927,7 +1002,7 @@ function SidebarNavItem({
           className={`hidden min-h-7 min-w-7 rounded p-1 text-gray-400 transition hover:bg-white/5 hover:text-yellow-400 ${collapsed ? 'lg:hidden' : 'lg:inline-flex'}`}
           aria-label={favorites.includes(item.href) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
         >
-          <Star className={`h-3.5 w-3.5 ${favorites.includes(item.href) ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+          <Star className={`h-3.5 w-3.5 transition-colors ${favorites.includes(item.href) ? 'fill-yellow-400 text-yellow-400' : ''}`} />
         </button>
       ) : null}
     </div>
