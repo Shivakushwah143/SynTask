@@ -1,5 +1,5 @@
 import { useQuery } from 'react-query'
-import { Activity, ArrowRight, Briefcase, CalendarDays, CalendarRange, CheckCircle2, ClipboardList, Clock3, DollarSign, FileCheck2, GitBranch, HeartHandshake, LineChart, Receipt, TimerReset, TrendingUp, UserCheck, UserRoundSearch, Users, Zap, Target, Award, PieChart, BarChart3, Sparkles, Rocket, TrendingDown } from 'lucide-react'
+import { Activity, ArrowRight, Briefcase, CalendarDays, CalendarRange, CheckCircle2, ClipboardList, Clock3, DollarSign, FileCheck2, GitBranch, HeartHandshake, LineChart, Receipt, TimerReset, TrendingUp, UserCheck, UserRoundSearch, Users, Zap, Target, Award, PieChart as PieChartIcon, BarChart3, Sparkles, Rocket, TrendingDown } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend } from 'recharts'
 import { format } from 'date-fns'
 import { Link } from 'react-router-dom'

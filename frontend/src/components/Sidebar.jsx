@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   AlarmClockCheck,
@@ -44,7 +44,8 @@ import {
   X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
-import { ROLE, getRoleLabel, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
+import { DEPARTMENTS_CHANGED_EVENT, departmentsAPI } from "../api/departments";
+import { ROLE, getRoleLabel, hasCompanyAdminAccess, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
 import { HR_MODULES, HR_ROLES } from "../config/hrModules";
 
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
@@ -67,6 +68,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { user } = useAuthStore();
   const userRole = normalizeRole(user?.role);
+  const canSeeDepartments = hasCompanyAdminAccess(user?.role) || isSuperAdminRole(userRole);
   const hasModule = (module) =>
     !module || user?.modules?.includes(module) || isSuperAdminRole(userRole);
   const userCapabilities = new Set(user?.capabilities || user?.permissions || []);
@@ -112,6 +114,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       return WIDTH_OPTIONS[1];
     }
   });
+  const [orgDepartments, setOrgDepartments] = useState([]);
 
   useEffect(() => {
     try {
@@ -152,6 +155,41 @@ const Sidebar = ({ isOpen, onClose }) => {
       // ignore
     }
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (!canSeeDepartments) {
+      setOrgDepartments([])
+      return undefined
+    }
+
+    let cancelled = false
+
+    const loadDepartments = async () => {
+      try {
+        const data = await departmentsAPI.listDepartments()
+        if (cancelled) return
+        setOrgDepartments(Array.isArray(data) ? data : [])
+      } catch {
+        if (!cancelled) {
+          setOrgDepartments([])
+        }
+      }
+    }
+
+    const handleDepartmentsChanged = () => {
+      if (!cancelled) {
+        void loadDepartments()
+      }
+    }
+
+    void loadDepartments()
+    window.addEventListener(DEPARTMENTS_CHANGED_EVENT, handleDepartmentsChanged)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(DEPARTMENTS_CHANGED_EVENT, handleDepartmentsChanged)
+    }
+  }, [canSeeDepartments, userRole])
 
   const navigation = [
     {
@@ -403,6 +441,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   const filteredNavigation = navigation.filter(
     (item) => item.roles.includes(userRole) && hasModule(item.module) && hasCapability(item.capability) && hasDepartment(item.department),
   );
+  const departmentItems = useMemo(() => orgDepartments.map((department) => ({
+    name: department.name,
+    href: `/admin-permissions?department=${encodeURIComponent(department.id)}`,
+    icon: Network,
+  })), [orgDepartments]);
   const toggleFavorite = (href) => {
     setFavorites((current) => (
       current.includes(href) ? current.filter((item) => item !== href) : [...current, href]
@@ -524,6 +567,11 @@ const Sidebar = ({ isOpen, onClose }) => {
       items: ["Users", "Departments", "Admin Permissions", "Workflows", "Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices"]
         .map((name) => itemByName[name])
         .filter(Boolean),
+    },
+    {
+      key: "your-departments",
+      label: "Your Departments",
+      items: departmentItems,
     },
   ]
     .filter((group) => group.items.length);
