@@ -1,6 +1,6 @@
 # Milestone 09: Task Performance Insights Agent
 
-Status: Not Started
+Status: In Progress
 
 ## Objective
 
@@ -36,8 +36,8 @@ Do not duplicate canonical documentation.
 * RAG and Memory foundation: Implemented; business-corpus production evaluation remains in progress.
 * Shared Agent Platform: Completed in Milestone 6.
 * Read-only Project Agent: Completed in Milestone 7.
-* General Email Draft Agent: In Progress in Milestone 8.
-* Task Performance Insights Agent: Planned for Milestone 9.
+* General Email Draft Agent: Blocked in Milestone 8 pending real-service and full-suite verification.
+* Task Performance Insights Agent: In Progress in Milestone 9.
 
 Search existing documentation for outdated status tables and update them consistently.
 
@@ -48,8 +48,8 @@ Agent product planning: Complete
 Agent architecture planning: Complete
 Shared Agent Platform: Completed — Milestone 6
 Project Agent: Completed — Milestone 7 read-only pilot
-General Email Draft Agent: In Progress — Milestone 8
-Task Performance Insights Agent: Planned — Milestone 9
+General Email Draft Agent: Blocked — Milestone 8 pending real-service and full-suite verification
+Task Performance Insights Agent: In Progress — Milestone 9
 ```
 
 After Milestone 9 acceptance:
@@ -1425,8 +1425,8 @@ Milestone 9 passes only when:
 ## Implementation Progress
 
 * [x] Repository and documentation preflight completed.
-* [ ] Outdated milestone/status displays updated.
-* [ ] Metric source models and permission paths inspected.
+* [x] Outdated milestone/status displays updated.
+* [x] Metric source models and permission paths inspected.
 * [ ] Metric dictionary finalized and versioned.
 * [ ] Deterministic metric service implemented.
 * [ ] Completion-rate metric implemented.
@@ -1487,6 +1487,7 @@ Files reviewed:
 * `AGENTS.md`
 * `docs/milestones/MILESTONE_09_TASK_PERFORMANCE_INSIGHTS_AGENT.md`
 * `docs/milestones/MILESTONE_08_GENERAL_EMAIL_DRAFT_AGENT.md`
+* `docs/milestones/MILESTONE_08_GENERAL_EMAIL_DRAFT_AGENT.md`
 * `docs/milestones/MILESTONE_07_READ_ONLY_PROJECT_AGENT.md`
 * `docs/SynTask_Phase_2_Agent_Platform_Implementation_Plan.md`
 * `docs/SynTask_Phase_2_AI_Agents_Workflows_and_User_Stories.md`
@@ -1503,6 +1504,89 @@ Preflight findings:
 Tests:
 
 * `python -m pytest backend\tests\agents\test_project_agent_contract.py backend\tests\agents\test_email_draft_contract.py -q` — 17 passed in 6.43s.
+
+### Outdated Milestone and Status Displays
+
+Completed on 2026-07-21.
+
+Files changed:
+
+* `docs/milestones/MILESTONE_09_TASK_PERFORMANCE_INSIGHTS_AGENT.md`
+
+Status text changed:
+
+* `Status: Not Started` changed to `Status: In Progress`.
+* `General Email Draft Agent: In Progress in Milestone 8.` changed to `General Email Draft Agent: Blocked in Milestone 8 pending real-service and full-suite verification.`
+* `Task Performance Insights Agent: Planned for Milestone 9.` changed to `Task Performance Insights Agent: In Progress in Milestone 9.`
+* `General Email Draft Agent: In Progress — Milestone 8` changed to `General Email Draft Agent: Blocked — Milestone 8 pending real-service and full-suite verification`
+* `Task Performance Insights Agent: Planned — Milestone 9` changed to `Task Performance Insights Agent: In Progress — Milestone 9`
+* In `docs/milestones/MILESTONE_08_GENERAL_EMAIL_DRAFT_AGENT.md`, `Task Performance Insights Agent: Planned for Milestone 9.` changed to `Task Performance Insights Agent: In Progress in Milestone 9.`
+* In `docs/milestones/MILESTONE_08_GENERAL_EMAIL_DRAFT_AGENT.md`, `Task Performance Insights Agent: Planned — Milestone 9` changed to `Task Performance Insights Agent: In Progress — Milestone 9`
+
+Consistency checks:
+
+* `rg -n "Status:|Final Status|General Email Draft Agent:|Task Performance Insights Agent:|Milestone 8|Milestone 9|Agent product planning|Agent architecture planning" docs\milestones\MILESTONE_08_GENERAL_EMAIL_DRAFT_AGENT.md docs\milestones\MILESTONE_09_TASK_PERFORMANCE_INSIGHTS_AGENT.md`
+* `rg -n "General Email Draft Agent:|Task Performance Insights Agent:|Agent product planning|Agent architecture planning|Shared Agent Platform:|Project Agent:" docs README.md backend frontend -g "*.md" -g "*.py" -g "*.jsx" -g "*.js"`
+
+No Milestone 8 completion status was added. No metric code was implemented.
+
+### Metric Source Models and Permission Paths
+
+Completed on 2026-07-21.
+
+Files inspected:
+
+* `backend/app/models/task.py`
+* `backend/app/models/eod.py`
+* `backend/app/models/time_tracking.py`
+* `backend/app/models/leave.py`
+* `backend/app/models/attendance.py`
+* `backend/app/models/user.py`
+* `backend/app/models/project.py`
+* `backend/app/models/department.py`
+* `backend/app/api/v1/endpoints/tasks.py`
+* `backend/app/services/task_health_service.py`
+* `backend/app/api/v1/endpoints/projects/shared.py`
+* `backend/app/services/user_service.py`
+* `backend/app/services/eod_service.py`
+* `backend/app/api/v1/endpoints/eod.py`
+* `backend/app/services/leave_service.py`
+* `backend/app/api/v1/endpoints/leaves.py`
+* `backend/app/api/v1/endpoints/time_tracking.py`
+* `backend/app/core/hierarchy.py`
+
+Source model findings:
+
+* Task metrics can use `Task.company_id`, `project_id`, `project_object_id`, `assigned_to`, `created_by`, `assigned_by`, `department_id`, `status`, `priority`, `progress_percentage`, `due_date`, `start_date`, `completed_at`, `health_status`, `extension_count`, `story_points`, `estimated_hours`, `actual_hours`, `time_logs`, `dependencies`, `created_at`, and `updated_at`.
+* Deadline-extension evidence can use `TaskExtensionRequest.company_id`, `task_id`, `employee_id`, `current_due_date`, `requested_due_date`, `status`, `reviewed_by`, and `reviewed_at`.
+* EOD context can use `EODReport.company_id`, `employee_id`, `report_date`, `worked_on`, `blockers`, `tomorrow_plan`, task-reference lists, and `total_working_seconds`; EOD content remains employee-reported context, not canonical task truth.
+* Time tracking can use `TimeLog.company_id`, `task_id`, `user_id`, `hours`, `minutes`, `date`, `started_at`, `ended_at`, and `TimeTrackingSummary.total_hours`, `total_entries`, `last_logged_at`.
+* Approved leave can use `LeaveRequest.company_id`, `employee_id`, `leave_type`, `start_date`, `end_date`, and `status`; leave reasons and attachments are sensitive and not needed for initial metric calculations.
+* Attendance exists through `Attendance.company_id`, `employee_id`, `date`, `total_working_hours`, `status`, and session models, but Milestone 9 must not implement attendance-based productivity scoring.
+* User scope can use `User.company_id`, `department_id`, `role`, `status`, `reports_to`, and `ancestors`.
+* Project scope can use `Project.company_id`, `project_id`, `lead_id`, `assigned_to`, `assigned_user_ids`, `team_member_ids`, `status`, dates, and assignment history.
+* Department scope can use `Department.company_id`, `manager_id`, `department_type`, and `deleted_at`.
+
+Permission-path findings:
+
+* Tenant boundary is consistently keyed by `company_id`; Milestone 9 must map this to agent `tenant_id` without accepting client-supplied tenant overrides.
+* Existing task visibility paths include `build_task_list_query`, `_assert_task_view`, `_assert_task_manage`, `assert_task_view_access`, and `assert_task_manage_access`.
+* Existing project visibility paths include `check_project_access`, `ensure_project_access_for_user`, `scoped_user_ids`, and `project_assignee_ids`.
+* Existing hierarchy paths use `User.ancestors`, `User.reports_to`, `User.get_all_subordinates()`, and `UserService.get_all_subordinates_ids()`.
+* Existing EOD visibility paths include `assert_eod_view_access()` and `_visible_employees()`.
+* Existing leave visibility and management paths include `assert_leave_view_access()`, `can_approve_leave()`, `assert_leave_manage_access()`, `leave_visibility_query()`, and the leaves endpoint `_base_query()`.
+* Existing time-tracking endpoints currently enforce company access at task/time-log level; Milestone 9 must add stricter employee/project/hierarchy scope when aggregating time metrics.
+
+Implementation implications:
+
+* Metric service should not reuse endpoint list responses directly; it should centralize read-only authorized queries and reuse existing permission helpers where exact semantics match.
+* Employee-level and manager/team scopes require explicit subordinate, department, project-participant, and tenant checks before source records are loaded.
+* Missing start timestamps, dependency history, reopened/rework history, task-complexity fields beyond priority/story points, working-day/holiday configuration, and reliable scope-change history must be marked unavailable or lower confidence until individually implemented.
+* Sensitive leave details, attendance-only productivity scoring, protected fields, secret scores, and employee rankings remain excluded.
+
+Tests:
+
+* `python -m pytest backend\tests\api\test_task_role_visibility.py backend\tests\api\test_leave_workflow_permissions.py backend\tests\test_eod_service.py backend\tests\test_rbac_visibility.py -q` — 29 passed, 3 warnings in 7.18s.
 
 For every completed checklist item record:
 
