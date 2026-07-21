@@ -27,6 +27,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Users = lazy(() => import('./pages/Users'))
 const Departments = lazy(() => import('./pages/Departments'))
+const AdminPermissions = lazy(() => import('./pages/AdminPermissions'))
 const AIPrioritization = lazy(() => import('./pages/AIPrioritization'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Subscriptions = lazy(() => import('./pages/Subscriptions'))
@@ -236,6 +237,7 @@ function App() {
         <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="departments" element={withBoundary(<Departments />)} />
+          <Route path="admin-permissions" element={<CompanyAdminGuard>{withBoundary(<AdminPermissions />)}</CompanyAdminGuard>} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
         <Route path="activity" element={withBoundary(<ActivityLog />)} />

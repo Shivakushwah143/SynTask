@@ -35,6 +35,7 @@ import {
   Palette,
   Receipt,
   Settings,
+  ShieldCheck,
   Star,
   TimerReset,
   TrendingUp,
@@ -369,6 +370,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       module: "task",
     },
     {
+      name: "Admin Permissions",
+      href: "/admin-permissions",
+      icon: ShieldCheck,
+      roles: [ROLE.ADMIN],
+      module: "task",
+    },
+    {
       name: "My Team",
       href: "/my-team",
       icon: HeartHandshake,
@@ -533,7 +541,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       key: "administration",
       label: "Administration",
       // MSA hidden by request. Restore "Agreements" here when MSA returns.
-      items: ["Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices"]
+      items: ["Users", "Departments", "Admin Permissions", "Workflows", "Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
