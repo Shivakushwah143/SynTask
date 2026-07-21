@@ -116,7 +116,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB
     ALLOWED_EXTENSIONS: List[str] = [
         ".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", 
-        ".doc", ".docx", ".xls", ".xlsx", ".txt", ".zip"
+        ".doc", ".docx", ".pptx", ".xls", ".xlsx", ".csv", ".html", ".htm", ".txt", ".md", ".markdown", ".zip"
     ]
     UPLOAD_DIR: str = "uploads"
     
@@ -142,6 +142,19 @@ class Settings(BaseSettings):
     DISABLE_CELERY: bool = False
     CELERY_ALWAYS_EAGER: bool = False
     DISABLE_EVENT_PROCESSING: bool = False
+
+    # Meta integration. Disabled until deployment and tenant configuration pass.
+    META_INTEGRATION_ENABLED: bool = False
+    META_APP_ID: Optional[str] = None
+    META_APP_SECRET: Optional[str] = None
+    META_VERIFY_TOKEN: Optional[str] = None
+    META_PAGE_ID: Optional[str] = None
+    META_PAGE_ACCESS_TOKEN: Optional[str] = None
+    META_BUSINESS_ID: Optional[str] = None
+    META_AD_ACCOUNT_ID: Optional[str] = None
+    META_SYSTEM_USER_TOKEN: Optional[str] = None
+    META_LEAD_FORM_ID: Optional[str] = None
+    META_WHATSAPP_BUSINESS_ID: Optional[str] = None
     
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20
@@ -165,6 +178,62 @@ class Settings(BaseSettings):
     AI_TEMPERATURE: float = 0.2
     AI_MODEL_GROQ: str = "llama-3.1-70b-versatile"
     AI_MODEL_OPENAI: str = "gpt-4o-mini"
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    OPENAI_EMBEDDING_DIMENSIONS: int = 1536
+
+    # Central RAG foundation
+    RAG_ENABLED: bool = False
+    QDRANT_URL: Optional[str] = None
+    QDRANT_API_KEY: Optional[str] = None
+    QDRANT_COLLECTION: str = "syntask_rag_text_embedding_3_small_1536"
+    QDRANT_DEPLOYMENT_MODE: str = "shared"  # shared, dedicated, customer_hosted
+    QDRANT_TIMEOUT_SECONDS: int = 10
+    RAG_MAX_UPLOAD_SIZE: int = 26214400
+    RAG_PDF_MAX_PAGES: int = 200
+    RAG_CHUNK_MAX_TOKENS: int = 700
+    RAG_CHUNK_OVERLAP_TOKENS: int = 80
+    RAG_RETRIEVAL_TOP_K: int = 5
+    RAG_CITATION_EXCERPT_CHARS: int = 600
+    RAG_AUDIT_RETENTION_DAYS: int = 90
+    RAG_WORKING_MEMORY_IDLE_TTL_SECONDS: int = 1800
+    RAG_WORKING_MEMORY_ABSOLUTE_TTL_SECONDS: int = 28800
+    RAG_WORKING_MEMORY_MAX_MESSAGES: int = 20
+    RAG_WORKING_MEMORY_MAX_TOOL_OUTPUTS: int = 10
+    RAG_WORKING_MEMORY_MAX_ENTITIES: int = 25
+    RAG_WORKING_MEMORY_MESSAGE_CHARS: int = 1000
+    RAG_WORKING_MEMORY_TOOL_OUTPUT_CHARS: int = 1500
+    RAG_CONTEXT_PACKAGE_MAX_ITEMS: int = 20
+    RAG_CONTEXT_PACKAGE_MAX_CHARS: int = 6000
+    RAG_LOG_RAW_CONTEXT: bool = False
+    RAG_LOG_FULL_PROMPTS: bool = False
+    RAG_QUERY_UNDERSTANDING_VERSION: str = "query-understanding-v1"
+    RAG_QUERY_MAX_REWRITES: int = 3
+    RAG_QUERY_MAX_SUBQUERIES: int = 3
+    RAG_HYBRID_COLLECTION: str = "syntask_rag_hybrid_v1_text_embedding_3_small_1536"
+    RAG_DENSE_VECTOR_NAME: str = "dense"
+    RAG_SPARSE_VECTOR_NAME: str = "sparse"
+    RAG_SPARSE_ENCODER_VERSION: str = "sparse-hash-v1"
+    RAG_HYBRID_PREFETCH_LIMIT: int = 20
+    RAG_MIN_EVIDENCE_SCORE: float = 0.2
+    RAG_OFFICE_MAX_UNCOMPRESSED_BYTES: int = 50_000_000
+    RAG_XLSX_MAX_SHEETS: int = 30
+    RAG_XLSX_MAX_ROWS: int = 5000
+    RAG_PPTX_MAX_SLIDES: int = 300
+    RAG_CSV_MAX_ROWS: int = 10000
+
+    # Shared Agent Platform foundation
+    AGENT_PLATFORM_ENABLED: bool = False
+    PROJECT_AGENT_ENABLED: bool = False
+    EMAIL_DRAFT_AGENT_ENABLED: bool = False
+    TASK_PERFORMANCE_AGENT_ENABLED: bool = False
+    AGENT_RUN_RETENTION_DAYS: int = 90
+    AGENT_RUN_EVENT_RETENTION_DAYS: int = 180
+    AGENT_SANITIZED_OUTPUT_RETENTION_DAYS: int = 90
+    AGENT_PROPOSAL_RETENTION_DAYS: int = 90
+    AGENT_EVALUATION_RETENTION_DAYS: int = 180
+    AGENT_DEFAULT_RUN_TIMEOUT_SECONDS: int = 30
+    AGENT_DEFAULT_MAX_TOKENS_PER_RUN: int = 4000
+    AGENT_DEFAULT_MAX_COST_PER_RUN: float = 1.0
 
     # Super Admin
     SUPER_ADMIN_EMAIL: str = Field(..., description="Super admin bootstrap email address.")
@@ -173,6 +242,18 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_settings(self):
         """Fail fast when production is configured with unsafe defaults."""
+        if self.META_INTEGRATION_ENABLED:
+            missing_meta = [
+                field
+                for field in ("META_APP_ID", "META_APP_SECRET", "META_VERIFY_TOKEN")
+                if not getattr(self, field)
+            ]
+            if missing_meta:
+                raise ValueError(
+                    "Enabled Meta integration is missing deployment credentials: "
+                    + ", ".join(missing_meta)
+                )
+
         if self.ENVIRONMENT != "production":
             return self
 
@@ -192,6 +273,9 @@ class Settings(BaseSettings):
 
         if errors:
             raise ValueError("Unsafe production configuration: " + "; ".join(errors))
+
+        if self.RAG_ENABLED and not self.QDRANT_URL:
+            raise ValueError("QDRANT_URL must be set when RAG_ENABLED is true in production")
 
         return self
     

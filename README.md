@@ -12,6 +12,7 @@ The application has a FastAPI backend, MongoDB/Beanie document models, Redis-bac
 | Frontend | React 18, Vite, Zustand, React Query, Tailwind CSS, Axios |
 | Database | MongoDB Atlas or MongoDB 6+ |
 | Cache/Security | Redis 7+ for JWT blacklist and future caching |
+| AI Retrieval | Qdrant `v1.14.1` with `qdrant-client==1.14.3` for RAG vector storage |
 | Background Work | asyncio deadline checker, reminder scheduler, and one-minute scheduled-job runner; Celery worker service |
 | Deployment | Docker, Docker Compose, Nginx reverse proxy |
 
@@ -20,6 +21,7 @@ The application has a FastAPI backend, MongoDB/Beanie document models, Redis-bac
 - Node.js 18+
 - MongoDB Atlas account or local MongoDB 6+
 - Redis 7+
+- Qdrant `v1.14.1` for RAG development and release-gate integration tests
 - Docker Desktop if using Redis or Docker Compose locally
 
 ## Quick Start
@@ -39,7 +41,8 @@ The frontend defaults to Vite port `3000`. The backend API defaults to port `800
 MongoDB must be reachable before using authenticated API routes. If database initialization fails, the backend starts in a degraded state, `/health` reports `503`, `/api/v1/*` routes return a database-unavailable `503`, and database background workers are skipped until the backend is restarted with a valid `MONGODB_URL`.
 
 ## Environment Variables
-See [backend/.env.example](backend/.env.example) and [frontend/.env.example](frontend/.env.example). Required backend variables are `SECRET_KEY`, `ENCRYPTION_KEY`, `MONGODB_URL`, `DATABASE_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `REDIS_URL`. Optional integrations include SMTP, Brevo, Stripe, Razorpay, Zoom, AWS S3, Celery overrides, and AI provider keys. The startup guide and infrastructure audit document the full environment strategy.
+<## Environment Variables
+See [backend/.env.example](backend/.env.example) and [frontend/.env.example](frontend/.env.example). Required backend variables are `SECRET_KEY`, `ENCRYPTION_KEY`, `MONGODB_URL`, `DATABASE_NAME`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `REDIS_URL`. RAG development uses `QDRANT_URL` against pinned Qdrant server `v1.14.1` with `qdrant-client==1.14.3`. Optional integrations include SMTP, Brevo, Stripe, Razorpay, Zoom, AWS S3, Celery overrides, AI provider keys, and the disabled-by-default Meta foundation. Meta deployment credentials use `META_APP_ID`, `META_APP_SECRET`, and `META_VERIFY_TOKEN`; `META_INTEGRATION_ENABLED=False` remains the safe default. The startup guide and infrastructure audit document the full environment strategy.
 
 ## Project Structure
 ```text

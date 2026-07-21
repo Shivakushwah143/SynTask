@@ -31,7 +31,16 @@ import {
   ExternalLink,
   Layers,
   X,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle2,
+  ListChecks,
+  CalendarDays,
+  Users,
+  Zap,
+  BarChart3,
+  PieChart,
+  Activity,
+  Bell
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { calendarApi } from '../api/calendar'
@@ -52,11 +61,17 @@ export default function WorkspaceCalendar() {
   const isEmployee = userRole === ROLE.EMPLOYEE
   
   // States
+<<<<<<< HEAD
   const [view, setView] = useState('month') // 'month' | 'week' | 'day'
   const [currentDate, setCurrentDate] = useState(timeService.now())
   const [selectedDate, setSelectedDate] = useState(timeService.now())
+=======
+  const [view, setView] = useState('month')
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState(new Date())
+>>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
   const [search, setSearch] = useState('')
-  const [viewType, setViewType] = useState('my_calendar') // 'my_calendar' | 'team_calendar'
+  const [viewType, setViewType] = useState('my_calendar')
   const [selectedEvent, setSelectedEvent] = useState(null)
   
   // Filters
@@ -115,26 +130,22 @@ export default function WorkspaceCalendar() {
   const filteredEvents = useMemo(() => {
     const query = search.toLowerCase().trim()
     return events.filter((event) => {
-      // 1. Search filter
       const matchesSearch = !query || 
         (event.title || '').toLowerCase().includes(query) ||
         (event.project_name || '').toLowerCase().includes(query) ||
         (event.description || '').toLowerCase().includes(query)
 
-      // 2. Type filter
       let matchesType = false
       if (event.type === 'meeting' && filters.meeting) matchesType = true
       if (event.type === 'milestone' && filters.milestone) matchesType = true
       if ((event.type === 'project_start' || event.type === 'project_due') && filters.project) matchesType = true
       if ((event.type === 'task_assigned' || event.type === 'task_due' || event.type === 'task') && filters.task) matchesType = true
 
-      // 3. Status filter (completed vs pending)
       const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(event.status || '').toLowerCase())
       let matchesStatus = false
       if (isCompleted && filters.completed) matchesStatus = true
       if (!isCompleted && filters.pending) matchesStatus = true
 
-      // 4. Priority filter
       let matchesPriority = true
       if (event.priority) {
         const p = String(event.priority).toLowerCase()
@@ -165,7 +176,8 @@ export default function WorkspaceCalendar() {
     return eachDayOfInterval({ start, end })
   }, [currentDate])
 
-  // Mini-sidebar stats
+  // Stats
+  const totalEvents = filteredEvents.length
   const overdueTasks = useMemo(() => {
     const today = timeService.now()
     return events.filter(e => {
@@ -186,6 +198,14 @@ export default function WorkspaceCalendar() {
       const due = parseEventDate(e.start)
       return isAfter(due, today) || isSameDay(due, today)
     }).slice(0, 5)
+  }, [events])
+
+  const completedEvents = useMemo(() => {
+    return events.filter(e => ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(e.status || '').toLowerCase()))
+  }, [events])
+
+  const meetingsCount = useMemo(() => {
+    return events.filter(e => e.type === 'meeting').length
   }, [events])
 
   // Navigation handlers
@@ -264,7 +284,6 @@ export default function WorkspaceCalendar() {
     }
   }
 
-  // Styles/Colors Mapping helper
   const getEventBadgeLabel = (type) => {
     switch (type) {
       case 'meeting': return 'Meeting'
@@ -278,87 +297,121 @@ export default function WorkspaceCalendar() {
   }
 
   return (
-    <div className="flex h-full min-h-[calc(100vh-140px)] flex-col space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 border-b border-surface-border pb-5 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <CalendarIcon className="h-6 w-6 text-primary-600" />
-            Workspace Calendar
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Automatically aggregated timeline of projects, tasks, meetings, and deadlines.
-          </p>
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+              <CalendarDays className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl">Workspace Calendar</h1>
+              <p className="mt-1 text-indigo-100">Automatically aggregated timeline of projects, tasks, meetings, and deadlines.</p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleToday}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <CalendarIcon className="h-4 w-4" />
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('month')}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm transition ${view === 'month' ? 'bg-white/30 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+            >
+              Month
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('week')}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm transition ${view === 'week' ? 'bg-white/30 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+            >
+              Week
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('day')}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium backdrop-blur-sm transition ${view === 'day' ? 'bg-white/30 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+            >
+              Day
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Stats - 6 Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="group rounded-xl border border-indigo-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Events</span>
+            <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+              <CalendarIcon className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{totalEvents}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">All events</p>
         </div>
 
-        {/* View and controls */}
-        <div className="flex flex-wrap items-center gap-2 sm:self-center">
-          {/* My/Team toggle */}
-          {!isEmployee && (
-            <div className="flex rounded-xl bg-slate-100 p-0.5 dark:bg-gray-800">
-              <button
-                type="button"
-                onClick={() => setViewType('my_calendar')}
-                className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
-                  viewType === 'my_calendar'
-                    ? 'bg-white shadow-sm text-primary-700 dark:bg-gray-700 dark:text-white'
-                    : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
-                }`}
-              >
-                My Calendar
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewType('team_calendar')}
-                className={`rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
-                  viewType === 'team_calendar'
-                    ? 'bg-white shadow-sm text-primary-700 dark:bg-gray-700 dark:text-white'
-                    : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
-                }`}
-              >
-                Team Calendar
-              </button>
+        <div className="group rounded-xl border border-emerald-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Completed</span>
+            <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+              <CheckCircle2 className="h-4 w-4" />
             </div>
-          )}
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{completedEvents.length}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Done/Resolved</p>
+        </div>
 
-          {/* Month/Week/Day tabs */}
-          <div className="flex rounded-xl bg-slate-100 p-0.5 dark:bg-gray-800">
-            {['month', 'week', 'day'].map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setView(v)}
-                className={`rounded-lg px-3 py-1 text-xs font-semibold uppercase tracking-wider transition-colors ${
-                  view === v
-                    ? 'bg-white shadow-sm text-primary-700 dark:bg-gray-700 dark:text-white'
-                    : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
-                }`}
-              >
-                {v}
-              </button>
-            ))}
+        <div className="group rounded-xl border border-rose-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Overdue</span>
+            <div className="rounded-lg bg-rose-50 p-2 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+              <AlertTriangle className="h-4 w-4" />
+            </div>
           </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{overdueTasks.length}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Past due tasks</p>
+        </div>
 
-          {/* Navigation */}
-          <div className="flex items-center gap-1">
-            <Button variant="secondary" size="xs" onClick={handlePrev}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="secondary" size="xs" onClick={handleToday}>
-              Today
-            </Button>
-            <Button variant="secondary" size="xs" onClick={handleNext}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+        <div className="group rounded-xl border border-amber-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Upcoming</span>
+            <div className="rounded-lg bg-amber-50 p-2 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+              <Bell className="h-4 w-4" />
+            </div>
           </div>
-          
-          <div className="text-sm font-semibold text-gray-800 dark:text-gray-200 min-w-36 text-center">
-            {view === 'day' 
-              ? format(currentDate, 'MMMM d, yyyy') 
-              : view === 'week' 
-                ? `${format(weekDays[0], 'MMM d')} - ${format(weekDays[6], 'MMM d, yyyy')}`
-                : format(currentDate, 'MMMM yyyy')}
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{upcomingDeadlines.length}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Deadlines soon</p>
+        </div>
+
+        <div className="group rounded-xl border border-purple-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Meetings</span>
+            <div className="rounded-lg bg-purple-50 p-2 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+              <Users className="h-4 w-4" />
+            </div>
           </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{meetingsCount}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Scheduled meetings</p>
+        </div>
+
+        <div className="group rounded-xl border border-blue-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Active</span>
+            <div className="rounded-lg bg-blue-50 p-2 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+              <Activity className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{totalEvents - completedEvents.length}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">In progress</p>
         </div>
       </div>
 
@@ -368,36 +421,71 @@ export default function WorkspaceCalendar() {
         <aside className="space-y-6">
           
           {/* Search Box */}
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              className="input pl-10 text-sm"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search title, project..."
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search events..."
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* View Toggle */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">View</span>
+              {!isEmployee && (
+                <div className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-700">
+                  <button
+                    type="button"
+                    onClick={() => setViewType('my_calendar')}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      viewType === 'my_calendar'
+                        ? 'bg-white text-indigo-700 shadow-sm dark:bg-gray-600 dark:text-white'
+                        : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    My
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewType('team_calendar')}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      viewType === 'team_calendar'
+                        ? 'bg-white text-indigo-700 shadow-sm dark:bg-gray-600 dark:text-white'
+                        : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    Team
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Quick Filters */}
-          <div className="rounded-3xl border border-surface-border bg-surface p-4 dark:border-gray-800 dark:bg-black">
-            <div className="flex items-center justify-between border-b border-surface-border pb-2 mb-3 dark:border-gray-800">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-3 dark:border-gray-700">
               <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
                 <Filter className="h-3.5 w-3.5" />
                 Filters
               </h3>
               <div className="flex gap-2">
-                <button type="button" onClick={selectAllFilters} className="text-[10px] text-primary-600 hover:underline">All</button>
-                <button type="button" onClick={clearFilters} className="text-[10px] text-gray-400 hover:underline">None</button>
+                <button type="button" onClick={selectAllFilters} className="text-[10px] font-medium text-indigo-600 hover:underline dark:text-indigo-400">All</button>
+                <button type="button" onClick={clearFilters} className="text-[10px] font-medium text-gray-400 hover:underline">None</button>
               </div>
             </div>
 
@@ -407,19 +495,19 @@ export default function WorkspaceCalendar() {
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Event Types</span>
                 <div className="mt-2 space-y-1.5">
                   <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" className="rounded text-primary-600 focus:ring-primary-500" checked={filters.task} onChange={() => toggleFilter('task')} />
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.task} onChange={() => toggleFilter('task')} />
                     Tasks
                   </label>
                   <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" className="rounded text-primary-600 focus:ring-primary-500" checked={filters.project} onChange={() => toggleFilter('project')} />
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.project} onChange={() => toggleFilter('project')} />
                     Projects
                   </label>
                   <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" className="rounded text-primary-600 focus:ring-primary-500" checked={filters.meeting} onChange={() => toggleFilter('meeting')} />
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.meeting} onChange={() => toggleFilter('meeting')} />
                     Meetings
                   </label>
                   <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" className="rounded text-primary-600 focus:ring-primary-500" checked={filters.milestone} onChange={() => toggleFilter('milestone')} />
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.milestone} onChange={() => toggleFilter('milestone')} />
                     Milestones
                   </label>
                 </div>
@@ -430,12 +518,18 @@ export default function WorkspaceCalendar() {
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Status</span>
                 <div className="mt-2 space-y-1.5">
                   <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" className="rounded text-primary-600 focus:ring-primary-500" checked={filters.completed} onChange={() => toggleFilter('completed')} />
-                    Completed / Done
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.completed} onChange={() => toggleFilter('completed')} />
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                      Completed
+                    </span>
                   </label>
                   <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" className="rounded text-primary-600 focus:ring-primary-500" checked={filters.pending} onChange={() => toggleFilter('pending')} />
-                    Pending / Active
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.pending} onChange={() => toggleFilter('pending')} />
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3 text-amber-500" />
+                      Pending
+                    </span>
                   </label>
                 </div>
               </div>
@@ -445,19 +539,25 @@ export default function WorkspaceCalendar() {
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Priority</span>
                 <div className="mt-2 space-y-1.5">
                   <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" className="rounded text-primary-600 focus:ring-primary-500" checked={filters.high} onChange={() => toggleFilter('high')} />
-                    <span className="inline-flex h-2 w-2 rounded-full bg-red-500 mr-1" />
-                    High / Critical
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.high} onChange={() => toggleFilter('high')} />
+                    <span className="flex items-center gap-1">
+                      <span className="inline-flex h-2 w-2 rounded-full bg-rose-500" />
+                      High / Critical
+                    </span>
                   </label>
                   <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" className="rounded text-primary-600 focus:ring-primary-500" checked={filters.medium} onChange={() => toggleFilter('medium')} />
-                    <span className="inline-flex h-2 w-2 rounded-full bg-amber-500 mr-1" />
-                    Medium
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.medium} onChange={() => toggleFilter('medium')} />
+                    <span className="flex items-center gap-1">
+                      <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                      Medium
+                    </span>
                   </label>
                   <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" className="rounded text-primary-600 focus:ring-primary-500" checked={filters.low} onChange={() => toggleFilter('low')} />
-                    <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 mr-1" />
-                    Low
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.low} onChange={() => toggleFilter('low')} />
+                    <span className="flex items-center gap-1">
+                      <span className="inline-flex h-2 w-2 rounded-full bg-blue-500" />
+                      Low
+                    </span>
                   </label>
                 </div>
               </div>
@@ -466,8 +566,8 @@ export default function WorkspaceCalendar() {
 
           {/* Overdue Tasks List */}
           {overdueTasks.length > 0 && (
-            <div className="rounded-3xl border border-red-500/20 bg-red-50/10 p-4 dark:border-red-950/20">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400 flex items-center gap-1.5 mb-3">
+            <div className="rounded-2xl border border-rose-200 bg-rose-50/30 p-4 dark:border-rose-900/30 dark:bg-rose-950/20">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5 mb-3">
                 <AlertTriangle className="h-4 w-4" />
                 Overdue ({overdueTasks.length})
               </h3>
@@ -477,10 +577,10 @@ export default function WorkspaceCalendar() {
                     key={event.id}
                     type="button"
                     onClick={() => setSelectedEvent(event)}
-                    className="w-full text-left p-2 rounded-xl bg-white border border-red-100 hover:bg-red-50/40 text-xs dark:bg-gray-950 dark:border-red-950/30 transition-colors"
+                    className="w-full text-left p-3 rounded-xl bg-white border border-rose-200 hover:bg-rose-50/60 text-xs transition-all dark:bg-gray-900 dark:border-rose-900/30 dark:hover:bg-rose-950/30"
                   >
                     <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{event.title}</p>
-                    <p className="text-[10px] text-red-500 font-medium mt-1">
+                    <p className="text-[10px] text-rose-600 dark:text-rose-400 font-medium mt-1">
                       Due: {format(parseEventDate(event.start), 'MMM d, yyyy')}
                     </p>
                   </button>
@@ -490,10 +590,10 @@ export default function WorkspaceCalendar() {
           )}
 
           {/* Upcoming Deadlines */}
-          <div className="rounded-3xl border border-surface-border bg-surface p-4 dark:border-gray-800 dark:bg-black">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-3">
               <Sparkles className="h-4 w-4 text-amber-500" />
-              Deadlines / Milestones
+              Upcoming Deadlines
             </h3>
             {upcomingDeadlines.length === 0 ? (
               <p className="text-xs text-gray-400 dark:text-gray-500">No upcoming deadlines.</p>
@@ -504,7 +604,7 @@ export default function WorkspaceCalendar() {
                     key={event.id}
                     type="button"
                     onClick={() => setSelectedEvent(event)}
-                    className="w-full text-left p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs dark:bg-gray-900/40 dark:hover:bg-gray-900 transition-colors"
+                    className="w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-xs transition-all dark:bg-gray-900/40 dark:hover:bg-gray-900"
                   >
                     <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{event.title}</p>
                     <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
@@ -529,12 +629,20 @@ export default function WorkspaceCalendar() {
               </div>
             </div>
           ) : isError ? (
-            <div className="rounded-2xl border border-red-500/20 bg-red-50/20 p-6 text-center text-red-800 dark:text-red-400">
-              <p className="font-semibold">Unable to load calendar events.</p>
-              <Button size="sm" variant="secondary" className="mt-4" onClick={() => refetch()}>Retry</Button>
+            <div className="rounded-2xl border border-rose-200 bg-rose-50/30 p-8 text-center dark:border-rose-900/30 dark:bg-rose-950/20">
+              <AlertTriangle className="mx-auto h-12 w-12 text-rose-500 mb-4" />
+              <p className="font-semibold text-rose-800 dark:text-rose-400">Unable to load calendar events.</p>
+              <p className="mt-1 text-sm text-rose-600 dark:text-rose-500">Please check your connection and try again.</p>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700"
+              >
+                Retry
+              </button>
             </div>
           ) : (
-            <div className="rounded-3xl border border-surface-border bg-surface shadow-sm dark:border-gray-800 dark:bg-black overflow-hidden">
+            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
               {view === 'month' && (
                 <MonthView
                   days={monthDays}
@@ -570,35 +678,35 @@ export default function WorkspaceCalendar() {
       {/* Slide Drawer for Event Details */}
       {selectedEvent && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          {/* Overlay */}
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
             onClick={() => setSelectedEvent(null)}
             role="presentation"
           />
           
-          {/* Content panel */}
-          <div className="relative w-full max-w-lg bg-white p-6 shadow-2xl dark:bg-gray-950 flex flex-col h-full overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-surface-border pb-4 mb-4 dark:border-gray-800">
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-gray-800 dark:text-gray-300">
-                  {getEventBadgeLabel(selectedEvent.type)}
-                </span>
-                <Badge
-                  label={String(selectedEvent.status || 'Active').toUpperCase()}
-                  colorKey={selectedEvent.status || 'Active'}
-                />
+          <div className="relative w-full max-w-lg bg-white shadow-2xl dark:bg-gray-950 flex flex-col h-full overflow-y-auto animate-slide-in-right">
+            <div className="sticky top-0 z-10 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                    {getEventBadgeLabel(selectedEvent.type)}
+                  </span>
+                  <Badge
+                    label={String(selectedEvent.status || 'Active').toUpperCase()}
+                    colorKey={selectedEvent.status || 'Active'}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEvent(null)}
+                  className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedEvent(null)}
-                className="rounded-full p-1.5 text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-900"
-              >
-                <X className="h-5 w-5" />
-              </button>
             </div>
 
-            <div className="flex-1 space-y-6">
+            <div className="flex-1 p-6 space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{selectedEvent.title}</h2>
                 <p className="mt-3 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
@@ -606,15 +714,14 @@ export default function WorkspaceCalendar() {
                 </p>
               </div>
 
-              {/* Parameters grid */}
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-gray-900">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900">
                   <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Date</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">
                     {format(parseEventDate(selectedEvent.start), 'PPP')}
                   </span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-gray-900">
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900">
                   <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Time</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">
                     {selectedEvent.time ? format(parseEventDate(`${selectedEvent.start}T${selectedEvent.time}`), 'p') : 'All Day'}
@@ -622,27 +729,27 @@ export default function WorkspaceCalendar() {
                 </div>
 
                 {selectedEvent.project_name && (
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-gray-900 col-span-2">
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 col-span-2">
                     <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Project</span>
                     <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-                      <Layers className="h-3.5 w-3.5 text-primary-500" />
+                      <Layers className="h-3.5 w-3.5 text-indigo-500" />
                       {selectedEvent.project_name}
                     </span>
                   </div>
                 )}
 
                 {selectedEvent.assignee && (
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-gray-900">
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900">
                     <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Assignee</span>
                     <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5 text-slate-500" />
+                      <User className="h-3.5 w-3.5 text-gray-500" />
                       {selectedEvent.assignee}
                     </span>
                   </div>
                 )}
 
                 {selectedEvent.priority && (
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-gray-900">
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900">
                     <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Priority</span>
                     <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                       <Flag className="h-3.5 w-3.5 text-amber-500" />
@@ -652,14 +759,14 @@ export default function WorkspaceCalendar() {
                 )}
                 
                 {selectedEvent.host && (
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-gray-900">
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 col-span-2">
                     <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Host</span>
                     <span className="font-medium text-gray-900 dark:text-gray-100">{selectedEvent.host}</span>
                   </div>
                 )}
                 
                 {selectedEvent.participants && selectedEvent.participants.length > 0 && (
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-gray-900 col-span-2">
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 col-span-2">
                     <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Participants</span>
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
                       {selectedEvent.participants.map((p, idx) => (
@@ -672,24 +779,31 @@ export default function WorkspaceCalendar() {
                 )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="border-t border-surface-border pt-4 dark:border-gray-800 flex justify-end gap-2">
-                <Button variant="secondary" onClick={() => setSelectedEvent(null)}>
+              <div className="border-t border-gray-200 pt-4 dark:border-gray-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedEvent(null)}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
                   Close
-                </Button>
-                <Button onClick={() => openEventTarget(selectedEvent)}>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openEventTarget(selectedEvent)}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 flex items-center gap-2"
+                >
                   {selectedEvent.type === 'meeting' ? (
                     <>
-                      <Video className="h-4 w-4 mr-1.5" />
+                      <Video className="h-4 w-4" />
                       Join Meeting
                     </>
                   ) : (
                     <>
-                      <ExternalLink className="h-4 w-4 mr-1.5" />
+                      <ExternalLink className="h-4 w-4" />
                       Open Record
                     </>
                   )}
-                </Button>
+                </button>
               </div>
             </div>
           </div>
@@ -703,13 +817,13 @@ export default function WorkspaceCalendar() {
 function MonthView({ days, events, selected, setSelected, month, onOpenEvent, parseEventDate }) {
   return (
     <div>
-      <div className="grid grid-cols-7 border-b border-surface-border bg-slate-50/50 text-center text-xs font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-black dark:text-gray-400">
+      <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50/50 text-center text-xs font-semibold uppercase text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
           <div key={day} className="p-3">{day}</div>
         ))}
       </div>
       
-      <div className="grid grid-cols-7 divide-x divide-y divide-surface-border dark:divide-gray-800">
+      <div className="grid grid-cols-7 divide-x divide-y divide-gray-100 dark:divide-gray-800">
         {days.map((day) => {
           const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
           const isSelected = isSameDay(day, selected)
@@ -721,31 +835,31 @@ function MonthView({ days, events, selected, setSelected, month, onOpenEvent, pa
             <div
               key={timeService.toUtcISOString(day)}
               onClick={() => setSelected(day)}
-              className={`min-h-32 p-1.5 text-left transition-colors flex flex-col justify-between hover:bg-slate-50 dark:hover:bg-gray-900/40 cursor-pointer ${
-                isSelected ? 'bg-primary-50/30 dark:bg-primary-950/10' : ''
+              className={`min-h-32 p-2 text-left transition-colors flex flex-col cursor-pointer ${
+                isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/20 ring-2 ring-indigo-300 dark:ring-indigo-700' : ''
               } ${
-                !isCurrentMonth ? 'text-gray-300 dark:text-gray-600 bg-slate-50/20 dark:bg-gray-900/10' : 'text-gray-900 dark:text-gray-100'
+                !isCurrentMonth ? 'text-gray-300 dark:text-gray-600 bg-gray-50/20 dark:bg-gray-900/10' : 'text-gray-900 dark:text-gray-100'
               } ${
-                isWeekend && isCurrentMonth ? 'bg-slate-50/30 dark:bg-gray-950/20' : ''
-              }`}
+                isWeekend && isCurrentMonth ? 'bg-gray-50/30 dark:bg-gray-950/20' : ''
+              } hover:bg-gray-50 dark:hover:bg-gray-900/40`}
             >
-              {/* Date Header */}
               <div className="flex items-center justify-between">
-                <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-bold ${
+                <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
                   isToday 
-                    ? 'bg-primary-600 text-white' 
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' 
                     : isSelected 
-                      ? 'text-primary-600' 
-                      : ''
+                      ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' 
+                      : 'text-gray-700 dark:text-gray-300'
                 }`}>
                   {format(day, 'd')}
                 </span>
                 {dayEvents.length > 0 && (
-                  <span className="text-[10px] text-gray-400 font-medium">{dayEvents.length} items</span>
+                  <span className="text-[10px] font-medium text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full">
+                    {dayEvents.length}
+                  </span>
                 )}
               </div>
 
-              {/* Events stack */}
               <div className="mt-2 flex-1 space-y-1 overflow-y-auto">
                 {dayEvents.slice(0, 3).map((event) => (
                   <button
@@ -755,14 +869,14 @@ function MonthView({ days, events, selected, setSelected, month, onOpenEvent, pa
                       e.stopPropagation()
                       onOpenEvent(event)
                     }}
-                    className={`w-full text-left truncate rounded-lg p-1 text-[10px] font-semibold border transition-all hover:scale-[1.02] ${getEventColorStyles(event)}`}
+                    className={`w-full text-left truncate rounded-lg px-1.5 py-1 text-[10px] font-medium border transition-all hover:scale-[1.02] ${getEventColorStyles(event)}`}
                     title={event.title}
                   >
                     {event.title}
                   </button>
                 ))}
                 {dayEvents.length > 3 && (
-                  <div className="text-[9px] font-bold text-primary-600 dark:text-primary-400 pl-1">
+                  <div className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 pl-1">
                     +{dayEvents.length - 3} more
                   </div>
                 )}
@@ -779,25 +893,36 @@ function MonthView({ days, events, selected, setSelected, month, onOpenEvent, pa
 function WeekView({ days, events, onOpenEvent, parseEventDate }) {
   return (
     <div className="overflow-x-auto">
-      <div className="grid min-w-[700px] grid-cols-7 divide-x divide-surface-border bg-slate-50/50 dark:divide-gray-800 dark:bg-black border-b border-surface-border dark:border-gray-800">
+      <div className="grid min-w-[700px] grid-cols-7 divide-x divide-gray-200 bg-gray-50/50 dark:divide-gray-700 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         {days.map((day) => {
           const isToday = isSameDay(day, timeService.now())
           return (
+<<<<<<< HEAD
             <div key={timeService.toUtcISOString(day)} className={`p-4 text-center ${isToday ? 'bg-primary-50/20 dark:bg-primary-950/20' : ''}`}>
               <p className="text-xs font-semibold text-gray-500 uppercase">{format(day, 'EEE')}</p>
               <p className={`mt-1 text-lg font-bold inline-block px-2 py-0.5 rounded-full ${
                 isToday ? 'bg-primary-600 text-white' : 'text-gray-900 dark:text-gray-100'
+=======
+            <div key={day.toISOString()} className={`p-4 text-center ${isToday ? 'bg-indigo-50/30 dark:bg-indigo-950/30' : ''}`}>
+              <p className="text-xs font-semibold text-gray-500 uppercase dark:text-gray-400">{format(day, 'EEE')}</p>
+              <p className={`mt-1 text-lg font-bold inline-block px-2.5 py-0.5 rounded-full ${
+                isToday ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'text-gray-900 dark:text-gray-100'
+>>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
               }`}>{format(day, 'd')}</p>
             </div>
           )
         })}
       </div>
 
-      <div className="grid min-w-[700px] grid-cols-7 divide-x divide-surface-border dark:divide-gray-800 min-h-[450px]">
+      <div className="grid min-w-[700px] grid-cols-7 divide-x divide-gray-200 dark:divide-gray-700 min-h-[450px] bg-white dark:bg-gray-900">
         {days.map((day) => {
           const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
           return (
+<<<<<<< HEAD
             <div key={timeService.toUtcISOString(day)} className="p-2 space-y-2 bg-white dark:bg-black">
+=======
+            <div key={day.toISOString()} className="p-2 space-y-2">
+>>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
               {dayEvents.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-[10px] text-gray-300 dark:text-gray-700 italic select-none py-10">
                   No Events
@@ -808,7 +933,7 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
                     key={event.id}
                     type="button"
                     onClick={() => onOpenEvent(event)}
-                    className={`w-full text-left rounded-xl p-2.5 text-xs shadow-xs border transition-all hover:shadow-md hover:scale-[1.01] ${getEventStylesWithBorder(event)}`}
+                    className={`w-full text-left rounded-xl p-2.5 text-xs shadow-sm border transition-all hover:shadow-md hover:scale-[1.01] ${getEventStylesWithBorder(event)}`}
                   >
                     <span className="block font-bold truncate">{event.title}</span>
                     <span className="mt-1 block text-[10px] opacity-75 truncate">{event.project_name || 'No project'}</span>
@@ -837,18 +962,21 @@ function DayView({ day, events, onOpenEvent, parseEventDate }) {
 
   return (
     <div className="p-4 space-y-4">
-      {/* Day summary header */}
-      <div className="flex items-center gap-3 border-b border-surface-border pb-3 dark:border-gray-800">
-        <span className="h-10 w-10 bg-primary-50 rounded-full flex items-center justify-center text-primary-600 font-bold dark:bg-primary-950/30">
+      <div className="flex items-center gap-4 border-b border-gray-200 pb-4 dark:border-gray-700">
+        <span className="h-12 w-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 font-bold text-xl dark:bg-indigo-950/30 dark:text-indigo-300">
           {format(day, 'd')}
         </span>
         <div>
-          <h3 className="font-bold text-gray-900 dark:text-gray-100">{format(day, 'EEEE')}</h3>
-          <p className="text-xs text-gray-500">{format(day, 'MMMM yyyy')}</p>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{format(day, 'EEEE')}</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{format(day, 'MMMM yyyy')}</p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+            {dayEvents.length} events
+          </span>
         </div>
       </div>
 
-      {/* All day events row */}
       {allDayEvents.length > 0 && (
         <div className="space-y-2">
           <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">All-day Items</span>
@@ -871,14 +999,13 @@ function DayView({ day, events, onOpenEvent, parseEventDate }) {
         </div>
       )}
 
-      {/* Hourly Timeline */}
-      <div className="mt-4 border border-surface-border rounded-2xl overflow-hidden dark:border-gray-800">
-        <div className="grid grid-cols-[70px_1fr] bg-slate-50/50 dark:bg-black/30">
-          <div className="p-3 border-r border-surface-border text-center text-xs font-bold text-gray-400 dark:border-gray-800">Time</div>
+      <div className="mt-4 border border-gray-200 rounded-2xl overflow-hidden dark:border-gray-700">
+        <div className="grid grid-cols-[70px_1fr] bg-gray-50/50 dark:bg-gray-800/50">
+          <div className="p-3 border-r border-gray-200 text-center text-xs font-bold text-gray-400 dark:border-gray-700">Time</div>
           <div className="p-3 text-left text-xs font-bold text-gray-400">Scheduled Items</div>
         </div>
         
-        <div className="divide-y divide-surface-border dark:divide-gray-800">
+        <div className="divide-y divide-gray-100 dark:divide-gray-800">
           {HOURS.map((hour) => {
             const formattedHour = format(timeService.instant(2026, 0, 1, hour), 'ha')
             const hourEvents = timedEvents.filter((e) => {
@@ -887,8 +1014,8 @@ function DayView({ day, events, onOpenEvent, parseEventDate }) {
             })
 
             return (
-              <div key={hour} className="grid grid-cols-[70px_1fr] min-h-[70px]">
-                <div className="p-3 border-r border-surface-border dark:border-gray-800 text-center text-xs text-gray-400 font-medium">
+              <div key={hour} className="grid grid-cols-[70px_1fr] min-h-[70px] hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
+                <div className="p-3 border-r border-gray-200 dark:border-gray-700 text-center text-xs text-gray-400 font-medium">
                   {formattedHour}
                 </div>
                 <div className="p-2 space-y-2">
@@ -900,7 +1027,7 @@ function DayView({ day, events, onOpenEvent, parseEventDate }) {
                         key={event.id}
                         type="button"
                         onClick={() => onOpenEvent(event)}
-                        className={`text-left rounded-xl p-2.5 text-xs shadow-xs border block w-full transition-all hover:shadow-md ${getEventStylesWithBorder(event)}`}
+                        className={`text-left rounded-xl p-2.5 text-xs shadow-sm border block w-full transition-all hover:shadow-md ${getEventStylesWithBorder(event)}`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-bold">{event.title}</span>
@@ -923,38 +1050,38 @@ function DayView({ day, events, onOpenEvent, parseEventDate }) {
 /* Helper styles */
 function getEventColorStyles(event) {
   const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(event.status || '').toLowerCase())
-  if (isCompleted) return 'border-gray-200 bg-gray-100 text-gray-500 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-400'
+  if (isCompleted) return 'border-gray-200 bg-gray-100 text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'
 
   switch (event.type) {
     case 'meeting':
-      return 'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/50 dark:bg-purple-950/20 dark:text-purple-300'
+      return 'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/40 dark:bg-purple-950/20 dark:text-purple-300'
     case 'project_start':
-      return 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-300'
+      return 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-300'
     case 'project_due':
-      return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300'
+      return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300'
     case 'task_assigned':
-      return 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/50 dark:bg-green-950/20 dark:text-green-300'
+      return 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/40 dark:bg-green-950/20 dark:text-green-300'
     case 'task_due':
       if (event.color === '#7F1D1D') {
         return 'border-red-950 bg-red-100 text-red-950 dark:border-red-950 dark:bg-red-950/40 dark:text-red-100'
       }
       if (event.color === '#EF4444') {
-        return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300'
+        return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300'
       }
       if (event.color === '#EAB308') {
-        return 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-900/50 dark:bg-yellow-950/20 dark:text-yellow-300'
+        return 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-900/40 dark:bg-yellow-950/20 dark:text-yellow-300'
       }
-      return 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/50 dark:bg-orange-950/20 dark:text-orange-300'
+      return 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-950/20 dark:text-orange-300'
     case 'milestone':
-      return 'border-yellow-300 bg-yellow-50/50 text-yellow-800 dark:border-yellow-900/40 dark:bg-yellow-950/10 dark:text-yellow-300'
+      return 'border-yellow-300 bg-yellow-50/50 text-yellow-800 dark:border-yellow-900/30 dark:bg-yellow-950/10 dark:text-yellow-300'
     default:
-      return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300'
+      return 'border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'
   }
 }
 
 function getEventStylesWithBorder(event) {
   const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(event.status || '').toLowerCase())
-  if (isCompleted) return 'border-l-4 border-gray-400 bg-gray-50 text-gray-500 border-y border-r border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-800'
+  if (isCompleted) return 'border-l-4 border-gray-400 bg-gray-50 text-gray-500 border-y border-r border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
 
   switch (event.type) {
     case 'meeting':
@@ -979,6 +1106,6 @@ function getEventStylesWithBorder(event) {
     case 'milestone':
       return 'border-l-4 border-yellow-600 bg-yellow-50/50 text-yellow-800 border-y border-r border-yellow-100 dark:bg-yellow-950/10 dark:text-yellow-300 dark:border-yellow-900/30'
     default:
-      return 'border-l-4 border-slate-500 bg-slate-50 text-slate-700 border-y border-r border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+      return 'border-l-4 border-gray-500 bg-gray-50 text-gray-700 border-y border-r border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'
   }
 }

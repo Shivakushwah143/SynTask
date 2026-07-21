@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock3, Plus, Receipt, Search, UserPlus } from 'lucide-react'
+import { 
+  Clock3, Plus, Receipt, Search, UserPlus, 
+  FolderKanban, LayoutGrid, BarChart3, 
+  Calendar, Users, Target, Award, TrendingUp,
+  CheckCircle2, AlertCircle, Clock, ChevronRight,
+  Briefcase, Layers, GitBranch, Sparkles, Activity
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { projectsApi } from '../api/projects'
@@ -58,6 +64,36 @@ const loadStoredProjectTypes = () => {
   } catch {
     return []
   }
+}
+
+// Stat Card Component
+const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, trend }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+    teal: 'from-teal-500 to-cyan-500',
+  }
+
+  return (
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      {trend && (
+        <div className={`mt-2 inline-flex items-center gap-1 text-xs font-medium ${trend > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+          {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}%
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function Projects() {
@@ -178,6 +214,7 @@ export default function Projects() {
   const summary = useMemo(() => ({
     total: projects.length,
     active: projects.filter((project) => ['active', 'in_progress'].includes((project.status || '').toLowerCase())).length,
+    completed: projects.filter((project) => ['completed', 'archived'].includes((project.status || '').toLowerCase())).length,
     overdue: projects.filter((project) => (project.days_until_delivery ?? 999) < 0).length,
   }), [projects])
 
@@ -305,23 +342,17 @@ export default function Projects() {
       const response = await projectsApi.createProject(payload)
       toast.success('Project created successfully')
       
-      // Reset form
       setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
       setCreateMode('now')
       setScheduleRunAt('')
-      
-      // Close modal first
       setShowCreateModal(false)
       
-      // Immediately add the new project to the list if we have the data
       if (response.data && response.data.project) {
         setProjects(prevProjects => [response.data.project, ...prevProjects])
       } else {
-        // If we don't have the project data in the response, refresh the list
         await loadProjects()
       }
       
-      // Reset visible page to show new project in the first complete grid.
       setProjectPage(1)
       
     } catch (error) {
@@ -356,54 +387,113 @@ export default function Projects() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-      title="Projects"
-      description="Project health, ownership, and progress."
-        actions={(
-      <div className="flex flex-wrap items-center gap-2 pr-3 sm:pr-4 lg:pr-6">
-            {canCreateProjects ? (
-              <Button size="sm" onClick={() => setShowCreateModal(true)}>
-                <Plus className="h-4 w-4" />
-                New project
-              </Button>
-            ) : null}
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+              <FolderKanban className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl">Projects</h1>
+              <p className="mt-1 text-indigo-100">Project health, ownership, and progress tracking</p>
+            </div>
           </div>
-        )}
-      />
+          <div className="mt-4 flex flex-wrap gap-3">
+            {canCreateProjects && (
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <Plus className="h-4 w-4" />
+                New Project
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
-      <section className="card p-4">
+      {/* Stats Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Total Projects"
+          value={summary.total}
+          icon={FolderKanban}
+          color="indigo"
+          subtitle="All projects"
+        />
+        <StatCard
+          label="Active"
+          value={summary.active}
+          icon={Activity}
+          color="emerald"
+          subtitle="In progress"
+        />
+        <StatCard
+          label="Completed"
+          value={summary.completed}
+          icon={CheckCircle2}
+          color="blue"
+          subtitle="Done/Archived"
+        />
+        <StatCard
+          label="At Risk"
+          value={summary.overdue}
+          icon={AlertCircle}
+          color="rose"
+          subtitle="Overdue"
+        />
+      </div>
+
+      {/* Search & Filters */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input className={`${inputClassName} pl-10`} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search projects by name, key, status, or description" />
+            <input 
+              className={`${inputClassName} pl-10`} 
+              value={searchQuery} 
+              onChange={(event) => setSearchQuery(event.target.value)} 
+              placeholder="Search projects by name, key, status, or description" 
+            />
           </div>
           <div id="project-filters" className="grid gap-3 md:grid-cols-3 lg:flex-1">
-            <select className={inputClassName} value={filters.status} onChange={(event) => setFilters((state) => ({ ...state, status: event.target.value }))}>
+            <select 
+              className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+              value={filters.status} 
+              onChange={(event) => setFilters((state) => ({ ...state, status: event.target.value }))}
+            >
               <option value="">All statuses</option>
               <option value="active">Active</option>
               <option value="in_progress">In progress</option>
               <option value="on_hold">On hold</option>
               <option value="completed">Completed</option>
             </select>
-            <select className={inputClassName} value={filters.type} onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}>
+            <select 
+              className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+              value={filters.type} 
+              onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}
+            >
               <option value="">All types</option>
               {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
-            <select className={inputClassName} value={filters.owner} onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}>
+            <select 
+              className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
+              value={filters.owner} 
+              onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}
+            >
               <option value="">All assigned</option>
               {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
             </select>
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard title="Total projects" value={summary.total} />
-        <MetricCard title="Active projects" value={summary.active} />
-        <MetricCard title="At risk" value={summary.overdue} />
-      </section>
-
+      {/* Project Graph Panel */}
       <ProjectGraphPanel
         rows={projectGraphRows}
         summary={projectGraphSummary}
@@ -426,6 +516,7 @@ export default function Projects() {
         }}
       />
 
+      {/* Create Project Modal */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New project" size="xl">
         <form onSubmit={handleCreate} className="space-y-5">
           <FormField label="Project name" error={formErrors.name} required>
@@ -577,115 +668,175 @@ export default function Projects() {
           setFormData((state) => ({ ...state, assigned_to: created.id }))
         }}
       />
-
-      <ProjectDetailsPanel
-        isOpen={showDetails && false}
-        project={selectedProject}
-      loading={loadingDetails}
-      details={projectDetails}
-      tasks={projectTasks}
-      components={components}
-      versions={versions}
-      onClose={() => setShowDetails(false)}
-      onOpenBoard={(project) => navigate(`/projects/${project.id}/board`)}
-      onChangeStatus={handleProjectStatusChange}
-    />
     </div>
   )
 }
 
+// Enhanced Project Graph Panel
 function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject, canAssignProject, onAssignProject }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-        <div className="flex items-center gap-1.5">
-        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Projects</h2>
-        <span className="flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">?</span>
-        </div>
-        <div className="hidden items-center gap-4 text-xs text-gray-500 dark:text-gray-400 sm:flex">
-          <span>{summary.remainingTasks} remaining</span>
-          <span>{summary.totalTasks} total tasks</span>
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
+      {/* Header */}
+      <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+              <LayoutGrid className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-white">Project Overview</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{totalCount} projects • {summary.totalTasks} total tasks</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              {summary.remainingTasks} remaining
+            </span>
+            <span className="flex items-center gap-1">
+              <BarChart3 className="h-3.5 w-3.5 text-indigo-500" />
+              {summary.totalTasks} total
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="grid border-b border-gray-200 dark:border-gray-800 sm:grid-cols-2">
-        <div className="flex items-center gap-2 px-4 py-3">
-          <Clock3 className="h-5 w-5 text-gray-900 dark:text-gray-100" />
+      {/* Summary Cards */}
+      <div className="grid border-b border-gray-200 dark:border-gray-700 sm:grid-cols-2">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="rounded-lg bg-amber-50 p-2 dark:bg-amber-900/30">
+            <Clock3 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          </div>
           <div>
-            <p className="text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">{summary.remainingTasks}</p>
+            <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">{summary.remainingTasks}</p>
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Remaining tasks</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50 sm:border-l sm:border-t-0">
-          <Receipt className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+        <div className="flex items-center gap-3 border-t border-gray-200 bg-gray-50/50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/30 sm:border-l sm:border-t-0">
+          <div className="rounded-lg bg-indigo-50 p-2 dark:bg-indigo-900/30">
+            <Receipt className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+          </div>
           <div>
-            <p className="text-lg font-semibold tabular-nums text-gray-600 dark:text-gray-300">{summary.totalTasks}</p>
+            <p className="text-lg font-bold tabular-nums text-gray-600 dark:text-gray-300">{summary.totalTasks}</p>
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total project tasks</p>
           </div>
         </div>
       </div>
 
-      <div className="p-3">
+      {/* Project Cards */}
+      <div className="p-4">
         {loading ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <SkeletonCard lines={4} />
             <SkeletonCard lines={4} />
             <SkeletonCard lines={4} />
           </div>
         ) : rows.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {rows.map((project) => (
-          <article
-            key={project.id}
-            title={`${project.name}: ${project.progress}% complete, ${project.remainingTasks} tasks remaining`}
-            className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-700 dark:hover:bg-gray-950"
-          >
-            <button type="button" onClick={() => onOpenProject(project)} className="w-full text-left">
-              <div className="flex items-start gap-3">
-              <ProgressRing value={project.progress} />
-              <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold leading-5 text-primary-600 dark:text-primary-400">{project.name}</p>
-              <p className="text-sm leading-5 text-gray-500 dark:text-gray-400">{project.owner}</p>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {project.key ? <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">{project.key}</span> : null}
-                <Badge label={project.status.replace(/_/g, ' ')} colorKey={project.status} />
-              </div>
-              </div>
-              </div>
-            </button>
-            <div className="mt-3">
-              <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <span>Task Budget</span>
-                <span>{project.completedTasks}/{project.totalTasks}</span>
-              </div>
-              <StackedBudgetBar completed={project.completedTasks} remaining={project.remainingTasks} total={project.totalTasks} />
-            </div>
-            {onAssignProject && canAssignProject?.(project) ? (
-              <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-800">
-                <Button variant="secondary" size="sm" onClick={() => onAssignProject(project)}>
-                  <UserPlus className="h-4 w-4" />
-                  {project.assigned_to ? 'Change assignee' : 'Assign project'}
-                </Button>
-              </div>
-            ) : null}
-          </article>
-          ))}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {rows.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                onOpen={() => onOpenProject(project)}
+                canAssign={canAssignProject?.(project)}
+                onAssign={() => onAssignProject?.(project)}
+              />
+            ))}
           </div>
         ) : (
-          <div className="py-6">
+          <div className="py-8">
             <EmptyState title="No project graph data" description="Projects will appear here when they match your filters." />
           </div>
         )}
-        {!loading && rows.length > 0 && visibleCount < totalCount ? (
-          <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+        
+        {!loading && rows.length > 0 && visibleCount < totalCount && (
+          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
             <span>Showing {rows.length} of {totalCount} projects</span>
             <Button variant="secondary" size="sm" onClick={onViewMore}>
               View {Math.min(pageSize, totalCount - visibleCount)} more
+              <ChevronRight className="h-3.5 w-3.5 ml-1" />
             </Button>
           </div>
-        ) : null}
+        )}
       </div>
-    </section>
+    </div>
+  )
+}
+
+// Enhanced Project Card Component
+function ProjectCard({ project, onOpen, canAssign, onAssign }) {
+  const statusColors = {
+    active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    on_hold: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    completed: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+    archived: 'bg-gray-100 text-gray-700 dark:bg-gray-900/40 dark:text-gray-300',
+  }
+
+  return (
+    <article className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700">
+      <button type="button" onClick={onOpen} className="w-full text-left">
+        <div className="flex items-start gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white font-bold text-sm shadow-lg shadow-indigo-500/20">
+            {project.name?.charAt(0)?.toUpperCase() || 'P'}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+              {project.name}
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{project.owner || 'Unassigned'}</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {project.key && (
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-mono text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  {project.key}
+                </span>
+              )}
+              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[project.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                {project.statusLabel}
+              </span>
+            </div>
+          </div>
+        </div>
+      </button>
+
+      {/* Progress */}
+      <div className="mt-3">
+        <div className="mb-1.5 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          <span>Progress</span>
+          <span className="font-semibold text-gray-700 dark:text-gray-300">{project.progress}%</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+          <div 
+            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500" 
+            style={{ width: `${Math.min(project.progress, 100)}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Task Stats */}
+      <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+        <span>{project.completedTasks || 0}/{project.totalTasks || 0} tasks</span>
+        {project.days_until_delivery !== undefined && project.days_until_delivery !== null && (
+          <span className={project.days_until_delivery < 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}>
+            {project.days_until_delivery < 0 ? `${Math.abs(project.days_until_delivery)}d overdue` : `${project.days_until_delivery}d left`}
+          </span>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+        {canAssign && (
+          <Button variant="secondary" size="sm" onClick={onAssign} className="gap-1.5">
+            <UserPlus className="h-3.5 w-3.5" />
+            {project.assigned_to ? 'Change' : 'Assign'}
+          </Button>
+        )}
+        <Button variant="secondary" size="sm" onClick={onOpen} className="ml-auto gap-1.5">
+          Open
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </article>
   )
 }
 
@@ -737,135 +888,6 @@ function MetricCard({ title, value }) {
     <div className="card p-4">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{title}</div>
       <div className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">{value}</div>
-    </div>
-  )
-}
-
-function ProjectDetailsPanel({ isOpen, project, loading, details, tasks, components, versions, onClose, onOpenBoard, onChangeStatus }) {
-  if (!isOpen || !project) return null
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50">
-      <div className="ml-auto flex h-full w-full flex-col bg-white shadow-2xl dark:bg-gray-950 ">
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">Project details</p>
-            <h2 className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{project.name}</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={() => onOpenBoard(project)}>Open board</Button>
-            <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">x</button>
-          </div>
-        </div>
-        <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
-          <div className="min-h-0 overflow-y-auto px-5 py-5">
-            {loading ? <SkeletonDetails /> : (
-              <div className="space-y-6">
-                <section className="grid gap-4 md:grid-cols-4">
-                  <MetricCard title="Tasks" value={details?.task_count || tasks.length || 0} />
-                  <MetricCard title="Complete" value={details?.statistics?.completed_count || 0} />
-                  <MetricCard title="In progress" value={details?.statistics?.in_progress_count || 0} />
-                  <MetricCard title="Completion" value={`${details?.statistics?.completion_percentage || 0}%`} />
-                </section>
-                <section className="card p-4">
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Overview</h3>
-                  <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{details?.description || project.description || 'No project description available.'}</p>
-                </section>
-                <section className="card p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Workflow</h3>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Advance the project through the locked delivery stages.</p>
-                    </div>
-                    <Badge label={(details?.status || project.status || 'active').replace(/_/g, ' ')} colorKey={details?.status || project.status || 'active'} />
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {(PROJECT_WORKFLOW[(details?.status || project.status || 'active').toLowerCase()] || []).map((nextStatus) => (
-                      <Button
-                        key={nextStatus}
-                        size="sm"
-                        variant={nextStatus === 'completed' ? 'primary' : 'secondary'}
-                        onClick={() => onChangeStatus?.(project, nextStatus)}
-                      >
-                        {nextStatus.replace(/_/g, ' ')}
-                      </Button>
-                    ))}
-                  </div>
-                </section>
-                <section className="card p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Tasks</h3>
-                    <Badge label={`${tasks.length} tasks`} colorKey="scheduled" />
-                  </div>
-                  <div className="space-y-2">
-                    {tasks.slice(0, 8).map((task) => (
-                      <div key={task.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{task.title}</p>
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{task.description || 'No description.'}</p>
-                          </div>
-                          <Badge label={task.status?.replace(/_/g, ' ') || 'todo'} colorKey={task.status || 'todo'} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-                <section className="grid gap-6 xl:grid-cols-2">
-                  <section className="card p-4">
-                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Files</h3>
-                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Project files remain accessible from the project header.</p>
-                  </section>
-                  <section className="card p-4">
-                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Meetings</h3>
-                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Meeting context is managed from the meetings workspace.</p>
-                  </section>
-                </section>
-              </div>
-            )}
-          </div>
-          <aside className="min-h-0 overflow-y-auto border-l border-gray-200 px-5 py-5 dark:border-gray-800">
-            <div className="space-y-4">
-              <section className="card p-4">
-                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">AI briefing</h3>
-                <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">Project context, health, and next actions should be derived from live project signals only.</p>
-              </section>
-              <section className="card p-4">
-                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Team</h3>
-                <div className="mt-3 flex -space-x-2">
-                  {(details?.assigned_tasks_by_user || []).slice(0, 5).map((item, index) => (
-                    <div key={`${item.user_id || index}`} className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-gray-100 text-xs font-semibold text-gray-700 dark:border-gray-950 dark:bg-gray-800 dark:text-gray-200">
-                      {(item.user_name || '?').slice(0, 1)}
-                    </div>
-                  ))}
-                </div>
-              </section>
-              <section className="card p-4">
-                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Analytics</h3>
-                <div className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                  <p>Completion: {details?.statistics?.completion_percentage || 0}%</p>
-                  <p>Tasks: {details?.task_count || 0}</p>
-                  <p>Files: {details?.files?.length || 0}</p>
-                  <p>Pages: {details?.pages?.length || 0}</p>
-                  <p>Components: {components.length}</p>
-                  <p>Versions: {versions.length}</p>
-                </div>
-              </section>
-            </div>
-          </aside>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function SkeletonDetails() {
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
-        {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={3} />)}
-      </div>
-      <SkeletonCard lines={4} />
-      <SkeletonTable rows={6} cols={3} />
     </div>
   )
 }

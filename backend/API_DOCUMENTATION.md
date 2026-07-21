@@ -11,6 +11,15 @@ When MongoDB or Beanie initialization fails, protected API routes under `/api/v1
 
 Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions include login, refresh, forgot/reset password flows, company registration, public MSA signing links, selected subscription/payment webhook endpoints, and health/debug endpoints.
 
+### Meta webhook inbox
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/v1/integrations/meta/webhook` | Meta verification token | Validates `hub.mode` and the deployment verify token, then returns the exact `hub.challenge`. |
+| POST | `/api/v1/integrations/meta/webhook` | Meta HMAC | Reads a maximum 1 MiB raw body, validates `X-Hub-Signature-256` before JSON parsing, persists tenant-mapped events idempotently, and returns a fast acknowledgement. |
+
+Invalid signatures return `401` without persistence. A valid duplicate returns `200` without duplicate dispatch. The endpoint remains inactive until the global Meta feature flag and the mapped tenant setting are enabled.
+
 ### Core Auth Endpoints
 
 | Method | Path | Auth | Rate Limit | Description |
@@ -557,6 +566,14 @@ First-login browser timezone detection can call `PUT /api/v1/time/settings` with
 | POST | `/api/v1/workflows/transitions` | `create_workflow_transition` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/workflows/{workflow_id}` | `get_workflow` | Uses router/endpoint dependencies where configured. |
 | PATCH | `/api/v1/workflows/{workflow_id}/activate` | `activate_workflow` | Uses router/endpoint dependencies where configured. |
+
+### Meta Integration
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/integrations/meta/sync` | `sync_meta_insights` | Requires company-admin or super-admin authentication. A super-admin must provide `company_id`; the run is persisted before Celery receives only its run ID. The tenant must have Meta integration and insights sync enabled with an ad account configured. No token is accepted or returned. |
+
+The existing Celery beat schedule evaluates enabled tenant configurations hourly and re-dispatches due persisted runs every minute. Marketing API calls are read-only Graph `GET` requests; campaign, ad-set, ad, budget, bid, publish, pause, resume, create, update, and delete operations are not exposed. Phase 4 adds only optional run lifecycle fields and additive indexes (`active_key` and pending-dispatch) through `scripts/migrate_meta_insights_runs.py`; this safety deviation prevents concurrent tenant runs and recovers broker-dispatch failures without placing tokens in task payloads.
 
 ## Error Responses
 

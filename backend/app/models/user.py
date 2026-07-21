@@ -53,6 +53,7 @@ class User(Document):
     status: UserStatus = UserStatus.PENDING
     # Modules the user can access (e.g., task management, sales tracker)
     modules: List[str] = Field(default_factory=lambda: ["task"])
+    previous_role: Optional[UserRole] = None
     # Preferred/last active module for UI landing
     active_module: Optional[str] = Field(default="task")
     phone: Optional[str] = None

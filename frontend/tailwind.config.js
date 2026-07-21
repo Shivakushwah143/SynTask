@@ -62,15 +62,15 @@ export default {
           950: '#411807',
         },
         surface: {
-          DEFAULT: '#fcfcf8',
-          muted: '#f1eee6',
-          subtle: '#ece7db',
-          border: '#e4dccb',
+          DEFAULT: '#FAF8F3',
+          muted: '#F0EDE6',
+          subtle: '#F7F4EE',
+          border: '#DED8CC',
         },
         text: {
-          primary: '#312a23',
-          secondary: '#4d453d',
-          muted: '#5f554b',
+          primary: '#20242C',
+          secondary: '#667085',
+          muted: '#667085',
           inverse: '#fffaf4',
         },
         status: {

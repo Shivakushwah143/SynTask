@@ -42,6 +42,15 @@ from app.models.ai_conversation import AIConversation
 from app.models.ai_user_state import AIUserState
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
 from app.models.knowledge import KnowledgeRecord
+from app.models.agent import AgentDefinition, AgentRun, AgentRunEvent, ActionProposal, SpecialistDefinition
+from app.rag.models import (
+    RAGCitation,
+    RAGKnowledgeChunk,
+    RAGKnowledgeSource,
+    RAGKnowledgeSourceVersion,
+    RAGRetrievalRun,
+)
+from app.rag.feedback import RAGFeedback
 from app.models.creative_review import (
     CreativeAssetMetadata,
     CreativeCampaignReview,
@@ -77,6 +86,12 @@ from app.models.leave import LeaveRequest
 from app.models.eod import EODReport
 from app.models.scheduled_job import ScheduledJob
 from app.models.capability import seed_default_capabilities
+from app.integrations.meta.models import (
+    MetaIntegrationSettings,
+    MetaMarketingInsight,
+    MetaSyncRun,
+    MetaWebhookEvent,
+)
 from app.recruitment.models import (
     Application, Candidate, CandidateNote, CandidateTimeline, Interview,
     InterviewFeedback, Offer, RecruitmentAttachment, RecruitmentAudit,
@@ -189,6 +204,17 @@ async def init_db():
                 UserMemory,
                 ClientMemory,
                 KnowledgeRecord,
+                AgentDefinition,
+                SpecialistDefinition,
+                AgentRun,
+                AgentRunEvent,
+                ActionProposal,
+                RAGKnowledgeSource,
+                RAGKnowledgeSourceVersion,
+                RAGKnowledgeChunk,
+                RAGRetrievalRun,
+                RAGCitation,
+                RAGFeedback,
                 CreativeAssetMetadata,
                 CreativeCampaignReview,
                 CreativeReview,
@@ -228,6 +254,10 @@ async def init_db():
                 LeaveRequest,
                 EODReport,
                 ScheduledJob,
+                MetaIntegrationSettings,
+                MetaWebhookEvent,
+                MetaSyncRun,
+                MetaMarketingInsight,
                 RecruitmentJob,
                 Candidate,
                 Application,

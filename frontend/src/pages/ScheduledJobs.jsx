@@ -18,6 +18,13 @@ import {
   CheckSquare,
   X,
   ChevronRight,
+  Zap,
+  Activity,
+  BarChart3,
+  TrendingUp,
+  Users,
+  Timer,
+  AlertTriangle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
@@ -58,7 +65,7 @@ function statusConfig(status) {
     case 'COMPLETED':
       return { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200 dark:border-emerald-800', label: 'Completed' }
     case 'FAILED':
-      return { icon: AlertCircle, color: 'text-danger-500', bg: 'bg-danger-50 dark:bg-danger-950/30', border: 'border-danger-200 dark:border-danger-800', label: 'Failed' }
+      return { icon: AlertCircle, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800', label: 'Failed' }
     case 'CANCELLED':
       return { icon: Ban, color: 'text-gray-400', bg: 'bg-gray-50 dark:bg-gray-900/30', border: 'border-gray-200 dark:border-gray-700', label: 'Cancelled' }
     default:
@@ -126,7 +133,7 @@ function StatusBadge({ status }) {
   const cfg = statusConfig(status)
   const Icon = cfg.icon
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cfg.bg} ${cfg.border} ${cfg.color}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${cfg.bg} ${cfg.border} ${cfg.color}`}>
       <Icon className={`h-3 w-3 ${cfg.spin ? 'animate-spin' : ''}`} />
       {cfg.label}
     </span>
@@ -138,10 +145,35 @@ function ActionBadge({ actionType }) {
   const Icon = ACTION_ICONS[actionType] || CalendarClock
   const label = ACTION_LABELS[actionType] || actionType
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-primary-100 bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700 dark:border-primary-800/40 dark:bg-primary-950/30 dark:text-primary-300">
+    <span className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:border-indigo-800/40 dark:bg-indigo-950/30 dark:text-indigo-300">
       <Icon className="h-3 w-3" />
       {label}
     </span>
+  )
+}
+
+/* ─── Stat Card ────────────────────────────────────────────────── */
+function StatCard({ label, value, icon: Icon, color = 'indigo', subtitle }) {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+    gray: 'from-gray-500 to-stone-500',
+  }
+
+  return (
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    </div>
   )
 }
 
@@ -154,12 +186,12 @@ function JobDetailDrawer({ job, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Job details">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden bg-white shadow-2xl dark:bg-[var(--color-app-surface)]">
+      <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden bg-white shadow-2xl dark:bg-gray-950 animate-slide-in-right">
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 border-b border-gray-200 bg-gradient-to-r from-primary-50/80 via-white to-white p-5 dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface-muted)] dark:via-[var(--color-app-surface)] dark:to-[var(--color-app-surface)]">
+        <div className="flex items-start justify-between gap-3 border-b border-gray-200 bg-gradient-to-r from-indigo-50/80 via-white to-white p-5 dark:border-gray-800 dark:from-gray-900/80 dark:via-gray-950 dark:to-gray-950">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary-500">Job Details</p>
-            <h2 className="mt-0.5 truncate text-base font-bold text-gray-900 dark:text-[var(--color-app-text)]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">Job Details</p>
+            <h2 className="mt-0.5 truncate text-base font-bold text-gray-900 dark:text-white">
               {payloadSummary(job)}
             </h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -181,17 +213,24 @@ function JobDetailDrawer({ job, onClose }) {
           {/* Timing */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Timing</h3>
+<<<<<<< HEAD
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-subtle)]">
               <Row label="Scheduled for" value={formatScheduledTime(job.run_at)} sub={relativeScheduledTime(job.run_at)} />
               <Row label="Created at" value={formatScheduledTime(job.created_at)} />
               {job.completed_at && <Row label="Completed at" value={formatScheduledTime(job.completed_at)} />}
+=======
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2 dark:border-gray-800 dark:bg-gray-900/50">
+              <Row label="Scheduled for" value={formatRunAt(job.run_at)} sub={relativeTo(job.run_at)} />
+              <Row label="Created at" value={formatRunAt(job.created_at)} />
+              {job.completed_at && <Row label="Completed at" value={formatRunAt(job.completed_at)} />}
+>>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
             </div>
           </section>
 
           {/* Creator */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Creator</h3>
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-subtle)]">
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2 dark:border-gray-800 dark:bg-gray-900/50">
               <Row label="Scheduled by" value={job.created_by_name || job.created_by} />
               <Row label="Retry count" value={job.retry_count} />
             </div>
@@ -201,7 +240,7 @@ function JobDetailDrawer({ job, onClose }) {
           {job.notes && (
             <section>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Notes</h3>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-subtle)]">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50">
                 <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{job.notes}</p>
               </div>
             </section>
@@ -210,7 +249,7 @@ function JobDetailDrawer({ job, onClose }) {
           {/* Payload */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Action Payload</h3>
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-subtle)]">
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2 dark:border-gray-800 dark:bg-gray-900/50">
               {payloadEntries.length === 0 && <p className="text-xs text-gray-400">No payload data</p>}
               {payloadEntries.map(([k, v]) => (
                 <Row key={k} label={k.replace(/_/g, ' ')} value={Array.isArray(v) ? v.join(', ') : String(v)} />
@@ -221,9 +260,9 @@ function JobDetailDrawer({ job, onClose }) {
           {/* Error */}
           {job.error && (
             <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-danger-500">Error</h3>
-              <div className="rounded-xl border border-danger-200 bg-danger-50 p-4 dark:border-danger-800 dark:bg-danger-950/30">
-                <p className="text-sm text-danger-700 dark:text-danger-300 font-mono whitespace-pre-wrap break-all">{job.error}</p>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-rose-500">Error</h3>
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/30">
+                <p className="text-sm text-rose-700 dark:text-rose-300 font-mono whitespace-pre-wrap break-all">{job.error}</p>
               </div>
             </section>
           )}
@@ -322,21 +361,21 @@ function JobRowMenu({ job, onView, onEdit, onCancel, onRetry, onDelete }) {
     <div className="relative" ref={ref}>
       <button
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
-        className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
         aria-label="Job actions"
         id={`job-menu-${job.id}`}
       >
         <MoreVertical className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-xl border border-gray-100 bg-white py-1 shadow-lg dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
+        <div className="absolute right-0 top-full z-50 mt-1 min-w-[170px] rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
           {items.map((item) => {
             const Icon = item.icon
             return (
               <button
                 key={item.label}
                 onClick={(e) => { e.stopPropagation(); setOpen(false); item.action?.() }}
-                className={`flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${item.danger ? 'text-danger-600 dark:text-danger-400' : 'text-gray-700 dark:text-gray-300'}`}
+                className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${item.danger ? 'text-rose-600 dark:text-rose-400' : 'text-gray-700 dark:text-gray-300'}`}
               >
                 <Icon className="h-3.5 w-3.5" />
                 {item.label}
@@ -442,83 +481,111 @@ export default function ScheduledJobs() {
   /* Tab counts */
   const pendingCount = jobs.filter((j) => j.status === 'PENDING').length
   const runningCount = jobs.filter((j) => j.status === 'RUNNING').length
+  const completedCount = jobs.filter((j) => j.status === 'COMPLETED').length
+  const failedCount = jobs.filter((j) => j.status === 'FAILED').length
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Scheduled Jobs"
-        description="Manage future-scheduled actions for Projects and Tasks."
-        actions={
-          <div className="flex items-center gap-2 pr-3 sm:pr-4 lg:pr-6">
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+              <CalendarClock className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl">Scheduled Jobs</h1>
+              <p className="mt-1 text-indigo-100">Manage future-scheduled actions for Projects and Tasks.</p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
             <button
               onClick={() => loadJobs({ silent: true })}
               disabled={refreshing}
-              className="flex h-9 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:text-gray-300 dark:hover:bg-[var(--color-app-surface-muted)]"
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 disabled:opacity-50"
               aria-label="Refresh"
               id="scheduled-jobs-refresh-btn"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </button>
           </div>
-        }
-      />
+        </div>
+      </div>
 
       {/* Info banner for non-schedulers */}
       {!canSchedule && (
-        <div className="card flex items-center gap-3 border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/20">
-          <AlertCircle className="h-5 w-5 shrink-0 text-amber-500" />
-          <p className="text-sm text-amber-800 dark:text-amber-300">
-            Only Admins, Managers and Leads can schedule actions. Contact your administrator to grant access.
-          </p>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/30 dark:bg-amber-950/20">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                Limited Access
+              </p>
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                Only Admins, Managers and Leads can schedule actions. Contact your administrator to grant access.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        {STATUS_TABS.slice(1).map((tab) => {
-          const count = jobs.filter((j) => j.status === tab.key).length
-          const cfg = statusConfig(tab.key)
-          const Icon = cfg.icon
-          return (
-            <button
-              key={tab.key}
-              onClick={() => handleTabChange(tab.key)}
-              className={`card flex flex-col gap-1 p-4 text-left transition-all hover:shadow-md ${activeTab === tab.key ? 'ring-2 ring-primary-500' : ''}`}
-              id={`stat-card-${tab.key.toLowerCase()}`}
-            >
-              <span className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${cfg.bg} ${cfg.border} border`}>
-                <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
-              </span>
-              <span className="mt-1 text-2xl font-bold text-gray-900 dark:text-[var(--color-app-text)]">{count}</span>
-              <span className="text-xs text-gray-500">{tab.label}</span>
-            </button>
-          )
-        })}
+      {/* Stats Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Total Jobs"
+          value={total}
+          icon={CalendarClock}
+          color="indigo"
+          subtitle="All scheduled jobs"
+        />
+        <StatCard
+          label="Pending"
+          value={pendingCount}
+          icon={Clock}
+          color="amber"
+          subtitle="Awaiting execution"
+        />
+        <StatCard
+          label="Running"
+          value={runningCount}
+          icon={Activity}
+          color="blue"
+          subtitle="Currently in progress"
+        />
+        <StatCard
+          label="Failed"
+          value={failedCount}
+          icon={AlertCircle}
+          color="rose"
+          subtitle="Need attention"
+        />
       </div>
 
       {/* Search + Tab Filter */}
-      <div className="card p-4">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
-              className="input w-full pl-9"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               placeholder="Search by name, action type, project ID…"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               id="scheduled-jobs-search"
             />
           </div>
-          <div className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-subtle)]">
+          <div className="flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-900/50">
             {STATUS_TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => handleTabChange(tab.key)}
                 id={`tab-${tab.key || 'all'}`}
-                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                className={`whitespace-nowrap rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
                   activeTab === tab.key
-                    ? 'bg-white text-primary-600 shadow-sm dark:bg-[var(--color-app-surface)] dark:text-primary-400'
+                    ? 'bg-white text-indigo-600 shadow-sm dark:bg-gray-700 dark:text-indigo-400'
                     : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                 }`}
               >
@@ -533,6 +600,16 @@ export default function ScheduledJobs() {
                     {runningCount}
                   </span>
                 )}
+                {tab.key === 'COMPLETED' && completedCount > 0 && (
+                  <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-bold text-white">
+                    {completedCount}
+                  </span>
+                )}
+                {tab.key === 'FAILED' && failedCount > 0 && (
+                  <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                    {failedCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -540,50 +617,54 @@ export default function ScheduledJobs() {
       </div>
 
       {/* Jobs Table */}
-      <div className="card overflow-hidden">
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
         {loading ? (
           <div className="flex flex-col gap-3 p-6">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="flex animate-pulse items-center gap-4">
-                <div className="h-10 w-10 rounded-xl bg-gray-200 dark:bg-gray-800" />
+                <div className="h-10 w-10 rounded-xl bg-gray-200 dark:bg-gray-700" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-3 w-48 rounded bg-gray-200 dark:bg-gray-800" />
-                  <div className="h-2.5 w-32 rounded bg-gray-100 dark:bg-gray-700" />
+                  <div className="h-3 w-48 rounded bg-gray-200 dark:bg-gray-700" />
+                  <div className="h-2.5 w-32 rounded bg-gray-100 dark:bg-gray-600" />
                 </div>
-                <div className="h-6 w-20 rounded-full bg-gray-200 dark:bg-gray-800" />
-                <div className="h-7 w-7 rounded-lg bg-gray-200 dark:bg-gray-800" />
+                <div className="h-6 w-20 rounded-full bg-gray-200 dark:bg-gray-700" />
+                <div className="h-7 w-7 rounded-lg bg-gray-200 dark:bg-gray-700" />
               </div>
             ))}
           </div>
         ) : jobs.length === 0 ? (
-          <EmptyState
-            icon={CalendarClock}
-            title={search ? 'No matching jobs' : activeTab ? `No ${activeTab.toLowerCase()} jobs` : 'No scheduled jobs yet'}
-            description={
-              search
+          <div className="py-12 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-700">
+              <CalendarClock className="h-8 w-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              {search ? 'No matching jobs' : activeTab ? `No ${activeTab.toLowerCase()} jobs` : 'No scheduled jobs yet'}
+            </h3>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              {search
                 ? 'Try adjusting your search query.'
-                : 'Use "Schedule" when creating a project or task to queue actions for the future.'
-            }
-          />
+                : 'Use "Schedule" when creating a project or task to queue actions for the future.'}
+            </p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/80 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-subtle)]">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Action</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Name / Title</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Scheduled For</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Created By</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Retries</th>
+                <tr className="border-b border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-gray-900/50">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Action</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Name / Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Scheduled For</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Created By</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Retries</th>
                   <th className="w-12 px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-[var(--color-app-border)]">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {jobs.map((job) => (
                   <tr
                     key={job.id}
-                    className="group cursor-pointer transition-colors hover:bg-primary-50/40 dark:hover:bg-primary-950/10"
+                    className="group cursor-pointer transition-colors hover:bg-indigo-50/40 dark:hover:bg-indigo-950/10"
                     onClick={() => setDetailJob(job)}
                     id={`job-row-${job.id}`}
                   >
@@ -591,7 +672,7 @@ export default function ScheduledJobs() {
                       <ActionBadge actionType={job.action_type} />
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className="font-medium text-gray-900 dark:text-[var(--color-app-text)]">{payloadSummary(job)}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{payloadSummary(job)}</span>
                       {job.notes && (
                         <p className="mt-0.5 truncate text-xs text-gray-400 max-w-[200px]">{job.notes}</p>
                       )}
@@ -599,7 +680,7 @@ export default function ScheduledJobs() {
                     <td className="px-4 py-3.5">
                       <StatusBadge status={job.status} />
                       {job.error && job.status === 'FAILED' && (
-                        <p className="mt-0.5 truncate text-xs text-danger-500 max-w-[160px]" title={job.error}>
+                        <p className="mt-0.5 truncate text-xs text-rose-500 max-w-[160px]" title={job.error}>
                           {job.error.slice(0, 60)}{job.error.length > 60 ? '…' : ''}
                         </p>
                       )}
@@ -612,7 +693,7 @@ export default function ScheduledJobs() {
                       {job.created_by_name || '—'}
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold ${job.retry_count > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
+                      <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${job.retry_count > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
                         {job.retry_count}
                       </span>
                     </td>
@@ -635,15 +716,15 @@ export default function ScheduledJobs() {
 
         {/* Pagination */}
         {total > pageSize && (
-          <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-[var(--color-app-border)]">
-            <p className="text-xs text-gray-500">
+          <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)} of {total}
             </p>
             <div className="flex gap-2">
               <button
                 disabled={page === 0}
                 onClick={() => setPage((p) => p - 1)}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-[var(--color-app-border)] dark:text-gray-400"
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
                 id="scheduled-jobs-prev-page"
               >
                 Previous
@@ -651,7 +732,7 @@ export default function ScheduledJobs() {
               <button
                 disabled={(page + 1) * pageSize >= total}
                 onClick={() => setPage((p) => p + 1)}
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-[var(--color-app-border)] dark:text-gray-400"
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
                 id="scheduled-jobs-next-page"
               >
                 Next

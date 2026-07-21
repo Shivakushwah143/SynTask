@@ -7,7 +7,7 @@ import { activityAPI } from '../../../api/activity'
 import { meetingsApi } from '../../../api/meetings'
 import { tasksAPI } from '../../../api/tasks'
 import { usersAPI } from '../../../api/users'
-import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection } from '../../../components/crm'
+import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
 import { timeService } from '@/services/timeService'
 
@@ -240,6 +240,12 @@ export default function CRMCalendarPage() {
           </div>
         )}
       />
+
+      <div className="mb-6 grid gap-4 md:grid-cols-3">
+        <CRMStatCard icon={CalendarDays} label="Today" value={todayEvents.length} helper="Events on the calendar today" tone="blue" />
+        <CRMStatCard icon={Clock3} label="Upcoming" value={upcomingEvents.length} helper="Upcoming items in the feed" tone="amber" />
+        <CRMStatCard icon={Filter} label="Visible" value={visibleEvents.length} helper="Events matching the current view" tone="emerald" />
+      </div>
 
       <CRMSection title="Calendar controls" description="Filter the unified calendar feed without changing the source data.">
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_repeat(3,minmax(0,1fr))]">

@@ -48,6 +48,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     minify: 'esbuild',
+    cssMinify: false,
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
