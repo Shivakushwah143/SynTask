@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
+from app.agents.email_draft import EMAIL_DRAFT_OUTPUT_SCHEMA_VERSION, EmailDraftAgentOutput, detect_sensitive_terms
 from app.agents.budget import AgentBudgetController, BudgetExceeded
 from app.agents.registry import AgentRegistry
 from app.agents.schemas import AgentRunCreateRequest, AgentRunResponse, GenericAgentOutput
@@ -108,6 +109,8 @@ class AgentOrchestrator:
                 session_id=payload.session_id,
                 conversation_id=payload.conversation_id,
                 query=payload.query,
+                retrieval_profile_id=definition.retrieval_profile_id,
+                structured_context_ids=self._structured_context_ids(payload.input_payload),
                 trace_id=run.run_id,
             )
             run.context_package_id = package.context_package_id
@@ -130,7 +133,7 @@ class AgentOrchestrator:
                 task_type="complex_reasoning",
                 prompt=prompt,
                 context=model_context,
-                output_schema=GenericAgentOutput,
+                output_schema=self._output_schema(definition),
                 tenant_policy=definition.provider_policy_id and {"policy_id": definition.provider_policy_id},
                 data_sensitivity="internal",
             )
@@ -143,7 +146,7 @@ class AgentOrchestrator:
             )
             run.estimated_cost = result.estimated_cost
             await self._advance(run, AgentRunState.VALIDATING, actor_id=str(current_user.id), reason="validate")
-            parsed = result.parsed or {}
+            parsed = self._validate_provider_output(definition=definition, parsed=result.parsed or {}, input_payload=payload.input_payload)
             run.sanitized_result = self._sanitize_result(parsed)
             if parsed.get("proposed_actions"):
                 proposal_ids = await self._create_proposals(run=run, actions=parsed.get("proposed_actions") or [], definition=definition)
@@ -269,6 +272,63 @@ class AgentOrchestrator:
         clean.pop("raw_context", None)
         clean.pop("prompt", None)
         return clean
+
+    def _output_schema(self, definition):
+        if definition.output_schema_version == EMAIL_DRAFT_OUTPUT_SCHEMA_VERSION:
+            return EmailDraftAgentOutput
+        return GenericAgentOutput
+
+    def _validate_provider_output(self, *, definition, parsed: dict[str, Any], input_payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        parsed = self._apply_draft_warning_guards(definition=definition, parsed=parsed, input_payload=input_payload or {})
+        schema = self._output_schema(definition)
+        validated = schema.model_validate(parsed).model_dump(mode="json")
+        if definition.approval_policy.get("draft_only") is True and validated.get("proposed_actions"):
+            raise ValueError("Draft-only agents cannot create proposed actions")
+        return validated
+
+    def _apply_draft_warning_guards(self, *, definition, parsed: dict[str, Any], input_payload: dict[str, Any]) -> dict[str, Any]:
+        if definition.output_schema_version != EMAIL_DRAFT_OUTPUT_SCHEMA_VERSION:
+            return parsed
+        guarded = dict(parsed or {})
+        warnings = dict(guarded.get("warnings") or {})
+        if input_payload.get("internal_or_external") == "external":
+            warnings["external_recipient"] = True
+        sensitive = detect_sensitive_terms(
+            input_payload.get("purpose"),
+            input_payload.get("user_instructions"),
+            input_payload.get("call_to_action"),
+            guarded.get("subject"),
+            guarded.get("body"),
+        )
+        existing_sensitive = list(warnings.get("sensitive_data") or [])
+        warnings["sensitive_data"] = list(dict.fromkeys([*existing_sensitive, *sensitive]))
+        attachment_names = [str(item) for item in (input_payload.get("attachment_names") or []) if str(item).strip()]
+        if attachment_names:
+            existing_reminders = list(warnings.get("attachment_reminders") or [])
+            reminders = [f"{name} is mention-only; no attachment was uploaded or added." for name in attachment_names]
+            warnings["attachment_reminders"] = list(dict.fromkeys([*existing_reminders, *reminders]))
+        recipient = guarded.get("recipient") or {}
+        if not recipient.get("email"):
+            warnings["missing_recipient"] = True
+        guarded["warnings"] = warnings
+        return guarded
+
+    def _structured_context_ids(self, input_payload: dict[str, Any]) -> dict[str, str | None]:
+        related = input_payload.get("related_context") or {}
+        recipient = input_payload.get("recipient") or {}
+        context_ids = {
+            "project_id": related.get("project_id"),
+            "client_id": related.get("client_id"),
+            "lead_id": related.get("lead_id"),
+            "task_id": related.get("task_id"),
+            "meeting_id": related.get("meeting_id"),
+            "company_record_id": related.get("company_record_id"),
+        }
+        record_type = recipient.get("record_type")
+        record_id = recipient.get("record_id")
+        if record_type and record_id:
+            context_ids[f"recipient_{record_type}_id"] = record_id
+        return context_ids
 
     def _prompt(self, *, definition, query: str) -> str:
         return f"Agent {definition.agent_id}@{definition.version}. Return schema-valid JSON only. User request: {query}"

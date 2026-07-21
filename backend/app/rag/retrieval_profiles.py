@@ -70,6 +70,31 @@ DEFAULT_RETRIEVAL_PROFILES: dict[str, RetrievalProfile] = {
         forbidden_source_types=["protected_hr", "payroll", "finance"],
         scope_requirements=["tenant_id", "client_id"],
     ),
+    "email_draft_templates": RetrievalProfile(
+        profile_id="email_draft_templates",
+        profile_version="email-draft-templates-v1",
+        objective="Draft-only email templates, tone guidance, approved terminology, and communication policy retrieval",
+        allowed_source_types=[
+            "email_template",
+            "communication_policy",
+            "brand_guideline",
+            "client_communication_guidance",
+            "approved_signature",
+        ],
+        allowed_structured_domains=["current_user", "company", "project", "task", "client", "meeting", "lead"],
+        forbidden_source_types=[
+            "protected_hr",
+            "payroll",
+            "finance",
+            "credential",
+            "connector_message",
+            "email_delivery_status",
+        ],
+        scope_requirements=["tenant_id"],
+        mandatory_policies=["draft_only", "prompt_injection_quarantine", "citations_required"],
+        freshness_required=True,
+        approval_required_for_actions=True,
+    ),
 }
 
 

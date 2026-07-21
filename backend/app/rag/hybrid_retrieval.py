@@ -49,6 +49,8 @@ class HybridRAGRetrievalService:
         vector = await self.embedding_provider.embed(understanding.rewritten_queries[0] if understanding.rewritten_queries else understanding.normalized_query)
         filters = scope.visibility_filter()
         filters.update({"status": "active"})
+        if profile.allowed_source_types:
+            filters["source_type"] = profile.allowed_source_types
         results = await self.qdrant_store.hybrid_search(
             dense_vector=vector,
             sparse_query_text=understanding.normalized_query,
@@ -56,7 +58,7 @@ class HybridRAGRetrievalService:
             limit=top_k or settings.RAG_RETRIEVAL_TOP_K,
             score_threshold=None,
         )
-        citations = await self._citations(run_id=run_id, scope=scope, results=results)
+        citations = await self._citations(run_id=run_id, scope=scope, results=results, profile=profile)
         evidence_decision = self.evidence_decision_service.decide(
             citations=citations,
             min_score=max(profile.minimum_evidence_threshold, settings.RAG_MIN_EVIDENCE_SCORE),
@@ -88,20 +90,32 @@ class HybridRAGRetrievalService:
             "evidence_decision": evidence_decision.model_dump(mode="json"),
         }
 
-    async def _citations(self, *, run_id: str, scope: RAGScope, results: list) -> list[dict]:
+    async def _citations(self, *, run_id: str, scope: RAGScope, results: list, profile: RetrievalProfile) -> list[dict]:
         citations = []
         seen_chunks: set[str] = set()
+        allowed_source_types = set(profile.allowed_source_types)
+        forbidden_source_types = set(profile.forbidden_source_types)
         for item in results:
             payload = dict(getattr(item, "payload", None) or {})
             chunk_id = str(payload.get("chunk_id") or "")
             if chunk_id in seen_chunks:
                 continue
             seen_chunks.add(chunk_id)
+            payload_source_type = str(payload.get("source_type") or "")
+            if payload_source_type and payload_source_type in forbidden_source_types:
+                continue
+            if payload_source_type and allowed_source_types and payload_source_type not in allowed_source_types:
+                continue
             source = await RAGKnowledgeSource.find_one(
                 RAGKnowledgeSource.company_id == scope.company_id,
                 RAGKnowledgeSource.source_id == payload.get("source_id"),
             )
             if not source or not source_visible_to_scope(source, scope):
+                continue
+            source_type = source.source_type.value if hasattr(source.source_type, "value") else str(source.source_type)
+            if source_type in forbidden_source_types:
+                continue
+            if allowed_source_types and source_type not in allowed_source_types:
                 continue
             citation = RAGCitation(
                 citation_id=str(uuid4()),
