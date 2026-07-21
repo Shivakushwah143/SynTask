@@ -142,6 +142,19 @@ class Settings(BaseSettings):
     DISABLE_CELERY: bool = False
     CELERY_ALWAYS_EAGER: bool = False
     DISABLE_EVENT_PROCESSING: bool = False
+
+    # Meta integration. Disabled until deployment and tenant configuration pass.
+    META_INTEGRATION_ENABLED: bool = False
+    META_APP_ID: Optional[str] = None
+    META_APP_SECRET: Optional[str] = None
+    META_VERIFY_TOKEN: Optional[str] = None
+    META_PAGE_ID: Optional[str] = None
+    META_PAGE_ACCESS_TOKEN: Optional[str] = None
+    META_BUSINESS_ID: Optional[str] = None
+    META_AD_ACCOUNT_ID: Optional[str] = None
+    META_SYSTEM_USER_TOKEN: Optional[str] = None
+    META_LEAD_FORM_ID: Optional[str] = None
+    META_WHATSAPP_BUSINESS_ID: Optional[str] = None
     
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20
@@ -228,6 +241,18 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_settings(self):
         """Fail fast when production is configured with unsafe defaults."""
+        if self.META_INTEGRATION_ENABLED:
+            missing_meta = [
+                field
+                for field in ("META_APP_ID", "META_APP_SECRET", "META_VERIFY_TOKEN")
+                if not getattr(self, field)
+            ]
+            if missing_meta:
+                raise ValueError(
+                    "Enabled Meta integration is missing deployment credentials: "
+                    + ", ".join(missing_meta)
+                )
+
         if self.ENVIRONMENT != "production":
             return self
 
