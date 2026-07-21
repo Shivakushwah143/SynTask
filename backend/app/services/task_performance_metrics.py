@@ -43,6 +43,10 @@ class MetricResult:
     warnings: list[str] = field(default_factory=list)
     confidence: float = 0.0
     source_record_references: list[dict[str, str]] = field(default_factory=list)
+    unit: Optional[str] = None
+    freshness: dict[str, Any] = field(default_factory=dict)
+    period: dict[str, str] = field(default_factory=dict)
+    timezone: str = "UTC"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -60,6 +64,10 @@ class MetricResult:
             "warnings": self.warnings,
             "confidence": self.confidence,
             "source_record_references": self.source_record_references,
+            "unit": self.unit,
+            "freshness": self.freshness,
+            "period": self.period,
+            "timezone": self.timezone,
         }
 
 
@@ -485,4 +493,3 @@ class TaskPerformanceMetricService:
 
     def _id(self, record: Any) -> str:
         return str(getattr(record, "id", None) or getattr(record, "_id", "") or getattr(record, "task_id", ""))
-
