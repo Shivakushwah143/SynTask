@@ -95,6 +95,41 @@ DEFAULT_RETRIEVAL_PROFILES: dict[str, RetrievalProfile] = {
         freshness_required=True,
         approval_required_for_actions=True,
     ),
+    "task_performance_policy": RetrievalProfile(
+        profile_id="task_performance_policy",
+        profile_version="task-performance-policy-v1",
+        objective="Approved metric definitions, management reporting policy, fairness guidance, and operational coaching retrieval",
+        allowed_source_types=[
+            "metric_definition",
+            "performance_policy",
+            "management_reporting_guidance",
+            "role_expectation",
+            "coaching_guideline",
+            "operational_best_practice",
+        ],
+        allowed_structured_domains=["task", "project", "user", "department", "eod", "time_tracking", "leave"],
+        forbidden_source_types=[
+            "protected_hr",
+            "payroll",
+            "medical",
+            "protected_characteristics",
+            "private_message",
+            "connector_message",
+            "attendance_productivity_score",
+        ],
+        scope_requirements=["tenant_id"],
+        mandatory_policies=[
+            "deterministic_metrics_only",
+            "eod_employee_reported",
+            "leave_non_punitive",
+            "no_employee_ranking",
+            "no_employment_decisions",
+            "proposal_only",
+            "citations_required",
+        ],
+        freshness_required=True,
+        approval_required_for_actions=True,
+    ),
 }
 
 

@@ -7,15 +7,17 @@ from app.agents.orchestrator import AgentOrchestrator
 from app.agents.project_agent import PROJECT_AGENT_ID, PROJECT_AGENT_VERSION, ProjectAgentRequest
 from app.agents.registry import AgentRegistry
 from app.agents.schemas import AgentRunCreateRequest, AgentRunResponse
+from app.agents.task_performance import TASK_PERFORMANCE_AGENT_ID, TASK_PERFORMANCE_AGENT_VERSION, TaskPerformanceAgentRequest
 from app.api.dependencies import get_current_user, get_project_by_id
 from app.core.config import settings
 from app.models.client import Client
 from app.models.company import Company
+from app.models.department import Department
 from app.models.meeting import Meeting
 from app.models.sales_contact import SalesContact
 from app.models.sales_prospect import SalesProspect
 from app.models.task import Task
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.rag.permissions import resolve_rag_scope
 
 router = APIRouter()
@@ -38,6 +40,12 @@ def _require_email_draft_agent_enabled() -> None:
     _require_agent_platform_enabled()
     if not settings.EMAIL_DRAFT_AGENT_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Email Draft Agent is disabled")
+
+
+def _require_task_performance_agent_enabled() -> None:
+    _require_agent_platform_enabled()
+    if not settings.TASK_PERFORMANCE_AGENT_ENABLED:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Task Performance Insights Agent is disabled")
 
 
 @router.get("/definitions")
@@ -105,6 +113,27 @@ async def create_email_draft_agent_run(payload: EmailDraftAgentRequest, current_
             session_id=payload.session_id or "email-draft-agent",
             conversation_id=payload.conversation_id or payload.idempotency_key,
             query=payload.purpose,
+            input_payload=payload.model_dump(mode="json"),
+        ),
+    )
+
+
+@router.post("/task-performance/runs", response_model=AgentRunResponse)
+async def create_task_performance_agent_run(payload: TaskPerformanceAgentRequest, current_user: User = Depends(get_current_user)):
+    _require_task_performance_agent_enabled()
+    await _validate_task_performance_scope(current_user=current_user, payload=payload)
+    return await orchestrator.create_run(
+        current_user=current_user,
+        payload=AgentRunCreateRequest(
+            agent_id=TASK_PERFORMANCE_AGENT_ID,
+            agent_version=TASK_PERFORMANCE_AGENT_VERSION,
+            trigger_type="manual",
+            idempotency_key=payload.idempotency_key,
+            project_id=payload.scope.project_id,
+            department_id=payload.scope.department_id or getattr(current_user, "department_id", None),
+            session_id=payload.session_id or "task-performance-agent",
+            conversation_id=payload.conversation_id or payload.idempotency_key,
+            query=payload.user_request or payload.insight_type.value,
             input_payload=payload.model_dump(mode="json"),
         ),
     )
@@ -210,3 +239,38 @@ async def _validate_email_draft_context(*, current_user: User, payload: EmailDra
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Recipient context denied")
         else:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Recipient context denied")
+
+
+async def _validate_task_performance_scope(*, current_user: User, payload: TaskPerformanceAgentRequest) -> None:
+    company_id = getattr(current_user, "company_id", None)
+    if not company_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant scope required")
+    if current_user.role == UserRole.EMPLOYEE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Task Performance Agent role denied")
+
+    scope = payload.scope
+    if scope.department_id:
+        department = await Department.get(scope.department_id)
+        if not department or department.company_id != company_id or department.deleted_at is not None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Department scope denied")
+        if current_user.role in {UserRole.MANAGER, UserRole.LEAD} and getattr(current_user, "department_id", None) != scope.department_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Department scope denied")
+
+    if scope.project_id:
+        project, canonical_project_id = await get_project_by_id(scope.project_id, company_id)
+        if not project:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project scope denied")
+        from app.api.v1.endpoints.projects.shared import check_project_access
+
+        if not await check_project_access(project, current_user):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project scope denied")
+        scope.project_id = canonical_project_id or scope.project_id
+
+    if scope.user_id:
+        target = await User.get(scope.user_id)
+        if not target or target.company_id != company_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User scope denied")
+        if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
+            current_user_id = str(current_user.id)
+            if target.reports_to != current_user_id and current_user_id not in (target.ancestors or []):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User scope denied")
