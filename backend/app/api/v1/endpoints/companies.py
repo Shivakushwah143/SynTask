@@ -12,6 +12,7 @@ from app.models.subscription_plan import SubscriptionPlan as SubscriptionPlanDoc
 from app.core.security import get_password_hash
 from app.api.dependencies import get_current_user, get_current_super_admin
 from app.api.deps import Pagination20, PaginationParams
+from app.schemas.admin_permissions import normalize_modules
 
 
 router = APIRouter()
@@ -205,17 +206,8 @@ async def approve_company(
             detail="Admin email already exists"
         )
     
-    allowed_modules = ["task", "sales"]
-    parsed_modules = []
-    if modules:
-        parsed_modules = [
-            m.strip()
-            for m in modules.split(",")
-            if m and m.strip() in allowed_modules
-        ]
-    if not parsed_modules:
-        parsed_modules = ["task"]
-    active_module = parsed_modules[0]
+    parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
+    active_module = parsed_modules[0] if parsed_modules else "task"
     
     plan_doc = None
     if plan_id and plan_id.strip():
@@ -225,10 +217,8 @@ async def approve_company(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Subscription plan not found"
             )
-        parsed_modules = list(plan_doc.enabled_modules) if getattr(plan_doc, "enabled_modules", None) else ["task"]
-        if not parsed_modules:
-            parsed_modules = ["task"]
-        active_module = parsed_modules[0]
+        parsed_modules = normalize_modules(list(plan_doc.enabled_modules) if getattr(plan_doc, "enabled_modules", None) else [], require_tasks_projects=False)
+        active_module = parsed_modules[0] if parsed_modules else "task"
     
     # Determine role
     try:
