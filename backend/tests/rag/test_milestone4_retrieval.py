@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
+from app.rag.hybrid_retrieval import HybridRAGRetrievalService
+from app.rag.permissions import RAGScope
 from app.rag.evaluation import GoldRetrievalCase, RetrievalEvaluationRunner, initial_gold_dataset
 from app.rag.evidence import EvidenceDecisionService, EvidenceDecisionType
 from app.rag.memory_router import MemoryRoute
@@ -43,6 +47,105 @@ def test_retrieval_profile_project_scope_required_and_profiles_narrow_permission
             allowed_structured_domains=["project"],
             scope_requirements=["tenant_id"],
         )
+
+
+def test_email_draft_retrieval_profile_limits_sources_to_approved_email_knowledge():
+    profile = RetrievalProfileRegistry().get("email_draft_templates")
+
+    assert profile.profile_version == "email-draft-templates-v1"
+    assert set(profile.allowed_source_types) == {
+        "email_template",
+        "communication_policy",
+        "brand_guideline",
+        "client_communication_guidance",
+        "approved_signature",
+    }
+    assert {"protected_hr", "payroll", "finance", "credential"}.issubset(set(profile.forbidden_source_types))
+    assert profile.scope_requirements == ["tenant_id"]
+
+
+@pytest.mark.asyncio
+async def test_email_draft_hybrid_retrieval_applies_source_type_filter_and_citation_guard(monkeypatch):
+    class FakeEmbeddingProvider:
+        async def embed(self, text):
+            return [0.1, 0.2]
+
+    class FakeQdrantStore:
+        def __init__(self):
+            self.filters = None
+
+        async def hybrid_search(self, *, dense_vector, sparse_query_text, filters, limit, score_threshold):
+            self.filters = filters
+            return [
+                SimpleNamespace(
+                    score=0.9,
+                    payload={
+                        "source_id": "template-1",
+                        "source_type": "email_template",
+                        "version_id": "version-1",
+                        "chunk_id": "chunk-1",
+                        "excerpt": "Use concise approved client update tone.",
+                    },
+                ),
+                SimpleNamespace(
+                    score=0.9,
+                    payload={
+                        "source_id": "payroll-1",
+                        "source_type": "payroll",
+                        "version_id": "version-2",
+                        "chunk_id": "chunk-2",
+                        "excerpt": "Payroll data must never appear.",
+                    },
+                ),
+            ]
+
+    class FakeRun:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def insert(self):
+            return None
+
+    class FakeCitation:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+        async def insert(self):
+            return None
+
+    class FakeKnowledgeSource:
+        company_id = "company_id"
+        source_id = "source_id"
+
+        @classmethod
+        async def find_one(cls, *args, **kwargs):
+            return SimpleNamespace(
+                company_id="tenant-a",
+                tenant_id="tenant-a",
+                source_id="template-1",
+                source_type="email_template",
+                status="active",
+                visibility={},
+                title="Approved client update template",
+            )
+
+    monkeypatch.setattr("app.rag.hybrid_retrieval.RAGRetrievalRun", FakeRun)
+    monkeypatch.setattr("app.rag.hybrid_retrieval.RAGCitation", FakeCitation)
+    monkeypatch.setattr("app.rag.hybrid_retrieval.RAGKnowledgeSource", FakeKnowledgeSource)
+
+    store = FakeQdrantStore()
+    service = HybridRAGRetrievalService(embedding_provider=FakeEmbeddingProvider(), qdrant_store=store)
+    result = await service.retrieve(
+        scope=RAGScope(company_id="tenant-a", tenant_id="tenant-a", user_id="user-1", role="employee"),
+        query="Use approved email template and tone.",
+        profile_id="email_draft_templates",
+        top_k=5,
+    )
+
+    assert store.filters["source_type"] == RetrievalProfileRegistry().get("email_draft_templates").allowed_source_types
+    assert [citation["source_id"] for citation in result["citations"]] == ["template-1"]
+    assert result["retrieval_profile"]["profile_id"] == "email_draft_templates"
 
 
 def test_sparse_encoder_is_deterministic_and_exact_terms_survive():

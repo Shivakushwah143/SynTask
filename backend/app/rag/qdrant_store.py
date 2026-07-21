@@ -38,7 +38,7 @@ class RAGQdrantStore:
                 collection_name=self.collection_name,
                 vectors_config=models.VectorParams(size=self.dimensions, distance=models.Distance.COSINE),
             )
-            for field in ["company_id", "tenant_id", "source_id", "version_id", "chunk_id", "approval_status", "project_id", "department_id", "client_id", "deleted", "status"]:
+            for field in ["company_id", "tenant_id", "source_id", "version_id", "chunk_id", "approval_status", "project_id", "department_id", "client_id", "deleted", "status", "source_type"]:
                 try:
                     await self.client.create_payload_index(
                         collection_name=self.collection_name,
@@ -71,7 +71,7 @@ class RAGQdrantStore:
                     ),
                 },
             )
-            for field in ["company_id", "tenant_id", "source_id", "version_id", "chunk_id", "approval_status", "project_id", "department_id", "client_id", "deleted", "status", "source_authority", "expires_at"]:
+            for field in ["company_id", "tenant_id", "source_id", "version_id", "chunk_id", "approval_status", "project_id", "department_id", "client_id", "deleted", "status", "source_authority", "expires_at", "source_type"]:
                 try:
                     await self.client.create_payload_index(
                         collection_name=self.collection_name,
@@ -167,7 +167,10 @@ class RAGQdrantStore:
         for key, value in filters.items():
             if value is None:
                 continue
-            must.append(models.FieldCondition(key=key, match=models.MatchValue(value=value)))
+            if isinstance(value, list):
+                must.append(models.FieldCondition(key=key, match=models.MatchAny(any=value)))
+            else:
+                must.append(models.FieldCondition(key=key, match=models.MatchValue(value=value)))
         response = await self.client.query_points(
             collection_name=self.collection_name,
             query=vector,
@@ -196,7 +199,10 @@ class RAGQdrantStore:
         for key, value in filters.items():
             if value is None:
                 continue
-            must.append(models.FieldCondition(key=key, match=models.MatchValue(value=value)))
+            if isinstance(value, list):
+                must.append(models.FieldCondition(key=key, match=models.MatchAny(any=value)))
+            else:
+                must.append(models.FieldCondition(key=key, match=models.MatchValue(value=value)))
         query_filter = models.Filter(must=must)
         sparse = SparseHashEncoder().encode(sparse_query_text)
         prefetch_limit = max(limit, settings.RAG_HYBRID_PREFETCH_LIMIT)

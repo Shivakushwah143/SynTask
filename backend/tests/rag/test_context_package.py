@@ -40,6 +40,43 @@ class FakeRetrievalService:
         }
 
 
+class ProfileAwareRetrievalService:
+    def __init__(self):
+        self.calls = []
+
+    async def retrieve(self, *, scope: RAGScope, query: str, top_k: int, profile_id: str, working_memory: dict):
+        self.calls.append(
+            {
+                "scope": scope,
+                "query": query,
+                "top_k": top_k,
+                "profile_id": profile_id,
+                "working_memory_status": working_memory.get("status"),
+            }
+        )
+        return {
+            "run_id": "run-1",
+            "answerable": True,
+            "citations": [
+                {
+                    "citation_id": "cit-email-1",
+                    "source_id": "source-email-1",
+                    "version_id": "version-email-1",
+                    "chunk_id": "chunk-email-1",
+                    "title": "Approved email template",
+                    "location": {"section": "client_update"},
+                    "excerpt": "Use concise client update tone.",
+                    "score": 0.93,
+                }
+            ],
+            "retrieval_profile": {
+                "profile_id": profile_id,
+                "profile_version": "email-draft-templates-v1",
+                "objective": "Draft-only email templates, tone guidance, approved terminology, and communication policy retrieval",
+            },
+        }
+
+
 class FakeUser:
     id = "u1"
     company_id = "c1"
@@ -137,6 +174,130 @@ async def test_policy_query_routes_to_rag_only():
     assert package.routing_decision.selected_route == MemoryRoute.KNOWLEDGE_RAG
     assert package.structured_memory.facts == []
     assert len(retrieval.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_context_package_uses_requested_email_draft_retrieval_profile():
+    wm = WorkingMemoryService(redis_client=FakeRedis(), clock=FakeClock())
+    retrieval = ProfileAwareRetrievalService()
+    builder = ContextPackageBuilder(working_memory_service=wm, retrieval_service=retrieval)
+    session = await wm.create_session(scope=scoped_user(), conversation_id="conv")
+
+    package = await builder.build(
+        scope=scoped_user(),
+        session_id=session.session_id,
+        conversation_id="conv",
+        query="What is our approved email template policy for client updates?",
+        retrieval_profile_id="email_draft_templates",
+    )
+
+    assert retrieval.calls[0]["profile_id"] == "email_draft_templates"
+    assert retrieval.calls[0]["working_memory_status"] == "available"
+    assert package.retrieval_profile["profile_id"] == "email_draft_templates"
+    model_context = sanitize_for_model_context(package).model_dump()
+    assert model_context["retrieval_profile"]["profile_id"] == "email_draft_templates"
+
+
+@pytest.mark.asyncio
+async def test_email_draft_profile_loads_selected_structured_context_even_for_policy_route():
+    wm = WorkingMemoryService(redis_client=FakeRedis(), clock=FakeClock())
+    retrieval = ProfileAwareRetrievalService()
+    structured = FakeStructuredMemoryService()
+    builder = ContextPackageBuilder(working_memory_service=wm, retrieval_service=retrieval, structured_memory_service=structured)
+    session = await wm.create_session(scope=scoped_user(), conversation_id="conv")
+
+    package = await builder.build(
+        scope=scoped_user(project_id="apollo"),
+        session_id=session.session_id,
+        conversation_id="conv",
+        query="What is our approved email template policy for client updates?",
+        retrieval_profile_id="email_draft_templates",
+        structured_context_ids={
+            "project_id": "apollo",
+            "task_id": "task-1",
+            "client_id": "client-1",
+            "recipient_contact_id": "contact-1",
+        },
+    )
+
+    requested = [(call[1].record_type.value, call[1].record_id) for call in structured.calls]
+    assert ("current_user", None) in requested
+    assert ("tenant", None) in requested
+    assert ("project", "apollo") in requested
+    assert ("task", "task-1") in requested
+    assert ("client", "client-1") in requested
+    assert ("contact", "contact-1") in requested
+    assert package.structured_memory.facts
+    assert retrieval.calls[0]["profile_id"] == "email_draft_templates"
+
+
+@pytest.mark.asyncio
+async def test_email_draft_profile_resolves_working_memory_references_to_structured_context():
+    wm = WorkingMemoryService(redis_client=FakeRedis(), clock=FakeClock())
+    retrieval = ProfileAwareRetrievalService()
+    structured = FakeStructuredMemoryService()
+    builder = ContextPackageBuilder(working_memory_service=wm, retrieval_service=retrieval, structured_memory_service=structured)
+    session = await wm.create_session(scope=scoped_user(project_id="apollo"), conversation_id="conv")
+    await wm.update_server_state(
+        scope=scoped_user(project_id="apollo"),
+        session_id=session.session_id,
+        update=ServerWorkingMemoryUpdate(
+            conversation_id="conv",
+            current_project={"id": "apollo", "name": "Apollo"},
+            current_task={"id": "task-1", "title": "Launch plan"},
+            tool_output={"agent_id": "general_email_draft_agent", "run_id": "run-email-1", "subject": "Old subject"},
+        ),
+    )
+    await wm.update_client_state(
+        scope=scoped_user(project_id="apollo"),
+        session_id=session.session_id,
+        update=ClientWorkingMemoryUpdate(conversation_id="conv", selected_record={"type": "contact", "id": "contact-1", "name": "Asha"}),
+    )
+
+    package = await builder.build(
+        scope=scoped_user(project_id="apollo"),
+        session_id=session.session_id,
+        conversation_id="conv",
+        query="Regenerate the last draft for this project and this task to this contact.",
+        retrieval_profile_id="email_draft_templates",
+    )
+
+    assert package.resolved_reference_bindings["project_id"] == "apollo"
+    assert package.resolved_reference_bindings["task_id"] == "task-1"
+    assert package.resolved_reference_bindings["recipient_contact_id"] == "contact-1"
+    assert package.resolved_reference_bindings["last_email_draft_run_id"] == "run-email-1"
+    requested = [(call[1].record_type.value, call[1].record_id) for call in structured.calls]
+    assert ("project", "apollo") in requested
+    assert ("task", "task-1") in requested
+    assert ("contact", "contact-1") in requested
+
+
+@pytest.mark.asyncio
+async def test_email_draft_explicit_context_overrides_working_memory_reference_binding():
+    wm = WorkingMemoryService(redis_client=FakeRedis(), clock=FakeClock())
+    retrieval = ProfileAwareRetrievalService()
+    structured = FakeStructuredMemoryService()
+    builder = ContextPackageBuilder(working_memory_service=wm, retrieval_service=retrieval, structured_memory_service=structured)
+    session = await wm.create_session(scope=scoped_user(project_id="apollo"), conversation_id="conv")
+    await wm.update_server_state(
+        scope=scoped_user(project_id="apollo"),
+        session_id=session.session_id,
+        update=ServerWorkingMemoryUpdate(conversation_id="conv", current_project={"id": "apollo", "name": "Apollo"}),
+    )
+
+    package = await builder.build(
+        scope=scoped_user(project_id="apollo"),
+        session_id=session.session_id,
+        conversation_id="conv",
+        query="Draft an update for this project.",
+        retrieval_profile_id="email_draft_templates",
+        structured_context_ids={"project_id": "explicit-project"},
+    )
+
+    assert package.resolved_reference_bindings["project_id"] == "apollo"
+    requested = [(call[1].record_type.value, call[1].record_id) for call in structured.calls]
+    assert ("project", "explicit-project") in requested
+    assert ("project", "apollo") not in requested
 
 
 @pytest.mark.asyncio

@@ -223,6 +223,9 @@ class Settings(BaseSettings):
 
     # Shared Agent Platform foundation
     AGENT_PLATFORM_ENABLED: bool = False
+    PROJECT_AGENT_ENABLED: bool = False
+    EMAIL_DRAFT_AGENT_ENABLED: bool = False
+    TASK_PERFORMANCE_AGENT_ENABLED: bool = False
     AGENT_RUN_RETENTION_DAYS: int = 90
     AGENT_RUN_EVENT_RETENTION_DAYS: int = 180
     AGENT_SANITIZED_OUTPUT_RETENTION_DAYS: int = 90
