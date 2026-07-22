@@ -63,7 +63,11 @@ class MetaWebhookService:
         payload_sha256 = hashlib.sha256(raw_body).hexdigest()
         result = WebhookIngestResult()
         for extracted in self.extract_events(payload, payload_sha256):
-            settings = await self._resolve_settings(extracted.page_id, extracted.form_id)
+            settings = await self._resolve_settings(
+                extracted.page_id,
+                extracted.form_id,
+                extracted.object_type,
+            )
             company_id = (
                 str(settings.company_id)
                 if settings is not None
@@ -126,10 +130,25 @@ class MetaWebhookService:
 
     @staticmethod
     async def _resolve_settings(
-        page_id: Optional[str], form_id: Optional[str]
+        page_id: Optional[str],
+        form_id: Optional[str],
+        object_type: Optional[str] = None,
     ) -> Optional[MetaIntegrationSettings]:
-        if not page_id or not form_id:
+        if not page_id:
             return None
+        if not form_id:
+            if object_type == "instagram":
+                return await MetaIntegrationSettings.find_one(
+                    {"instagram_business_account_id": page_id, "enabled": True}
+                )
+            channel_mappings = [{"page_id": page_id, "enabled": True}]
+            if object_type == "page":
+                channel_mappings.append({"messenger_page_id": page_id, "enabled": True})
+            return await MetaIntegrationSettings.find_one(
+                {
+                    "$or": channel_mappings
+                }
+            )
         return await MetaIntegrationSettings.find_one(
             {"page_id": page_id, "lead_form_id": form_id, "enabled": True}
         )
@@ -150,42 +169,85 @@ class MetaWebhookService:
             page_id = _as_string(entry.get("id"))
             event_time = entry.get("time")
             changes = entry.get("changes")
-            if not isinstance(changes, list):
-                continue
-            for change in changes:
-                if not isinstance(change, dict):
-                    continue
-                value = change.get("value")
-                value = value if isinstance(value, dict) else {}
-                event_type = _as_string(change.get("field")) or "unknown"
-                form_id = _as_string(value.get("form_id"))
-                object_id = _as_string(value.get("leadgen_id") or value.get("id"))
-                provider_event_id = _as_string(value.get("leadgen_id") or value.get("event_id"))
-                event_payload = {
-                    "object": object_type,
-                    "entry": {"id": page_id, "time": event_time},
-                    "change": {"field": event_type, "value": value},
-                }
-                if provider_event_id is None:
-                    provider_event_id = _derive_event_id(
-                        object_type=object_type,
-                        page_id=page_id,
-                        form_id=form_id,
-                        object_id=object_id,
-                        event_time=event_time,
-                        payload_sha256=payload_sha256,
+            if isinstance(changes, list):
+                for change in changes:
+                    if not isinstance(change, dict):
+                        continue
+                    value = change.get("value")
+                    value = value if isinstance(value, dict) else {}
+                    event_type = _as_string(change.get("field")) or "unknown"
+                    form_id = _as_string(value.get("form_id"))
+                    object_id = _as_string(value.get("leadgen_id") or value.get("id"))
+                    provider_event_id = _as_string(value.get("leadgen_id") or value.get("event_id"))
+                    event_payload = {
+                        "object": object_type,
+                        "entry": {"id": page_id, "time": event_time},
+                        "change": {"field": event_type, "value": value},
+                    }
+                    if provider_event_id is None:
+                        provider_event_id = _derive_event_id(
+                            object_type=object_type,
+                            page_id=page_id,
+                            form_id=form_id,
+                            object_id=object_id,
+                            event_time=event_time,
+                            payload_sha256=payload_sha256,
+                        )
+                    extracted.append(
+                        ExtractedMetaEvent(
+                            page_id=page_id,
+                            form_id=form_id,
+                            event_type=event_type,
+                            object_type=object_type,
+                            object_id=object_id,
+                            provider_event_id=provider_event_id,
+                            payload=event_payload,
+                        )
                     )
-                extracted.append(
-                    ExtractedMetaEvent(
-                        page_id=page_id,
-                        form_id=form_id,
-                        event_type=event_type,
-                        object_type=object_type,
-                        object_id=object_id,
-                        provider_event_id=provider_event_id,
-                        payload=event_payload,
+            messaging = entry.get("messaging")
+            if isinstance(messaging, list):
+                for message_event in messaging:
+                    if not isinstance(message_event, dict):
+                        continue
+                    message = (
+                        message_event.get("message")
+                        if isinstance(message_event.get("message"), dict)
+                        else {}
                     )
-                )
+                    provider_event_id = _as_string(message.get("mid"))
+                    object_id = _as_string(page_id)
+                    event_payload = {
+                        "object": object_type,
+                        "entry": {
+                            "id": page_id,
+                            "time": event_time,
+                            "messaging": [message_event],
+                        },
+                    }
+                    if provider_event_id is None:
+                        provider_event_id = _derive_message_event_id(
+                            object_type=object_type,
+                            page_id=page_id,
+                            sender_id=_as_string(
+                                message_event.get("sender", {}).get("id")
+                                if isinstance(message_event.get("sender"), dict)
+                                else None
+                            ),
+                            event_time=message_event.get("timestamp") or event_time,
+                            payload=message_event,
+                            payload_sha256=payload_sha256,
+                        )
+                    extracted.append(
+                        ExtractedMetaEvent(
+                            page_id=page_id,
+                            form_id=None,
+                            event_type="messages",
+                            object_type=object_type,
+                            object_id=object_id,
+                            provider_event_id=provider_event_id,
+                            payload=event_payload,
+                        )
+                    )
         return extracted
 
     @staticmethod

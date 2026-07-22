@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { useNavigate } from 'react-router-dom'
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Filter, Repeat, Search } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Filter, Repeat, Search, LayoutGrid, List, Calendar, Activity, Users, Briefcase, Mail, Phone, Star } from 'lucide-react'
 import { addDays, addMonths, addWeeks, format, isSameDay, isSameMonth, isSameWeek, parseISO, startOfDay, isValid } from 'date-fns'
 import { activityAPI } from '../../../api/activity'
 import { meetingsApi } from '../../../api/meetings'
@@ -12,6 +12,31 @@ import { Badge, Button, Skeleton } from '../../../components/ui'
 
 const CALENDAR_QUERY_KEY = 'crm-calendar'
 const VIEW_OPTIONS = ['month', 'week', 'day', 'agenda']
+
+// Stat Card Component
+const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+    teal: 'from-teal-500 to-cyan-500',
+  }
+
+  return (
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    </div>
+  )
+}
 
 export const getCalendarCursorDate = (date, view, direction) => {
   if (view === 'month') return addMonths(date, direction)
@@ -216,156 +241,295 @@ export default function CRMCalendarPage() {
   }, [visibleEvents])
   const cursorLabel = getCalendarCursorLabel(cursorDate, view)
 
+  // Calculate stats
+  const totalEvents = events.length
+  const meetingsCount = events.filter(e => e.type === 'meeting').length
+  const tasksCount = events.filter(e => e.type === 'task').length
+  const activitiesCount = events.filter(e => e.type !== 'meeting' && e.type !== 'task').length
+
   return (
     <CRMPage>
-      <CRMPageTitle
-        eyebrow="CRM Calendar"
-        title="Calendar"
-        description="Meetings, tasks, and CRM activity in one read-only workspace."
-        actions={(
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex min-h-9 items-center rounded-full border border-surface-border/80 bg-white px-3 text-sm font-semibold text-text-primary shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100">
-              {cursorLabel}
-            </span>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setCursorDate(new Date())}>
-              Today
-            </Button>
-            <Button type="button" variant="secondary" size="sm" aria-label={`Previous ${view}`} onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, -1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button type="button" variant="secondary" size="sm" aria-label={`Next ${view}`} onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-      />
-
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <CRMStatCard icon={CalendarDays} label="Today" value={todayEvents.length} helper="Events on the calendar today" tone="blue" />
-        <CRMStatCard icon={Clock3} label="Upcoming" value={upcomingEvents.length} helper="Upcoming items in the feed" tone="amber" />
-        <CRMStatCard icon={Filter} label="Visible" value={visibleEvents.length} helper="Events matching the current view" tone="emerald" />
-      </div>
-
-      <CRMSection title="Calendar controls" description="Filter the unified calendar feed without changing the source data.">
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_repeat(3,minmax(0,1fr))]">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input className="input pl-10" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search meetings, tasks, activity" aria-label="Search calendar" />
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 p-6 text-white shadow-xl md:p-8 mb-6">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+                <CalendarDays className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-200">CRM</p>
+                <h1 className="text-2xl font-bold md:text-3xl">Calendar</h1>
+                <p className="mt-1 text-indigo-100">Meetings, tasks, and CRM activity in one read-only workspace.</p>
+              </div>
             </div>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Activity type</span>
-            <select className="input" value={activityType} onChange={(event) => setActivityType(event.target.value)} aria-label="Filter by activity type">
-              <option value="">All types</option>
-              {Object.entries(ACTIVITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Owner</span>
-            <select className="input" value={owner} onChange={(event) => setOwner(event.target.value)} aria-label="Filter by owner">
-              <option value="">All owners</option>
-              {ownerOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </label>
-          <div className="flex flex-wrap items-end gap-2">
-            <Button variant="secondary" size="sm" onClick={() => { setSearch(''); setOwner(''); setActivityType('') }}>
-              Clear filters
-            </Button>
-            <div className="flex rounded-full border border-surface-border/80 bg-white p-1 dark:border-gray-800 dark:bg-gray-900">
-              {VIEW_OPTIONS.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setView(item)}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium capitalize ${view === item ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-200' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'}`}
-                >
-                  {item}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex min-h-9 items-center rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm">
+                {cursorLabel}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCursorDate(new Date())}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                aria-label={`Previous ${view}`}
+                onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, -1))}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/20 text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                aria-label={`Next ${view}`}
+                onClick={() => setCursorDate((date) => getCalendarCursorDate(date, view, 1))}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/20 text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
           </div>
         </div>
-      </CRMSection>
+      </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <Metric title="Today" value={todayEvents.length} />
-        <Metric title="Upcoming" value={upcomingEvents.length} />
-        <Metric title="Visible" value={visibleEvents.length} />
-      </section>
+      {/* Stats Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        <StatCard
+          label="Total Events"
+          value={totalEvents}
+          icon={Calendar}
+          color="indigo"
+          subtitle="All calendar items"
+        />
+        <StatCard
+          label="Meetings"
+          value={meetingsCount}
+          icon={Users}
+          color="blue"
+          subtitle="Scheduled meetings"
+        />
+        <StatCard
+          label="Tasks"
+          value={tasksCount}
+          icon={Briefcase}
+          color="amber"
+          subtitle="Task items"
+        />
+        <StatCard
+          label="Activities"
+          value={activitiesCount}
+          icon={Activity}
+          color="emerald"
+          subtitle="CRM activities"
+        />
+      </div>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <CRMSection title="Calendar" description={`Unified ${view} view of CRM work.`}>
-          {(meetingsQuery.isLoading || tasksQuery.isLoading || activitiesQuery.isLoading) ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-24 w-full rounded-3xl" />)}
+      {/* Filters Section */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 mb-6">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+              <Filter className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             </div>
-          ) : visibleEvents.length ? (
-            view === 'agenda' ? (
-              <div className="space-y-3">
-                {groupedByDay.map((group) => (
-                  <div key={group.date} className="space-y-3">
-                    <div className="sticky top-0 rounded-2xl bg-slate-50 px-4 py-2 text-sm font-semibold text-gray-700 dark:bg-gray-950 dark:text-gray-200">
-                      {format(parseISO(group.date), 'EEEE, MMM d')}
-                    </div>
-                    {group.items.map((event) => <CalendarEventCard key={event.id} event={event} navigate={navigate} />)}
-                  </div>
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-white">Calendar Controls</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Filter the unified calendar feed without changing the source data.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_repeat(3,minmax(0,1fr))]">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Search</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input 
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                  value={search} 
+                  onChange={(event) => setSearch(event.target.value)} 
+                  placeholder="Search meetings, tasks, activity..." 
+                  aria-label="Search calendar" 
+                />
+              </div>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Activity Type</span>
+              <select 
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                value={activityType} 
+                onChange={(event) => setActivityType(event.target.value)} 
+                aria-label="Filter by activity type"
+              >
+                <option value="">All types</option>
+                {Object.entries(ACTIVITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Owner</span>
+              <select 
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
+                value={owner} 
+                onChange={(event) => setOwner(event.target.value)} 
+                aria-label="Filter by owner"
+              >
+                <option value="">All owners</option>
+                {ownerOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <div className="flex flex-wrap items-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setSearch(''); setOwner(''); setActivityType('') }}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                Clear filters
+              </button>
+              <div className="flex rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-600 dark:bg-gray-700">
+                {VIEW_OPTIONS.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setView(item)}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition ${
+                      view === item 
+                        ? 'bg-white text-indigo-700 shadow-sm dark:bg-gray-600 dark:text-white' 
+                        : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    {item}
+                  </button>
                 ))}
               </div>
-            ) : (
-              <div className="grid gap-3">
-                {visibleEvents.map((event) => <CalendarEventCard key={event.id} event={event} navigate={navigate} />)}
-              </div>
-            )
-          ) : (
-            <CRMEmptyState
-              icon={CalendarDays}
-              title="No calendar items"
-              description="Meetings, tasks, and activities will appear here when they exist."
-            />
-          )}
-        </CRMSection>
-
-        <div className="space-y-6">
-          <CRMSection title="Today" description="Items scheduled for the current day.">
-            {todayEvents.length ? (
-              <div className="space-y-3">
-                {todayEvents.slice(0, 6).map((event) => <CalendarEventCard key={event.id} event={event} navigate={navigate} compact />)}
-              </div>
-            ) : (
-              <CRMEmptyState icon={Clock3} title="Nothing today" description="There are no scheduled CRM items for today." />
-            )}
-          </CRMSection>
-
-          <CRMSection title="Upcoming" description="Next items on the calendar.">
-            {upcomingEvents.length ? (
-              <div className="space-y-3">
-                {upcomingEvents.map((event) => <CalendarEventCard key={event.id} event={event} navigate={navigate} compact />)}
-              </div>
-            ) : (
-              <CRMEmptyState icon={Repeat} title="No upcoming items" description="Upcoming CRM items will show here once scheduled." />
-            )}
-          </CRMSection>
+            </div>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-        <span className="inline-flex items-center gap-2">
-          <Filter className="h-3.5 w-3.5" />
-          Uses existing meetings, tasks, and CRM activity APIs. No external calendar sync.
-        </span>
+      {/* Main Content */}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        {/* Calendar Events */}
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-blue-50/50 to-white p-4 dark:border-gray-700 dark:from-blue-950/20 dark:to-gray-800">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
+                <LayoutGrid className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h2 className="font-bold text-gray-900 dark:text-white">Calendar</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Unified {view} view of CRM work</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4">
+            {(meetingsQuery.isLoading || tasksQuery.isLoading || activitiesQuery.isLoading) ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-24 w-full rounded-xl" />)}
+              </div>
+            ) : visibleEvents.length ? (
+              view === 'agenda' ? (
+                <div className="space-y-4">
+                  {groupedByDay.map((group) => (
+                    <div key={group.date} className="space-y-3">
+                      <div className="sticky top-0 rounded-xl bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        {format(parseISO(group.date), 'EEEE, MMM d')}
+                      </div>
+                      {group.items.map((event) => <CalendarEventCard key={event.id} event={event} navigate={navigate} />)}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {visibleEvents.slice(0, 20).map((event) => <CalendarEventCard key={event.id} event={event} navigate={navigate} />)}
+                  {visibleEvents.length > 20 && (
+                    <div className="text-center text-sm text-gray-500 dark:text-gray-400">
+                      Showing 20 of {visibleEvents.length} events
+                    </div>
+                  )}
+                </div>
+              )
+            ) : (
+              <div className="py-8 text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-gray-800">
+                  <CalendarDays className="h-8 w-8 text-gray-400" />
+                </div>
+                <h3 className="font-semibold text-gray-900 dark:text-white">No calendar items</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Meetings, tasks, and activities will appear here when they exist.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar - Today & Upcoming */}
+        <div className="space-y-6">
+          {/* Today Section */}
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="border-b border-gray-200 bg-gradient-to-r from-emerald-50/50 to-white p-4 dark:border-gray-700 dark:from-emerald-950/20 dark:to-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
+                  <Clock3 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900 dark:text-white">Today</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Items scheduled for today</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4">
+              {todayEvents.length ? (
+                <div className="space-y-3">
+                  {todayEvents.slice(0, 6).map((event) => <CalendarEventCard key={event.id} event={event} navigate={navigate} compact />)}
+                </div>
+              ) : (
+                <div className="py-6 text-center">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-800">
+                    <Clock3 className="h-6 w-6 text-gray-400" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Nothing today</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">No scheduled CRM items for today</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Upcoming Section */}
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="border-b border-gray-200 bg-gradient-to-r from-amber-50/50 to-white p-4 dark:border-gray-700 dark:from-amber-950/20 dark:to-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
+                  <Repeat className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-900 dark:text-white">Upcoming</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Next items on the calendar</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4">
+              {upcomingEvents.length ? (
+                <div className="space-y-3">
+                  {upcomingEvents.map((event) => <CalendarEventCard key={event.id} event={event} navigate={navigate} compact />)}
+                </div>
+              ) : (
+                <div className="py-6 text-center">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-800">
+                    <Repeat className="h-6 w-6 text-gray-400" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No upcoming items</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Upcoming CRM items will show here once scheduled</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </CRMPage>
-  )
-}
-
-function Metric({ title, value }) {
-  return (
-    <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{title}</p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">{value}</p>
-    </article>
   )
 }
 
@@ -380,26 +544,42 @@ function CalendarEventCard({ event, navigate, compact = false }) {
   }
 
   return (
-    <article className={`rounded-3xl border border-surface-border/80 bg-white ${compact ? 'p-3' : 'p-4'} shadow-sm dark:border-gray-800 dark:bg-gray-900`}>
+    <div className={`rounded-xl border border-gray-200 bg-white transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700 ${compact ? 'p-3' : 'p-4'}`}>
       <div className="flex items-start gap-3">
-        <span className={`mt-1 h-3.5 w-3.5 rounded-full ${color}`} />
+        <div className={`mt-1 h-3 w-3 rounded-full ${color} shadow-sm`} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{event.title}</h3>
-            <Badge label={label} colorKey="draft" />
+            <h3 className={`font-semibold text-gray-900 dark:text-white ${compact ? 'text-sm' : 'text-base'}`}>{event.title}</h3>
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+              event.type === 'meeting' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' :
+              event.type === 'task' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' :
+              'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+            }`}>
+              {label}
+            </span>
           </div>
-          <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{event.description || 'No description'}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <Badge label={format(eventDate, 'MMM d, p')} colorKey="draft" />
-            {event.ownerLabel ? <Badge label={`Owner ${event.ownerLabel}`} colorKey="draft" /> : null}
+          {!compact && (
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{event.description || 'No description'}</p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <span className="inline-flex items-center gap-1">
+              <CalendarDays className="h-3 w-3" />
+              {format(eventDate, 'MMM d, p')}
+            </span>
+            {event.ownerLabel && (
+              <span className="inline-flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                {event.ownerLabel}
+              </span>
+            )}
           </div>
         </div>
-        {target ? (
-          <Button type="button" variant="secondary" size="sm" onClick={() => navigate(target)}>
+        {target && !compact && (
+          <Button type="button" variant="secondary" size="sm" onClick={() => navigate(target)} className="gap-1.5">
             Open
           </Button>
-        ) : null}
+        )}
       </div>
-    </article>
+    </div>
   )
 }

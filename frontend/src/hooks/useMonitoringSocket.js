@@ -3,6 +3,7 @@ import { useAuthStore } from '../store/authStore'
 import { attendanceAPI } from '../api/attendance'
 import { monitoringManager } from '../services/monitoring/MonitoringManager'
 import toast from 'react-hot-toast'
+import { closeOpenWebSocket } from '../utils/webSocket'
 
 const STANDARD_WORK_SECONDS = 8 * 3600 // 28800
 const START_WORK_ACK_TIMEOUT_MS = 10000
@@ -362,10 +363,8 @@ export const useMonitoringSocket = () => {
       if (timerRef.current) clearInterval(timerRef.current)
       if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current)
       clearStartAckTimeout()
-      if (socketRef.current) {
-        socketRef.current.close()
-        socketRef.current = null
-      }
+      closeOpenWebSocket(socketRef.current)
+      socketRef.current = null
       monitoringManager.stopCapture()
       setCameraStream(null)
       setScreenStream(null)
