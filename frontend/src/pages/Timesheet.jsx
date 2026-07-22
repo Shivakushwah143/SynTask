@@ -415,43 +415,6 @@ export default function Timesheet() {
             </div>
           </div>
         </div>
-<<<<<<< HEAD
-        <div className="overflow-x-auto">
-          <div className="min-w-[900px]">
-            <div className="grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2 border-b border-gray-200 pb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:text-gray-400">
-              <div>Project / Task</div>
-              {weekDays.map((day) => <div key={timeService.toUtcISOString(day)} className="text-center">{format(day, 'EEE dd')}</div>)}
-            </div>
-            <div className="space-y-2 pt-3">
-              {rows.length ? rows.map((row) => (
-                <div key={row.label} className="grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-medium text-gray-800 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-100">
-                    {row.label}
-                  </div>
-                  {weekDays.map((day) => {
-                    const key = `${row.label}-${timeService.toUtcISOString(day).slice(0, 10)}`
-                    return (
-                      <input
-                        key={timeService.toUtcISOString(day)}
-                        className={`${inputClassName} text-center`}
-                        type="number"
-                        min="0"
-                        step="0.25"
-                        value={weeklyDraft[key] ?? ''}
-                        onChange={(event) => setWeeklyDraft((state) => ({ ...state, [key]: event.target.value }))}
-                        placeholder="0"
-                      />
-                    )
-                  })}
-                </div>
-              )) : (
-                <EmptyState icon={Clock} title="No weekly rows" description="Log entries to populate the weekly grid." />
-              )}
-            </div>
-            <div className="mt-3 grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2 text-xs text-gray-500 dark:text-gray-400">
-              <div className="font-medium">Daily total</div>
-              {weekDays.map((day) => <div key={timeService.toUtcISOString(day)} className="text-center font-semibold">{weeklyTotal(day)}</div>)}
-=======
 
         <div className="p-4">
           <div className="overflow-x-auto">
@@ -506,7 +469,6 @@ export default function Timesheet() {
                   </div>
                 ))}
               </div>
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
             </div>
           </div>
         </div>

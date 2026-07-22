@@ -888,61 +888,6 @@ const Invoices = () => {
                     {clientDetails.address && (
                       <div className="col-span-2"><strong>Address:</strong> {clientDetails.address}</div>
                     )}
-<<<<<<< HEAD
-                  </td>
-                  <td className="py-3 pr-4">
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      invoice.invoice_type === 'tax' 
-                        ? 'bg-blue-100 text-blue-700' 
-                        : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {invoice.invoice_type === 'tax' ? 'Tax Invoice' : 'Proforma Invoice'}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4 text-xs text-gray-700">
-                    {invoice.invoice_date ? format(timeService.instant(invoice.invoice_date), 'MMM d, yyyy') : '-'}
-                  </td>
-                  <td className="py-3 pr-4 text-sm font-semibold text-gray-900">
-                    ₹{invoice.total_amount?.toLocaleString() || '0'}
-                  </td>
-                  <td className="py-3 pr-4">
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      invoice.status === 'paid'
-                        ? 'bg-green-100 text-green-700'
-                        : invoice.status === 'sent'
-                        ? 'bg-blue-100 text-blue-700'
-                        : invoice.status === 'cancelled'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {invoice.status}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleViewInvoice(invoice)}
-                        className="p-1 text-gray-600 hover:text-primary-600"
-                        title="View"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDownloadInvoice(invoice)}
-                        className="p-1 text-gray-600 hover:text-primary-600"
-                        title="Download PDF"
-                      >
-                        <Download className="h-4 w-4" />
-                      </button>
-                      {!invoice.email_sent && invoice.status === 'draft' && (
-                        <button
-                          onClick={() => handleSendEmail(invoice.id)}
-                          className="p-1 text-gray-600 hover:text-green-600"
-                          title="Send Email"
-                        >
-                          <Send className="h-4 w-4" />
-                        </button>
-=======
                     {(clientDetails.city || clientDetails.state) && (
                       <div className="col-span-2">
                         {clientDetails.city} {clientDetails.state} {clientDetails.zip_code}
@@ -1058,7 +1003,6 @@ const Invoices = () => {
                             className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                           />
                         </div>
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
                       )}
                       <div className="col-span-1">
                         <button

@@ -719,26 +719,6 @@ const Tasks = () => {
                     </td>
                   </tr>
                 ) : (
-<<<<<<< HEAD
-                  tasks.map((task) => (
-                    <tr
-                      key={task.id}
-                      onClick={() => handleTaskClick(task)}
-                      className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-[var(--color-app-surface-muted)]"
-                    >
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-[var(--color-app-text)]">{task.title}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">
-                        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium capitalize text-gray-700 dark:bg-[var(--color-app-surface-subtle)] dark:text-[var(--color-app-text-secondary)]">
-                          {String(task.status || '').replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">{priorities[task.priority]?.label || task.priority}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">
-                        {task.due_date ? format(timeService.instant(task.due_date), 'MMM d') : '—'}
-                      </td>
-                    </tr>
-                  ))
-=======
                   tasks.map((task) => {
                     const priorityColors = {
                       low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
@@ -779,7 +759,6 @@ const Tasks = () => {
                       </tr>
                     )
                   })
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
                 )}
               </tbody>
             </table>
@@ -806,46 +785,6 @@ const Tasks = () => {
                       <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">No tasks</p>
                     </div>
                   ) : (
-<<<<<<< HEAD
-                    statusTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        onClick={() => handleTaskClick(task)}
-                        className="rounded-xl border border-gray-200 bg-white p-3 cursor-pointer transition-colors hover:border-primary-300 hover:bg-gray-50 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:hover:border-primary-700 dark:hover:bg-[var(--color-app-surface-muted)]"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <p className="font-medium text-gray-900 text-sm flex-1 dark:text-[var(--color-app-text)]">
-                            {task.title}
-                          </p>
-                          <div className="dropdown relative">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                // Handle menu
-                              }}
-                              className="rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-[var(--color-app-surface-subtle)]"
-                            >
-                              <MoreVertical className="h-4 w-4 text-gray-500 dark:text-[var(--color-app-text-muted)]" />
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {task.description && (
-                          <p className="text-xs text-gray-500 mb-2 line-clamp-2 dark:text-[var(--color-app-text-muted)]">
-                            {task.description}
-                          </p>
-                        )}
-                        
-                        <div className="flex items-center justify-between mt-2">
-                          <span className={`badge ${priorities[task.priority]?.color || 'badge-secondary'} text-xs`}>
-                            {priorities[task.priority]?.label || task.priority}
-                          </span>
-                          {task.due_date && (
-                            <div className="flex items-center text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
-                              <Calendar className="h-3 w-3 mr-1" />
-                              {format(timeService.instant(task.due_date), 'MMM d')}
-                            </div>
-=======
                     statusTasks.map((task) => {
                       const priorityColors = {
                         low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
@@ -863,7 +802,6 @@ const Tasks = () => {
                           <p className="font-medium text-gray-900 text-sm dark:text-white">{task.title}</p>
                           {task.description && (
                             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{task.description}</p>
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
                           )}
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[task.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>

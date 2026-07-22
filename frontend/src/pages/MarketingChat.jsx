@@ -51,13 +51,8 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { aiAPI } from '../api/ai'
 import { useAuthStore } from '../store/authStore'
-<<<<<<< HEAD
-import { Badge, Button, PageHeader } from '../components/ui'
-import { timeService } from '@/services/timeService'
-=======
 import { Badge, Button, PageHeader, inputClassName } from '../components/ui'
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
-
+import { timeService } from '@/services/timeService'
 // ============================================================
 // STAT CARD COMPONENT
 // ============================================================
@@ -438,108 +433,6 @@ export default function MarketingChat() {
               </button>
             </div>
           </form>
-<<<<<<< HEAD
-        </section>
-
-        <aside className="space-y-6">
-          <section className="card p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
-                <Clock3 className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Response status</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">The assistant only speaks when it has verified context.</p>
-              </div>
-            </div>
-
-            <dl className="mt-5 space-y-3 text-sm text-gray-600 dark:text-gray-300">
-              <StatRow label="Messages" value={messages.length} />
-              <StatRow label="Last updated" value={lastUpdated ? format(timeService.instant(lastUpdated), 'MMM d, HH:mm') : '-'} />
-            </dl>
-          </section>
-
-          <section className="card p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
-                <Link2 className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Suggested actions</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Follow-up navigation based on the latest response.</p>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {actionCards.map((action) => {
-                const Icon = action.icon
-                return (
-                  <button
-                    key={action.key}
-                    type="button"
-                    onClick={() => navigate(action.path)}
-                    className="group w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:-translate-y-0.5 hover:border-primary-300 hover:bg-primary-50 dark:border-gray-800 dark:bg-gray-950/40 dark:hover:border-primary-800 dark:hover:bg-primary-950/20"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-primary-600 shadow-sm dark:bg-gray-900 dark:text-primary-300">
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-gray-900 dark:text-gray-100">{action.label}</div>
-                        <div className="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300">{action.detail}</div>
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400 transition group-hover:text-primary-600 dark:group-hover:text-primary-300" />
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-
-          <section className="card p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-300">
-                <HelpCircle className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Quick questions</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Common questions to get started.</p>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {quickQuestions.map((question, index) => {
-                const Icon = question.icon
-                return (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => handleQuickQuestion(question.label)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-primary-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-primary-800 dark:hover:bg-primary-950/20"
-                  >
-                    <Icon className="h-4 w-4 text-primary-600 dark:text-primary-400" />
-                    <span className="text-sm text-gray-700 dark:text-gray-200">{question.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-        </aside>
-      </div>
-    </div>
-  )
-}
-
-function MessageBubble({ message }) {
-  const isUser = message.role === 'user'
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[90%] rounded-3xl px-4 py-3 text-sm leading-6 shadow-sm ${isUser ? 'bg-primary-600 text-white' : 'border border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-800 dark:bg-gray-950/60 dark:text-gray-100'}`}>
-        <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] opacity-80">
-          {isUser ? <User className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
-          {isUser ? 'You' : 'Marketing Support'}
-=======
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
         </div>
 
         {/* Sidebar */}

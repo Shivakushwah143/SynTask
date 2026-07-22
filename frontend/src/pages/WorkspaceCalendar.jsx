@@ -61,15 +61,9 @@ export default function WorkspaceCalendar() {
   const isEmployee = userRole === ROLE.EMPLOYEE
   
   // States
-<<<<<<< HEAD
   const [view, setView] = useState('month') // 'month' | 'week' | 'day'
   const [currentDate, setCurrentDate] = useState(timeService.now())
   const [selectedDate, setSelectedDate] = useState(timeService.now())
-=======
-  const [view, setView] = useState('month')
-  const [currentDate, setCurrentDate] = useState(new Date())
-  const [selectedDate, setSelectedDate] = useState(new Date())
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
   const [search, setSearch] = useState('')
   const [viewType, setViewType] = useState('my_calendar')
   const [selectedEvent, setSelectedEvent] = useState(null)
@@ -897,17 +891,10 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
         {days.map((day) => {
           const isToday = isSameDay(day, timeService.now())
           return (
-<<<<<<< HEAD
-            <div key={timeService.toUtcISOString(day)} className={`p-4 text-center ${isToday ? 'bg-primary-50/20 dark:bg-primary-950/20' : ''}`}>
-              <p className="text-xs font-semibold text-gray-500 uppercase">{format(day, 'EEE')}</p>
-              <p className={`mt-1 text-lg font-bold inline-block px-2 py-0.5 rounded-full ${
-                isToday ? 'bg-primary-600 text-white' : 'text-gray-900 dark:text-gray-100'
-=======
             <div key={day.toISOString()} className={`p-4 text-center ${isToday ? 'bg-indigo-50/30 dark:bg-indigo-950/30' : ''}`}>
               <p className="text-xs font-semibold text-gray-500 uppercase dark:text-gray-400">{format(day, 'EEE')}</p>
               <p className={`mt-1 text-lg font-bold inline-block px-2.5 py-0.5 rounded-full ${
                 isToday ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'text-gray-900 dark:text-gray-100'
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
               }`}>{format(day, 'd')}</p>
             </div>
           )
@@ -918,11 +905,7 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
         {days.map((day) => {
           const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
           return (
-<<<<<<< HEAD
-            <div key={timeService.toUtcISOString(day)} className="p-2 space-y-2 bg-white dark:bg-black">
-=======
             <div key={day.toISOString()} className="p-2 space-y-2">
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
               {dayEvents.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-[10px] text-gray-300 dark:text-gray-700 italic select-none py-10">
                   No Events

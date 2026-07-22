@@ -100,14 +100,12 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${priorityColors[ticket.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
             {priorities[ticket.priority]?.label || ticket.priority}
           </span>
-<<<<<<< HEAD
           {ticket.created_at ? (
             <div className="flex items-center text-xs text-text-secondary dark:text-gray-400">
               <Calendar className="mr-1 h-3.5 w-3.5" />
               {format(timeService.instant(ticket.created_at), 'MMM d')}
             </div>
           ) : null}
-=======
           {ticket.assigned_to ? (
             <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
               <User className="h-3 w-3" />
@@ -119,7 +117,6 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
               <span>Unassigned</span>
             </span>
           )}
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
         </div>
         {ticket.created_at && (
           <div className="flex items-center text-xs text-gray-400 dark:text-gray-500">

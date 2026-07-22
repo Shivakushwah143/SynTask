@@ -710,10 +710,5 @@ function availabilityLabel(value) {
 }
 
 function dateRange(leave) {
-<<<<<<< HEAD
-  return `${format(timeService.instant(leave.start_date), 'MMM d, yyyy')} - ${format(timeService.instant(leave.end_date), 'MMM d, yyyy')}`
-}
-=======
   return `${format(new Date(leave.start_date), 'MMM d, yyyy')} - ${format(new Date(leave.end_date), 'MMM d, yyyy')}`
 }
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4

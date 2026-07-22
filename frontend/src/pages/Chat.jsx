@@ -446,13 +446,8 @@ const Chat = () => {
                       {conversation.last_message || 'No messages yet'}
                     </div>
                     {conversation.last_message_at && (
-<<<<<<< HEAD
-                      <div className="text-xs text-text-muted mt-1">
-                        {formatDistanceToNow(timeService.instant(conversation.last_message_at), { addSuffix: true })}
-=======
                       <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                         {formatDistanceToNow(new Date(conversation.last_message_at), { addSuffix: true })}
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
                       </div>
                     )}
                   </div>
@@ -589,13 +584,6 @@ const Chat = () => {
                           <div className={`text-[10px] mt-1 ${isOwn ? 'text-indigo-200' : 'text-gray-400 dark:text-gray-500'}`}>
                             {format(new Date(message.created_at), 'HH:mm')}
                           </div>
-<<<<<<< HEAD
-                        )}
-                        <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                        <div className={`text-xs mt-1 ${isOwn ? 'text-primary-100' : 'text-text-muted'}`}>
-                          {format(timeService.instant(message.created_at), 'HH:mm')}
-=======
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
                         </div>
                       </div>
                     </div>

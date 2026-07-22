@@ -8,11 +8,8 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { Button, ConfirmDialog, EmptyState, FormField, Modal, Table, inputClassName } from '../components/ui'
 import { hasCompanyAdminAccess, getRoleLabel } from '../utils/roles'
-<<<<<<< HEAD
 import { timeService } from '@/services/timeService'
-=======
 import { notifyDepartmentsChanged } from '../api/departments'
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
 
 const emptyForm = {
   name: '',

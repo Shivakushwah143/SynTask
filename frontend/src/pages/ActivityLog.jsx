@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Clock, CheckSquare, Ticket, MessageSquare, User, Activity, Filter, Calendar, Search, RefreshCw, Zap, TrendingUp, BarChart3 } from 'lucide-react'
 import { activityAPI } from '../api/activity'
 import { format } from 'date-fns'
-<<<<<<< HEAD
 import { timeService } from '@/services/timeService'
-=======
 import { PageHeader, Button, Badge } from '../components/ui'
 
 // Stat Card Component
@@ -136,7 +134,6 @@ const ActivityItem = ({ activity }) => {
     </div>
   )
 }
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
 
 const ActivityLog = () => {
   const [activities, setActivities] = useState([])
@@ -329,52 +326,11 @@ const ActivityLog = () => {
               <p className="text-sm text-gray-500 dark:text-gray-400">Try adjusting your filters or check back later.</p>
             </div>
           ) : (
-<<<<<<< HEAD
-            activities.map((activity) => {
-              const Icon = getActivityIcon(activity.type)
-              const colorClass = getActivityColor(activity.type)
-              
-              return (
-        <div key={activity.id} className="flex items-start space-x-4 pb-4 border-b border-border last:border-0">
-                  <div className={`p-2 rounded-lg ${colorClass}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-            <p className="font-medium text-text-primary">{activity.title}</p>
-            <span className="text-xs text-text-muted">
-                        {format(timeService.instant(activity.timestamp), 'MMM d, h:mm a')}
-                      </span>
-                    </div>
-          <div className="flex items-center mt-1 text-sm text-text-secondary">
-                      <User className="h-4 w-4 mr-1" />
-                      {activity.user_name || 'System'}
-                    </div>
-                    {activity.metadata && (
-                      <div className="mt-2 flex space-x-2">
-                        {activity.metadata.status && (
-                          <span className="badge badge-secondary text-xs">
-                            {activity.metadata.status}
-                          </span>
-                        )}
-                        {activity.metadata.priority && (
-                          <span className="badge badge-primary text-xs">
-                            {activity.metadata.priority}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })
-=======
             <div className="space-y-0">
               {activities.map((activity) => (
                 <ActivityItem key={activity.id} activity={activity} />
               ))}
             </div>
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
           )}
         </div>
       </div>

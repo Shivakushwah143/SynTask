@@ -192,13 +192,8 @@ export default function CRMCompaniesPage() {
     { key: 'industry', header: 'Industry', render: (row) => row.industry || <span className="text-gray-400 dark:text-gray-600">—</span> },
     { key: 'contacts', header: 'Contacts', render: (row) => String(row.contact_count || 0) },
     { key: 'leads', header: 'Leads', render: (row) => String(row.lead_count || 0) },
-<<<<<<< HEAD
-    { key: 'primary', header: 'Primary contact', render: (row) => row.primary_contact_name || '-' },
-    { key: 'updated', header: 'Updated', render: (row) => (row.updated_at ? format(timeService.instant(row.updated_at), 'MMM d, yyyy') : '-') },
-=======
     { key: 'primary', header: 'Primary Contact', render: (row) => row.primary_contact_name || <span className="text-gray-400 dark:text-gray-600">—</span> },
     { key: 'updated', header: 'Updated', render: (row) => (row.updated_at ? format(new Date(row.updated_at), 'MMM d, yyyy') : '-') },
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
     {
       key: 'actions',
       header: '',

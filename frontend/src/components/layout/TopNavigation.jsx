@@ -88,15 +88,10 @@ export function TopNavigation({
 
         {/* Right Section - Actions */}
         <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-<<<<<<< HEAD
           <GlobalClock />
-          {communicationLinks.length ? (
-            <nav className="flex items-center gap-1 rounded-full border border-surface-border/70 bg-surface/90 p-1 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]" aria-label="Global communication">
-=======
           {/* Communication Links */}
           {communicationLinks.length > 0 && (
             <nav className="flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50/80 p-1 dark:border-gray-700 dark:bg-gray-800/50" aria-label="Global communication">
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
               {communicationLinks.map((item) => {
                 const isActive = location.pathname === item.href || location.pathname.startsWith(`${item.href}/`)
                 return (

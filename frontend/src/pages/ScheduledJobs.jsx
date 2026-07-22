@@ -213,17 +213,10 @@ function JobDetailDrawer({ job, onClose }) {
           {/* Timing */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Timing</h3>
-<<<<<<< HEAD
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-subtle)]">
-              <Row label="Scheduled for" value={formatScheduledTime(job.run_at)} sub={relativeScheduledTime(job.run_at)} />
-              <Row label="Created at" value={formatScheduledTime(job.created_at)} />
-              {job.completed_at && <Row label="Completed at" value={formatScheduledTime(job.completed_at)} />}
-=======
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2 dark:border-gray-800 dark:bg-gray-900/50">
               <Row label="Scheduled for" value={formatRunAt(job.run_at)} sub={relativeTo(job.run_at)} />
               <Row label="Created at" value={formatRunAt(job.created_at)} />
               {job.completed_at && <Row label="Completed at" value={formatRunAt(job.completed_at)} />}
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
             </div>
           </section>
 

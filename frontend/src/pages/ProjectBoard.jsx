@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-<<<<<<< HEAD
-import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, UserPlus } from 'lucide-react'
-=======
 import { format } from 'date-fns'
 import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
 import {
   DndContext,
   DragOverlay,

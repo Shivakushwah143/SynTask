@@ -23,11 +23,8 @@ from app.api.dependencies import (
 )
 from app.services.user_service import UserService
 from app.api.deps import Pagination20, PaginationParams
-<<<<<<< HEAD
 from app.core.clock import utc_now
-=======
 from app.schemas.admin_permissions import normalize_modules
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
 
 router = APIRouter()
 

@@ -40,6 +40,8 @@ export default function GlobalClock() {
 
   const current = timeService.now(settings)
   const display = timeService.formatTime(current, settings)
+  // Use tick to trigger re-render on time updates
+  void tick
 
   const persist = async (changes) => {
     const next = await save(changes)

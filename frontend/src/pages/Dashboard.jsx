@@ -1291,31 +1291,6 @@ const Dashboard = () => {
               <div className="flex h-72 items-center justify-center text-sm text-gray-500 dark:text-gray-400">No projects to chart yet</div>
             )}
           </ChartCard>
-<<<<<<< HEAD
-          <div className="card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Today&apos;s work</h2>
-              <p className="text-sm text-text-muted dark:text-text-secondary">High-signal items that need attention now.</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate(role === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}>
-              View all
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {taskSource.length ? taskSource.slice(0, 6).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => navigate(role === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}
-                className="flex w-full items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:bg-surface-muted dark:border-border dark:bg-black/80 dark:hover:bg-white/5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-text-primary dark:text-text-primary">{item.title}</p>
-                  <p className="truncate text-xs text-text-muted dark:text-text-secondary">
-                    {role === ROLE.EMPLOYEE ? `Created ${item.created_at ? format(timeService.instant(item.created_at), 'MMM d') : 'recently'}` : item.due_date ? `Due ${format(timeService.instant(item.due_date), 'MMM d')}` : 'No due date'}
-=======
         </section>
       ))}
 
@@ -1333,7 +1308,6 @@ const Dashboard = () => {
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{item.title}</p>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     {item.updated_at ? format(new Date(item.updated_at), 'MMM d, h:mm a') : item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
                   </p>
                 </div>
               ))}
@@ -1346,118 +1320,8 @@ const Dashboard = () => {
               )}
             </div>
           </div>
-<<<<<<< HEAD
-          <div className="space-y-2">
-            {upcomingMeetings.length ? upcomingMeetings.map((meeting) => (
-              <div key={meeting.id} className="rounded-xl border border-border bg-surface px-4 py-3 dark:border-border dark:bg-black/80">
-                <p className="text-sm font-medium text-text-primary dark:text-text-primary">{meeting.title}</p>
-                <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">
-                  {meeting.meeting_date ? format(timeService.instant(meeting.meeting_date), 'MMM d, h:mm a') : 'Date not set'}
-                </p>
-                {meeting.status ? <div className="mt-2"><Badge label={meeting.status} colorKey={meeting.status} /></div> : null}
-              </div>
-            )) : <EmptyState title="No meetings" description="Create the next meeting from the meetings workspace." />}
-          </div>
-        </div>
-      </section>
-      ))}
-
-      {renderDashboardSection('project-health', (
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Project health</h2>
-              <p className="text-sm text-text-muted dark:text-text-secondary">Current projects in the workspace.</p>
-            </div>
-            {hasCompanyAdminAccess(role) ? (
-              <Button variant="secondary" size="sm" onClick={handleExport} loading={exporting}>
-                Export
-              </Button>
-            ) : null}
-          </div>
-          {projects.length ? <Table columns={healthColumns} data={projects} /> : <EmptyState title="No projects" description="Projects will appear here once they are created." />}
-        </div>
-        <ChartCard title="Project Health Graph" period="Current Projects">
-          {projectHealthChartData.length ? (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={projectHealthChartData} layout="vertical" margin={{ left: 10, right: 20 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
-                  <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.15} />
-                  <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <YAxis type="category" dataKey="name" width={96} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <ChartTooltip />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                  {DASHBOARD_PROJECT_STATUSES.map((status) => (
-                    <Bar key={status} dataKey={status} name={status.replace(/_/g, ' ')} stackId="status" fill={PROJECT_STATUS_COLORS[status]} radius={[0, 5, 5, 0]} className="cursor-pointer" />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="flex h-72 items-center justify-center text-sm text-text-muted">No projects to chart yet</div>
-          )}
-        </ChartCard>
-      </section>
-      ))}
-
-      {renderDashboardSection('recent-activity', (
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="card p-5">
-          <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Recent activity</h2>
-          <p className="mt-1 text-sm text-text-muted dark:text-text-secondary">Latest changes across your workspace.</p>
-          <div className="mt-4 space-y-3">
-            {(role === ROLE.EMPLOYEE ? recentTickets : recentTasks).slice(0, 5).map((item) => (
-              <div key={item.id} className="rounded-xl border border-border bg-surface px-4 py-3 dark:border-border dark:bg-black/80">
-                <p className="text-sm font-medium text-text-primary dark:text-text-primary">{item.title}</p>
-                <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">
-                  {item.updated_at ? format(timeService.instant(item.updated_at), 'MMM d, h:mm a') : item.created_at ? format(timeService.instant(item.created_at), 'MMM d, h:mm a') : 'Recently'}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-      ))}
-
-      {/* <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <div className="card p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Operating Signals Before You Ask</h2>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Recent project movement and active notifications in one scan.</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/projects')}>
-              Projects
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="mt-4 space-y-3">
-            {(recent?.projects || []).slice(0, 4).map((item) => (
-              <button key={item.id} type="button" onClick={() => navigate(item.id ? `/projects/${item.id}/board` : '/projects')} className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.name}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.created_at ? format(timeService.instant(item.created_at), 'MMM d, h:mm a') : 'Recently'}</p>
-              </button>
-            ))}
-            {!(recent?.projects || []).length ? <EmptyState title="No operating signals" description="Project movement will appear here as work changes." /> : null}
-          </div>
-        </div>
-        <div className="card p-5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
-          <div className="mt-4 space-y-3">
-            {activity.slice(0, 4).map((item) => (
-              <div key={item.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.title}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.message}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section> */}
-=======
         </section>
       ))}
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
     </div>
   )
 }

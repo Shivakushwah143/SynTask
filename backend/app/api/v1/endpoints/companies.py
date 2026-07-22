@@ -12,11 +12,8 @@ from app.models.subscription_plan import SubscriptionPlan as SubscriptionPlanDoc
 from app.core.security import get_password_hash
 from app.api.dependencies import get_current_user, get_current_super_admin
 from app.api.deps import Pagination20, PaginationParams
-<<<<<<< HEAD
 from app.core.clock import utc_now
-=======
 from app.schemas.admin_permissions import normalize_modules
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
 
 
 router = APIRouter()

@@ -209,13 +209,8 @@ const Attendance = () => {
               </span>
             </div>
 
-<<<<<<< HEAD
-            <h3 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mb-0.5">{status}</h3>
-            <p className="text-xs text-gray-500 mb-1">{format(timeService.now(), 'eeee, MMMM dd')}</p>
-=======
             <h3 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-0.5">{status}</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{format(new Date(), 'eeee, MMMM dd')}</p>
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
 
             {/* Login time + late indicator */}
             {loginTime && (

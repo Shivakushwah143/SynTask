@@ -140,24 +140,6 @@ export default function EODReports() {
   }
 
   return (
-<<<<<<< HEAD
-    <div className="space-y-6">
-      <PageHeader
-        title="Daily Work Report"
-        description={canSubmitOwnReport ? 'Submit one simple end-of-day summary for today.' : 'Review submitted and pending end-of-day reports for your company.'}
-        actions={canSubmitOwnReport ? <Badge label={statusLabel} colorKey={status === 'leave' ? 'pending' : status === 'submitted' ? 'submitted' : 'draft'} /> : null}
-      />
-
-      {canSubmitOwnReport ? (
-        <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-          <div className="card p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-text-primary">Today&apos;s EOD</h2>
-                <p className="mt-1 text-sm text-text-muted">{format(timeService.now(), 'EEEE, MMM d, yyyy')}</p>
-              </div>
-              {status === 'submitted' ? <Edit3 className="h-5 w-5 text-primary-600" /> : <ClipboardCheck className="h-5 w-5 text-primary-600" />}
-=======
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
@@ -167,7 +149,6 @@ export default function EODReports() {
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
               <ClipboardCheck className="h-6 w-6" />
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
             </div>
             <div>
               <h1 className="text-2xl font-bold md:text-3xl">Daily Work Report</h1>

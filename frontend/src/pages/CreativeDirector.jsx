@@ -675,17 +675,6 @@ export default function CreativeDirector() {
                       </div>
                     </div>
 
-<<<<<<< HEAD
-                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Version comparison</div>
-                      <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
-                        Compare the selected asset against prior review history and keep the current version visible while discussing changes.
-                      </p>
-                      <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                        <p>Latest review: {reviewDetail.review.completed_at ? format(timeService.instant(reviewDetail.review.completed_at), 'MMM d, HH:mm') : 'Not completed'}</p>
-                        <p>Selected asset: {selectedFile?.name || selectedFile?.original_name || 'No asset selected'}</p>
-                        <p>Project: {selectedProject?.name || 'No project selected'}</p>
-=======
                     {/* Version Comparison */}
                     <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
                       <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Version Comparison</h4>
@@ -708,7 +697,6 @@ export default function CreativeDirector() {
                             {selectedProject?.name || 'No project selected'}
                           </span>
                         </div>
->>>>>>> 437b1db4ce97c87ae8106149c6105555b058c4e4
                       </div>
                     </div>
 
