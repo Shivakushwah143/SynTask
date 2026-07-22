@@ -905,9 +905,9 @@ const Tickets = () => {
                 onChange={(e) => setFilters({ ...filters, status: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All statuses</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All statuses</option>
                 {sortedStatuses.map(status => (
-                  <option key={status.id} value={status.id}>{status.label}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status.id} value={status.id}>{status.label}</option>
                 ))}
               </select>
             </div>
@@ -918,9 +918,9 @@ const Tickets = () => {
                 onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All priorities</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All priorities</option>
                 {Object.keys(priorities).map(priority => (
-                  <option key={priority} value={priority}>{priorities[priority].label}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={priority} value={priority}>{priorities[priority].label}</option>
                 ))}
               </select>
             </div>
@@ -931,9 +931,9 @@ const Tickets = () => {
                 onChange={(e) => setFilters({ ...filters, type: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All types</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
                 {Object.keys(types).map(type => (
-                  <option key={type} value={type}>{types[type]}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={type} value={type}>{types[type]}</option>
                 ))}
               </select>
             </div>
