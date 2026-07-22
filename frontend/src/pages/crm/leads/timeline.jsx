@@ -16,6 +16,7 @@ import {
 import { format, isToday, isYesterday } from 'date-fns'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, EmptyState } from '../../../components/ui'
+import { timeService } from '@/services/timeService'
 
 const TIMELINE_FILTERS = [
   { key: 'all', label: 'All' },
@@ -53,13 +54,13 @@ const TIMELINE_CATEGORY_LABELS = {
 
 const formatTimestamp = (value) => {
   if (!value) return 'N/A'
-  const date = new Date(value)
+  const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return 'N/A'
   return format(date, 'MMM d, yyyy h:mm a')
 }
 
 const formatDayLabel = (value) => {
-  const date = new Date(value)
+  const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return 'Unknown day'
   if (isToday(date)) return 'Today'
   if (isYesterday(date)) return 'Yesterday'
@@ -106,7 +107,7 @@ const groupItemsByDay = (items) => {
   const lookup = new Map()
 
   items.forEach((item) => {
-    const timestamp = item?.timestamp ? new Date(item.timestamp) : null
+    const timestamp = item?.timestamp ? timeService.instant(item.timestamp) : null
     if (!timestamp || Number.isNaN(timestamp.getTime())) return
     const dayKey = format(timestamp, 'yyyy-MM-dd')
     if (!lookup.has(dayKey)) {

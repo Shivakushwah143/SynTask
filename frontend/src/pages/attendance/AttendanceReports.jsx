@@ -10,6 +10,7 @@ import { usersAPI } from '../../api/users'
 import { useAuthStore } from '../../store/authStore'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
+import { timeService } from '@/services/timeService'
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -46,8 +47,8 @@ const AttendanceReports = () => {
   const [exporting, setExporting] = useState(false)
 
   // Filters
-  const [startDate, setStartDate] = useState(format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'))
-  const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [startDate, setStartDate] = useState(format(timeService.addDays(timeService.now(), -7), 'yyyy-MM-dd'))
+  const [endDate, setEndDate] = useState(format(timeService.now(), 'yyyy-MM-dd'))
   const [employeeId, setEmployeeId] = useState('')
 
   // Load roster for dropdown (if admin/manager/lead)
@@ -123,19 +124,19 @@ const AttendanceReports = () => {
   }
 
   const columns = [
-    { key: 'date', header: 'Date', render: (row) => format(new Date(row.date), 'MMM d, yyyy') },
+    { key: 'date', header: 'Date', render: (row) => format(timeService.instant(row.date), 'MMM d, yyyy') },
     ...(isEmployee ? [] : [
       { key: 'employee_name', header: 'Employee', render: (row) => row.employee_name }
     ]),
     {
       key: 'login_time',
       header: 'Login',
-      render: (row) => row.login_time ? format(new Date(row.login_time), 'hh:mm a') : '—'
+      render: (row) => row.login_time ? format(timeService.instant(row.login_time), 'hh:mm a') : '—'
     },
     {
       key: 'logout_time',
       header: 'Logout',
-      render: (row) => row.logout_time ? format(new Date(row.logout_time), 'hh:mm a') : 'Active'
+      render: (row) => row.logout_time ? format(timeService.instant(row.logout_time), 'hh:mm a') : 'Active'
     },
     {
       key: 'total_working_hours',

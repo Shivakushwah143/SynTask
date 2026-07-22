@@ -20,6 +20,7 @@ from app.models.meeting import Meeting, MeetingStatus
 from app.notification_center.models import Notification, NotificationType
 from app.crm.models import SalesProspect
 from app.models.user import User, UserRole, UserStatus
+from app.core.clock import utc_now
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -40,7 +41,7 @@ def _priority_value(value: Optional[str]) -> CRMActivityPriority:
 
 
 def _now() -> datetime:
-    return datetime.now()
+    return utc_now()
 
 
 def _lead_or_404(current_user: User, lead_id: str) -> SalesProspect:

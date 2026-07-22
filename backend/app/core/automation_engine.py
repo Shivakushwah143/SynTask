@@ -9,6 +9,7 @@ from app.models.automation import AutomationRule, AutomationExecution, Automatio
 from app.models.task import Task, TaskStatus, TaskPriority
 from app.models.user import User
 from app.models.notification import Notification, NotificationType
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ class AutomationEngine:
             
             # Update rule statistics
             rule.run_count += 1
-            rule.last_run_at = datetime.now()
+            rule.last_run_at = utc_now()
             await rule.save()
             
             return len(actions_failed) == 0
@@ -155,7 +156,7 @@ class AutomationEngine:
         if task:
             task.assigned_to = assignee_id
             task.assigned_by = trigger_data.get("user_id")
-            task.updated_at = datetime.now()
+            task.updated_at = utc_now()
             await task.save()
     
     @staticmethod
@@ -171,9 +172,9 @@ class AutomationEngine:
             task = await Task.get(task_id)
             if task:
                 task.status = TaskStatus(new_status.lower())
-                task.updated_at = datetime.now()
+                task.updated_at = utc_now()
                 if new_status.lower() == "completed":
-                    task.completed_at = datetime.now()
+                    task.completed_at = utc_now()
                 await task.save()
         except:
             pass
@@ -191,7 +192,7 @@ class AutomationEngine:
             task = await Task.get(task_id)
             if task:
                 task.priority = TaskPriority(priority.lower())
-                task.updated_at = datetime.now()
+                task.updated_at = utc_now()
                 await task.save()
         except:
             pass
@@ -253,7 +254,7 @@ class AutomationEngine:
         task = await Task.get(task_id)
         if task and hasattr(task, field):
             setattr(task, field, value)
-            task.updated_at = datetime.now()
+            task.updated_at = utc_now()
             await task.save()
 
 

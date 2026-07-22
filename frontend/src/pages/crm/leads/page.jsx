@@ -24,6 +24,7 @@ import BulkImportLeadsModal from '../../../components/BulkImportProspectsModal'
 import { useAuthStore } from '../../../store/authStore'
 import { isEmployeeRole, normalizeRole } from '../../../utils/roles'
 import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, normalizeText } from '../pipeline/utils'
+import { timeService } from '@/services/timeService'
 
 // Helper functions (keeping existing ones)
 const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
@@ -176,7 +177,7 @@ export default function CRMLeadsPage() {
   const allLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []), [stages])
   const stageOptions = useMemo(() => stages.filter((stage) => (stage.leads || []).length).map((stage) => ({ value: stage.key, label: stage.name })), [stages])
   const totalPipelineValue = useMemo(() => allLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0), [allLeads])
-  const leadAnalytics = useMemo(() => buildLeadDashboardAnalytics(allLeads, stages, new Date(), pipelineQuery.data?.meta?.currency || 'INR'), [allLeads, pipelineQuery.data?.meta?.currency, stages])
+  const leadAnalytics = useMemo(() => buildLeadDashboardAnalytics(allLeads, stages, timeService.now(), pipelineQuery.data?.meta?.currency || 'INR'), [allLeads, pipelineQuery.data?.meta?.currency, stages])
   
   const filteredLeads = useMemo(() => {
     const query = normalizeText(leadSearch)
@@ -361,7 +362,7 @@ export default function CRMLeadsPage() {
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `crm-leads-${new Date().toISOString().slice(0, 10)}.csv`
+    anchor.download = `crm-leads-${timeService.toUtcISOString(timeService.now()).slice(0, 10)}.csv`
     anchor.click()
     URL.revokeObjectURL(url)
     toast.success('Leads exported')
@@ -1464,13 +1465,13 @@ export function getOwnerName(lead, userNameById = new Map()) {
   return 'Unassigned'
 }
 
-export function buildLeadDashboardAnalytics(leads = [], stages = [], now = new Date(), currency = 'INR') {
-  const monthFormatter = new Intl.DateTimeFormat('en', { month: 'short' })
+export function buildLeadDashboardAnalytics(leads = [], stages = [], now = timeService.now(), currency = 'INR') {
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const monthKeys = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1)
+    const date = timeService.instantFromParts(now.getFullYear(), now.getMonth() - (5 - index), 1)
     return {
       key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
-      name: monthFormatter.format(date),
+      name: monthNames[date.getMonth()],
       count: 0,
       value: 0,
     }
@@ -1478,7 +1479,7 @@ export function buildLeadDashboardAnalytics(leads = [], stages = [], now = new D
   const monthByKey = new Map(monthKeys.map((item) => [item.key, item]))
   leads.forEach((lead) => {
     const rawDate = lead.created_at || lead.updated_at || lead.estimated_close_date
-    const date = rawDate ? new Date(rawDate) : null
+    const date = rawDate ? timeService.instant(rawDate) : null
     if (!date || Number.isNaN(date.getTime())) return
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
     const bucket = monthByKey.get(key)

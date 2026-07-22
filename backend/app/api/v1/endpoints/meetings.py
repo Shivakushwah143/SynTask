@@ -1,7 +1,7 @@
 """
 Meeting Management Endpoints with Zoom Integration
 """
-from fastapi import APIRouter, HTTPException, status, Depends, Form, Query
+from fastapi import APIRouter, HTTPException, status as http_status, Depends, Form, Query
 from typing import Optional, List
 from datetime import datetime, timedelta
 import logging
@@ -20,6 +20,7 @@ from app.api.dependencies import (
 from app.core.zoom import ZoomService
 from app.core.config import settings
 from app.services.timeline_service import create_timeline_event
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ MEETING_PARTICIPANT_ROLES_BY_CREATOR = {
 def validate_meeting_duration(duration: int) -> None:
     if duration < 1 or duration > 60:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Duration must be between 1 and 60 minutes",
         )
 
@@ -46,7 +47,7 @@ def validate_meeting_participant_role(current_user: User, participant: User) -> 
     allowed_roles = MEETING_PARTICIPANT_ROLES_BY_CREATOR.get(current_user.role, set())
     if participant.role not in allowed_roles:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Participants must be junior users available to the meeting creator",
         )
 
@@ -79,7 +80,7 @@ def validate_meeting_access(current_user: User, meeting: Meeting) -> None:
     check_company_access(current_user, meeting.company_id)
     if not can_view_meeting(current_user, meeting):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=http_status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this meeting",
         )
 
@@ -88,7 +89,7 @@ def validate_meeting_management_access(current_user: User, meeting: Meeting) -> 
     check_company_access(current_user, meeting.company_id)
     if not can_manage_meeting(current_user, meeting):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Only the meeting host or admin can manage this meeting",
         )
 
@@ -100,15 +101,15 @@ def parse_meeting_datetime(meeting_date: str, meeting_time: str) -> datetime:
         return datetime.combine(date_obj, time_obj)
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid date or time format: {str(e)}",
         )
 
 
 def validate_future_meeting_datetime(meeting_datetime: datetime) -> None:
-    if meeting_datetime < datetime.now():
+    if meeting_datetime < utc_now():
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="Meeting date and time must be in the future",
         )
 
@@ -208,12 +209,12 @@ async def create_meeting(
                 participant = await User.get(pid)
                 if not participant:
                     raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
+                        status_code=http_status.HTTP_400_BAD_REQUEST,
                         detail=f"Participant {pid} not found"
                     )
                 if participant.company_id != current_user.company_id:
                     raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
+                        status_code=http_status.HTTP_400_BAD_REQUEST,
                         detail=f"Participant {pid} is not in your company"
                     )
                 validate_meeting_participant_role(current_user, participant)
@@ -308,7 +309,7 @@ async def create_meeting(
     except Exception as e:
         logger.error(f"Error creating meeting: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create meeting: {str(e)}"
         )
 
@@ -317,7 +318,7 @@ async def create_meeting(
 async def list_meetings(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None),
+    meeting_status: Optional[str] = Query(None, alias="status"),
     upcoming: bool = Query(False),
     current_user: User = Depends(get_current_user),
 ):
@@ -325,24 +326,25 @@ async def list_meetings(
     query = {"company_id": current_user.company_id}
     
     # Filter by status if provided
-    if status:
+    if meeting_status:
         try:
-            query["status"] = MeetingStatus(status)
+            query["status"] = MeetingStatus(meeting_status)
         except ValueError:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status: {status}"
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status: {meeting_status}"
             )
 
     if upcoming:
-        query["meeting_date"] = {"$gte": datetime.now()}
+        query["meeting_date"] = {"$gte": utc_now()}
     
     query["$or"] = [
         {"host_id": str(current_user.id)},
         {"participant_ids": str(current_user.id)}
     ]
     
-    meetings = await Meeting.find(query).sort(-Meeting.meeting_date).skip(skip).limit(limit).to_list()
+    sort_direction = Meeting.meeting_date if upcoming else -Meeting.meeting_date
+    meetings = await Meeting.find(query).sort(sort_direction).skip(skip).limit(limit).to_list()
     total = await Meeting.find(query).count()
     
     # Enrich with user details
@@ -384,7 +386,7 @@ async def update_meeting(
     """Update meeting details and reschedule when date/time changes"""
     meeting = await Meeting.get(meeting_id)
     if not meeting:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Meeting not found")
 
     validate_meeting_management_access(current_user, meeting)
 
@@ -410,13 +412,13 @@ async def update_meeting(
         for pid in participant_list:
             participant = await User.get(pid)
             if not participant:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Participant {pid} not found")
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=f"Participant {pid} not found")
             if participant.company_id != current_user.company_id:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Participant {pid} is not in your company")
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=f"Participant {pid} is not in your company")
             validate_meeting_participant_role(current_user, participant)
         meeting.participant_ids = participant_list
 
-    meeting.updated_at = datetime.utcnow()
+    meeting.updated_at = utc_now()
     await meeting.save()
 
     await publish_event(
@@ -438,13 +440,13 @@ async def update_meeting(
 async def start_meeting(meeting_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
     meeting = await Meeting.get(meeting_id)
     if not meeting:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Meeting not found")
     validate_meeting_management_access(current_user, meeting)
     if meeting.status == MeetingStatus.CANCELLED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled meetings cannot be started")
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Cancelled meetings cannot be started")
     meeting.status = MeetingStatus.ONGOING
-    meeting.started_at = datetime.utcnow()
-    meeting.updated_at = datetime.utcnow()
+    meeting.started_at = utc_now()
+    meeting.updated_at = utc_now()
     await meeting.save()
     return {"success": True, "message": "Meeting started", "meeting": await serialize_meeting_response(meeting, current_user)}
 
@@ -453,13 +455,13 @@ async def start_meeting(meeting_id: str, current_user: User = Depends(get_curren
 async def complete_meeting(meeting_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
     meeting = await Meeting.get(meeting_id)
     if not meeting:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Meeting not found")
     validate_meeting_management_access(current_user, meeting)
     if meeting.status == MeetingStatus.CANCELLED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled meetings cannot be completed")
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Cancelled meetings cannot be completed")
     meeting.status = MeetingStatus.COMPLETED
-    meeting.ended_at = datetime.utcnow()
-    meeting.updated_at = datetime.utcnow()
+    meeting.ended_at = utc_now()
+    meeting.updated_at = utc_now()
     await meeting.save()
     return {"success": True, "message": "Meeting completed", "meeting": await serialize_meeting_response(meeting, current_user)}
 
@@ -468,12 +470,12 @@ async def complete_meeting(meeting_id: str, current_user: User = Depends(get_cur
 async def cancel_meeting(meeting_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
     meeting = await Meeting.get(meeting_id)
     if not meeting:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Meeting not found")
     validate_meeting_management_access(current_user, meeting)
     if meeting.zoom_meeting_id and settings.ZOOM_API_KEY_COMPUTED:
         await zoom_service.delete_meeting(meeting.zoom_meeting_id, current_user.email)
     meeting.status = MeetingStatus.CANCELLED
-    meeting.updated_at = datetime.utcnow()
+    meeting.updated_at = utc_now()
     await meeting.save()
     return {"success": True, "message": "Meeting cancelled", "meeting": await serialize_meeting_response(meeting, current_user)}
 
@@ -488,7 +490,7 @@ async def get_meeting(
     
     if not meeting:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="Meeting not found"
         )
     
@@ -496,7 +498,7 @@ async def get_meeting(
     
     if not can_view_meeting(current_user, meeting):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=http_status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this meeting"
         )
     
@@ -525,7 +527,7 @@ async def delete_meeting(
     
     if not meeting:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="Meeting not found"
         )
     
@@ -534,7 +536,7 @@ async def delete_meeting(
     # Only host or admin can delete
     if meeting.host_id != str(current_user.id) and current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Only the meeting host or admin can delete this meeting"
         )
     

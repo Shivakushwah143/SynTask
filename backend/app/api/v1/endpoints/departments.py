@@ -10,6 +10,7 @@ from app.models.department import Department, DepartmentType
 from app.models.task import Task
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.departments import DepartmentCreateRequest, DepartmentUpdateRequest
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -143,7 +144,7 @@ async def update_department(
     department.name = name
     department.department_type = payload.department_type
     department.manager_id = str(manager.id) if manager else None
-    department.updated_at = datetime.now()
+    department.updated_at = utc_now()
     await department.save()
 
     return _serialize_department(department)
@@ -203,8 +204,8 @@ async def delete_department(
             detail=f"Cannot delete department because it is still assigned to {', '.join(parts)}.",
         )
 
-    department.deleted_at = datetime.now()
-    department.updated_at = datetime.now()
+    department.deleted_at = utc_now()
+    department.updated_at = utc_now()
     await department.save()
 
     return {"message": "Department deleted successfully"}

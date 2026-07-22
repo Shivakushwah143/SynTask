@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -39,7 +40,7 @@ async def get_project_summary(
     
     # Calculate date range
     from datetime import timedelta
-    now = datetime.now()
+    now = utc_now()
     days_ago = now - timedelta(days=days)
     days_ahead = now + timedelta(days=days)
     

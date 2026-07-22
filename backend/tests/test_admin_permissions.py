@@ -183,6 +183,22 @@ def test_require_module_allows_tasks_or_tasks_projects(monkeypatch):
     asyncio.run(run_checks())
 
 
+def test_require_module_allows_chat_for_task_workspace_users(monkeypatch):
+    import asyncio
+    from app.api.dependencies import require_module
+
+    user_with_task = FakeUser(modules=["task"])
+    user_with_tasks_projects = FakeUser(modules=["tasks_projects"])
+
+    checker_chat = require_module("chat")
+
+    async def run_checks():
+        assert await checker_chat(current_user=user_with_task) == user_with_task
+        assert await checker_chat(current_user=user_with_tasks_projects) == user_with_tasks_projects
+
+    asyncio.run(run_checks())
+
+
 def test_overview_allows_admin_with_string_role(monkeypatch):
     actor = FakeUser(id="actor-1", role="admin", company_id="company-1")
     department = FakeDepartment(id="dept-1", name="Engineering", company_id="company-1", enabled_modules=["tasks_projects"])

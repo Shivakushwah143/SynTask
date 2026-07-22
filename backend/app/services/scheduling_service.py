@@ -3,7 +3,7 @@ Scheduling Service for SynTask Scheduling System
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, Dict, Any
 
 from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, ScheduledJobStatus
@@ -13,6 +13,7 @@ from app.models.timeline import TimelineEventType, TimelineModule
 from app.services.timeline_service import create_timeline_event
 from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
+from app.core.clock import parse_to_utc, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class SchedulingService:
         job = ScheduledJob(
             action_type=action_type,
             payload=payload,
-            run_at=run_at,
+            run_at=parse_to_utc(run_at),
             status=ScheduledJobStatus.PENDING,
             created_by=created_by,
             company_id=company_id,
@@ -45,7 +46,7 @@ class SchedulingService:
     @staticmethod
     async def execute_pending_jobs():
         """Find pending or failed (with retry < 3) jobs that are ready to run, lock and execute them"""
-        now = datetime.utcnow()
+        now = utc_now()
         # Find jobs matching criteria
         jobs = await ScheduledJob.find({
             "status": {"$in": [ScheduledJobStatus.PENDING.value, ScheduledJobStatus.FAILED.value]},
@@ -134,7 +135,7 @@ class SchedulingService:
 
                 # Success path
                 job.status = ScheduledJobStatus.COMPLETED
-                job.completed_at = datetime.utcnow()
+                job.completed_at = utc_now()
                 job.error = None
                 await job.save()
 

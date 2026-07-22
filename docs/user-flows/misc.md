@@ -29,6 +29,16 @@ flowchart TD
 - Notifications sent: none directly.
 - Related modules updated: many app areas by navigation.
 
+## Global Time Settings
+- How the user reaches it: navbar live clock.
+- What they can do: view active timezone, time format, seconds setting, and automatic/manual time mode.
+- What happens after every action: Admin and Super Admin changes save and immediately update clock/display formatting.
+- Backend APIs called: `GET /api/v1/time/settings`, `PUT /api/v1/time/settings`.
+- Timeline events created: none directly.
+- Notifications sent: none directly.
+- Related modules updated: all modules consume UTC timestamps and display through shared frontend time formatting.
+- Tenant isolation: settings mutate only the authenticated user; no cross-tenant user lookup is exposed.
+
 ## Global Reports
 - How the user reaches it: main navigation.
 - What they can do: inspect charts and switch time period.
@@ -46,6 +56,16 @@ flowchart TD
 - Timeline events created: this is the feed itself, not the source.
 - Notifications sent: none directly.
 - Related modules updated: supports all operational modules that emit activity.
+
+## Chat
+- How the user reaches it: global communication navigation or `/chat`.
+- What they can do: search same-company users, start direct conversations, create groups, and manage group membership where authorized.
+- What happens after every action: conversation and message panes update within the available content height below the navbar, without being hidden behind fixed navigation.
+- Backend APIs called: chat conversation, message, user search, and group APIs.
+- Timeline events created: none directly.
+- Notifications sent: message sends may create recipient notifications.
+- Related modules updated: Chat and Notifications.
+- Tenant isolation: user search and group membership remain scoped to the authenticated user's company.
 
 ## Calendar
 - How the user reaches it: main navigation.

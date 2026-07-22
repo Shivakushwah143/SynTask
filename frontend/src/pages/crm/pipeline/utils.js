@@ -1,4 +1,5 @@
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 export const PIPELINE_FILTER_KEYS = ['q', 'owner', 'priority', 'tags', 'minValue', 'maxValue', 'createdFrom', 'createdTo', 'stage']
 
@@ -46,7 +47,7 @@ export const formatCurrency = (value, currency = 'INR') => {
 
 export const formatShortDate = (value) => {
   if (!value) return 'N/A'
-  const date = new Date(value)
+  const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return 'N/A'
   return format(date, 'MMM d, yyyy')
 }
@@ -184,8 +185,8 @@ export const filterPipelineLeads = (leads = [], filters = PIPELINE_FILTER_DEFAUL
   const stage = normalizeText(filters.stage)
   const minValue = filters.minValue !== '' ? normalizeNumber(filters.minValue) : null
   const maxValue = filters.maxValue !== '' ? normalizeNumber(filters.maxValue) : null
-  const createdFrom = filters.createdFrom ? new Date(filters.createdFrom) : null
-  const createdTo = filters.createdTo ? new Date(filters.createdTo) : null
+  const createdFrom = filters.createdFrom ? timeService.instant(filters.createdFrom) : null
+  const createdTo = filters.createdTo ? timeService.instant(filters.createdTo) : null
 
   return leads.filter((lead) => {
     const searchText = buildLeadSearchText(lead)
@@ -196,7 +197,7 @@ export const filterPipelineLeads = (leads = [], filters = PIPELINE_FILTER_DEFAUL
     const leadStage = getLeadStageKey(lead)
     const dealValue = getLeadDealValue(lead)
     const createdAt = lead?.created_at || lead?.createdAt || lead?.created_date || lead?.createdDate
-    const createdDate = createdAt ? new Date(createdAt) : null
+    const createdDate = createdAt ? timeService.instant(createdAt) : null
 
     if (query && !searchText.includes(query)) return false
     if (owner && ownerValue !== owner && !ownerLabel.includes(owner)) return false
@@ -210,7 +211,7 @@ export const filterPipelineLeads = (leads = [], filters = PIPELINE_FILTER_DEFAUL
     if (maxValue !== null && dealValue > maxValue) return false
     if (createdFrom && createdDate && createdDate < createdFrom) return false
     if (createdTo && createdDate) {
-      const endOfDay = new Date(createdTo)
+      const endOfDay = timeService.instant(createdTo)
       endOfDay.setHours(23, 59, 59, 999)
       if (createdDate > endOfDay) return false
     }

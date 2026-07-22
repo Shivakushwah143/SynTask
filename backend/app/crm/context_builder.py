@@ -20,6 +20,7 @@ from app.models.sales_contact import SalesContact
 from app.crm.models import SalesProspect
 from app.models.task import Task
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -30,7 +31,7 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 
 
 def _now() -> datetime:
-    return datetime.now()
+    return utc_now()
 
 
 def _normalize_depth(depth: str) -> str:

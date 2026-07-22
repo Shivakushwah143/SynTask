@@ -6,8 +6,9 @@ import { eodAPI } from '../api/eod'
 import { Badge, Button, EmptyState, FormField, PageHeader, SkeletonCard, inputClassName } from '../components/ui'
 import { ROLE, normalizeRole } from '../utils/roles'
 import { useAuthStore } from '../store/authStore'
+import { timeService } from '@/services/timeService'
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
+const todayIso = () => timeService.toUtcISOString(timeService.now()).slice(0, 10)
 
 export const canReviewEODReports = (role) => [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(normalizeRole(role))
 

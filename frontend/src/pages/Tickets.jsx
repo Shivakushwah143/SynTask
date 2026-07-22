@@ -34,6 +34,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ROLE, normalizeRole } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 // Sortable Ticket Card Component
 const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
@@ -99,6 +100,12 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${priorityColors[ticket.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
             {priorities[ticket.priority]?.label || ticket.priority}
           </span>
+          {ticket.created_at ? (
+            <div className="flex items-center text-xs text-text-secondary dark:text-gray-400">
+              <Calendar className="mr-1 h-3.5 w-3.5" />
+              {format(timeService.instant(ticket.created_at), 'MMM d')}
+            </div>
+          ) : null}
           {ticket.assigned_to ? (
             <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
               <User className="h-3 w-3" />

@@ -9,6 +9,7 @@ import { tasksAPI } from '../../../api/tasks'
 import { usersAPI } from '../../../api/users'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
+import { timeService } from '@/services/timeService'
 
 const CALENDAR_QUERY_KEY = 'crm-calendar'
 const VIEW_OPTIONS = ['month', 'week', 'day', 'agenda']
@@ -109,7 +110,7 @@ export default function CRMCalendarPage() {
   const [owner, setOwner] = useState('')
   const [activityType, setActivityType] = useState('')
   const [search, setSearch] = useState('')
-  const [cursorDate, setCursorDate] = useState(() => new Date())
+  const [cursorDate, setCursorDate] = useState(() => timeService.now())
 
   const meetingsQuery = useQuery([CALENDAR_QUERY_KEY, 'meetings'], () => meetingsApi.list({ limit: 100 }), { staleTime: 60 * 1000 })
   const tasksQuery = useQuery([CALENDAR_QUERY_KEY, 'tasks'], () => tasksAPI.listTasks({ limit: 200 }), { staleTime: 60 * 1000 })
@@ -189,10 +190,10 @@ export default function CRMCalendarPage() {
         if (!q) return true
         return [item.title, item.description, item.ownerLabel, item.type].some((value) => String(value || '').toLowerCase().includes(q))
       })
-      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+      .sort((a, b) => timeService.instant(a.timestamp) - timeService.instant(b.timestamp))
   }, [activityType, activitiesQuery.data, meetingsQuery.data, owner, search, tasksQuery.data, usersById])
 
-  const today = startOfDay(new Date())
+  const today = startOfDay(timeService.now())
   const visibleEvents = useMemo(() => {
     if (view === 'agenda') return events
     if (view === 'day') return events.filter((event) => {
@@ -216,7 +217,7 @@ export default function CRMCalendarPage() {
   const upcomingEvents = events
     .filter((event) => {
       const date = parseCalendarTimestamp(event.timestamp)
-      return date ? date > new Date() : false
+      return date ? date > timeService.now() : false
     })
     .slice(0, 8)
 

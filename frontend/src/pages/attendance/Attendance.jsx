@@ -7,6 +7,7 @@ import {
 import { PageHeader, Button, Badge } from '../../components/ui'
 import { useMonitoringSocket } from '../../hooks/useMonitoringSocket'
 import { format, parseISO } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const formatTime = (totalSeconds) => {
   const s = Math.max(0, Math.floor(totalSeconds))

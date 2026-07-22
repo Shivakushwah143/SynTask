@@ -17,6 +17,7 @@ from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.crm.models import SalesProspect
 from app.models.task import Task
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 ENTITY_TYPES = {"lead", "company", "contact"}
@@ -691,7 +692,7 @@ class CRMActivitiesService:
             "overdue": sum(
                 1
                 for item in feed_items
-                if item.get("due_date") and item.get("status") != CRMActivityStatus.COMPLETED.value and item["due_date"] < datetime.now()
+                if item.get("due_date") and item.get("status") != CRMActivityStatus.COMPLETED.value and item["due_date"] < utc_now()
             ),
             "completed": sum(1 for item in feed_items if item.get("status") == CRMActivityStatus.COMPLETED.value),
             "scheduled": sum(1 for item in feed_items if item.get("status") == CRMActivityStatus.SCHEDULED.value),
@@ -731,7 +732,7 @@ class CRMActivitiesService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
         activity_type = _activity_type_value(payload.get("activity_type"))
-        now = datetime.now()
+        now = utc_now()
         owner_id = str(payload.get("owner_id") or "").strip() or None
         owner_name = None
         if owner_id:
@@ -819,7 +820,7 @@ class CRMActivitiesService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
         entity_context = await _resolve_entity(current_user, activity.entity_type, activity.entity_id)
-        now = datetime.now()
+        now = utc_now()
 
         if "title" in payload:
             title = str(payload.get("title") or "").strip()
@@ -917,7 +918,7 @@ class CRMActivitiesService:
         if activity.company_id != company_id and current_user.role != UserRole.SUPER_ADMIN:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-        now = datetime.now()
+        now = utc_now()
         activity.deleted = True
         activity.deleted_at = now
         activity.deleted_by = str(getattr(current_user, "id", ""))

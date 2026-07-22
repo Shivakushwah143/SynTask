@@ -15,6 +15,7 @@ from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.ticket import Ticket, TicketPriority, TicketStatus
 from app.models.user import User, UserRole, UserStatus
 from app.api.dependencies import get_project_by_id
+from app.core.clock import utc_now
 
 
 class ContextBuilder:
@@ -81,7 +82,7 @@ class ContextBuilder:
 
         serialized_tasks: list[dict[str, Any]] = []
         today = for_date
-        now = datetime.now()
+        now = utc_now()
         for task in tasks:
             due_date = task.due_date.date() if task.due_date else None
             days_until_due = (due_date - today).days if due_date else None

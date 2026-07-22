@@ -69,6 +69,12 @@ def _module_access_allowed(module_name: str, user_modules: list[str]) -> bool:
         return "task" in normalized_modules or "tasks_projects" in normalized_modules
     if module_name == "tasks_projects":
         return "tasks_projects" in normalized_modules or "task" in normalized_modules
+    if module_name == "chat":
+        return (
+            "chat" in normalized_modules
+            or "task" in normalized_modules
+            or "tasks_projects" in normalized_modules
+        )
     return module_name in normalized_modules
 
 

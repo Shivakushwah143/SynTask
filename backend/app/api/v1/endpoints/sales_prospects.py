@@ -22,6 +22,7 @@ from app.models.sales_product import SalesProduct
 from app.models.sales_masters import SalesStage
 from app.models.sales_import_job import SalesImportJob
 from app.crm.lead_engine import LeadEngine
+from app.core.clock import utc_now
 
 
 router = APIRouter()
@@ -81,11 +82,11 @@ async def bulk_merge_prospects(payload: BulkLeadMergeRequest, current_user: User
         merged_products = list({*(target.product_ids or []), *(source.product_ids or [])})
         target.tag = merged_tags
         target.product_ids = merged_products
-        target.updated_at = datetime.now()
+        target.updated_at = utc_now()
         await target.save()
 
         source.deleted = True
-        source.updated_at = datetime.now()
+        source.updated_at = utc_now()
         await source.save()
 
         total_merged += 1
@@ -548,7 +549,7 @@ async def create_prospect(
             "category_id": category_id,
             "product_ids": _parse_multi_value(product_ids) if product_ids else [],
             "interest_level": interest_level or "medium",
-            "estimated_close_date": estimated_close_date or datetime.now().date().isoformat(),
+            "estimated_close_date": estimated_close_date or utc_now().date().isoformat(),
             "assigned_to": assigned_to,
             "current_stage": current_stage or "new",
             "email": email,

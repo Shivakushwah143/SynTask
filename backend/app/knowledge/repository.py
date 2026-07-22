@@ -4,16 +4,17 @@ from datetime import datetime
 from typing import List, Optional
 
 from app.models.knowledge import KnowledgeRecord, KnowledgeStatus
+from app.core.clock import utc_now
 
 
 class KnowledgeRepository:
     async def create(self, record: KnowledgeRecord) -> KnowledgeRecord:
-        record.updated_at = datetime.now()
+        record.updated_at = utc_now()
         await record.insert()
         return record
 
     async def update(self, record: KnowledgeRecord) -> KnowledgeRecord:
-        record.updated_at = datetime.now()
+        record.updated_at = utc_now()
         await record.save()
         return record
 

@@ -17,6 +17,7 @@ import { versionsApi } from '../api/versions'
 import { canCreateProject, canManageProject, normalizeRole } from '../utils/roles'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
+import { timeService } from '@/services/timeService'
 import {
   buildProjectGraphRows,
   buildProjectGraphSummary,
@@ -298,7 +299,7 @@ export default function Projects() {
     const nextErrors = {}
     if (!formData.name.trim()) nextErrors.name = 'Project name is required.'
     if (!formData.key.trim()) nextErrors.key = 'Project key is required.'
-    if (formData.start_date && formData.delivery_date && new Date(formData.delivery_date) < new Date(formData.start_date)) {
+    if (formData.start_date && formData.delivery_date && timeService.instant(formData.delivery_date) < timeService.instant(formData.start_date)) {
       nextErrors.delivery_date = 'Delivery date must be after the start date.'
     }
     setFormErrors(nextErrors)
@@ -312,23 +313,23 @@ export default function Projects() {
       setSubmitting(true)
       const payload = { ...formData }
       payload.project_id = payload.project_id.trim() || payload.key.trim()
-      if (payload.start_date) payload.start_date = new Date(payload.start_date).toISOString()
-      if (payload.delivery_date) payload.delivery_date = new Date(payload.delivery_date).toISOString()
+      if (payload.start_date) payload.start_date = timeService.toUtcISOString(payload.start_date)
+      if (payload.delivery_date) payload.delivery_date = timeService.toUtcISOString(payload.delivery_date)
       
       if (createMode === 'schedule') {
         if (!scheduleRunAt) {
           toast.error('Schedule time is required')
           return
         }
-        const runAt = new Date(scheduleRunAt)
-        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+        const runAt = timeService.instant(scheduleRunAt)
+        if (Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
           toast.error('Schedule time must be in the future')
           return
         }
         await scheduledJobsAPI.scheduleJob({
           action_type: 'CREATE_PROJECT',
           payload,
-          run_at: runAt.toISOString(),
+          run_at: timeService.toUtcISOString(runAt),
         })
         toast.success('Project scheduled successfully')
         setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })

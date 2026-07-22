@@ -10,6 +10,7 @@ import logging
 from app.finance.models import Invoice, InvoiceStatus
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, get_current_company_admin_or_lead, check_company_access
+from app.core.clock import utc_now
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ async def get_ledger(
         invoice_list = []
         for inv in paginated_invoices:
             # Calculate days passed
-            days_passed = (datetime.now() - inv.invoice_date).days if inv.invoice_date else 0
+            days_passed = (utc_now() - inv.invoice_date).days if inv.invoice_date else 0
             
             invoice_list.append({
                 "id": str(inv.id),
@@ -148,7 +149,7 @@ async def add_payment(
         check_company_access(current_user, invoice.company_id)
         
         # Parse payment date
-        payment_date_obj = datetime.now()
+        payment_date_obj = utc_now()
         if payment_date:
             try:
                 payment_date_obj = datetime.fromisoformat(payment_date.replace('Z', '+00:00'))
@@ -183,7 +184,7 @@ async def add_payment(
         elif invoice.total_received > 0:
             invoice.status = InvoiceStatus.SENT  # Partially paid
         
-        invoice.updated_at = datetime.now()
+        invoice.updated_at = utc_now()
         await invoice.save()
         
         return {
@@ -247,7 +248,7 @@ async def update_tds(
         elif invoice.total_received > 0:
             invoice.status = InvoiceStatus.SENT
         
-        invoice.updated_at = datetime.now()
+        invoice.updated_at = utc_now()
         await invoice.save()
         
         return {

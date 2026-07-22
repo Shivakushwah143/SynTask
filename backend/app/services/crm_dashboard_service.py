@@ -20,6 +20,7 @@ from app.models.sales_product import SalesProduct
 from app.models.sales_prospect import SalesProspect, ProspectStatus
 from app.models.sales_contact import SalesContact
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 def _get_last_12_month_labels(reference: datetime) -> List[str]:
@@ -114,7 +115,7 @@ def _stage_weight(stage: str) -> float:
 
 
 async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
-    now = datetime.now()
+    now = utc_now()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     quarter_start_month = ((now.month - 1) // 3) * 3 + 1
     quarter_start = now.replace(month=quarter_start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -269,7 +270,7 @@ async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
 
 
 async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
-    now = datetime.now()
+    now = utc_now()
     month_labels = _get_last_12_month_labels(now)
     month_ranges = _build_month_ranges(now)
 

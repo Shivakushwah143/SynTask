@@ -8,6 +8,7 @@ import { salesApi } from '../../api/sales'
 import { usersAPI } from '../../api/users'
 import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, PhoneInput, SkeletonTable, Table } from '../../components/ui'
 import { asArray, formatDate, getId } from '../phase4Utils'
+import { timeService } from '@/services/timeService'
 
 const normalizeLeadCsvHeader = (header = '') => {
   const normalized = String(header)
@@ -353,7 +354,7 @@ function LeadModal({ isOpen, onClose, onDone }) {
     category_id: '',
     product_ids: [],
     interest_level: 'warm',
-    estimated_close_date: new Date().toISOString().slice(0, 10),
+    estimated_close_date: timeService.toUtcISOString(timeService.now()).slice(0, 10),
     assigned_to: '',
     current_stage: '',
     email: '',

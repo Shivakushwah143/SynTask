@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Clock, CheckSquare, Ticket, MessageSquare, User, Activity, Filter, Calendar, Search, RefreshCw, Zap, TrendingUp, BarChart3 } from 'lucide-react'
 import { activityAPI } from '../api/activity'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 import { PageHeader, Button, Badge } from '../components/ui'
 
 // Stat Card Component

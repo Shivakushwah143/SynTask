@@ -5,6 +5,7 @@ import { companiesAPI } from '../api/companies'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Button, FormField, Modal, PasswordInput, PhoneInput, inputClassName } from '../components/ui'
 import toast from 'react-hot-toast'
+import { timeService } from '@/services/timeService'
 
 const Companies = () => {
   const { confirm } = useConfirmation()
@@ -294,7 +295,7 @@ const Companies = () => {
                     <p className="text-sm text-gray-500">{company.email}</p>
                     {company.created_at && (
                       <p className="text-xs text-gray-400 mt-1">
-                        Registered: {format(new Date(company.created_at), 'MMM d, yyyy')}
+                        Registered: {format(timeService.instant(company.created_at), 'MMM d, yyyy')}
                       </p>
                     )}
                   </div>

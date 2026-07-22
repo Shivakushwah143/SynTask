@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from app.models.timeline import TimelineEvent, TimelineEventType, TimelineModule
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ async def create_timeline_event(
             description=description,
             related_module=normalized_module,
             related_record_id=str(related_record_id) if related_record_id else None,
-            timestamp=timestamp or datetime.now(),
+            timestamp=timestamp or utc_now(),
             metadata=metadata or {},
             actor_id=str(actor_id) if actor_id else None,
             idempotency_key=key,

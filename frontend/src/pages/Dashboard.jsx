@@ -90,6 +90,7 @@ import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
 import DonutLegendChart from '../components/charts/DonutLegendChart'
 import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthData, buildTaskDuePriorityData } from './dashboardData'
 import { DashboardSectionVisibilityPanel } from './DashboardSectionVisibilityPanelView.jsx'
+import { timeService } from '@/services/timeService'
 
 // ============================================================
 // STAT CARD COMPONENT
@@ -338,7 +339,7 @@ const Dashboard = () => {
     const fetchCalendarData = async () => {
       setCalendarLoading(true);
       try {
-        const today = new Date();
+        const today = timeService.now();
         const startStr = format(today, 'yyyy-MM-dd');
         const endStr = format(addDays(today, 30), 'yyyy-MM-dd');
         const { data: workspaceResp } = await calendarApi.getEvents({
@@ -360,21 +361,21 @@ const Dashboard = () => {
 
         const upcomingDead = workspaceEvents.filter((e) => {
           if (e.type !== 'task_due' || !e.start) return false;
-          const dueDate = new Date(e.start);
+          const dueDate = timeService.instant(e.start);
           return dueDate > today && dueDate <= addDays(today, 3) && e.status !== 'completed';
         });
         setUpcomingDeadlines(upcomingDead);
 
         const upcomingMeet = workspaceEvents.filter((e) => {
           if (e.type !== 'meeting' || !e.start) return false;
-          const meetDate = new Date(e.start);
+          const meetDate = timeService.instant(e.start);
           return meetDate >= today;
         });
         setUpcomingMeetingsList(upcomingMeet);
 
         const overdue = workspaceEvents.filter((e) => {
           if (e.type !== 'task_due' || !e.start) return false;
-          const dueDate = new Date(e.start);
+          const dueDate = timeService.instant(e.start);
           return dueDate < today && e.status !== 'completed';
         });
         setOverdueTasksList(overdue);
@@ -407,7 +408,7 @@ const Dashboard = () => {
     }
   }, [sectionOrder])
 
-  const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d').toUpperCase(), [])
+  const todayLabel = useMemo(() => format(timeService.now(), 'EEEE, MMM d').toUpperCase(), [])
 
   const handleExport = async () => {
     try {
@@ -483,10 +484,10 @@ const Dashboard = () => {
         primary: revenueMode === 'Accrual' ? Number(closedSeries[index] || 0) : Number(targetSeries[index] || 0),
         secondary: revenueMode === 'Accrual' ? Number(targetSeries[index] || 0) : Number(closedSeries[index] || 0),
       }))
-    : MONTH_LABELS.slice(0, new Date().getMonth() + 1).map((label, index) => ({
+    : MONTH_LABELS.slice(0, timeService.now().getMonth() + 1).map((label, index) => ({
         label,
-        primary: index === new Date().getMonth() ? Number(metrics?.revenue || 0) : 0,
-        secondary: index === new Date().getMonth() ? Number(metrics?.won_deals || 0) : 0,
+        primary: index === timeService.now().getMonth() ? Number(metrics?.revenue || 0) : 0,
+        secondary: index === timeService.now().getMonth() ? Number(metrics?.won_deals || 0) : 0,
       }))
 
   const revenueTrend = canSeeSalesWidgets ? revenueTrendData : []
@@ -557,7 +558,7 @@ const Dashboard = () => {
     { key: 'name', header: 'Project' },
     { key: 'status', header: 'Status', render: (row) => <Badge label={row.status || 'active'} colorKey={row.status || 'active'} /> },
     { key: 'task_count', header: 'Tasks' },
-    { key: 'delivery_date', header: 'Delivery', render: (row) => row.delivery_date ? format(new Date(row.delivery_date), 'MMM d') : '—' },
+    { key: 'delivery_date', header: 'Delivery', render: (row) => row.delivery_date ? format(timeService.instant(row.delivery_date), 'MMM d') : '—' },
   ]
 
   const dashboardSections = [

@@ -10,6 +10,7 @@ import { buildMeetingParticipantOptions, filterMeetingParticipantOptions, toggle
 import { asArray, formatDateTime, toFormData } from './phase4Utils'
 import { EmailComposer } from '../components/EmailComposer'
 import { ROLE, normalizeRole } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -396,7 +397,7 @@ import { Play, XCircle, Trash2 } from 'lucide-react'
 
 function MeetingModal({ isOpen, onClose, onDone }) {
   const { user } = useAuthStore()
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const tomorrow = timeService.toUtcISOString(timeService.addDays(timeService.now(), 1)).slice(0, 10)
   const [form, setForm] = useState({ title: '', description: '', meeting_date: tomorrow, meeting_time: '10:00', duration: 30, participant_ids: [] })
   const [errors, setErrors] = useState({})
   const [participantSearch, setParticipantSearch] = useState('')

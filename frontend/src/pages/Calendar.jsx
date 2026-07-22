@@ -11,6 +11,7 @@ import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, Page
 import { QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
 import { CRMSection, CRMStatCard } from '../components/crm'
 import { asArray, formatDateTime } from './phase4Utils'
+import { timeService } from '@/services/timeService'
 
 const QUERY_KEY = 'content-calendar'
 const VIEWS = ['calendar', 'week_timeline', 'board', 'list', 'agenda']
@@ -55,8 +56,8 @@ const TYPE_LABELS = {
 export default function Calendar() {
   const queryClient = useQueryClient()
   const [view, setView] = useState('calendar')
-  const [month, setMonth] = useState(new Date())
-  const [selected, setSelected] = useState(new Date())
+  const [month, setMonth] = useState(timeService.now())
+  const [selected, setSelected] = useState(timeService.now())
   const [search, setSearch] = useState('')
   const [projectId, setProjectId] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -136,7 +137,7 @@ export default function Calendar() {
   }, [items, projectId, search, statusFilter, typeFilter])
 
   const deliverables = calendarQuery.data?.deliverables || { completed: 0, remaining: 0, delayed: 0, upcoming: 0, monthly_targets: [] }
-  const today = useMemo(() => new Date(), [])
+  const today = useMemo(() => timeService.now(), [])
   const visibleItems = useMemo(() => {
     if (view === 'week_timeline' || view === 'agenda') return filteredItems
     if (view === 'calendar') return filteredItems.filter((item) => item.publish_date || item.due_date)
@@ -196,7 +197,7 @@ export default function Calendar() {
             <Button variant="secondary" size="sm" onClick={() => setMonth(addMonths(month, 1))}>
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => { const now = new Date(); setMonth(now); setSelected(now) }}>Today</Button>
+            <Button variant="ghost" size="sm" onClick={() => { const now = timeService.now(); setMonth(now); setSelected(now) }}>Today</Button>
           </div>
         )}
       />
@@ -285,9 +286,9 @@ export default function Calendar() {
             assets_required: String(form.assets_required || '').split(',').map((item) => item.trim()).filter(Boolean),
             file_ids: [],
             file_urls: [],
-            due_date: form.due_date ? new Date(form.due_date).toISOString() : null,
-            publish_date: form.publish_date ? new Date(form.publish_date).toISOString() : null,
-            shoot_date: form.shoot_date ? new Date(form.shoot_date).toISOString() : null,
+            due_date: form.due_date ? timeService.toUtcISOString(form.due_date) : null,
+            publish_date: form.publish_date ? timeService.toUtcISOString(form.publish_date) : null,
+            shoot_date: form.shoot_date ? timeService.toUtcISOString(form.shoot_date) : null,
           })
         }} className="space-y-4">
           <FormField label="Project" required>
@@ -383,7 +384,7 @@ export default function Calendar() {
 }
 
 export function getWeekDays(value) {
-  const start = new Date(value)
+  const start = timeService.instant(value)
   const day = start.getDay()
   const diff = day === 0 ? -6 : 1 - day
   start.setDate(start.getDate() + diff)
@@ -392,14 +393,14 @@ export function getWeekDays(value) {
 }
 
 export function getEventDate(event) {
-  if (event.start_at) return new Date(event.start_at)
-  if (event.due_date) return new Date(event.due_date)
-  if (event.publish_date) return new Date(event.publish_date)
-  if (event.shoot_date) return new Date(event.shoot_date)
-  if (event.start && event.time) return new Date(`${event.start}T${event.time.length === 5 ? `${event.time}:00` : event.time}`)
-  if (event.start) return new Date(event.start)
-  if (event.created_at) return new Date(event.created_at)
-  return new Date()
+  if (event.start_at) return timeService.instant(event.start_at)
+  if (event.due_date) return timeService.instant(event.due_date)
+  if (event.publish_date) return timeService.instant(event.publish_date)
+  if (event.shoot_date) return timeService.instant(event.shoot_date)
+  if (event.start && event.time) return timeService.instant(`${event.start}T${event.time.length === 5 ? `${event.time}:00` : event.time}`)
+  if (event.start) return timeService.instant(event.start)
+  if (event.created_at) return timeService.instant(event.created_at)
+  return timeService.now()
 }
 
 export function getEventStyle(event) {
@@ -443,8 +444,8 @@ function normalizeContentEvent(item) {
 }
 
 function parseAnyDate(value) {
-  if (!value) return new Date()
-  return new Date(value)
+  if (!value) return timeService.now()
+  return timeService.instant(value)
 }
 
 function nextStatus(status) {
@@ -507,7 +508,7 @@ function MonthCalendar({ days, items, selected, setSelected, month, onOpen }) {
           const outsideMonth = !isSameMonth(day, month)
           return (
             <button
-              key={day.toISOString()}
+              key={timeService.toUtcISOString(day)}
               type="button"
               onClick={() => setSelected(day)}
               className={`min-h-28 border-b border-r border-surface-border p-2 text-left transition-colors hover:bg-surface-muted dark:border-gray-800 dark:hover:bg-gray-800 ${selectedDay ? 'bg-primary-50 ring-2 ring-inset ring-primary-500 dark:bg-primary-950/40' : ''} ${outsideMonth ? 'bg-surface-muted/70 text-text-muted dark:bg-black/60 dark:text-gray-600' : 'text-text-primary dark:text-gray-100'}`}
@@ -617,7 +618,7 @@ function WeekTimelineView({ days, events, onOpen }) {
       <div className="grid min-w-[820px] grid-cols-[72px_repeat(7,minmax(96px,1fr))] border-b border-surface-border bg-surface-muted dark:border-gray-800 dark:bg-gray-950">
         <div className="p-3 text-xs font-semibold uppercase text-text-muted">Time</div>
         {days.map((day) => (
-          <div key={day.toISOString()} className={`border-l border-surface-border p-3 text-center dark:border-gray-800 ${isSameDay(day, new Date()) ? 'bg-primary-50/70 dark:bg-primary-950/30' : ''}`}>
+          <div key={timeService.toUtcISOString(day)} className={`border-l border-surface-border p-3 text-center dark:border-gray-800 ${isSameDay(day, timeService.now()) ? 'bg-primary-50/70 dark:bg-primary-950/30' : ''}`}>
             <p className="text-xs font-semibold uppercase text-text-muted">{format(day, 'EEE')}</p>
             <p className="mt-1 text-lg font-semibold text-text-primary dark:text-gray-100">{format(day, 'd')}</p>
           </div>
@@ -628,12 +629,12 @@ function WeekTimelineView({ days, events, onOpen }) {
           <div className="bg-surface-muted/70 dark:bg-gray-950">
             {HOURS.map((hour) => (
               <div key={hour} className="h-[60px] border-b border-surface-border px-2 py-1 text-right text-xs text-text-muted dark:border-gray-800">
-                {format(new Date(2026, 0, 1, hour), 'ha')}
+                {format(timeService.instant(2026, 0, 1, hour), 'ha')}
               </div>
             ))}
           </div>
           {days.map((day) => (
-            <div key={day.toISOString()} className="relative border-l border-surface-border dark:border-gray-800" style={{ height: `${HOURS.length * HOUR_HEIGHT}px` }}>
+            <div key={timeService.toUtcISOString(day)} className="relative border-l border-surface-border dark:border-gray-800" style={{ height: `${HOURS.length * HOUR_HEIGHT}px` }}>
               {HOURS.map((hour) => <div key={hour} className="h-[60px] border-b border-surface-border dark:border-gray-800" />)}
               {timedEvents.filter((event) => isSameDay(getEventDate(event), day)).map((event) => (
                 <button

@@ -52,7 +52,7 @@ import { useNavigate } from 'react-router-dom'
 import { aiAPI } from '../api/ai'
 import { useAuthStore } from '../store/authStore'
 import { Badge, Button, PageHeader, inputClassName } from '../components/ui'
-
+import { timeService } from '@/services/timeService'
 // ============================================================
 // STAT CARD COMPONENT
 // ============================================================
@@ -267,7 +267,7 @@ export default function MarketingChat() {
         { role: 'assistant', content: response.message },
       ])
       setSuggestedActions(Array.isArray(response.suggested_actions) ? response.suggested_actions : [])
-      setLastUpdated(response.generated_at || new Date().toISOString())
+      setLastUpdated(response.generated_at || timeService.toUtcISOString(timeService.now()))
     } catch (chatError) {
       setError(chatError.response?.data?.detail || chatError.message || 'Failed to generate assistant response')
     } finally {

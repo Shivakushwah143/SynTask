@@ -16,6 +16,7 @@ import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
+import { timeService } from '@/services/timeService'
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -179,20 +180,20 @@ const Tasks = () => {
         )
       }
 
-      const dueFrom = filters.due_from ? new Date(filters.due_from) : null
-      const dueTo = filters.due_to ? new Date(filters.due_to) : null
+      const dueFrom = filters.due_from ? timeService.instant(filters.due_from) : null
+      const dueTo = filters.due_to ? timeService.instant(filters.due_to) : null
       if (dueFrom || dueTo) {
         filteredTasks = filteredTasks.filter((task) => {
           if (!task.due_date) return false
-          const dueDate = new Date(task.due_date)
+          const dueDate = timeService.instant(task.due_date)
           if (Number.isNaN(dueDate.getTime())) return false
           if (dueFrom) {
-            const fromStart = new Date(dueFrom)
+            const fromStart = timeService.instant(dueFrom)
             fromStart.setHours(0, 0, 0, 0)
             if (dueDate < fromStart) return false
           }
           if (dueTo) {
-            const toEnd = new Date(dueTo)
+            const toEnd = timeService.instant(dueTo)
             toEnd.setHours(23, 59, 59, 999)
             if (dueDate > toEnd) return false
           }
@@ -350,15 +351,15 @@ const Tasks = () => {
           toast.error('Schedule time is required')
           return
         }
-        const runAt = new Date(scheduleRunAt)
-        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+        const runAt = timeService.instant(scheduleRunAt)
+        if (Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
           toast.error('Schedule time must be in the future')
           return
         }
         await scheduledJobsAPI.scheduleJob({
           action_type: 'CREATE_TASK',
           payload: taskData,
-          run_at: runAt.toISOString(),
+          run_at: timeService.toUtcISOString(runAt),
         })
         toast.success('Task scheduled successfully')
         closeCreateModal()
@@ -382,15 +383,15 @@ const Tasks = () => {
         if (filters.department_id && String(createdTaskDepartmentId || '') !== String(filters.department_id)) return false
         if (filters.due_from || filters.due_to) {
           if (!createdTaskDueDate) return false
-          const dueDate = new Date(createdTaskDueDate)
+          const dueDate = timeService.instant(createdTaskDueDate)
           if (Number.isNaN(dueDate.getTime())) return false
           if (filters.due_from) {
-            const fromDate = new Date(filters.due_from)
+            const fromDate = timeService.instant(filters.due_from)
             fromDate.setHours(0, 0, 0, 0)
             if (dueDate < fromDate) return false
           }
           if (filters.due_to) {
-            const toDate = new Date(filters.due_to)
+            const toDate = timeService.instant(filters.due_to)
             toDate.setHours(23, 59, 59, 999)
             if (dueDate > toDate) return false
           }
@@ -923,7 +924,7 @@ const Tasks = () => {
                 <NaturalDateInput
                   value={dueDateValue}
                   onChange={(value) => setDueDateValue(value)}
-                  onDateResolved={(date) => setDueDateValue(date ? date.toISOString() : '')}
+                  onDateResolved={(date) => setDueDateValue(date ? timeService.toUtcISOString(date) : '')}
                 />
                 <input type="hidden" name="due_date" value={dueDateValue} required />
               </div>

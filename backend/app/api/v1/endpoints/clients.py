@@ -24,6 +24,7 @@ from app.api.dependencies import (
 
 from app.core.config import settings
 from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -351,7 +352,7 @@ async def update_client(
         except:
             pass
     
-    client.updated_at = datetime.now()
+    client.updated_at = utc_now()
     await client.save()
     
     return {
@@ -414,9 +415,9 @@ async def add_project_to_client(
         except:
             pass
     
-    client.updated_at = datetime.now()
+    client.updated_at = utc_now()
     await client.save()
-    project.updated_at = datetime.now()
+    project.updated_at = utc_now()
     await project.save()
     
     return {
@@ -455,14 +456,14 @@ async def remove_project_from_client(
     if project_id in client.projects_delivery_date:
         del client.projects_delivery_date[project_id]
     
-    client.updated_at = datetime.now()
+    client.updated_at = utc_now()
     await client.save()
 
     try:
         project = await Project.get(project_id)
         if project and project.client_id == str(client.id):
             project.client_id = None
-            project.updated_at = datetime.now()
+            project.updated_at = utc_now()
             await project.save()
     except Exception:
         logger.debug("Unable to clear client_id on project %s", project_id)
@@ -527,12 +528,12 @@ async def upload_client_document(
         "url": file_url,
         "type": file_ext[1:] if file_ext else "unknown",
         "size": file_size,
-        "uploaded_at": datetime.now().isoformat(),
+        "uploaded_at": utc_now().isoformat(),
         "uploaded_by": str(current_user.id),
     }
     
     client.documents.append(document_data)
-    client.updated_at = datetime.now()
+    client.updated_at = utc_now()
     await client.save()
 
     # Also copy to associated projects so assigned leads/employees can see it
@@ -555,14 +556,14 @@ async def upload_client_document(
                 "url": f"/api/v1/files/projects/{project_filename}",
                 "type": document_data["type"],
                 "size": document_data["size"],
-                "uploaded_at": datetime.now().isoformat(),
+                "uploaded_at": utc_now().isoformat(),
                 "uploaded_by": str(current_user.id),
                 "uploaded_by_name": current_user.full_name(),
             }
             if not project.files:
                 project.files = []
             project.files.append(project_file)
-            project.updated_at = datetime.now()
+            project.updated_at = utc_now()
             await project.save()
         except Exception as e:
             logger.error(f"Failed to copy client document to project {project_id}: {e}")
@@ -608,7 +609,7 @@ async def delete_client_document(
     except:
         pass  # Don't fail if file deletion fails
     
-    client.updated_at = datetime.now()
+    client.updated_at = utc_now()
     await client.save()
     
     return {
