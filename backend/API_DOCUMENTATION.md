@@ -118,13 +118,15 @@ First-login browser timezone detection can call `PUT /api/v1/time/settings` with
 
 ### Chat
 
+Chat endpoints require authentication, active user status, same-tenant access, and either `chat`, `task`, or `tasks_projects` module access. User search returns same-company users only and excludes the requester. Group creation validates every participant is in the same company and adds the creator as group admin.
+
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/chat/conversations` | `list_conversations` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/chat/conversations` | `list_conversations` | Lists conversations where the current user is a participant. |
 | POST | `/api/v1/chat/conversations` | `create_or_get_conversation` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/chat/conversations/{conversation_id}/messages` | `get_messages` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/chat/conversations/{conversation_id}/messages` | `send_message` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/chat/groups` | `create_group` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/chat/groups` | `create_group` | Creates a same-tenant group conversation and makes the creator group admin. |
 | GET | `/api/v1/chat/groups/{group_id}` | `get_group_details` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/chat/groups/{group_id}/admins/{user_id}` | `remove_group_admin` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/chat/groups/{group_id}/admins/{user_id}` | `add_group_admin` | Uses router/endpoint dependencies where configured. |
@@ -133,7 +135,7 @@ First-login browser timezone detection can call `PUT /api/v1/time/settings` with
 | DELETE | `/api/v1/chat/groups/{group_id}/members/{user_id}` | `remove_member_from_group` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/chat/messages/{message_id}` | `delete_message` | Uses router/endpoint dependencies where configured. |
 | PATCH | `/api/v1/chat/messages/{message_id}/read` | `mark_message_read` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/chat/users/search` | `search_users_for_chat` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/chat/users/search` | `search_users_for_chat` | Searches same-company users by first name, last name, or email for chat/group selection. |
 
 ### Clients
 
@@ -592,4 +594,4 @@ The existing Celery beat schedule evaluates enabled tenant configurations hourly
 List endpoints commonly use `skip` and `limit`; default page size is configured in `Settings.DEFAULT_PAGE_SIZE` and max size is `Settings.MAX_PAGE_SIZE`.
 
 ## Role and Module Access
-Route groups for task-management features are protected with `require_module("task")`; sales routes rely on endpoint-level role checks. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.
+Route groups for task-management features are protected with `require_module("task")`; chat also allows `task` or `tasks_projects` workspace access so global communication works for task workspace users. Sales routes rely on endpoint-level role checks. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.

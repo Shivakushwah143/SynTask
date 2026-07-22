@@ -56,13 +56,14 @@ const MainLayout = () => {
   const pathSegments = location.pathname.split('/').filter(Boolean)
   const isCrmPath = pathSegments[0] === 'crm'
   const isHrPath = pathSegments[0] === 'hr'
-  const breadcrumb = pathSegments
-    .map((segment, index) => {
+  const breadcrumbSegments = pathSegments.map((segment, index) => {
       if (isCrmPath && index > 0) return CRM_BREADCRUMB_LABELS[segment] || BREADCRUMB_LABELS[segment] || segment
       if (isHrPath && segment === 'reports') return 'Recruitment Reports'
       return BREADCRUMB_LABELS[segment] || segment
     })
-    .join(' / ')
+  const breadcrumb = breadcrumbSegments.join(' / ')
+  const pageTitle = breadcrumbSegments[breadcrumbSegments.length - 1] || 'Main Dashboard'
+  const pageSubtitle = pathSegments.length ? 'Workspace' : 'Overview'
 
   useKeyboardShortcut('k', openCommand, { ctrlKey: true })
   useKeyboardShortcut('k', openCommand, { metaKey: true })
@@ -107,10 +108,12 @@ const MainLayout = () => {
           position: relative;
           z-index: 1;
           padding: 0.75rem 0.75rem 0.75rem 0.25rem;
-          height: 100vh;
+          min-height: 0;
+          height: 100%;
           display: flex;
           flex-direction: column;
           gap: 0.5rem;
+          overflow: hidden;
         }
 
         @media (min-width: 768px) {
@@ -129,7 +132,9 @@ const MainLayout = () => {
             0 1px 3px rgba(0, 0, 0, 0.02),
             0 4px 12px rgba(0, 0, 0, 0.03);
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          height: 100%;
+          flex: 1 1 auto;
+          min-height: 0;
+          height: auto;
           overflow: hidden;
           position: relative;
         }
@@ -162,7 +167,8 @@ const MainLayout = () => {
         /* --- Content Inner with proper spacing --- */
         .content-inner {
           padding: 1rem;
-          height: calc(100% - 48px);
+          height: 100%;
+          min-height: 0;
           overflow-y: auto;
           overflow-x: hidden;
           scroll-behavior: smooth;
@@ -176,12 +182,12 @@ const MainLayout = () => {
 
         .content-inner.chat-page {
           overflow: hidden;
-          padding: 0.75rem;
+          padding: 0;
         }
 
         @media (min-width: 768px) {
           .content-inner.chat-page {
-            padding: 1rem 1.5rem;
+            padding: 0;
           }
         }
 
@@ -281,8 +287,8 @@ const MainLayout = () => {
         <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden">
           {/* Header */}
           <Header
-            title="Main Dashboard"
-            subtitle="Overview"
+            title={pageTitle}
+            subtitle={pageSubtitle}
             breadcrumb={breadcrumb}
             onMenuClick={() => setSidebarOpen(true)}
             onSearchOpen={openSearch}

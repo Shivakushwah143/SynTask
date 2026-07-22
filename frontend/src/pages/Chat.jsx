@@ -317,9 +317,9 @@ const Chat = () => {
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-gray-50 dark:bg-black">
+    <div className="flex h-full min-h-0 overflow-hidden bg-gray-50 dark:bg-black">
       {/* Conversations Sidebar */}
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col dark:bg-gray-900 dark:border-gray-700">
+      <div className="flex w-80 min-w-0 shrink-0 flex-col border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
         {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-4">
@@ -391,7 +391,7 @@ const Chat = () => {
         </div>
 
         {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full"></div>
@@ -459,7 +459,7 @@ const Chat = () => {
       </div>
 
       {/* Chat Window */}
-      <div className="flex-1 flex flex-col bg-gray-50 dark:bg-black">
+      <div className="flex min-w-0 flex-1 flex-col bg-gray-50 dark:bg-black">
         {selectedConversation ? (
           <>
             {/* Chat Header */}
@@ -523,7 +523,7 @@ const Chat = () => {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-6">
               {messages.map((message, index) => {
                 const isOwn = message.sender_id === user?.id
                 const showAvatar = !isOwn && (index === 0 || messages[index - 1]?.sender_id !== message.sender_id)

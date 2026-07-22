@@ -57,6 +57,16 @@ flowchart TD
 - Notifications sent: none directly.
 - Related modules updated: supports all operational modules that emit activity.
 
+## Chat
+- How the user reaches it: global communication navigation or `/chat`.
+- What they can do: search same-company users, start direct conversations, create groups, and manage group membership where authorized.
+- What happens after every action: conversation and message panes update within the available content height below the navbar, without being hidden behind fixed navigation.
+- Backend APIs called: chat conversation, message, user search, and group APIs.
+- Timeline events created: none directly.
+- Notifications sent: message sends may create recipient notifications.
+- Related modules updated: Chat and Notifications.
+- Tenant isolation: user search and group membership remain scoped to the authenticated user's company.
+
 ## Calendar
 - How the user reaches it: main navigation.
 - What they can do: inspect meetings/tasks/activity in a combined calendar feed.

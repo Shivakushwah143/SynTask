@@ -123,7 +123,7 @@ Access is the intersection of authentication, active status, company, enabled mo
 | CORE-013 | Job idempotency | Background and event jobs are deduplicated and retryable |
 | CORE-014 | Global time consistency | Timestamps are stored in UTC and displayed through saved user timezone and format settings |
 
-Existing module requirements from Phase 1 remain valid: identity, tenant administration, projects, tasks, CRM, clients, finance, attendance, leave, EOD, timesheets, recruitment, support, chat, meetings, notifications, AI and creative assistance continue to require tenant isolation, backend authorization, lifecycle validation, auditability and safe provider failure behavior.
+Existing module requirements from Phase 1 remain valid: identity, tenant administration, projects, tasks, CRM, clients, finance, attendance, leave, EOD, timesheets, recruitment, support, chat, meetings, notifications, AI and creative assistance continue to require tenant isolation, backend authorization, lifecycle validation, auditability and safe provider failure behavior. Chat is treated as global task-workspace communication: users with `chat`, `task`, or `tasks_projects` module access may use same-tenant chat and group APIs, while user search and group membership remain company-scoped.
 
 Global time acceptance: browser timezone is detected on first login when no preference exists; navbar clock exposes timezone, automatic/manual time, 12/24-hour format, and seconds display; Admin and Super Admin can edit these settings; non-admin users are read-only; backend business time uses `ClockService`; frontend display and UTC serialization use `timeService`; settings mutate only the authenticated user.
 
