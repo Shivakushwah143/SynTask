@@ -75,7 +75,6 @@ const BulkLeads = lazy(() => import('./pages/BulkLeads'))
 const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
 const SalesSettings = lazy(() => import('./pages/sales/SalesSettings'))
 const CRMPipelinePage = lazy(() => import('./pages/crm/pipeline/page'))
-const CRMDashboardPage = lazy(() => import('./pages/crm/dashboard/page'))
 const CRMLeadWorkspacePage = lazy(() => import('./pages/crm/leads/workspace'))
 const CRMCompaniesPage = lazy(() => import('./pages/crm/companies/page'))
 const CRMCompanyWorkspacePage = lazy(() => import('./pages/crm/companies/workspace'))
@@ -84,6 +83,7 @@ const CRMActivitiesPage = lazy(() => import('./pages/crm/activities/page'))
 const CRMCalendarPage = lazy(() => import('./pages/crm/calendar/page'))
 const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
+const CRMMetaIntegrationPage = lazy(() => import('./pages/crm/settings/meta'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
 const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
@@ -269,6 +269,7 @@ function App() {
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
             <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
             <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
+            <Route path="settings/meta" element={withBoundary(<CRMMetaIntegrationPage />)} />
             <Route path="settings" element={withBoundary(<CRMSettingsPage />)} />
           </Route>
       </Route>

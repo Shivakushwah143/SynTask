@@ -1,12 +1,12 @@
 import {
   Activity,
   CalendarDays,
-  LayoutDashboard,
   FileText,
   TrendingUp,
   Settings,
   Users,
   Building2,
+  Megaphone,
 } from 'lucide-react'
 
 export const CRM_NAV_ITEMS = [
@@ -17,6 +17,7 @@ export const CRM_NAV_ITEMS = [
   // { key: 'activities', label: 'Activities', path: '/crm/activities', status: 'active', icon: Activity },
   { key: 'calendar', label: 'Calendar', path: '/crm/calendar', status: 'planned', icon: CalendarDays },
   { key: 'reports', label: 'Reports', path: '/crm/reports', status: 'planned', icon: FileText },
+  { key: 'meta', label: 'Meta Integration', path: '/crm/settings/meta', status: 'active', icon: Megaphone },
   { key: 'settings', label: 'Settings', path: '/crm/settings', status: 'planned', icon: Settings },
 ]
 
@@ -30,6 +31,7 @@ export const CRM_ROUTE_LABELS = {
   '/crm/calendar': 'Calendar',
   '/crm/reports': 'Reports',
   '/crm/settings': 'Settings',
+  '/crm/settings/meta': 'Meta Integration',
 }
 
 export const CRM_ROUTE_DESCRIPTIONS = {
@@ -41,6 +43,7 @@ export const CRM_ROUTE_DESCRIPTIONS = {
   '/crm/calendar': 'Calendar workspace placeholder for meetings and scheduling.',
   '/crm/reports': 'Report workspace placeholder for later analytics.',
   '/crm/settings': 'CRM settings placeholder for workspace configuration.',
+  '/crm/settings/meta': 'Admin-only Meta API connection, webhook, and sync controls.',
 }
 
 export const CRM_ROUTE_ICONS = {
@@ -52,4 +55,5 @@ export const CRM_ROUTE_ICONS = {
   '/crm/calendar': CalendarDays,
   '/crm/reports': FileText,
   '/crm/settings': Settings,
+  '/crm/settings/meta': Megaphone,
 }
