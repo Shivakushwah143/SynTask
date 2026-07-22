@@ -44,5 +44,5 @@ class KnowledgeContext:
     items: list[RetrievedKnowledgeItem]
     filters: dict[str, Any]
     cache_hit: bool = False
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=datetime.now)
 

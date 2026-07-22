@@ -9,6 +9,7 @@ from app.models.versions import Version, VersionStatus
 from app.models.project import Project
 from app.models.user import User
 from app.api.dependencies import get_current_user, get_current_company_admin_or_lead, check_company_access
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -112,6 +113,7 @@ async def list_versions(
     }
 
 
+@router.patch("/{version_id}/release")
 @router.patch("/versions/{version_id}/release")
 async def release_version(
     version_id: str,
@@ -131,8 +133,8 @@ async def release_version(
     version.released = True
     version.status = VersionStatus.RELEASED
     if not version.release_date:
-        version.release_date = datetime.utcnow()
-    version.updated_at = datetime.utcnow()
+        version.release_date = utc_now()
+    version.updated_at = utc_now()
     await version.save()
     
     return {"message": "Version released successfully"}

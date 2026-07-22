@@ -21,6 +21,7 @@ async def get_project(
         )
     
     check_company_access(current_user, project.company_id)
+    await ensure_project_access_for_user(project, current_user)
     
     # Get project statistics. Match tasks by path param, project.project_id, or MongoDB _id
     project_id_for_query = project.project_id if project.project_id else str(project.id)
@@ -109,11 +110,19 @@ async def get_project(
         "name": project.name,
         "key": project.key,
         "description": project.description,
-        "type": project.type.value,
-        "status": project.status.value,
+        "type": enum_or_string_value(project.type, ProjectType.SOFTWARE.value),
+        "status": enum_or_string_value(project.status),
         "client_id": project.client_id,
         "lead_id": project.lead_id,
+        "assigned_to": project.assigned_to,
+        "assigned_user_ids": getattr(project, "assigned_user_ids", []) or ([project.assigned_to] if project.assigned_to else []),
+        "assignment_history": getattr(project, "assignment_history", []) or [],
+        "assigned_by": project.assigned_by,
+        "assigned_at": project.assigned_at,
         "team_member_ids": project.team_member_ids,
+        "start_date": project.start_date,
+        "delivery_date": project.delivery_date,
+        "end_date": project.end_date,
         "task_count": task_count,
         "statistics": {
             "tasks_by_status": tasks_by_status,

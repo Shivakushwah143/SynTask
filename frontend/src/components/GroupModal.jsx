@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { X, Users, Search, UserPlus, UserMinus, Shield, ShieldOff, Check } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { X, Search, UserPlus, UserMinus, Shield, ShieldOff } from 'lucide-react'
 import { chatAPI } from '../api/chat'
 import { useConfirmation } from '../hooks/useConfirmation'
 import toast from 'react-hot-toast'
@@ -20,7 +20,8 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
   const getAvatarUrl = (avatar) => {
     if (!avatar) return null
     if (avatar.startsWith('http')) return avatar
-    const apiUrl = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'
+    const apiUrl = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || ''
+    if (avatar.startsWith('/uploads/avatars/')) return `${apiUrl}/api/v1${avatar}`
     return `${apiUrl}${avatar}`
   }
 
@@ -56,22 +57,7 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
   }
 
   // Load group details if editing
-  useEffect(() => {
-    if (isOpen && mode === 'manage' && groupId) {
-      loadGroupDetails()
-    } else if (isOpen && mode === 'create') {
-      // Reset form for create mode
-      setGroupName('')
-      setSelectedUsers([])
-      setSearchQuery('')
-      setSearchResults([])
-      setGroupMembers([])
-      setGroupAdmins([])
-      setShowAddMembers(false)
-    }
-  }, [isOpen, mode, groupId])
-
-  const loadGroupDetails = async () => {
+  const loadGroupDetails = useCallback(async () => {
     try {
       setLoading(true)
       const data = await chatAPI.getGroupDetails(groupId)
@@ -84,9 +70,9 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
     } finally {
       setLoading(false)
     }
-  }
+  }, [groupId])
 
-  const searchUsers = async (query) => {
+  const searchUsers = useCallback(async (query) => {
     if (query.length < 1) {
       setSearchResults([])
       return
@@ -102,7 +88,22 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
     } catch (error) {
       console.error('Error searching users:', error)
     }
-  }
+  }, [groupMembers, selectedUsers])
+
+  useEffect(() => {
+    if (isOpen && mode === 'manage' && groupId) {
+      loadGroupDetails()
+    } else if (isOpen && mode === 'create') {
+      // Reset form for create mode
+      setGroupName('')
+      setSelectedUsers([])
+      setSearchQuery('')
+      setSearchResults([])
+      setGroupMembers([])
+      setGroupAdmins([])
+      setShowAddMembers(false)
+    }
+  }, [isOpen, mode, groupId, loadGroupDetails])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -114,7 +115,7 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [searchQuery, searchUsers])
 
   const handleAddUser = (user) => {
     if (!selectedUsers.find(u => u.id === user.id)) {
@@ -286,14 +287,14 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
                     />
                   </div>
 
-                  {/* Search Results */}
+                  {/* Search Results Dropdown */}
                   {searchResults.length > 0 && (
-                    <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto mb-3">
+                    <div className="border-2 border-primary-300 bg-white rounded-lg shadow-lg max-h-56 overflow-y-auto mb-3">
                       {searchResults.map((user) => (
                         <button
                           key={user.id}
                           onClick={() => handleAddUser(user)}
-                          className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 border-b border-gray-100 last:border-b-0"
+                          className="w-full px-4 py-3 text-left hover:bg-primary-50 flex items-center space-x-3 border-b border-gray-100 last:border-b-0 transition-colors"
                         >
                           {renderAvatar(user.avatar, user.name, 'md')}
                           <div className="flex-1">
@@ -446,4 +447,3 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
 }
 
 export default GroupModal
-

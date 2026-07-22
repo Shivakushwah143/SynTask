@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 from app.core.database import close_db, init_db
 from app.core.security import get_password_hash
 from app.models.company import Company, CompanyStatus, Subscription, SubscriptionStatus
+from app.models.department import Department, DepartmentType
 from app.models.project import Epic, Project, ProjectStatus, ProjectType, Sprint
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User, UserRole, UserStatus
@@ -27,6 +28,7 @@ COMPANY_EMAIL = "phase3-demo-company@example.com"
 PROJECT_ID = "P3-DEMO-001"
 PROJECT_KEY = "P3D"
 TASK_TITLE = "Phase 3 Demo Task"
+HR_DEPARTMENT_NAME = "Human Resources"
 
 
 async def upsert_company() -> Company:
@@ -117,6 +119,27 @@ async def upsert_user(
         user.updated_at = now
         await user.save()
     return user
+
+
+async def upsert_department(company_id: str, name: str, department_type: DepartmentType, manager_id: str | None = None) -> Department:
+    now = datetime.utcnow()
+    department = await Department.find_one({"company_id": company_id, "name": name})
+    if not department:
+        department = Department(
+            company_id=company_id,
+            name=name,
+            department_type=department_type,
+            manager_id=manager_id,
+            created_at=now,
+            updated_at=now,
+        )
+        await department.insert()
+    else:
+        department.department_type = department_type
+        department.manager_id = manager_id
+        department.updated_at = now
+        await department.save()
+    return department
 
 
 async def upsert_project(company_id: str, admin_id: str, employee_id: str) -> Project:
@@ -264,6 +287,20 @@ async def main() -> None:
             company_id=company_id,
             modules=["task", "sales"],
         )
+        hr_department = await upsert_department(company_id, HR_DEPARTMENT_NAME, DepartmentType.HR, str(admin.id))
+        hr_manager = await upsert_user(
+            email="phase3hr@example.com",
+            first_name="Phase3",
+            last_name="HR",
+            role=UserRole.MANAGER,
+            company_id=company_id,
+            modules=["task", "hr"],
+            reports_to=str(admin.id),
+            ancestors=[str(admin.id)],
+        )
+        hr_manager.department_id = str(hr_department.id)
+        hr_manager.updated_at = datetime.utcnow()
+        await hr_manager.save()
         employee = await upsert_user(
             email=TASK_ONLY_EMAIL,
             first_name="Phase3",
@@ -274,6 +311,9 @@ async def main() -> None:
             reports_to=str(admin.id),
             ancestors=[str(admin.id)],
         )
+        employee.department_id = str(hr_department.id)
+        employee.updated_at = datetime.utcnow()
+        await employee.save()
         company.admin_id = str(admin.id)
         company.updated_at = datetime.utcnow()
         await company.save()
@@ -285,10 +325,13 @@ async def main() -> None:
 
         print("Phase 3 demo seed complete.")
         print(f"Admin login:      {ADMIN_EMAIL} / {DEMO_PASSWORD}")
+        print("HR login:         phase3hr@example.com / Demo@123456")
         print(f"Task-only login:  {TASK_ONLY_EMAIL} / {DEMO_PASSWORD}")
         print(f"Company ID:       {company_id}")
         print(f"Admin User ID:    {admin.id}")
+        print(f"HR User ID:       {hr_manager.id}")
         print(f"Employee User ID: {employee.id}")
+        print(f"HR Department ID: {hr_department.id}")
         print(f"Project ID:       {PROJECT_ID}")
         print(f"Project Object:   {project.id}")
         print(f"Epic ID:          {epic.id}")

@@ -12,15 +12,17 @@ from xml.etree import ElementTree as ET
 
 from fastapi import HTTPException, UploadFile, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_company import CRMCompany
 from app.models.sales_contact import SalesContact
 from app.models.sales_masters import SalesStage
 from app.models.sales_import_job import SalesImportJob
 from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
-from app.models.sales_prospect import InterestLevel, ProspectStatus, SalesProspect
+from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
 from app.models.user import User, UserRole, UserStatus
+from app.core.rbac_visibility import require_owned_record_access, visible_user_ids
+from app.core.clock import utc_now
 
 
 CSV_EMAIL_ALIASES = {"email_address", "email_id", "e_mail"}
@@ -33,10 +35,30 @@ DEFAULT_SOURCE_LABELS = {
     "api": "api",
     "website": "website_form",
 }
+DEFAULT_STAGE_LOOKUP = {
+    "new": "New",
+    "lead": "New",
+    "contacted": "Contacted",
+    "follow up": "Contacted",
+    "follow up call": "Contacted",
+    "qualified": "Qualified",
+    "discovery": "Discovery",
+    "discovery scheduled": "Discovery",
+    "discovery completed": "Discovery",
+    "discovery done": "Discovery",
+    "meeting completed": "Discovery",
+    "proposal": "Proposal",
+    "proposal sent": "Proposal",
+    "negotiation": "Negotiation",
+    "won": "Won",
+    "closed won": "Won",
+    "lost": "Lost",
+    "closed lost": "Lost",
+}
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return utc_now()
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -175,7 +197,14 @@ def _parse_tabular_upload(file_name: str, file_bytes: bytes) -> tuple[list[str],
 
 
 def _parse_stage_lookup(stage_documents: list[SalesStage]) -> dict[str, str]:
-    lookup: dict[str, str] = {}
+    lookup: dict[str, str] = {
+        _normalize_text(alias).lower(): canonical
+        for alias, canonical in DEFAULT_STAGE_LOOKUP.items()
+    }
+    for canonical in set(DEFAULT_STAGE_LOOKUP.values()):
+        normalized = _normalize_text(canonical)
+        lookup[normalized.lower()] = normalized
+        lookup[normalized.lower().replace(" ", "-")] = normalized
     for stage in stage_documents:
         canonical = _normalize_text(stage.name)
         lookup[canonical.lower()] = canonical
@@ -380,7 +409,7 @@ class AssignmentEngine:
         query: Dict[str, Any] = {
             "company_id": current_user.company_id,
             "status": UserStatus.ACTIVE,
-            "role": {"$in": [UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+            "role": {"$in": [UserRole.ADMIN.value, UserRole.MANAGER.value, UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
         }
         if department_id:
             query["$or"] = [
@@ -390,6 +419,10 @@ class AssignmentEngine:
         users = await User.find(
             query
         ).to_list()
+        scoped_user_ids = await visible_user_ids(current_user)
+        if scoped_user_ids is not None:
+            allowed_ids = set(scoped_user_ids)
+            users = [user for user in users if str(user.id) in allowed_ids]
         if not users:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No assignable users found in your company")
         return users
@@ -482,6 +515,10 @@ class LeadEngine:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
         normalized = LeadNormalizer.normalize_form_payload(payload, source=source)
         LeadValidator.validate_lead_payload(normalized)
+        normalized["current_stage"] = LeadValidator.validate_stage(
+            normalized.get("current_stage") or "new",
+            _parse_stage_lookup([]),
+        )
         normalized["company_id"] = normalized.get("company_id") or current_user.company_id
         normalized["created_by"] = str(getattr(current_user, "id", ""))
         normalized["assigned_by"] = str(getattr(current_user, "id", ""))
@@ -533,7 +570,7 @@ class LeadEngine:
             estimated_close_date=_parse_datetime(normalized.get("estimated_close_date")),
             assigned_to=str(normalized.get("assigned_to")),
             assigned_by=str(normalized.get("assigned_by")),
-            current_stage="new",
+            current_stage=normalized.get("current_stage") or "new",
             due_date=_parse_datetime(normalized.get("due_date"), normalized.get("due_time")),
             due_time=normalized.get("due_time"),
             remark=normalized.get("remark"),
@@ -542,6 +579,14 @@ class LeadEngine:
             relationship_type=normalized.get("relationship_type"),
             channel=normalized.get("channel"),
             source=normalized.get("source") or "manual",
+            meta_lead_id=normalized.get("meta_lead_id"),
+            meta_campaign_id=normalized.get("meta_campaign_id"),
+            meta_adset_id=normalized.get("meta_adset_id"),
+            meta_ad_id=normalized.get("meta_ad_id"),
+            meta_form_id=normalized.get("meta_form_id"),
+            meta_created_time=normalized.get("meta_created_time"),
+            meta_consent=normalized.get("meta_consent"),
+            meta_attribution=dict(normalized.get("meta_attribution") or {}),
             designation=normalized.get("designation"),
             nationality=list(normalized.get("nationality") or []),
             language=list(normalized.get("language") or []),
@@ -608,6 +653,14 @@ class LeadEngine:
             "stage_last_changed_at": prospect.stage_last_changed_at,
             "days_in_stage": prospect.days_in_stage,
             "department_id": getattr(prospect, "department_id", None),
+            "meta_lead_id": getattr(prospect, "meta_lead_id", None),
+            "meta_campaign_id": getattr(prospect, "meta_campaign_id", None),
+            "meta_adset_id": getattr(prospect, "meta_adset_id", None),
+            "meta_ad_id": getattr(prospect, "meta_ad_id", None),
+            "meta_form_id": getattr(prospect, "meta_form_id", None),
+            "meta_created_time": getattr(prospect, "meta_created_time", None),
+            "meta_consent": getattr(prospect, "meta_consent", None),
+            "meta_attribution": getattr(prospect, "meta_attribution", None) or {},
         }
 
     @staticmethod
@@ -615,11 +668,11 @@ class LeadEngine:
         prospect = await SalesProspect.get(lead_id)
         if not prospect or prospect.deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prospect not found")
-        if current_user.role != UserRole.SUPER_ADMIN and prospect.company_id != current_user.company_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-        if current_user.role == UserRole.EMPLOYEE:
-            if prospect.assigned_to != str(current_user.id) and prospect.assigned_by != str(current_user.id):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        await require_owned_record_access(
+            current_user,
+            prospect,
+            ownership_fields=("assigned_to", "assigned_by", "created_by"),
+        )
 
         update = LeadNormalizer.normalize_form_payload(payload, source=prospect.source or "manual")
         now = _now()

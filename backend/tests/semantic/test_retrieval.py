@@ -44,8 +44,8 @@ async def test_retriever_filters_by_company_and_project():
         importance=4,
         confidence=0.9,
         freshness=0.9,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
     )
     knowledge_b = SimpleNamespace(
         knowledge_id="k2",
@@ -63,8 +63,8 @@ async def test_retriever_filters_by_company_and_project():
         importance=4,
         confidence=0.9,
         freshness=0.9,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
     )
 
     for record in [knowledge_a, knowledge_b]:
@@ -76,3 +76,4 @@ async def test_retriever_filters_by_company_and_project():
     assert context.company_id == "company-a"
     assert len(context.items) == 1
     assert context.items[0].company_id == "company-a"
+

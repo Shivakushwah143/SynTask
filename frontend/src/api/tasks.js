@@ -1,5 +1,15 @@
 import api from './axios'
 
+const toFormData = (payload = {}) => {
+  const formData = new URLSearchParams()
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && value !== '') {
+      formData.append(key, value)
+    }
+  })
+  return formData
+}
+
 export const tasksAPI = {
   // List tasks
   listTasks: async (filters = {}) => {
@@ -11,8 +21,9 @@ export const tasksAPI = {
     if (filters.department_id) params.append('department_id', filters.department_id)
     if (filters.skip) params.append('skip', filters.skip)
     if (filters.limit) params.append('limit', filters.limit)
-    
-    const response = await api.get(`/tasks/?${params.toString()}`)
+
+    const query = params.toString()
+    const response = await api.get(query ? `/tasks/?${query}` : '/tasks/')
     return response.data
   },
 
@@ -22,15 +33,34 @@ export const tasksAPI = {
     return response.data
   },
 
+  getMyTaskHealth: async () => {
+    const response = await api.get('/tasks/health/me')
+    return response.data
+  },
+
+  getTaskHealthSummary: async () => {
+    const response = await api.get('/tasks/health/summary')
+    return response.data
+  },
+
+  getTeamCompletionSummary: async () => {
+    const response = await api.get('/tasks/health/team-completion')
+    return response.data
+  },
+
+  getOverdueTaskSummary: async () => {
+    const response = await api.get('/tasks/health/overdue')
+    return response.data
+  },
+
+  getExtensionRequestSummary: async () => {
+    const response = await api.get('/tasks/health/extensions')
+    return response.data
+  },
+
   // Create task
   createTask: async (taskData) => {
-    const formData = new URLSearchParams()
-    Object.keys(taskData).forEach(key => {
-      if (taskData[key] !== null && taskData[key] !== undefined && taskData[key] !== '') {
-        formData.append(key, taskData[key])
-      }
-    })
-    
+    const formData = toFormData(taskData)
     const response = await api.post('/tasks/', formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -41,13 +71,7 @@ export const tasksAPI = {
 
   // Update task
   updateTask: async (taskId, taskData) => {
-    const formData = new URLSearchParams()
-    Object.keys(taskData).forEach(key => {
-      if (taskData[key] !== null && taskData[key] !== undefined && taskData[key] !== '') {
-        formData.append(key, taskData[key])
-      }
-    })
-    
+    const formData = toFormData(taskData)
     const response = await api.put(`/tasks/${taskId}`, formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -58,8 +82,7 @@ export const tasksAPI = {
 
   // Update task status
   updateTaskStatus: async (taskId, newStatus) => {
-    const formData = new URLSearchParams()
-    formData.append('new_status', newStatus)
+    const formData = toFormData({ new_status: newStatus })
     
     const response = await api.patch(`/tasks/${taskId}/status`, formData, {
       headers: {
@@ -69,10 +92,41 @@ export const tasksAPI = {
     return response.data
   },
 
+  requestExtension: async (taskId, data) => {
+    const formData = toFormData({
+      requested_due_date: data.requested_due_date,
+      reason: data.reason,
+    })
+    const response = await api.post(`/tasks/${taskId}/extension-requests`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    })
+    return response.data
+  },
+
+  listExtensionRequests: async (taskId) => {
+    const response = await api.get(`/tasks/${taskId}/extension-requests`)
+    return response.data
+  },
+
+  approveExtensionRequest: async (requestId, comment = '') => {
+    const formData = toFormData({ comment })
+    const response = await api.post(`/tasks/extension-requests/${requestId}/approve`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    })
+    return response.data
+  },
+
+  rejectExtensionRequest: async (requestId, comment = '') => {
+    const formData = toFormData({ comment })
+    const response = await api.post(`/tasks/extension-requests/${requestId}/reject`, formData, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    })
+    return response.data
+  },
+
   // Add comment to task
   addComment: async (taskId, content) => {
-    const formData = new URLSearchParams()
-    formData.append('content', content)
+    const formData = toFormData({ content })
     
     const response = await api.post(`/tasks/${taskId}/comments`, formData, {
       headers: {
@@ -102,8 +156,7 @@ export const tasksAPI = {
 
   // Add task attachment
   addTaskAttachment: async (taskId, fileUrl) => {
-    const formData = new URLSearchParams()
-    formData.append('file_url', fileUrl)
+    const formData = toFormData({ file_url: fileUrl })
     
     const response = await api.post(`/tasks/${taskId}/attachments`, formData, {
       headers: {

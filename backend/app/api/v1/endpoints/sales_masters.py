@@ -10,6 +10,7 @@ from app.models.sales_masters import (
     SalesStage, ReasonForLost, SalesChannel, SalesTag,
     Nationality, BusinessCategory, GreetingTemplate
 )
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
 
@@ -26,7 +27,7 @@ APPROVED_STAGE_METADATA = {
 
 
 def _ensure_admin_permission(user: User):
-    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    if user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
@@ -38,11 +39,11 @@ def _ensure_admin_permission(user: User):
 @router.get("/stages")
 async def list_stages(
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List all stages with search and pagination"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id
@@ -160,11 +161,11 @@ async def delete_stage(
 @router.get("/reasons-for-lost")
 async def list_reasons(
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List all reasons for lost with search and pagination"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id
@@ -254,11 +255,11 @@ async def delete_reason(
 @router.get("/channels")
 async def list_channels(
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List all channels with search and pagination"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id
@@ -348,11 +349,11 @@ async def delete_channel(
 @router.get("/tags")
 async def list_tags(
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List all tags with search and pagination"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id
@@ -442,11 +443,11 @@ async def delete_tag(
 @router.get("/nationalities")
 async def list_nationalities(
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List all nationalities with search and pagination"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id
@@ -536,11 +537,11 @@ async def delete_nationality(
 @router.get("/business-categories")
 async def list_business_categories(
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List all business categories with search and pagination"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id
@@ -631,11 +632,11 @@ async def delete_business_category(
 async def list_greetings(
     greeting_type: Optional[str] = None,
     search: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List greeting templates with search and pagination"""
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id

@@ -8,15 +8,18 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.crm.deal_automation import handle_won_deal_automation
 from app.crm.lost_workflow import handle_lost_workflow
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.models.crm_deal import CRMDeal
-from app.models.sales_prospect import ProspectStatus, SalesProspect
+from app.models.crm_proposal import CRMProposal
+from app.crm.models import ProspectStatus, SalesProspect
 from app.models.crm_company import CRMCompany
 from app.models.user import User, UserRole
+from beanie.exceptions import CollectionWasNotInitialized
+from app.core.clock import utc_now
 
 
 APPROVED_PIPELINE_STAGES: List[Dict[str, Any]] = [
@@ -67,7 +70,7 @@ class PipelineStage(str, Enum):
 
 
 ALLOWED_TRANSITIONS: Dict[PipelineStage, set[PipelineStage]] = {
-    PipelineStage.NEW: {PipelineStage.CONTACTED, PipelineStage.LOST},
+    PipelineStage.NEW: {PipelineStage.CONTACTED, PipelineStage.QUALIFIED, PipelineStage.LOST},
     PipelineStage.CONTACTED: {PipelineStage.QUALIFIED, PipelineStage.LOST},
     PipelineStage.QUALIFIED: {PipelineStage.DISCOVERY, PipelineStage.LOST},
     PipelineStage.DISCOVERY: {PipelineStage.PROPOSAL, PipelineStage.LOST},
@@ -137,21 +140,43 @@ def _build_stage_catalog() -> List[Dict[str, Any]]:
     return catalog
 
 
+async def _load_stage_documents(current_user: User) -> List[Dict[str, Any]]:
+    # Legacy seam retained for tests and callers that monkeypatch stage loading.
+    return _build_stage_catalog()
+
+
 def _build_stage_index(stage_catalog: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     stage_index: Dict[str, Dict[str, Any]] = {}
     for stage in stage_catalog:
-        normalized_name = _normalize_stage_value(stage["name"])
+        stage_name = stage["name"] if isinstance(stage, dict) else getattr(stage, "name", None)
+        stage_key = stage["key"] if isinstance(stage, dict) and "key" in stage else getattr(stage, "key", _slugify_stage_name(stage_name or ""))
+        aliases = stage.get("aliases", []) if isinstance(stage, dict) else getattr(stage, "aliases", []) or []
+        normalized_name = _normalize_stage_value(stage_name)
         stage_index[normalized_name] = stage
-        stage_index[_normalize_stage_value(stage["key"])] = stage
+        stage_index[_normalize_stage_value(stage_key)] = stage
         if normalized_name in {"lead", "new"}:
             stage_index["lead"] = stage
             stage_index["new"] = stage
-        for alias in stage.get("aliases", []) or []:
+        for alias in aliases:
             stage_index[_normalize_stage_value(alias)] = stage
         for alias, canonical in DEFAULT_STAGE_LOOKUP.items():
-            if canonical == stage["name"]:
+            if canonical == stage_name:
                 stage_index[_normalize_stage_value(alias)] = stage
     return stage_index
+
+
+def _stage_name(stage: Any) -> str:
+    return stage["name"] if isinstance(stage, dict) else getattr(stage, "name", "")
+
+
+def _stage_order(stage: Any) -> int:
+    return stage["order"] if isinstance(stage, dict) else int(getattr(stage, "order", 0))
+
+
+def _stage_meta_value(stage: Any, key: str, default: Any = None) -> Any:
+    if isinstance(stage, dict):
+        return stage.get(key, default)
+    return getattr(stage, key, default)
 
 
 def _resolve_stage_name(value: Optional[str], stage_index: Dict[str, Dict[str, Any]]) -> Optional[str]:
@@ -160,7 +185,7 @@ def _resolve_stage_name(value: Optional[str], stage_index: Dict[str, Dict[str, A
         return None
     stage = stage_index.get(normalized)
     if stage:
-        return stage["name"]
+        return _stage_name(stage)
     canonical = DEFAULT_STAGE_LOOKUP.get(normalized)
     if canonical and canonical in {item["name"] for item in stage_index.values()}:
         return canonical
@@ -186,6 +211,26 @@ def _is_allowed_transition(current_stage: str, target_stage: str) -> bool:
     return target in ALLOWED_TRANSITIONS.get(current, set())
 
 
+async def _resolve_won_amount(company_id: str, prospect: SalesProspect) -> float:
+    if getattr(prospect, "won_amount", None):
+        return float(prospect.won_amount or 0)
+
+    deal = await CRMDeal.find_one({"company_id": company_id, "lead_id": str(prospect.id)})
+    if deal and getattr(deal, "value", 0):
+        return float(deal.value or 0)
+
+    try:
+        proposals = await CRMProposal.find(
+            {"company_id": company_id, "lead_id": str(prospect.id), "archived": False}
+        ).sort("-updated_at").to_list(20)
+    except CollectionWasNotInitialized:
+        return 0.0
+    for proposal in proposals:
+        if getattr(proposal, "deal_value", 0):
+            return float(proposal.deal_value or 0)
+    return 0.0
+
+
 def _serialize_lead(
     prospect: SalesProspect,
     resolved_stage: str,
@@ -193,7 +238,7 @@ def _serialize_lead(
     company_map: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     stage_entered_at = prospect.stage_entered_at or prospect.created_at
-    now = datetime.utcnow()
+    now = utc_now()
     days_in_stage = prospect.days_in_stage
     if stage_entered_at:
         days_in_stage = max((now - stage_entered_at).days, 0)
@@ -235,6 +280,14 @@ def _serialize_lead(
         "stage_entered_at": stage_entered_at,
         "stage_last_changed_at": getattr(prospect, "stage_last_changed_at", None),
         "days_in_stage": days_in_stage,
+        "meta_lead_id": getattr(prospect, "meta_lead_id", None),
+        "meta_campaign_id": getattr(prospect, "meta_campaign_id", None),
+        "meta_adset_id": getattr(prospect, "meta_adset_id", None),
+        "meta_ad_id": getattr(prospect, "meta_ad_id", None),
+        "meta_form_id": getattr(prospect, "meta_form_id", None),
+        "meta_created_time": getattr(prospect, "meta_created_time", None),
+        "meta_consent": getattr(prospect, "meta_consent", None),
+        "meta_attribution": getattr(prospect, "meta_attribution", None) or {},
     }
 
 
@@ -244,7 +297,7 @@ def _build_pipeline_summary(prospects: List[SalesProspect]) -> Dict[str, Any]:
     lost = 0
     total_days = 0
     staged_count = 0
-    now = datetime.utcnow()
+    now = utc_now()
 
     for prospect in prospects:
         if prospect.status == ProspectStatus.ACTIVE:
@@ -272,10 +325,11 @@ def _build_pipeline_summary(prospects: List[SalesProspect]) -> Dict[str, Any]:
 
 class CRMPipelineService:
     @staticmethod
-    async def load_pipeline(current_user: User) -> Dict[str, Any]:
+    async def load_pipeline(current_user: User, limit: int = 500) -> Dict[str, Any]:
         company_id = _user_company_id(current_user)
-        stage_catalog = _build_stage_catalog()
+        stage_catalog = await _load_stage_documents(current_user)
         stage_index = _build_stage_index(stage_catalog)
+        safe_limit = max(1, min(int(limit or 500), 1000))
 
         query: Dict[str, Any] = {
             "company_id": company_id,
@@ -288,7 +342,13 @@ class CRMPipelineService:
                 {"assigned_by": current_user_id},
             ]
 
-        prospects = await SalesProspect.find(query).sort("-updated_at").to_list()
+        prospects_query = SalesProspect.find(query)
+        total_prospects = await prospects_query.count()
+        ordered_prospects = SalesProspect.find(query).sort("-updated_at")
+        try:
+            prospects = await ordered_prospects.to_list(length=safe_limit)
+        except TypeError:
+            prospects = (await ordered_prospects.to_list())[:safe_limit]
         owner_ids = {
             str(prospect.assigned_to)
             for prospect in prospects
@@ -318,7 +378,19 @@ class CRMPipelineService:
             company_map = {str(company.id): company.name for company in companies}
 
         stage_lookup: Dict[str, Dict[str, Any]] = {
-            stage["name"]: {**stage, "lead_count": 0} for stage in stage_catalog
+            _stage_name(stage): {
+                "id": stage["id"] if isinstance(stage, dict) else getattr(stage, "id", None),
+                "name": _stage_name(stage),
+                "key": stage["key"] if isinstance(stage, dict) and "key" in stage else getattr(stage, "key", _slugify_stage_name(_stage_name(stage))),
+                "order": _stage_order(stage),
+                "is_default": stage["is_default"] if isinstance(stage, dict) and "is_default" in stage else bool(getattr(stage, "is_default", False)),
+                "description": stage["description"] if isinstance(stage, dict) and "description" in stage else getattr(stage, "description", None),
+                "category": stage["category"] if isinstance(stage, dict) and "category" in stage else getattr(stage, "category", None),
+                "is_terminal": stage["is_terminal"] if isinstance(stage, dict) and "is_terminal" in stage else bool(getattr(stage, "is_terminal", False)),
+                "source": stage["source"] if isinstance(stage, dict) and "source" in stage else getattr(stage, "source", "fixed"),
+                "lead_count": 0,
+            }
+            for stage in stage_catalog
         }
         leads_by_stage: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
@@ -356,6 +428,9 @@ class CRMPipelineService:
                 "company_id": company_id,
                 "stage_source": "fixed_state_machine",
                 "approved_stages": [stage["name"] for stage in APPROVED_PIPELINE_STAGES],
+                "limit": safe_limit,
+                "total_leads": total_prospects,
+                "has_more": total_prospects > len(prospects),
             },
         }
 
@@ -372,7 +447,7 @@ class CRMPipelineService:
         if not _can_write_pipeline(current_user, prospect):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to update this lead")
 
-        stage_catalog = _build_stage_catalog()
+        stage_catalog = await _load_stage_documents(current_user)
         stage_index = _build_stage_index(stage_catalog)
         resolved_stage = _resolve_stage_name(target_stage, stage_index)
         if not resolved_stage:
@@ -387,7 +462,7 @@ class CRMPipelineService:
                 detail=f"Illegal transition {current_stage} -> {resolved_stage}",
             )
 
-        now = datetime.utcnow()
+        now = utc_now()
         previous_entered_at = prospect.stage_entered_at or prospect.created_at or now
         days_in_previous_stage = max((now - previous_entered_at).days, 0)
 
@@ -404,6 +479,7 @@ class CRMPipelineService:
             prospect.closed_date = now
             prospect.closed_by = str(getattr(current_user, "id", ""))
             prospect.reason_for_lost = None
+            prospect.won_amount = await _resolve_won_amount(company_id, prospect)
         elif normalized_stage == "lost":
             lost_result = await handle_lost_workflow(current_user, prospect, reason)
             prospect = lost_result["lead"]
@@ -414,7 +490,7 @@ class CRMPipelineService:
 
         await prospect.save()
 
-        stage_catalog_map = {stage["name"]: stage for stage in stage_catalog}
+        stage_catalog_map = {_stage_name(stage): stage for stage in stage_catalog}
         resolved_stage_meta = stage_catalog_map.get(resolved_stage, {})
 
         history = SalesPipelineHistory.model_construct(
@@ -434,11 +510,11 @@ class CRMPipelineService:
                 "company_id": company_id,
                 "days_in_previous_stage": days_in_previous_stage,
                 "stage_metadata": {
-                    "name": resolved_stage_meta.get("name", resolved_stage),
-                    "key": resolved_stage_meta.get("key"),
-                    "order": resolved_stage_meta.get("order"),
-                    "category": resolved_stage_meta.get("category"),
-                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                    "name": _stage_meta_value(resolved_stage_meta, "name", resolved_stage),
+                    "key": _stage_meta_value(resolved_stage_meta, "key"),
+                    "order": _stage_meta_value(resolved_stage_meta, "order"),
+                    "category": _stage_meta_value(resolved_stage_meta, "category"),
+                    "is_terminal": _stage_meta_value(resolved_stage_meta, "is_terminal", False),
                 },
             },
             transitioned_at=now,
@@ -462,11 +538,11 @@ class CRMPipelineService:
                 "status": prospect.status.value,
                 "updated_at": now.isoformat(),
                 "stage_metadata": {
-                    "name": resolved_stage_meta.get("name", resolved_stage),
-                    "key": resolved_stage_meta.get("key"),
-                    "order": resolved_stage_meta.get("order"),
-                    "category": resolved_stage_meta.get("category"),
-                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                    "name": _stage_meta_value(resolved_stage_meta, "name", resolved_stage),
+                    "key": _stage_meta_value(resolved_stage_meta, "key"),
+                    "order": _stage_meta_value(resolved_stage_meta, "order"),
+                    "category": _stage_meta_value(resolved_stage_meta, "category"),
+                    "is_terminal": _stage_meta_value(resolved_stage_meta, "is_terminal", False),
                 },
             },
             metadata={
@@ -485,7 +561,7 @@ class CRMPipelineService:
             automation_result: Dict[str, Any] = {"status": "skipped"}
             try:
                 if deal:
-                    now = datetime.utcnow()
+                    now = utc_now()
                     deal.stage = "won"
                     deal.updated_by = str(getattr(current_user, "id", ""))
                     deal.updated_by_name = _user_display_name(current_user)
@@ -531,12 +607,12 @@ class CRMPipelineService:
         if prospect.status != ProspectStatus.LOST:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lead is not lost")
 
-        stage_catalog = _build_stage_catalog()
+        stage_catalog = await _load_stage_documents(current_user)
         stage_index = _build_stage_index(stage_catalog)
         reopened_stage = _resolve_stage_name("New", stage_index) or "New"
         previous_stage = _resolve_stage_name(prospect.current_stage, stage_index) or prospect.current_stage or "Lost"
 
-        now = datetime.utcnow()
+        now = utc_now()
         days_in_previous_stage = max((now - (prospect.stage_entered_at or prospect.created_at or now)).days, 0)
 
         prospect.current_stage = reopened_stage
@@ -550,7 +626,7 @@ class CRMPipelineService:
         prospect.updated_at = now
         await prospect.save()
 
-        stage_catalog_map = {stage["name"]: stage for stage in stage_catalog}
+        stage_catalog_map = {_stage_name(stage): stage for stage in stage_catalog}
         resolved_stage_meta = stage_catalog_map.get(reopened_stage, {})
 
         history = SalesPipelineHistory.model_construct(
@@ -571,11 +647,11 @@ class CRMPipelineService:
                 "days_in_previous_stage": days_in_previous_stage,
                 "reopened_from": "lost",
                 "stage_metadata": {
-                    "name": resolved_stage_meta.get("name", reopened_stage),
-                    "key": resolved_stage_meta.get("key"),
-                    "order": resolved_stage_meta.get("order"),
-                    "category": resolved_stage_meta.get("category"),
-                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                    "name": _stage_meta_value(resolved_stage_meta, "name", reopened_stage),
+                    "key": _stage_meta_value(resolved_stage_meta, "key"),
+                    "order": _stage_meta_value(resolved_stage_meta, "order"),
+                    "category": _stage_meta_value(resolved_stage_meta, "category"),
+                    "is_terminal": _stage_meta_value(resolved_stage_meta, "is_terminal", False),
                 },
             },
             transitioned_at=now,
@@ -600,11 +676,11 @@ class CRMPipelineService:
                 "updated_at": now.isoformat(),
                 "reopened_from": "lost",
                 "stage_metadata": {
-                    "name": resolved_stage_meta.get("name", reopened_stage),
-                    "key": resolved_stage_meta.get("key"),
-                    "order": resolved_stage_meta.get("order"),
-                    "category": resolved_stage_meta.get("category"),
-                    "is_terminal": resolved_stage_meta.get("is_terminal", False),
+                    "name": _stage_meta_value(resolved_stage_meta, "name", reopened_stage),
+                    "key": _stage_meta_value(resolved_stage_meta, "key"),
+                    "order": _stage_meta_value(resolved_stage_meta, "order"),
+                    "category": _stage_meta_value(resolved_stage_meta, "category"),
+                    "is_terminal": _stage_meta_value(resolved_stage_meta, "is_terminal", False),
                 },
             },
             metadata={
@@ -648,7 +724,7 @@ class CRMPipelineService:
         if prospect.status != ProspectStatus.LOST:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reminders can only be created for lost leads")
 
-        now = datetime.utcnow()
+        now = utc_now()
         activity = CRMActivity(
             company_id=company_id,
             entity_type="lead",
@@ -727,7 +803,7 @@ class CRMPipelineService:
         if prospect.status != ProspectStatus.LOST:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nurture can only be started for lost leads")
 
-        now = datetime.utcnow()
+        now = utc_now()
         prospect.updated_at = now
         prospect.remark = prospect.remark if prospect.remark else None
         await prospect.save()

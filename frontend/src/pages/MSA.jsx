@@ -1,20 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { FileText, Plus, X, Search, Send, CheckCircle, Clock, Download, Filter, Bookmark } from 'lucide-react'
 import { msaAPI } from '../api/msa'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 const MSA = () => {
   const { user } = useAuthStore()
   const [msas, setMsas] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [activeTab, setActiveTab] = useState('client') // 'client' or 'candidate'
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showSendModal, setShowSendModal] = useState(false)
   const [showTemplateModal, setShowTemplateModal] = useState(false)
-  const [selectedMSA, setSelectedMSA] = useState(null)
+  const [selectedMSA] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
 
   const [createFormData, setCreateFormData] = useState({
@@ -53,27 +55,29 @@ const MSA = () => {
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
 
-  useEffect(() => {
-    loadMSAs()
-    loadTemplates()
-  }, [activeTab])
-
-  const loadMSAs = async () => {
+  const loadMSAs = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError(null)
       const params = { msa_type: activeTab }
       const data = await msaAPI.listMSAs(params)
       setMsas(data.msas || [])
     } catch (error) {
       console.error('Error loading MSAs:', error)
-      toast.error('Failed to load MSAs')
+      const message = error.response?.status === 403
+        ? 'You do not have permission to view MSAs. Please contact your administrator.'
+        : error.response?.status === 401
+          ? 'Please login to view MSAs'
+          : 'Failed to load MSAs'
+      setLoadError(message)
+      toast.error(message)
       setMsas([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeTab])
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     try {
       const params = { is_template: true }
       const data = await msaAPI.listMSAs(params)
@@ -81,7 +85,12 @@ const MSA = () => {
     } catch (error) {
       console.error('Error loading templates:', error)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadMSAs()
+    loadTemplates()
+  }, [loadMSAs, loadTemplates])
 
   const handleCreateMSA = async (e, sendImmediately = false) => {
     e.preventDefault()
@@ -263,7 +272,7 @@ const MSA = () => {
       )
     } else {
       return (
-        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+        <span className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium bg-surface-muted text-text-secondary">
           <Clock className="h-3 w-3" />
           Draft
         </span>
@@ -283,18 +292,18 @@ const MSA = () => {
   })
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="min-h-screen bg-surface-muted p-6 text-text-primary dark:bg-black dark:text-text-primary">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Master Service Agreement (MSA)</h1>
-        <p className="text-gray-600">Manage agreements with clients and candidates</p>
+        <h1 className="mb-2 text-3xl font-bold text-text-primary">Master Service Agreement (MSA)</h1>
+        <p className="text-text-secondary">Manage agreements with clients and candidates</p>
       </div>
 
       {/* Action Buttons */}
       <div className="flex items-center justify-end gap-3 mb-6">
         <button
           onClick={() => setShowTemplateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+          className="flex items-center gap-2 px-4 py-2 bg-surface-muted text-text-primary rounded-lg hover:bg-surface dark:bg-black/70 dark:text-text-primary dark:hover:bg-white/5"
         >
           <FileText className="h-4 w-4" />
           Load Template
@@ -310,7 +319,7 @@ const MSA = () => {
               })
               setShowCreateModal(true)
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
           >
             <Plus className="h-4 w-4" />
             Create New MSA
@@ -319,13 +328,13 @@ const MSA = () => {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-lg shadow-sm mb-6">
-        <div className="flex border-b border-gray-200">
+      <div className="bg-surface rounded-lg shadow-sm mb-6 dark:bg-black/85">
+        <div className="flex border-b border-border">
           <button
             onClick={() => setActiveTab('client')}
             className={`px-6 py-3 font-medium text-sm ${activeTab === 'client'
-                ? 'text-purple-600 border-b-2 border-purple-600'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'text-primary-600 border-b-2 border-primary-600'
+                : 'text-text-secondary hover:text-text-primary'
               }`}
           >
             MSA with Client
@@ -333,8 +342,8 @@ const MSA = () => {
           <button
             onClick={() => setActiveTab('candidate')}
             className={`px-6 py-3 font-medium text-sm ${activeTab === 'candidate'
-                ? 'text-purple-600 border-b-2 border-purple-600'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'text-primary-600 border-b-2 border-primary-600'
+                : 'text-text-secondary hover:text-text-primary'
               }`}
           >
             MSA with Candidate
@@ -343,64 +352,76 @@ const MSA = () => {
       </div>
 
       {/* Search and Filters */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+      <div className="bg-surface rounded-lg shadow-sm p-4 mb-6 dark:bg-black/85">
         <div className="flex items-center gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-text-muted" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by name, email, title, or company..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-surface text-text-primary focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-black/70 dark:text-text-primary"
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+          <button className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-surface-muted dark:hover:bg-white/5">
             <Filter className="h-4 w-4" />
             Filters
           </button>
         </div>
-        <div className="mt-3 text-sm text-gray-600">
+        <div className="mt-3 text-sm text-text-secondary">
           Showing {filteredMSAs.length} of {msas.length} MSAs
         </div>
       </div>
 
       {/* MSAs Table */}
-      <div className="viewport-scroll-x bg-white rounded-lg shadow-sm">
+      <div className="viewport-scroll-x bg-surface rounded-lg shadow-sm dark:bg-black/85">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">Loading...</div>
+          <div className="p-8 text-center text-text-muted">Loading...</div>
+        ) : loadError ? (
+          <div className="p-8 text-center">
+            <div className="font-semibold text-text-primary">MSAs unavailable</div>
+            <div className="mt-1 text-sm text-text-muted">{loadError}</div>
+            <button
+              type="button"
+              onClick={loadMSAs}
+              className="mt-4 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            >
+              Retry
+            </button>
+          </div>
         ) : filteredMSAs.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">No MSAs found</div>
+          <div className="p-8 text-center text-text-muted">No MSAs found</div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-border">
+            <thead className="bg-surface-muted dark:bg-black/70">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CLIENT</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AGREEMENT TITLE</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SENT DATE</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SIGNED DATE</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">STATUS</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ACTIONS</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">CLIENT</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">AGREEMENT TITLE</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">SENT DATE</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">SIGNED DATE</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">STATUS</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">ACTIONS</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-surface divide-y divide-border dark:bg-black/85">
               {filteredMSAs.map(msa => (
-                <tr key={msa.id} className="hover:bg-gray-50">
+                <tr key={msa.id} className="hover:bg-surface-muted dark:hover:bg-white/5">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{msa.client_name}</div>
-                    <div className="text-sm text-gray-500">{msa.client_email}</div>
+                    <div className="text-sm font-medium text-text-primary">{msa.client_name}</div>
+                    <div className="text-sm text-text-muted">{msa.client_email}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900">{msa.agreement_title || 'MSA'}</div>
+                    <div className="text-sm text-text-primary">{msa.agreement_title || 'MSA'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {msa.sent_date ? format(new Date(msa.sent_date), 'MMM d, yyyy') : '-'}
+                    <div className="text-sm text-text-primary">
+                      {msa.sent_date ? format(timeService.instant(msa.sent_date), 'MMM d, yyyy') : '-'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {msa.signed_date ? format(new Date(msa.signed_date), 'MMM d, yyyy') : '-'}
+                    <div className="text-sm text-text-primary">
+                      {msa.signed_date ? format(timeService.instant(msa.signed_date), 'MMM d, yyyy') : '-'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -410,7 +431,7 @@ const MSA = () => {
                     {msa.status === 'completed' || (msa.staffing_signed && msa.client_signed) ? (
                       <button
                         onClick={() => handleDownloadMSA(msa)}
-                        className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                        className="flex items-center gap-2 px-3 py-1 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
                       >
                         <Download className="h-4 w-4" />
                         Download
@@ -418,13 +439,13 @@ const MSA = () => {
                     ) : msa.status === 'draft' ? (
                       <button
                         onClick={() => handleQuickSend(msa)}
-                        className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                        className="flex items-center gap-2 px-3 py-1 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
                       >
                         <Send className="h-4 w-4" />
                         Send
                       </button>
                     ) : (
-                      <span className="text-gray-400">Awaiting signature</span>
+                      <span className="text-text-muted">Awaiting signature</span>
                     )}
                   </td>
                 </tr>
@@ -436,13 +457,13 @@ const MSA = () => {
 
       {/* Create MSA Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-lg w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col dark:bg-black/95">
+            <div className="flex items-center justify-between p-4 border-b border-border">
               <h2 className="text-xl font-bold">Create New MSA - {activeTab === 'client' ? 'Client' : 'Candidate'}</h2>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-text-muted hover:text-text-primary"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -451,7 +472,7 @@ const MSA = () => {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
                       Client Name <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -460,11 +481,11 @@ const MSA = () => {
                       onChange={(e) => setCreateFormData(prev => ({ ...prev, client_name: e.target.value }))}
                       placeholder="Enter name"
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      className="w-full px-4 py-2 border border-border rounded-lg bg-surface text-text-primary focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-black/70 dark:text-text-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
                       Client Email <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -473,7 +494,7 @@ const MSA = () => {
                       onChange={(e) => setCreateFormData(prev => ({ ...prev, client_email: e.target.value }))}
                       placeholder="Enter email"
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      className="w-full px-4 py-2 border border-border rounded-lg bg-surface text-text-primary focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-black/70 dark:text-text-primary"
                     />
                   </div>
                 </div>

@@ -2,7 +2,7 @@
 Department Model
 """
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from enum import Enum
 
 from beanie import Document, Indexed
@@ -26,6 +26,7 @@ class Department(Document):
     company_id: Indexed(str)
     department_type: DepartmentType = DepartmentType.OPERATIONS
     manager_id: Optional[str] = None
+    enabled_modules: List[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     deleted_at: Optional[datetime] = None

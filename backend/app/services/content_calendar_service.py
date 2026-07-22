@@ -6,15 +6,17 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.knowledge.service import knowledge_service
-from app.models.client import Client
-from app.models.content_calendar import ContentCalendarItem, ContentItemPriority, ContentItemStatus, ContentItemType
+from app.crm.models import Client
+from app.marketing.models import ContentCalendarItem, ContentItemPriority, ContentItemStatus, ContentItemType
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.meeting import Meeting
-from app.models.project import Project
-from app.models.task import Task
+from app.projects.models import Project
+from app.tasks.models import Task
 from app.models.user import User, UserRole
+from app.services.reminder_service import calendar_due_tone
+from app.core.clock import utc_now
 
 
 CONTENT_STATUS_FLOW = [
@@ -87,6 +89,7 @@ def _can_access(current_user: User, project: Project) -> None:
 
 
 def _serialize_item(item: ContentCalendarItem) -> Dict[str, Any]:
+    reminder_status = calendar_due_tone(item.due_date)
     return {
         "id": str(item.id),
         "company_id": item.company_id,
@@ -113,6 +116,16 @@ def _serialize_item(item: ContentCalendarItem) -> Dict[str, Any]:
         "photographer": item.photographer,
         "team": list(item.team or []),
         "assets_required": list(item.assets_required or []),
+        "category": getattr(item, "category", None),
+        "description": getattr(item, "description", None),
+        "start_date": getattr(item, "start_date", None),
+        "end_date": getattr(item, "end_date", None),
+        "time": getattr(item, "time", None),
+        "assigned_person": getattr(item, "assigned_person", None),
+        "reminder": getattr(item, "reminder", None),
+        "color": reminder_status["color"],
+        "reminder_status": reminder_status,
+        "attachment": getattr(item, "attachment", None),
         "draft_at": item.draft_at,
         "planned_at": item.planned_at,
         "shoot_scheduled_at": item.shoot_scheduled_at,
@@ -208,7 +221,7 @@ class ContentCalendarService:
             grouped[item.project_id].append(_serialize_item(item))
 
         published = sum(1 for item in items if item.status == ContentItemStatus.PUBLISHED)
-        delayed = sum(1 for item in items if item.due_date and item.due_date < datetime.utcnow() and item.status != ContentItemStatus.PUBLISHED)
+        delayed = sum(1 for item in items if item.due_date and item.due_date < utc_now() and item.status != ContentItemStatus.PUBLISHED)
         shoot_days = sum(1 for item in items if item.content_type == ContentItemType.SHOOT_DAY)
         return {
             "items": [_serialize_item(item) for item in items],
@@ -217,7 +230,7 @@ class ContentCalendarService:
                 "completed": published,
                 "remaining": max(len(items) - published, 0),
                 "delayed": delayed,
-                "upcoming": sum(1 for item in items if item.publish_date and item.publish_date >= datetime.utcnow() and item.status != ContentItemStatus.PUBLISHED),
+                "upcoming": sum(1 for item in items if item.publish_date and item.publish_date >= utc_now() and item.status != ContentItemStatus.PUBLISHED),
                 "monthly_targets": [],
             },
             "summary": {
@@ -238,7 +251,7 @@ class ContentCalendarService:
     @staticmethod
     async def create_item(current_user: User, payload: Dict[str, Any]) -> Dict[str, Any]:
         project = await _load_project(current_user, str(payload.get("project_id") or ""))
-        now = datetime.utcnow()
+        now = utc_now()
         item = ContentCalendarItem(
             company_id=str(project.company_id),
             project_id=str(project.id),
@@ -262,6 +275,15 @@ class ContentCalendarService:
             photographer=payload.get("photographer"),
             team=list(payload.get("team") or []),
             assets_required=list(payload.get("assets_required") or []),
+            category=payload.get("category"),
+            description=payload.get("description"),
+            start_date=_parse_datetime(payload.get("start_date")),
+            end_date=_parse_datetime(payload.get("end_date")),
+            time=payload.get("time"),
+            assigned_person=payload.get("assigned_person"),
+            reminder=payload.get("reminder"),
+            color=payload.get("color"),
+            attachment=payload.get("attachment"),
             metadata=dict(payload.get("metadata") or {}),
             created_by=str(getattr(current_user, "id", "")),
             updated_by=str(getattr(current_user, "id", "")),
@@ -299,7 +321,7 @@ class ContentCalendarService:
                         {"relationship_type": "project", "entity_type": "project", "entity_id": str(project.project_id or project.id)},
                     ],
                     "content": item.notes or item.title,
-                    "version_marker": str(item.updated_at or item.created_at or datetime.utcnow()),
+                    "version_marker": str(item.updated_at or item.created_at or utc_now()),
                 },
                 metadata={"module": "content_calendar"},
             )
@@ -312,7 +334,7 @@ class ContentCalendarService:
         if not item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content item not found")
         project = await _load_project(current_user, str(item.project_id))
-        now = datetime.utcnow()
+        now = utc_now()
         if "title" in payload:
             item.title = str(payload.get("title") or item.title).strip()
         if "content_type" in payload:
@@ -344,6 +366,24 @@ class ContentCalendarService:
             item.team = [str(member).strip() for member in payload.get("team") if str(member).strip()]
         if "assets_required" in payload and isinstance(payload.get("assets_required"), list):
             item.assets_required = [str(asset).strip() for asset in payload.get("assets_required") if str(asset).strip()]
+        if "category" in payload:
+            item.category = payload.get("category")
+        if "description" in payload:
+            item.description = payload.get("description")
+        if "start_date" in payload:
+            item.start_date = _parse_datetime(payload.get("start_date"))
+        if "end_date" in payload:
+            item.end_date = _parse_datetime(payload.get("end_date"))
+        if "time" in payload:
+            item.time = payload.get("time")
+        if "assigned_person" in payload:
+            item.assigned_person = payload.get("assigned_person")
+        if "reminder" in payload:
+            item.reminder = payload.get("reminder")
+        if "color" in payload:
+            item.color = payload.get("color")
+        if "attachment" in payload:
+            item.attachment = payload.get("attachment")
         if "metadata" in payload and isinstance(payload.get("metadata"), dict):
             item.metadata = dict(payload.get("metadata"))
         item.updated_by = str(getattr(current_user, "id", ""))
@@ -370,3 +410,4 @@ class ContentCalendarService:
         project = await _load_project(current_user, str(item.project_id))
         await item.delete()
         return {"message": "Content item deleted", "id": item_id, "project_id": str(project.id)}
+

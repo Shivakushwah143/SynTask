@@ -8,6 +8,7 @@ flowchart TD
   A --> C[/reports]
   A --> D[/activity]
   A --> E[/calendar]
+  A --> E1[/google-workspace]
   A --> F[/timesheet]
   A --> G[/time-tracking]
   A --> H[/msa]
@@ -29,6 +30,16 @@ flowchart TD
 - Notifications sent: none directly.
 - Related modules updated: many app areas by navigation.
 
+## Global Time Settings
+- How the user reaches it: navbar live clock.
+- What they can do: view active timezone, time format, seconds setting, and automatic/manual time mode.
+- What happens after every action: Admin and Super Admin changes save and immediately update clock/display formatting.
+- Backend APIs called: `GET /api/v1/time/settings`, `PUT /api/v1/time/settings`.
+- Timeline events created: none directly.
+- Notifications sent: none directly.
+- Related modules updated: all modules consume UTC timestamps and display through shared frontend time formatting.
+- Tenant isolation: settings mutate only the authenticated user; no cross-tenant user lookup is exposed.
+
 ## Global Reports
 - How the user reaches it: main navigation.
 - What they can do: inspect charts and switch time period.
@@ -47,6 +58,16 @@ flowchart TD
 - Notifications sent: none directly.
 - Related modules updated: supports all operational modules that emit activity.
 
+## Chat
+- How the user reaches it: global communication navigation or `/chat`.
+- What they can do: search same-company users, start direct conversations, create groups, and manage group membership where authorized.
+- What happens after every action: conversation and message panes update within the available content height below the navbar, without being hidden behind fixed navigation.
+- Backend APIs called: chat conversation, message, user search, and group APIs.
+- Timeline events created: none directly.
+- Notifications sent: message sends may create recipient notifications.
+- Related modules updated: Chat and Notifications.
+- Tenant isolation: user search and group membership remain scoped to the authenticated user's company.
+
 ## Calendar
 - How the user reaches it: main navigation.
 - What they can do: inspect meetings/tasks/activity in a combined calendar feed.
@@ -55,6 +76,15 @@ flowchart TD
 - Timeline events created: none directly.
 - Notifications sent: none directly.
 - Related modules updated: Meetings, Tasks, CRM Activities.
+
+## Google Workspace
+- How the user reaches it: the new Google Workspace main navigation item or route `/google-workspace`.
+- What they can do: review the connected Google account, browse Gmail folders, send mail, save drafts, manage Calendar views and events, create Meet links, and inspect connection diagnostics.
+- What happens after every action: the active tab updates inside the native SynTask workspace and refetches the relevant Google Workspace data without a full page reload.
+- Backend APIs called: Google Workspace dashboard, Gmail, Calendar, Meet, settings, and diagnostics endpoints.
+- Timeline events created: task sync and event sync actions may create SynTask task or calendar records.
+- Notifications sent: email and meeting actions may trigger SynTask notifications or activity records.
+- Related modules updated: Tasks, Calendar, Meetings, Notifications.
 
 ## Timesheet and Time Tracking
 - How the user reaches it: main navigation or task flows.

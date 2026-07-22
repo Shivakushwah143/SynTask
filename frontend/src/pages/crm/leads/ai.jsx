@@ -8,6 +8,8 @@ import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Modal, inputClassName } from '../../../components/ui'
 import { EmailComposer } from '../../../components/EmailComposer'
 import { formatShortDate } from '../pipeline/utils'
+import { sanitizeHtml } from '../../../utils/sanitizeHtml'
+import { timeService } from '@/services/timeService'
 
 const WORKSPACE_QUERY_KEY = 'crm-lead-workspace'
 const defaultDraft = (lead = null) => ({
@@ -85,7 +87,7 @@ export function LeadAISalesTab({ leadId, lead, onRefresh }) {
           executionStatus: response?.execution_status || current.executionStatus,
           delivery: response?.delivery || null,
           ai,
-          lastGeneratedAt: response?.generated_at || new Date().toISOString(),
+          lastGeneratedAt: response?.generated_at || timeService.toUtcISOString(timeService.now()),
         }))
         setPendingApproval(variables?.execution_mode === 'manual')
         toast.success(variables?.execution_mode === 'auto' ? 'Sales action executed' : 'AI generated')
@@ -457,7 +459,7 @@ function CommunicationCard({ title, icon: Icon, subject, html, text, onEdit }) {
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Preview</p>
           <div className="mt-2 rounded-2xl border border-surface-border/80 bg-gray-50 p-3 text-sm leading-6 text-gray-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
-            {html ? <div dangerouslySetInnerHTML={{ __html: html }} /> : <p>{text || 'No draft generated'}</p>}
+            {html ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} /> : <p>{text || 'No draft generated'}</p>}
           </div>
         </div>
         {text ? (

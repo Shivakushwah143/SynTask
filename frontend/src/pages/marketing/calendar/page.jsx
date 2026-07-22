@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
-import { CalendarDays, CheckCircle2, Eye, FileText, Filter, LayoutGrid, MessageSquare, PencilLine, Send, Sparkles } from 'lucide-react'
+import { CalendarDays, CheckCircle2, FileText, Filter, LayoutGrid, PencilLine, Send, Sparkles } from 'lucide-react'
 import { format, isValid, parseISO } from 'date-fns'
 import { contentCalendarApi } from '../../../api/contentCalendar'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
@@ -181,7 +181,7 @@ export default function MarketingCalendarPage() {
             />
           ) : filteredItems.length ? (
             <div className="space-y-4">
-              {filteredItems.map((item) => <MarketingCalendarCard key={item.id} item={item} isClient={isClient} fields={visibleFields(item)} />)}
+              {filteredItems.map((item) => <MarketingCalendarCard key={item.id} isClient={isClient} fields={visibleFields(item)} />)}
             </div>
           ) : (
             <CRMEmptyState
@@ -214,7 +214,7 @@ export default function MarketingCalendarPage() {
   )
 }
 
-function MarketingCalendarCard({ item, isClient, fields }) {
+function MarketingCalendarCard({ isClient, fields }) {
   const dueDate = fields.dueDate ? format(fields.dueDate, 'PPP p') : '-'
   const publishDate = fields.publishDate ? format(fields.publishDate, 'PPP p') : '-'
   return (

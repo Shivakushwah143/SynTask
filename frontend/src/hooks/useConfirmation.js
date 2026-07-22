@@ -70,16 +70,12 @@ export const withConfirmationAndUndo = (deleteOperation, options = {}) => {
 
     if (!confirmed) return false
 
-    try {
-      const result = await deleteOperation(...args)
-      showUndo({
-        message: undoMessage,
-        undoDuration,
-      })
-      return result
-    } catch (error) {
-      throw error
-    }
+    const result = await deleteOperation(...args)
+    showUndo({
+      message: undoMessage,
+      undoDuration,
+    })
+    return result
   }
 }
 

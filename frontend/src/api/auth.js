@@ -6,6 +6,17 @@ export const authAPI = {
       email, 
       password, 
       remember_me: rememberMe 
+    }, {
+      skipAuth: true,
+      skipAuthRefresh: true,
+    })
+    return response.data
+  },
+
+  googleLogin: async (idToken, rememberMe = false) => {
+    const response = await api.post('/auth/google', {
+      id_token: idToken,
+      remember_me: rememberMe,
     })
     return response.data
   },

@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
-import { Button, EmptyState, FormField, LoadingSpinner, Modal, SkeletonTable, inputClassName } from '../components/ui'
+import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
+import { QuickCreateEmployeeModal, QuickCreateProjectModal } from '../components/relatedRecords/QuickCreateModals'
 import { projectsApi } from '../api/projects'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const Clients = () => {
   const { user } = useAuthStore()
@@ -17,6 +19,7 @@ const Clients = () => {
   const { confirm, showUndoNotification } = useConfirmation()
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedClient, setSelectedClient] = useState(null)
@@ -43,6 +46,8 @@ const Clients = () => {
   const [editingClient, setEditingClient] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
+  const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
+  const [showQuickProjectModal, setShowQuickProjectModal] = useState(false)
   const [assignableUsers, setAssignableUsers] = useState([])
   const [projectForm, setProjectForm] = useState({
     project_id: '',
@@ -72,18 +77,25 @@ const Clients = () => {
   const loadClients = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError(null)
       const params = {}
       if (statusFilter) params.status_filter = statusFilter
       const data = await clientsAPI.listClients(params)
       setClients(data.clients || [])
     } catch (error) {
       console.error('Error loading clients:', error)
+      const message = error.response?.status === 403
+        ? 'You do not have permission to view clients. Please contact your administrator.'
+        : error.response?.status === 401
+          ? 'Please login to view clients'
+          : 'Failed to load clients'
+      setLoadError(message)
       if (error.response?.status === 403) {
-        toast.error('You do not have permission to view clients. Please contact your administrator.')
+        toast.error(message)
       } else if (error.response?.status === 401) {
-        toast.error('Please login to view clients')
+        toast.error(message)
       } else {
-        toast.error('Failed to load clients')
+        toast.error(message)
       }
       setClients([])
     } finally {
@@ -100,10 +112,13 @@ const Clients = () => {
     }
   }, [])
 
+  const { isAuthenticated } = useAuthStore()
+
   useEffect(() => {
+    if (!isAuthenticated) return
     loadClients()
     loadLeads()
-  }, [loadClients, loadLeads])
+  }, [isAuthenticated, loadClients, loadLeads])
 
   const handleCreateClient = async (e) => {
     e.preventDefault()
@@ -259,10 +274,10 @@ const Clients = () => {
       
       // Convert dates to ISO format
       if (projectForm.start_date) {
-        projectData.start_date = new Date(projectForm.start_date).toISOString()
+        projectData.start_date = timeService.toUtcISOString(projectForm.start_date)
       }
       if (projectForm.delivery_date) {
-        projectData.delivery_date = new Date(projectForm.delivery_date).toISOString()
+        projectData.delivery_date = timeService.toUtcISOString(projectForm.delivery_date)
       }
 
       const projectResponse = await projectsApi.createProject(projectData)
@@ -277,8 +292,8 @@ const Clients = () => {
         selectedClient.id,
         projectId,
         projectForm.budget ? parseFloat(projectForm.budget) : null,
-        projectForm.start_date ? new Date(projectForm.start_date).toISOString() : null,
-        projectForm.delivery_date ? new Date(projectForm.delivery_date).toISOString() : null
+        projectForm.start_date ? timeService.toUtcISOString(projectForm.start_date) : null,
+        projectForm.delivery_date ? timeService.toUtcISOString(projectForm.delivery_date) : null
       )
 
       toast.success('Project created and linked to client successfully')
@@ -294,8 +309,7 @@ const Clients = () => {
         start_date: '',
         delivery_date: '',
       })
-      
-      // Reload client details
+      await loadClients()
       await handleViewClient(selectedClient)
     } catch (error) {
       console.error('Error creating project:', error)
@@ -403,7 +417,8 @@ const Clients = () => {
       setShowDocumentModal(false)
       setDocumentFile(null)
       setDocumentName('')
-      handleViewClient(selectedClient)
+      await loadClients()
+      await handleViewClient(selectedClient)
     } catch (error) {
       console.error('Error uploading document:', error)
       toast.error('Failed to upload document')
@@ -472,7 +487,7 @@ const Clients = () => {
         .filter(date => date != null && date !== undefined)
         .map(date => {
           try {
-            const d = new Date(date)
+            const d = timeService.instant(date)
             return isNaN(d.getTime()) ? null : d
           } catch (e) {
             return null
@@ -481,7 +496,7 @@ const Clients = () => {
         .filter(date => date !== null)
       
       if (dates.length > 0) {
-        return new Date(Math.min(...dates.map(d => d.getTime())))
+        return timeService.instant(Math.min(...dates.map(d => d.getTime())))
       }
     }
     return null
@@ -494,7 +509,7 @@ const Clients = () => {
         .filter(date => date != null && date !== undefined)
         .map(date => {
           try {
-            const d = new Date(date)
+            const d = timeService.instant(date)
             return isNaN(d.getTime()) ? null : d
           } catch (e) {
             return null
@@ -503,7 +518,7 @@ const Clients = () => {
         .filter(date => date !== null)
       
       if (dates.length > 0) {
-        return new Date(Math.max(...dates.map(d => d.getTime())))
+        return timeService.instant(Math.max(...dates.map(d => d.getTime())))
       }
     }
     return null
@@ -556,15 +571,26 @@ const Clients = () => {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="input"
         >
-          <option value="">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="archived">Archived</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Status</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="active">Active</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="inactive">Inactive</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="archived">Archived</option>
         </select>
       </div>
 
       {/* Clients Table */}
-      {filteredClients.length === 0 ? (
+      {loadError ? (
+        <EmptyState
+          icon={Briefcase}
+          title="Clients unavailable"
+          description={loadError}
+          action={(
+            <button type="button" onClick={loadClients} className="btn btn-primary">
+              Retry
+            </button>
+          )}
+        />
+      ) : filteredClients.length === 0 ? (
         <EmptyState
           icon={Briefcase}
           title="No clients found"
@@ -750,8 +776,7 @@ const Clients = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Contact</label>
-                    <input
-                      type="text"
+                    <PhoneInput
                       value={formData.contact}
                       onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
                       className="input"
@@ -759,8 +784,7 @@ const Clients = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Alternate Contact</label>
-                    <input
-                      type="text"
+                    <PhoneInput
                       value={formData.alternate_contact}
                       onChange={(e) => setFormData({ ...formData, alternate_contact: e.target.value })}
                       className="input"
@@ -786,10 +810,13 @@ const Clients = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Assigned To</label>
-                    <select
+                    <CreatableSelectField
                       value={formData.assigned_to}
-                      onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
+                      onChange={(value) => setFormData({ ...formData, assigned_to: value })}
                       className="input"
+                      createLabel="Create user"
+                      onCreate={() => setShowQuickEmployeeModal(true)}
+                      canCreate={isCompanyAdmin || isLead}
                     >
                       <option value="">Select Lead/Admin</option>
                       {leads.map(lead => (
@@ -797,7 +824,7 @@ const Clients = () => {
                           {lead.first_name} {lead.last_name}
                         </option>
                       ))}
-                    </select>
+                    </CreatableSelectField>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
@@ -1022,13 +1049,13 @@ const Clients = () => {
                           {project.start_date && (
                             <div className="flex items-center">
                               <Calendar className="h-3 w-3 mr-1" />
-                              <span>Start: {format(new Date(project.start_date), 'MMM d, yyyy')}</span>
+                              <span>Start: {format(timeService.instant(project.start_date), 'MMM d, yyyy')}</span>
                             </div>
                           )}
                           {project.delivery_date && (
                             <div className="flex items-center">
                               <Calendar className="h-3 w-3 mr-1" />
-                              <span>Delivery: {format(new Date(project.delivery_date), 'MMM d, yyyy')}</span>
+                              <span>Delivery: {format(timeService.instant(project.delivery_date), 'MMM d, yyyy')}</span>
                             </div>
                           )}
                         </div>
@@ -1133,13 +1160,16 @@ const Clients = () => {
               </FormField>
 
               <FormField label="Project" htmlFor="client-project-select" required>
-                <select
+                <CreatableSelectField
                   id="client-project-select"
                   value={selectedProjectId}
-                  onChange={(event) => setSelectedProjectId(event.target.value)}
+                  onChange={setSelectedProjectId}
                   className={inputClassName}
-                  disabled={assigningProject || filteredAvailableProjects.length === 0}
+                  disabled={assigningProject}
                   required
+                  createLabel="Create project"
+                  onCreate={() => setShowQuickProjectModal(true)}
+                  canCreate={isCompanyAdmin}
                 >
                   <option value="">
                     {filteredAvailableProjects.length ? 'Select a project' : 'No matching projects'}
@@ -1149,7 +1179,7 @@ const Clients = () => {
                       {project.name} ({project.key}){project.project_id ? ` - ${project.project_id}` : ''}
                     </option>
                   ))}
-                </select>
+                </CreatableSelectField>
               </FormField>
 
               {filteredAvailableProjects.length === 0 ? (
@@ -1175,6 +1205,31 @@ const Clients = () => {
           </div>
         </form>
       </Modal>
+
+      <QuickCreateEmployeeModal
+        isOpen={showQuickEmployeeModal}
+        onClose={() => setShowQuickEmployeeModal(false)}
+        existing={[...leads, ...assignableUsers]}
+        leads={leads}
+        canCreateLead={isCompanyAdmin}
+        onCreated={async (created) => {
+          await Promise.all([loadLeads(), loadAssignableUsers()])
+          setFormData((state) => ({ ...state, assigned_to: created.id }))
+          setProjectForm((state) => ({ ...state, assigned_to: created.id }))
+        }}
+      />
+
+      <QuickCreateProjectModal
+        isOpen={showQuickProjectModal}
+        onClose={() => setShowQuickProjectModal(false)}
+        existing={availableProjects}
+        assignedTo={projectForm.assigned_to}
+        clientId={selectedClient?.id}
+        onCreated={async (created) => {
+          await loadAvailableProjects()
+          setSelectedProjectId(created.id)
+        }}
+      />
 
       {/* Create Project Modal */}
       {showCreateProjectModal && selectedClient && (

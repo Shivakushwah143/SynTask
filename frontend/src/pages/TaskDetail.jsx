@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { 
   ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
@@ -15,16 +15,32 @@ import { changelogApi } from '../api/changelog'
 import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
+import { EmptyState } from '../components/ui'
+import { TASK_STATUS_TONES, buildTaskAssignmentOptions, canEditTaskDetails, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
+import { normalizeRole } from '../utils/roles'
+import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } from './taskNavigation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
+
+const dedupeUsersById = (items = []) => {
+  const seen = new Set()
+  return items.filter((item) => {
+    const id = String(item?.id || item?._id || '')
+    if (!id || seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
 
 const TaskDetail = () => {
-  const { taskId, projectId } = useParams()
+  const { projectId, taskId } = useParams()
   const navigate = useNavigate()
   const { confirm } = useConfirmation()
   const { user } = useAuthStore()
   const [task, setTask] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [comments, setComments] = useState([])
   const [newComment, setNewComment] = useState('')
   const [attachments, setAttachments] = useState([])
@@ -50,102 +66,182 @@ const TaskDetail = () => {
   const [updatingWatch, setUpdatingWatch] = useState(false)
   const [updatingField, setUpdatingField] = useState(null)
   const [composerOpen, setComposerOpen] = useState(false)
+  const [extensionRequests, setExtensionRequests] = useState([])
+  const [extensionForm, setExtensionForm] = useState({ requested_due_date: '', reason: '' })
+  const [submittingExtension, setSubmittingExtension] = useState(false)
+  const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const pageRef = useRef(null)
+  const detailsRef = useRef(null)
+  const historyRef = useRef(null)
+  const { leads: leadAssignmentOptions, employees: employeeAssignmentOptions } = buildTaskAssignmentOptions(users, user)
+  const currentAssignee = users.find((item) => getUserId(item) === String(task?.assigned_to || ''))
+    || (getUserId(user) === String(task?.assigned_to || '') ? user : null)
+  const currentAssigneeRole = normalizeRole(currentAssignee?.role)
+  const selectedEmployeeId = currentAssigneeRole === 'employee' ? String(task?.assigned_to || '') : ''
+  const projectLeadName = getProjectLeadName(projectInfo, leadAssignmentOptions, user)
+  const canEditDetails = canEditTaskDetails(user, task)
 
-  useEffect(() => {
-    if (taskId) {
-      loadTask()
+  const updateAssignee = async (newAssignee) => {
+    try {
+      setUpdatingField('assignee')
+      await tasksAPI.updateTask(task.id, { assigned_to: newAssignee || null })
+      toast.success('Task reassigned')
+      await loadTask()
+    } catch (error) {
+      toast.error('Failed to reassign task')
+    } finally {
+      setUpdatingField(null)
     }
-    // loadTask intentionally refreshes the whole task workspace when the route ID changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskId])
+  }
 
-  const loadTask = async () => {
+  const navigateBack = useCallback(() => {
+    const fallbackPath = resolveTaskCloseFallback(projectId || task?.project_id)
+    const historyState = window.history.state || {}
+    const target = resolveTaskBackTarget(historyState, fallbackPath)
+    if (target) {
+      navigate(target)
+      return
+    }
+    navigate(-1)
+  }, [navigate, projectId, task?.project_id])
+
+  const loadTask = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadError('')
       const data = await tasksAPI.getTask(taskId)
       setTask(data)
       setTaskStatus(data.status)
+
       if (data.attachments) {
-        // Convert attachment URLs to full URLs if needed
         const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
         const BASE_URL = API_URL.replace('/api/v1', '') || ''
-        
-        const fullAttachments = data.attachments.map(url => {
-          // Already a full URL
+        const fullAttachments = data.attachments.map((url) => {
           if (url.startsWith('http://') || url.startsWith('https://')) {
             return url
           }
-          
-          // URL starts with /api/v1/files/
           if (url.startsWith('/api/v1/files/')) {
             return `${BASE_URL}${url}`
           }
-          
-          // URL starts with /files/
           if (url.startsWith('/files/')) {
             return `${BASE_URL}/api/v1${url}`
           }
-          
-          // Just a filename or relative path - extract filename
           const filename = url.split('/').pop().split('\\').pop()
           return `${BASE_URL}/api/v1/files/${filename}`
         })
-        
-        console.log('Original attachments:', data.attachments)
-        console.log('Converted attachments:', fullAttachments)
         setAttachments(fullAttachments)
       } else {
         setAttachments([])
       }
+
       setEditData({
         title: data.title,
         description: data.description || '',
         priority: data.priority,
         assigned_to: data.assigned_to || '',
-        due_date: data.due_date ? format(new Date(data.due_date), "yyyy-MM-dd'T'HH:mm") : '',
+        due_date: data.due_date ? format(timeService.instant(data.due_date), "yyyy-MM-dd'T'HH:mm") : '',
         estimated_hours: data.estimated_hours ?? '',
         tags: data.tags ? data.tags.join(', ') : '',
         issue_type_id: data.issue_type_id || '',
         component_id: data.component_id || '',
         fix_version_id: data.fix_version_id || '',
       })
-      
+
       if (data.project_id) {
-        loadProjectInfo(data.project_id)
+        try {
+          const response = await projectsApi.getProject(data.project_id)
+          setProjectInfo(response.data)
+        } catch (error) {
+          console.error('Error loading project:', error)
+        }
       }
-      
-      await Promise.all([
-        loadComments(),
-        loadUsers(),
-        loadWatchers(),
-        loadChangelog(),
-      ])
+
+      try {
+        setLoadingComments(true)
+        const commentsData = await tasksAPI.getComments(taskId)
+        setComments(commentsData.comments || [])
+      } catch (error) {
+        console.error('Error loading comments:', error)
+        setComments([])
+      } finally {
+        setLoadingComments(false)
+      }
+
+      try {
+        const usersData = await usersAPI.getAssignableUsers()
+        setUsers(dedupeUsersById(usersData.users || []))
+      } catch (error) {
+        console.error('Error loading users:', error)
+      }
+
+      try {
+        const watchersResponse = await watchersApi.getWatchers(data.id)
+        setWatchers(watchersResponse.data.watchers || [])
+        setIsWatching(watchersResponse.data.watchers?.some(w => w.user_id === user.id) || false)
+      } catch (error) {
+        console.error('Error loading watchers:', error)
+      }
+
+      try {
+        const changelogResponse = await changelogApi.getChangelog(data.id)
+        setChangelog(changelogResponse.data.changelog || [])
+      } catch (error) {
+        console.error('Error loading changelog:', error)
+      }
+
+      try {
+        const extensionData = await tasksAPI.listExtensionRequests(data.id)
+        setExtensionRequests(extensionData.requests || [])
+      } catch (error) {
+        console.error('Error loading extension requests:', error)
+      }
     } catch (error) {
       console.error('Error loading task:', error)
+      setLoadError(error.response?.data?.detail || error.message || 'Failed to load task')
       toast.error('Failed to load task')
       navigate(-1)
     } finally {
       setLoading(false)
     }
-  }
+  }, [navigate, taskId, user.id])
 
-  const loadProjectInfo = async (projId) => {
-    try {
-      const response = await projectsApi.getProject(projId)
-      setProjectInfo(response.data)
-    } catch (error) {
-      console.error('Error loading project:', error)
+  useEffect(() => {
+    if (taskId) {
+      loadTask()
     }
-  }
+  }, [taskId, loadTask])
 
-  const loadUsers = async () => {
-    try {
-      const data = await usersAPI.getAssignableUsers()
-      setUsers(data.users || [])
-    } catch (error) {
-      console.error('Error loading users:', error)
+  useEffect(() => {
+    const refreshCurrentTask = (event) => {
+      const relatedId = event?.detail?.relatedId
+      const metadataTaskId = event?.detail?.metadata?.task_id
+      if (
+        relatedId &&
+        String(relatedId) !== String(taskId) &&
+        (!metadataTaskId || String(metadataTaskId) !== String(taskId))
+      ) return
+      const notificationType = String(event?.detail?.type || '').toLowerCase()
+      const eventName = String(event?.detail?.metadata?.event || '').toLowerCase()
+      if (notificationType === 'task_comment' || eventName === 'task_comment_added') {
+        const refreshComments = async () => {
+          try {
+            const data = await tasksAPI.getComments(taskId)
+            setComments(data.comments || [])
+          } catch (error) {
+            console.error('Error refreshing comments:', error)
+          }
+        }
+        refreshComments()
+        return
+      }
+      if (taskId) {
+        loadTask()
+      }
     }
-  }
+    window.addEventListener('syntask:tasks-updated', refreshCurrentTask)
+    return () => window.removeEventListener('syntask:tasks-updated', refreshCurrentTask)
+  }, [taskId, loadTask])
 
   const loadWatchers = async () => {
     if (!task) return
@@ -155,16 +251,6 @@ const TaskDetail = () => {
       setIsWatching(response.data.watchers?.some(w => w.user_id === user.id) || false)
     } catch (error) {
       console.error('Error loading watchers:', error)
-    }
-  }
-
-  const loadChangelog = async () => {
-    if (!task) return
-    try {
-      const response = await changelogApi.getChangelog(task.id)
-      setChangelog(response.data.changelog || [])
-    } catch (error) {
-      console.error('Error loading changelog:', error)
     }
   }
 
@@ -228,6 +314,41 @@ const TaskDetail = () => {
     }
   }
 
+  const handleExtensionRequest = async (event) => {
+    event.preventDefault()
+    if (!taskId || submittingExtension) return
+    try {
+      setSubmittingExtension(true)
+      await tasksAPI.requestExtension(taskId, extensionForm)
+      toast.success('Extension request submitted')
+      setExtensionForm({ requested_due_date: '', reason: '' })
+      await loadTask()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to request extension')
+    } finally {
+      setSubmittingExtension(false)
+    }
+  }
+
+  const handleExtensionReview = async (requestId, action) => {
+    if (!requestId || reviewingExtensionId) return
+    try {
+      setReviewingExtensionId(requestId)
+      if (action === 'approve') {
+        await tasksAPI.approveExtensionRequest(requestId)
+        toast.success('Extension approved')
+      } else {
+        await tasksAPI.rejectExtensionRequest(requestId)
+        toast.success('Extension rejected')
+      }
+      await loadTask()
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to review extension')
+    } finally {
+      setReviewingExtensionId(null)
+    }
+  }
+
   const handleDelete = async () => {
     if (deleting) return
     const confirmed = await confirm({
@@ -244,11 +365,7 @@ const TaskDetail = () => {
       setDeleting(true)
       await tasksAPI.deleteTask(taskId)
       toast.success('Task deleted successfully')
-      if (projectId) {
-        navigate(`/projects/${projectId}/board`)
-      } else {
-        navigate('/projects')
-      }
+      navigateBack()
     } catch (error) {
       toast.error('Failed to delete task')
     } finally {
@@ -342,6 +459,43 @@ const TaskDetail = () => {
     }
   }
 
+  const focusDetails = useCallback(() => {
+    setDetailsExpanded(true)
+    detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  const focusHistory = useCallback(() => {
+    setActiveTab('history')
+    setHeaderMenuOpen(false)
+    historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  const handleShareTask = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(buildTaskShareUrl(window.location.href))
+      toast.success('Task link copied')
+    } catch (error) {
+      toast.error('Could not copy task link')
+    }
+  }, [])
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
+        await pageRef.current?.requestFullscreen()
+      }
+    } catch (error) {
+      toast.error('Fullscreen is not available')
+    }
+  }, [])
+
+  const openProjectBoard = useCallback(() => {
+    const targetProjectId = projectId || task?.project_id
+    if (targetProjectId) navigate(`/projects/${targetProjectId}/board`)
+  }, [navigate, projectId, task?.project_id])
+
   const priorities = {
     low: { label: 'Low', color: 'text-gray-600 bg-gray-100' },
     medium: { label: 'Medium', color: 'text-blue-600 bg-blue-100' },
@@ -349,19 +503,33 @@ const TaskDetail = () => {
     critical: { label: 'Critical', color: 'text-red-600 bg-red-100' },
   }
 
-  const statuses = {
-    todo: { label: 'To Do', color: 'bg-gray-100 text-gray-800' },
-    in_progress: { label: 'In Progress', color: 'bg-blue-100 text-blue-800' },
-    in_review: { label: 'In Review', color: 'bg-yellow-100 text-yellow-800' },
-    completed: { label: 'Completed', color: 'bg-green-100 text-green-800' },
-    on_hold: { label: 'On Hold', color: 'bg-purple-100 text-purple-800' },
-    cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-800' },
-  }
+  const statuses = TASK_STATUS_TONES
+  const currentStatusTone = getTaskStatusTone(taskStatus || task?.status)
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          title="Could not load task"
+          description={loadError}
+          action={(
+            <button
+              type="button"
+              onClick={loadTask}
+              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            >
+              Try again
+            </button>
+          )}
+        />
       </div>
     )
   }
@@ -376,25 +544,25 @@ const TaskDetail = () => {
 
   return (
     <>
-    <div className="h-full flex flex-col bg-white -m-6" style={{ minHeight: 'calc(100vh - 96px)' }}>
+    <div ref={pageRef} className="h-full flex flex-col bg-white -m-6" style={{ minHeight: 'calc(100vh - 96px)' }}>
       {/* Top Header */}
       <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between bg-white">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => {
-              if (projectId) {
-                navigate(`/projects/${projectId}/board`)
-              } else {
-                navigate('/projects')
-              }
-            }}
+            onClick={navigateBack}
             className="text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
           {projectInfo && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span>{projectInfo.name}</span>
+              <button
+                type="button"
+                onClick={openProjectBoard}
+                className="font-medium text-gray-700 hover:text-primary-700 hover:underline"
+              >
+                {projectInfo.name}
+              </button>
               <span>/</span>
               <CheckSquare className="h-4 w-4" />
               <span className="font-mono">{task.id?.slice(0, 6)}</span>
@@ -403,41 +571,85 @@ const TaskDetail = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setComposerOpen(true)}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <Mail className="inline-block h-4 w-4 mr-1" />
             Send Email
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded">
+          <button
+            type="button"
+            onClick={focusDetails}
+            className="p-2 hover:bg-gray-100 rounded"
+            aria-label="Open task details"
+            title="Open task details"
+          >
             <Lock className="h-5 w-5 text-gray-600" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded relative">
-            <Eye className="h-5 w-5 text-gray-600" />
+          <button
+            type="button"
+            onClick={handleToggleWatch}
+            disabled={updatingWatch}
+            className={`p-2 hover:bg-gray-100 rounded relative disabled:opacity-60 ${isWatching ? 'bg-primary-50' : ''}`}
+            aria-label={isWatching ? 'Stop watching task' : 'Watch task'}
+            title={isWatching ? 'Stop watching task' : 'Watch task'}
+          >
+            <Eye className={`h-5 w-5 ${isWatching ? 'text-primary-700' : 'text-gray-600'}`} />
             {watchers.length > 0 && (
               <span className="absolute top-0 right-0 bg-primary-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                 {watchers.length}
               </span>
             )}
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded">
+          <button
+            type="button"
+            onClick={handleShareTask}
+            className="p-2 hover:bg-gray-100 rounded"
+            aria-label="Copy task link"
+            title="Copy task link"
+          >
             <Share2 className="h-5 w-5 text-gray-600" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded">
-            <MoreVertical className="h-5 w-5 text-gray-600" />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setHeaderMenuOpen((open) => !open)}
+              className="p-2 hover:bg-gray-100 rounded"
+              aria-label="Open task actions"
+              aria-expanded={headerMenuOpen}
+              title="Open task actions"
+            >
+              <MoreVertical className="h-5 w-5 text-gray-600" />
+            </button>
+            {headerMenuOpen ? (
+              <div className="absolute right-0 z-20 mt-2 w-44 rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+                <button type="button" onClick={focusHistory} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
+                  <History className="h-4 w-4" />
+                  View history
+                </button>
+                <button type="button" onClick={handleDelete} disabled={deleting} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:opacity-60">
+                  <Trash2 className="h-4 w-4" />
+                  {deleting ? 'Deleting...' : 'Delete task'}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="p-2 hover:bg-gray-100 rounded"
+            aria-label="Toggle fullscreen"
+            title="Toggle fullscreen"
+          >
             <Maximize2 className="h-5 w-5 text-gray-600" />
           </button>
           <button
-            onClick={() => {
-              if (projectId) {
-                navigate(`/projects/${projectId}/board`)
-              } else {
-                navigate('/projects')
-              }
-            }}
+            type="button"
+            onClick={navigateBack}
             className="p-2 hover:bg-gray-100 rounded"
+            aria-label="Close task detail"
+            title="Close task detail"
           >
             <X className="h-5 w-5 text-gray-600" />
           </button>
@@ -449,7 +661,7 @@ const TaskDetail = () => {
         {/* Left Panel */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Task Title */}
-          <div className="mb-6">
+          <div className="mb-6 md:flex md:justify-between md:items-center">
             {isEditing ? (
               <input
                 type="text"
@@ -465,12 +677,19 @@ const TaskDetail = () => {
               />
             ) : (
               <h1 
-                className="text-2xl font-bold text-gray-900 cursor-pointer hover:bg-gray-50 p-2 rounded"
-                onClick={() => setIsEditing(true)}
+                className={`text-2xl font-bold text-gray-900 p-2 rounded ${canEditDetails ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                onClick={() => canEditDetails && setIsEditing(true)}
+                aria-disabled={!canEditDetails}
               >
                 {task.title}
               </h1>
             )}
+            <div className="mt-2 flex items-center gap-2 px-2">
+              <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${currentStatusTone.chipClass}`}>
+                <span className={`h-2 w-2 rounded-full ${currentStatusTone.dotClass}`} />
+                {currentStatusTone.label}
+              </span>
+            </div>
           </div>
 
           {/* Description */}
@@ -485,8 +704,9 @@ const TaskDetail = () => {
               />
             ) : (
               <div 
-                className="text-gray-700 whitespace-pre-wrap cursor-pointer hover:bg-gray-50 p-3 rounded"
-                onClick={() => setIsEditing(true)}
+                className={`text-gray-700 whitespace-pre-wrap p-3 rounded ${canEditDetails ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                onClick={() => canEditDetails && setIsEditing(true)}
+                aria-disabled={!canEditDetails}
               >
                 {task.description || 'No description'}
               </div>
@@ -615,7 +835,7 @@ const TaskDetail = () => {
           </div>
 
           {/* Attachments */}
-          <div className="mb-6">
+          <div ref={historyRef} className="mb-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Attachments ({attachments.length})</h3>
             {attachments.length > 0 && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-3">
@@ -790,7 +1010,7 @@ const TaskDetail = () => {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-gray-900">{comment.user_name}</span>
                             <span className="text-xs text-gray-500">
-                              {format(new Date(comment.created_at), 'MMMM d, yyyy')} at {format(new Date(comment.created_at), 'h:mm a')}
+                              {format(timeService.instant(comment.created_at), 'MMMM d, yyyy')} at {format(timeService.instant(comment.created_at), 'h:mm a')}
                             </span>
                           </div>
                           <p className="text-sm text-gray-700">{comment.content}</p>
@@ -819,7 +1039,7 @@ const TaskDetail = () => {
                           <span className="text-gray-600">{change.new_value || 'None'}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {format(new Date(change.created_at), 'MMMM d, yyyy')} at {format(new Date(change.created_at), 'h:mm a')}
+                          {format(timeService.instant(change.created_at), 'MMMM d, yyyy')} at {format(timeService.instant(change.created_at), 'h:mm a')}
                         </div>
                       </div>
                     </div>
@@ -835,18 +1055,31 @@ const TaskDetail = () => {
           <div className="p-4 space-y-4">
             {/* Status and Actions */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-gray-500">Status</span>
+                  {updatingStatus && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600">
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Updating...
+                    </span>
+                  )}
+                </div>
                 <select
                   value={taskStatus}
                   onChange={(e) => handleStatusChange(e.target.value)}
                   disabled={updatingStatus}
                   aria-busy={updatingStatus || undefined}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-white"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold transition ${currentStatusTone.selectClass} ${
+                    updatingStatus ? 'cursor-wait opacity-70' : ''
+                  }`}
                 >
                   {Object.entries(statuses).map(([key, status]) => (
-                    <option key={key} value={key}>{status.label}</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={key} value={key}>{status.label}</option>
                   ))}
                 </select>
+              </div>
+              <div className="flex items-center justify-end">
                 <button className="p-2 hover:bg-gray-200 rounded">
                   <Zap className="h-4 w-4 text-gray-600" />
                 </button>
@@ -858,7 +1091,7 @@ const TaskDetail = () => {
             </div>
 
             {/* Details Section */}
-            <div>
+            <div ref={detailsRef}>
               <button
                 onClick={() => setDetailsExpanded(!detailsExpanded)}
                 className="w-full flex items-center justify-between text-sm font-semibold text-gray-900 mb-2"
@@ -873,31 +1106,41 @@ const TaskDetail = () => {
               
               {detailsExpanded && (
                 <div className="space-y-3 bg-white rounded-lg p-3 border border-gray-200">
-                  {/* Assignee */}
+                  {/* Lead */}
                   <div>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Assignee</label>
-                    <select
-                      value={task.assigned_to || ''}
-                      disabled={updatingField === 'assignee'}
-                      onChange={async (e) => {
-                        const newAssignee = e.target.value
-                        try {
-                          setUpdatingField('assignee')
-                          await tasksAPI.updateTask(task.id, { assigned_to: newAssignee || null })
-                          toast.success('Task reassigned')
-                          await loadTask()
-                        } catch (error) {
-                          toast.error('Failed to reassign task')
-                        } finally {
-                          setUpdatingField(null)
-                        }
-                      }}
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Lead</label>
+                    <div
+                      className="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm text-gray-700"
+                      aria-label="Project lead"
                     >
-                      <option value="">Unassigned</option>
-                      {users.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.first_name} {u.last_name}
+                      {projectLeadName}
+                    </div>
+                  </div>
+
+                  {/* Employee */}
+                  <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium text-gray-500">Employee</label>
+                      {updatingField === 'assignee' && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600">
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          Updating...
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      value={selectedEmployeeId}
+                      disabled={!canEditDetails || updatingField === 'assignee'}
+                      aria-busy={updatingField === 'assignee' || undefined}
+                      onChange={(e) => updateAssignee(e.target.value)}
+                      className={`w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white transition ${
+                        updatingField === 'assignee' ? 'cursor-wait opacity-70' : ''
+                      }`}
+                    >
+                      <option value="">No employee assigned</option>
+                      {employeeAssignmentOptions.map((u) => (
+                        <option key={getUserId(u)} value={getUserId(u)}>
+                          {getUserDisplayName(u)}
                         </option>
                       ))}
                     </select>
@@ -905,10 +1148,19 @@ const TaskDetail = () => {
 
                   {/* Priority */}
                   <div>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Priority</label>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium text-gray-500">Priority</label>
+                      {updatingField === 'priority' && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary-600">
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          Updating...
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={task.priority}
                       disabled={updatingField === 'priority'}
+                      aria-busy={updatingField === 'priority' || undefined}
                       onChange={async (e) => {
                         try {
                           setUpdatingField('priority')
@@ -921,7 +1173,9 @@ const TaskDetail = () => {
                           setUpdatingField(null)
                         }
                       }}
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
+                      className={`w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white transition ${
+                        updatingField === 'priority' ? 'cursor-wait opacity-70' : ''
+                      }`}
                     >
                       {Object.entries(priorities).map(([key, priority]) => (
                         <option key={key} value={key}>{priority.label}</option>
@@ -940,11 +1194,26 @@ const TaskDetail = () => {
                     <label className="text-xs font-medium text-gray-500 block mb-1">Due date</label>
                     {task.due_date ? (
                       <p className="text-sm text-gray-700">
-                        {format(new Date(task.due_date), 'MMM d, yyyy')}
+                        {format(timeService.instant(task.due_date), 'MMM d, yyyy')}
                       </p>
                     ) : (
                       <p className="text-sm text-gray-500">None</p>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 block mb-1">Health</label>
+                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold capitalize ${
+                      task.health_status === 'overdue'
+                        ? 'bg-red-100 text-red-700'
+                        : task.health_status === 'due_today'
+                          ? 'bg-amber-100 text-amber-700'
+                          : task.health_status === 'extended'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {(task.health_status || 'healthy').replace(/_/g, ' ')}
+                    </span>
                   </div>
 
                   {/* Labels */}
@@ -983,6 +1252,60 @@ const TaskDetail = () => {
                 </div>
               )}
             </div>
+
+            {task.assigned_to === String(user?.id || user?._id) && task.status !== 'completed' && task.due_date ? (
+              <div className="pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-900">Request extension</h3>
+                <form className="mt-3 space-y-3" onSubmit={handleExtensionRequest}>
+                  <input
+                    type="datetime-local"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    value={extensionForm.requested_due_date}
+                    onChange={(event) => setExtensionForm((state) => ({ ...state, requested_due_date: event.target.value }))}
+                    required
+                  />
+                  <textarea
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    rows={3}
+                    placeholder="Reason"
+                    value={extensionForm.reason}
+                    onChange={(event) => setExtensionForm((state) => ({ ...state, reason: event.target.value }))}
+                    required
+                  />
+                  <button type="submit" disabled={submittingExtension} className="w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                    {submittingExtension ? 'Submitting...' : 'Submit extension request'}
+                  </button>
+                </form>
+              </div>
+            ) : null}
+
+            {extensionRequests.length ? (
+              <div className="pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-900">Extension requests</h3>
+                <div className="mt-3 space-y-2">
+                  {extensionRequests.map((request) => (
+                    <article key={request.id} className="rounded-xl border border-gray-200 p-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-gray-900">{request.status}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {request.requested_due_date ? format(timeService.instant(request.requested_due_date), 'MMM d, yyyy') : 'No date'}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">{request.status}</span>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-600">{request.reason}</p>
+                      {request.status === 'pending' && user.role !== 'employee' ? (
+                        <div className="mt-3 flex gap-2">
+                          <button type="button" disabled={reviewingExtensionId === request.id} onClick={() => handleExtensionReview(request.id, 'approve')} className="flex-1 rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Approve</button>
+                          <button type="button" disabled={reviewingExtensionId === request.id} onClick={() => handleExtensionReview(request.id, 'reject')} className="flex-1 rounded-lg bg-red-600 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Reject</button>
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {/* Actions */}
             <div className="pt-4 border-t border-gray-200">

@@ -37,6 +37,30 @@ export const hasCompanyAdminAccess = (role) => {
   return normalized === ROLE.ADMIN || normalized === ROLE.SUPER_ADMIN
 }
 
+export const canCreateProject = (role) => {
+  const normalized = normalizeRole(role)
+  return normalized === ROLE.ADMIN || normalized === ROLE.SUPER_ADMIN || normalized === ROLE.MANAGER
+}
+
+export const canCreateTask = (role) => {
+  const normalized = normalizeRole(role)
+  return normalized === ROLE.ADMIN || normalized === ROLE.SUPER_ADMIN || normalized === ROLE.MANAGER || normalized === ROLE.LEAD
+}
+
+export const canManageProject = (role, project, userId) => {
+  const normalized = normalizeRole(role)
+  if (normalized === ROLE.ADMIN || normalized === ROLE.SUPER_ADMIN || normalized === ROLE.MANAGER) return true
+  return false
+}
+
+export const canManageTask = (role, task, userId) => {
+  const normalized = normalizeRole(role)
+  if (normalized === ROLE.ADMIN || normalized === ROLE.SUPER_ADMIN) return true
+  if (!task || !userId) return false
+  if (normalized === ROLE.EMPLOYEE) return task.assigned_to === String(userId)
+  return task.created_by === String(userId) || task.assigned_to === String(userId)
+}
+
 export const getRoleLabel = (role) => {
   const normalized = normalizeRole(role)
 

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from bson import ObjectId
 
 from app.services import crm_dashboard_service as service
 
@@ -16,10 +17,13 @@ class FakeQuery:
     async def count(self):
         return len(self._items)
 
+    def sort(self, *args, **kwargs):
+        return self
+
 
 @pytest.mark.asyncio
 async def test_build_sales_dashboard_summary_aggregates_sales_data(monkeypatch):
-    now = datetime.utcnow()
+    now = datetime.now()
     active_prospect = SimpleNamespace(
         id="prospect-1",
         current_stage="Discovery",
@@ -86,3 +90,48 @@ async def test_build_crm_dashboard_payload_includes_workspace_metadata(monkeypat
     assert payload["workspace"]["feature_flags"]["dashboard"] is True
     assert payload["navigation"][0]["path"] == "/crm/dashboard"
     assert payload["sales"]["summary"]["prospect_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_sales_analytics_leaderboard_resolves_object_id_owner_names(monkeypatch):
+    now = datetime.now()
+    owner_id = ObjectId()
+    prospect = SimpleNamespace(
+        id="prospect-1",
+        current_stage="Proposal",
+        status=service.ProspectStatus.WON,
+        closed_date=now,
+        created_at=now - timedelta(days=4),
+        won_amount=7500,
+        product_ids=[],
+        assigned_to=str(owner_id),
+        created_by=None,
+        prospect_name="Delta Co",
+        crm_company_id=None,
+        channel=None,
+        category_id=None,
+        company_name=None,
+    )
+    owner = SimpleNamespace(
+        id=owner_id,
+        first_name="Asha",
+        last_name="Mehta",
+        email="asha@example.com",
+    )
+
+    monkeypatch.setattr(service.SalesProspect, "find", lambda *args, **kwargs: FakeQuery([prospect]))
+    monkeypatch.setattr(service.CRMDeal, "find", lambda *args, **kwargs: FakeQuery([]))
+    monkeypatch.setattr(service.CRMProposal, "find", lambda *args, **kwargs: FakeQuery([]))
+    monkeypatch.setattr(service.SalesContact, "find", lambda *args, **kwargs: FakeQuery([]))
+
+    def fake_user_find(query):
+        queried_ids = query["_id"]["$in"]
+        return FakeQuery([owner] if owner_id in queried_ids else [])
+
+    monkeypatch.setattr(service.User, "find", fake_user_find)
+
+    user = SimpleNamespace(company_id="company-1", role=service.UserRole.ADMIN)
+    summary = await service.build_sales_analytics_summary(user)
+
+    assert summary["leaderboards"][0]["salesperson"] == "Asha Mehta"
+

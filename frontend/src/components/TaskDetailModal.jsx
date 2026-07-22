@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { X, Trash2, Paperclip, Send, User, Plus, List, Edit, Save, Eye, Link2, History } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { filesAPI } from '../api/files'
@@ -14,6 +14,7 @@ import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole, getRoleLabel } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh }) => {
   const { user } = useAuthStore()
@@ -65,15 +66,15 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
       description: task.description || '',
       priority: task.priority,
       assigned_to: task.assigned_to || '',
-      due_date: task.due_date ? format(new Date(task.due_date), "yyyy-MM-dd'T'HH:mm") : '',
+      due_date: task.due_date ? format(timeService.instant(task.due_date), "yyyy-MM-dd'T'HH:mm") : '',
       tags: task.tags ? task.tags.join(', ') : '',
       issue_type_id: task.issue_type_id || '',
       component_id: task.component_id || '',
       fix_version_id: task.fix_version_id || '',
     })
-  }, [task.id])
+  }, [task.id, task.assigned_to, task.attachments, task.component_id, task.description, task.due_date, task.fix_version_id, task.issue_type_id, task.priority, task.project_id, task.subtasks, task.tags, task.title, loadComments, loadSubtasks, loadUsers, loadWatchers, loadIssueLinks, loadChangelog, loadIssueTypes, loadComponents, loadVersions])
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setLoadingUsers(true)
       // Use assignable users endpoint to get users based on role
@@ -100,9 +101,9 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
     } finally {
       setLoadingUsers(false)
     }
-  }
+  }, [user.company_id, user.role])
 
-  const loadWatchers = async () => {
+  const loadWatchers = useCallback(async () => {
     try {
       const response = await watchersApi.getWatchers(task.id)
       setWatchers(response.data.watchers || [])
@@ -110,7 +111,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
     } catch (error) {
       console.error('Error loading watchers:', error)
     }
-  }
+  }, [task.id, user.id])
 
   const handleToggleWatch = async () => {
     try {
@@ -127,14 +128,14 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
     }
   }
 
-  const loadIssueLinks = async () => {
+  const loadIssueLinks = useCallback(async () => {
     try {
       const response = await issueLinksApi.getLinks(task.id)
       setIssueLinks(response.data.links || [])
     } catch (error) {
       console.error('Error loading issue links:', error)
     }
-  }
+  }, [task.id])
 
   const handleCreateLink = async (e) => {
     e.preventDefault()
@@ -149,25 +150,25 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
     }
   }
 
-  const loadChangelog = async () => {
+  const loadChangelog = useCallback(async () => {
     try {
       const response = await changelogApi.getChangelog(task.id)
       setChangelog(response.data.changelog || [])
     } catch (error) {
       console.error('Error loading changelog:', error)
     }
-  }
+  }, [task.id])
 
-  const loadIssueTypes = async () => {
+  const loadIssueTypes = useCallback(async () => {
     try {
       const response = await issueTypesApi.getIssueTypes({ project_id: task.project_id })
       setIssueTypes(response.data.issue_types || [])
     } catch (error) {
       console.error('Error loading issue types:', error)
     }
-  }
+  }, [task.project_id])
 
-  const loadComponents = async () => {
+  const loadComponents = useCallback(async () => {
     if (!task.project_id) return
     try {
       const response = await componentsApi.getComponents(task.project_id)
@@ -175,9 +176,9 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
     } catch (error) {
       console.error('Error loading components:', error)
     }
-  }
+  }, [task.project_id])
 
-  const loadVersions = async () => {
+  const loadVersions = useCallback(async () => {
     if (!task.project_id) return
     try {
       const response = await versionsApi.getVersions(task.project_id)
@@ -185,9 +186,9 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
     } catch (error) {
       console.error('Error loading versions:', error)
     }
-  }
+  }, [task.project_id])
 
-  const loadComments = async () => {
+  const loadComments = useCallback(async () => {
     try {
       setLoadingComments(true)
       const data = await tasksAPI.getComments(task.id)
@@ -197,7 +198,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
     } finally {
       setLoadingComments(false)
     }
-  }
+  }, [task.id])
 
   const handleAddComment = async (e) => {
     e.preventDefault()
@@ -213,14 +214,14 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
     }
   }
 
-  const loadSubtasks = async () => {
+  const loadSubtasks = useCallback(async () => {
     try {
       const data = await tasksAPI.getSubtasks(task.id)
       setSubtasks(data.subtasks || [])
     } catch (error) {
       console.error('Error loading subtasks:', error)
     }
-  }
+  }, [task.id])
 
   const handleCreateSubtask = async (e) => {
     e.preventDefault()
@@ -270,6 +271,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
       const newAttachments = [...attachments, result.file_url]
       setAttachments(newAttachments)
       toast.success('File uploaded successfully')
+      onRefresh?.()
     } catch (error) {
       toast.error('Failed to upload file')
     } finally {
@@ -572,7 +574,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                 <div>
                   <label className="text-sm font-medium text-gray-700">Due Date</label>
                   <p className="text-gray-900 mt-1">
-                    {format(new Date(task.due_date), 'PPpp')}
+                    {format(timeService.instant(task.due_date), 'PPpp')}
                   </p>
                 </div>
               )}
@@ -712,7 +714,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                         </span>
                       </div>
                       <span className="text-xs text-gray-500">
-                        {format(new Date(comment.created_at), 'MMM d, h:mm a')}
+                        {format(timeService.instant(comment.created_at), 'MMM d, h:mm a')}
                       </span>
                     </div>
                     <p className="text-sm text-gray-700 ml-6">{comment.content}</p>
@@ -876,7 +878,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                           <span className="text-gray-600">{change.new_value || 'None'}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {format(new Date(change.created_at), 'PPpp')}
+                          {format(timeService.instant(change.created_at), 'PPpp')}
                         </div>
                       </div>
                     </div>

@@ -18,19 +18,34 @@ let refreshPromise = null
 // Request interceptor - check storage for token
 axiosInstance.interceptors.request.use(
   (config) => {
+    config.headers = config.headers || {}
+
     // First try to get token from state, then from storage
-    let token = useAuthStore.getState().token
-    if (!token) {
-      token = getAccessToken()
-    }
-    
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    if (!config.skipAuth) {
+      let token = useAuthStore.getState().token
+      if (!token) {
+        token = getAccessToken()
+      }
+      
+      if (token) {
+        if (typeof config.headers.set === 'function') {
+          config.headers.set('Authorization', `Bearer ${token}`)
+        } else {
+          config.headers.Authorization = `Bearer ${token}`
+        }
+      } else if (!config.allowUnauthenticated) {
+        // Mark this for suppression of auth errors if no token available
+        config._unauthenticated = true
+      }
     }
     
     // If FormData, let axios set Content-Type automatically
     if (config.data instanceof FormData) {
-      delete config.headers['Content-Type']
+      if (typeof config.headers.delete === 'function') {
+        config.headers.delete('Content-Type')
+      } else {
+        delete config.headers['Content-Type']
+      }
     }
     
     return config
@@ -85,13 +100,19 @@ axiosInstance.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    // If the error is 401 and we haven't retried yet
+    // If the error is 401 and we haven't retried yet, try to refresh
     if (
       error.response?.status === 401 &&
       !originalRequest?._retry &&
       !originalRequest?.skipAuthRefresh &&
       !useAuthStore.getState().isLoggingOut
     ) {
+      // Skip retry if request was made without token (auth still initializing)
+      if (originalRequest?._unauthenticated) {
+        // Silently reject - don't show errors for requests made before auth initialized
+        return Promise.reject(error)
+      }
+
       originalRequest._retry = true
 
       try {
@@ -101,11 +122,11 @@ axiosInstance.interceptors.response.use(
           refreshToken = getRefreshToken()
         }
 
-        if (refreshToken) {
+        if (refreshToken || useAuthStore.getState().isAuthenticated) {
           if (!refreshPromise) {
-            refreshPromise = axios.post(`${API_URL}/auth/refresh`, {
+            refreshPromise = axios.post(`${API_URL}/auth/refresh`, refreshToken ? {
               refresh_token: refreshToken,
-            }, {
+            } : undefined, {
               withCredentials: true,
             }).finally(() => {
               refreshPromise = null
@@ -118,8 +139,10 @@ axiosInstance.interceptors.response.use(
           const authState = useAuthStore.getState()
           if (
             authState.isLoggingOut ||
-            authState.refreshToken !== refreshToken ||
-            getRefreshToken() !== refreshToken
+            (refreshToken && (
+              authState.refreshToken !== refreshToken ||
+              getRefreshToken() !== refreshToken
+            ))
           ) {
             return Promise.reject(error)
           }
@@ -132,9 +155,15 @@ axiosInstance.interceptors.response.use(
             authState.user,
             access_token,
             refreshToken,
+            undefined,
           )
 
-          originalRequest.headers.Authorization = `Bearer ${access_token}`
+          originalRequest.headers = originalRequest.headers || {}
+          if (typeof originalRequest.headers.set === 'function') {
+            originalRequest.headers.set('Authorization', `Bearer ${access_token}`)
+          } else {
+            originalRequest.headers.Authorization = `Bearer ${access_token}`
+          }
           return axiosInstance(originalRequest)
         }
       } catch (refreshError) {
@@ -147,14 +176,18 @@ axiosInstance.interceptors.response.use(
       }
     }
 
-    // Handle other errors
-    const errorMessage = extractErrorMessage(
-      error.response?.data?.detail ||
-      error.response?.data?.message ||
-      error.response?.data
-    )
+    // Suppress 404 errors for avatar files (gracefully handle missing avatars)
+    if (error?.response?.status === 404 && error?.config?.url?.includes('/uploads/avatars/')) {
+      return Promise.reject(error)
+    }
 
-    if (error.response?.status !== 401) {
+    // Handle other errors - suppress toasts for 401/403 and unauthenticated requests
+    if (![401, 403].includes(error.response?.status) && !originalRequest?._unauthenticated) {
+      const errorMessage = extractErrorMessage(
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.response?.data
+      )
       toast.error(errorMessage)
     }
 
@@ -163,4 +196,3 @@ axiosInstance.interceptors.response.use(
 )
 
 export default axiosInstance
-

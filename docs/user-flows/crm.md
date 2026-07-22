@@ -56,6 +56,7 @@ flowchart TD
   - `GET/POST/DELETE /api/v1/crm/leads/{leadId}/files`
   - `GET/POST/PATCH /api/v1/crm/leads/{leadId}/proposals`
 - Timeline events created: note/file/deal/proposal/timeline-related changes should publish activity events from backend workflows.
+- Meta Lead Ads ingestion publishes canonical `LeadReceivedFromMeta` or `MetaAttributionUpdated` events with the webhook correlation ID. Unable to verify from the current codebase whether this timeline reader renders persisted domain events; no parallel timeline store is introduced.
 - Notifications sent: none explicitly in the frontend; backend may emit existing notification events for write actions.
 - Related modules updated: Pipeline, Activities Hub, Company Workspace, Contact Workspace, Timeline.
 

@@ -4,10 +4,10 @@ import { Bell } from 'lucide-react'
 import { notificationsAPI } from '../api/notifications'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
-import { format } from 'date-fns'
+import { timeService } from '../services/timeService'
 
 const NotificationBell = () => {
-  const { user } = useAuthStore()
+  const { user, isAuthenticated, clearAuth } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
   const dropdownRef = useRef(null)
@@ -20,6 +20,26 @@ const NotificationBell = () => {
   const lastFetchTimeRef = useRef(null) // Track when we last fetched to detect new notifications
   const lastNotificationIdsRef = useRef(new Set()) // Track notification IDs we've already shown popups for
   const isMountedRef = useRef(false) // Track if component is mounted
+  const authFailureHandledRef = useRef(false)
+
+  const emitTaskRefresh = useCallback((notification) => {
+    const relatedType = String(notification?.related_type || '').toLowerCase()
+    const notifType = String(notification?.type || '').toLowerCase()
+    if (relatedType === 'task' || notifType.includes('task')) {
+      window.dispatchEvent(
+        new CustomEvent('syntask:tasks-updated', {
+          detail: {
+            source: 'notification',
+            notificationId: notification?.id || null,
+            relatedId: notification?.related_id || null,
+            relatedType: notification?.related_type || null,
+            type: notification?.type || null,
+            metadata: notification?.metadata || null,
+          },
+        })
+      )
+    }
+  }, [])
 
   // Determine navigation route based on notification
   const getNotificationRoute = useCallback((notification) => {
@@ -71,6 +91,12 @@ const NotificationBell = () => {
     if (!notification.is_read) {
       try {
         await notificationsAPI.markAsRead(notification.id)
+        setNotifications((current) =>
+          current.map((item) =>
+            item.id === notification.id ? { ...item, is_read: true } : item
+          )
+        )
+        setUnreadCount((current) => Math.max(0, current - 1))
         // Refresh notifications after marking as read
         const data = await notificationsAPI.listNotifications(null, 0, 10)
         setNotifications(data.notifications || [])
@@ -111,7 +137,39 @@ const NotificationBell = () => {
     }
   }, [navigate, getNotificationRoute])
 
+  const showNotificationPopup = useCallback((notif) => {
+    toast.custom(
+      (t) => (
+        <button
+          type="button"
+          onClick={() => {
+            toast.dismiss(t.id)
+            handleNotificationClick(notif)
+          }}
+          className={`w-full max-w-sm rounded-2xl border px-4 py-3 text-left shadow-[0_20px_40px_rgba(15,23,42,0.16)] transition-transform hover:-translate-y-0.5 ${
+            notif.is_read
+              ? 'border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
+              : 'border-amber-200 bg-amber-50 text-slate-900 dark:border-amber-900/60 dark:bg-slate-900 dark:text-slate-100'
+          }`}
+        >
+          <p className="text-sm font-semibold leading-5">
+            {notif.title}
+          </p>
+          <p className="mt-1 text-xs leading-4 text-slate-600 line-clamp-2 dark:text-slate-300">
+            {notif.message}
+          </p>
+        </button>
+      ),
+      {
+        duration: 6000,
+        position: 'top-right',
+      }
+    )
+  }, [handleNotificationClick])
+
   const fetchNotifications = useCallback(async (isInitialLoad = false, skipPopups = false) => {
+    if (!user || !isAuthenticated || authFailureHandledRef.current) return
+
     try {
       const data = await notificationsAPI.listNotifications(null, 0, 10)
       const newNotifications = data.notifications || []
@@ -119,7 +177,7 @@ const NotificationBell = () => {
       
       // Check for new notifications and show popup
       const previousNotifications = previousNotificationsRef.current
-      const now = new Date()
+      const now = timeService.now()
       // Only show popups if not explicitly skipped (e.g., when marking as read)
       if (!skipPopups && isMountedRef.current) {
         if (isInitialLoad && !hasShownInitialPopupsRef.current) {
@@ -129,26 +187,9 @@ const NotificationBell = () => {
             unreadNotifs.forEach(notif => {
               // Mark this notification ID as shown
               lastNotificationIdsRef.current.add(notif.id)
-              
+
               // Show toast notification with click handler
-              toast(
-                (t) => (
-                  <div 
-                    className="w-full cursor-pointer"
-                    onClick={() => {
-                      toast.dismiss(t.id)
-                      handleNotificationClick(notif)
-                    }}
-                  >
-                    <p className="font-semibold text-sm text-gray-900">{notif.title}</p>
-                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{notif.message}</p>
-                  </div>
-                ),
-                {
-                  duration: 5000,
-                  position: 'top-right',
-                }
-              )
+              showNotificationPopup(notif)
             })
             hasShownInitialPopupsRef.current = true
           }
@@ -166,7 +207,7 @@ const NotificationBell = () => {
             // 4. We haven't shown a popup for this notification ID before
             const isNew = !previousIds.has(n.id)
             const isUnread = !n.is_read
-            const createdAt = new Date(n.created_at)
+            const createdAt = timeService.instant(n.created_at)
             const isCreatedAfterLastFetch = createdAt > lastFetchTime
             const notShownBefore = !lastNotificationIdsRef.current.has(n.id)
             
@@ -177,26 +218,9 @@ const NotificationBell = () => {
           newNotifs.forEach(notif => {
             // Mark this notification ID as shown
             lastNotificationIdsRef.current.add(notif.id)
-            
+
             // Show toast notification with click handler
-            toast(
-              (t) => (
-                <div 
-                  className="w-full cursor-pointer"
-                  onClick={() => {
-                    toast.dismiss(t.id)
-                    handleNotificationClick(notif)
-                  }}
-                >
-                  <p className="font-semibold text-sm text-gray-900">{notif.title}</p>
-                  <p className="text-xs text-gray-600 mt-1 line-clamp-2">{notif.message}</p>
-                </div>
-              ),
-              {
-                duration: 5000,
-                position: 'top-right',
-              }
-            )
+            showNotificationPopup(notif)
           })
         }
       }
@@ -205,6 +229,7 @@ const NotificationBell = () => {
       setUnreadCount(newUnreadCount)
       previousNotificationsRef.current = newNotifications
       lastFetchTimeRef.current = now
+      newNotifications.forEach((notification) => emitTaskRefresh(notification))
       
       // Clean up old notification IDs from the tracking set (keep only current ones)
       // This prevents memory leak and ensures we don't track too many IDs
@@ -213,19 +238,32 @@ const NotificationBell = () => {
         Array.from(lastNotificationIdsRef.current).filter(id => idsToKeep.has(id))
       )
     } catch (error) {
+      const status = error?.response?.status
+      if (status === 401 || status === 403) {
+        authFailureHandledRef.current = true
+        isMountedRef.current = false
+        setNotifications([])
+        setUnreadCount(0)
+        clearAuth()
+        toast.error('Session expired. Please login again.')
+        navigate('/login', { replace: true })
+        return
+      }
+
       // Only log error if it's not a connection refused error (server not running)
       if (error.code !== 'ERR_NETWORK' && error.code !== 'ERR_CONNECTION_REFUSED') {
         console.error('Error fetching notifications:', error)
       }
       // Silently fail if server is not running - don't spam console
     }
-  }, [handleNotificationClick])
+  }, [clearAuth, emitTaskRefresh, isAuthenticated, navigate, showNotificationPopup, user])
 
   useEffect(() => {
     // Only reset and show initial popups when user actually changes (login)
     if (user && !isMountedRef.current) {
       // First time mounting with a user (login)
       isMountedRef.current = true
+      authFailureHandledRef.current = false
       hasShownInitialPopupsRef.current = false
       lastNotificationIdsRef.current.clear()
       lastFetchTimeRef.current = null
@@ -235,6 +273,7 @@ const NotificationBell = () => {
     } else if (!user) {
       // User logged out - reset everything
       isMountedRef.current = false
+      authFailureHandledRef.current = false
       hasShownInitialPopupsRef.current = false
       lastNotificationIdsRef.current.clear()
       lastFetchTimeRef.current = null
@@ -283,6 +322,10 @@ const NotificationBell = () => {
     try {
       setLoading(true)
       await notificationsAPI.markAllAsRead()
+      setNotifications((current) =>
+        current.map((notification) => ({ ...notification, is_read: true }))
+      )
+      setUnreadCount(0)
       toast.success('All notifications marked as read')
       // Skip popups when manually marking all as read
       await fetchNotifications(false, true)
@@ -300,7 +343,7 @@ const NotificationBell = () => {
           e.stopPropagation()
           setShowDropdown(!showDropdown)
         }}
-        className="relative rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+        className="relative rounded-xl p-2 text-text-secondary transition-colors hover:bg-surface-muted dark:text-gray-300 dark:hover:bg-gray-800"
         aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
         aria-expanded={showDropdown}
       >
@@ -316,9 +359,9 @@ const NotificationBell = () => {
       </button>
 
       {showDropdown && (
-        <div className="absolute right-0 z-50 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900 dark:shadow-none">
-          <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-800">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
+        <div className="absolute right-0 z-50 mt-2 max-h-96 w-80 overflow-y-auto rounded-lg border border-surface-border bg-surface/95 shadow-xl dark:border-gray-800 dark:bg-black dark:shadow-none">
+          <div className="flex items-center justify-between border-b border-surface-border p-4 dark:border-gray-800">
+            <h3 className="font-semibold text-text-primary dark:text-gray-100">Notifications</h3>
             {unreadCount > 0 && (
               <button
                 type="button"
@@ -331,9 +374,9 @@ const NotificationBell = () => {
               </button>
             )}
           </div>
-          <div className="divide-y divide-gray-200 dark:divide-gray-800">
+          <div className="divide-y divide-surface-border dark:divide-gray-800">
             {notifications.length === 0 ? (
-              <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+              <div className="p-4 text-center text-sm text-text-secondary dark:text-gray-400">
                 No notifications
               </div>
             ) : (
@@ -341,25 +384,25 @@ const NotificationBell = () => {
                 <div
                   key={notif.id}
                   className={`cursor-pointer p-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${
-                    !notif.is_read ? 'bg-blue-50 dark:bg-blue-950/30' : ''
+                    !notif.is_read ? 'bg-primary-50/70 dark:bg-primary-950/30' : ''
                   }`}
                   onClick={() => handleNotificationClick(notif)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <p className="text-sm font-medium text-text-primary dark:text-gray-100">
                         {notif.title}
                       </p>
-                      <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                      <p className="mt-1 text-xs text-text-secondary dark:text-gray-300">
                         {notif.message}
                       </p>
-                      <p className="mt-1 text-xs text-gray-400">
-                        {format(new Date(notif.created_at), 'MMM d, h:mm a')}
+                      <p className="mt-1 text-xs text-text-muted">
+                        {timeService.formatDateTime(notif.created_at)}
                       </p>
                     </div>
                     {!notif.is_read && (
-                    <div className="ml-2 mt-1 h-2 w-2 rounded-full bg-primary-600" aria-hidden="true"></div>
-                  )}
+                      <div className="ml-2 mt-1 h-2 w-2 rounded-full bg-primary-600" aria-hidden="true"></div>
+                    )}
                 </div>
               </div>
               ))

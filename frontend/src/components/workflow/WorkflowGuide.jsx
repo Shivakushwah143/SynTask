@@ -1,27 +1,27 @@
 import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-export function WorkflowGuide({ className = '', title, description, nextStep, primaryAction, secondaryAction, bullets = [] }) {
+export function WorkflowGuide({ className = '', title, description, primaryAction, secondaryAction }) {
   return (
-    <section className={`rounded-3xl border border-emerald-100/80 bg-gradient-to-br from-emerald-50 via-white to-white p-5 shadow-sm dark:border-gray-800 dark:from-emerald-950/20 dark:via-gray-900 dark:to-gray-900 ${className}`}>
+    <section className={`rounded-3xl border border-surface-border bg-gradient-to-br from-surface to-surface-muted p-5 shadow-sm dark:border-border dark:from-black dark:via-black/95 dark:to-black/90 ${className}`}>
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700 dark:text-emerald-300">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600 dark:text-primary-300">
             Next action
           </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+          <h2 className="mt-2 text-xl font-semibold tracking-tight text-text-primary dark:text-text-primary">
             {title}
           </h2>
           {description ? (
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600 dark:text-gray-400">
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-text-secondary dark:text-text-secondary">
               {description}
             </p>
           ) : null}
-          {nextStep ? (
-            <p className="mt-4 inline-flex rounded-full bg-white/80 px-3 py-1 text-sm font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-gray-900/80 dark:text-emerald-300 dark:ring-emerald-900/50">
+          {/* {nextStep ? (
+            <p className="mt-4 inline-flex rounded-full bg-surface px-3 py-1 text-sm font-medium text-primary-700 ring-1 ring-primary-200 dark:bg-black/70 dark:text-primary-300 dark:ring-primary-900/50">
               {nextStep}
             </p>
-          ) : null}
+          ) : null} */}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {secondaryAction ? (
@@ -32,16 +32,16 @@ export function WorkflowGuide({ className = '', title, description, nextStep, pr
           ) : null}
         </div>
       </div>
-      {bullets.length ? (
+      {/* {bullets.length ? (
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {bullets.map((bullet) => (
-            <div key={bullet.label} className="rounded-2xl border border-emerald-100 bg-white/80 p-4 dark:border-gray-800 dark:bg-gray-950/70">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">{bullet.label}</p>
-              <p className="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-300">{bullet.value}</p>
+            <div key={bullet.label} className="rounded-2xl border border-surface-border bg-surface/95 p-4 dark:border-border dark:bg-black/70">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted dark:text-text-secondary">{bullet.label}</p>
+              <p className="mt-2 text-sm leading-6 text-text-secondary dark:text-text-secondary">{bullet.value}</p>
             </div>
           ))}
         </div>
-      ) : null}
+      ) : null} */}
     </section>
   )
 }
@@ -49,8 +49,8 @@ export function WorkflowGuide({ className = '', title, description, nextStep, pr
 function ActionButton({ action, variant }) {
   const base = 'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors'
   const styles = variant === 'primary'
-    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-    : 'bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:ring-gray-700 dark:hover:bg-gray-800'
+    ? 'bg-primary-600 text-white hover:bg-primary-700'
+    : 'bg-surface text-text-secondary ring-1 ring-surface-border hover:bg-surface-muted dark:bg-black/70 dark:text-text-secondary dark:ring-border dark:hover:bg-white/5'
 
   if (!action) return null
   if (action.href) {

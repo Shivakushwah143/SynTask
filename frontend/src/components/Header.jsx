@@ -2,9 +2,8 @@ import { TopNavigation } from './layout/TopNavigation'
 import { useAuthStore } from '../store/authStore'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { useUIStore } from '../store/uiStore'
 
-const Header = ({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onLogout }) => {
+const Header = ({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onCommandOpen, onAssistantOpen, onLogout, showAiFullscreenAction = false }) => {
   const { logout, isLoggingOut } = useAuthStore()
   const navigate = useNavigate()
 
@@ -23,8 +22,10 @@ const Header = ({ title, subtitle, breadcrumb, onMenuClick, onSearchOpen, onComm
       onMenuClick={onMenuClick}
       onSearchOpen={onSearchOpen}
       onCommandOpen={onCommandOpen}
+      onAssistantOpen={onAssistantOpen}
       onLogout={onLogout || handleLogout}
       logoutLoading={isLoggingOut}
+      showAiFullscreenAction={showAiFullscreenAction}
     />
   )
 }

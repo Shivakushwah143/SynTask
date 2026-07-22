@@ -10,10 +10,11 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List
 
-from app.models.sales_prospect import SalesProspect, ProspectStatus
+from app.crm.models import SalesProspect, ProspectStatus
 from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.services.task_service import TaskService
+from app.core.clock import utc_now
 
 
 def _user_label(user: User) -> str:
@@ -33,7 +34,7 @@ async def build_manager_dashboard_metrics(current_user: User) -> Dict[str, Any]:
     overdue_tasks = [
         task
         for task in tasks
-        if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < datetime.utcnow()
+        if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < utc_now()
     ]
 
     team_workload = []
@@ -138,3 +139,4 @@ async def build_manager_dashboard_metrics(current_user: User) -> Dict[str, Any]:
         "completed_tasks": workload["by_status"].get(TaskStatus.COMPLETED.value, 0),
         "total_subordinates": len(subordinates),
     }
+

@@ -7,6 +7,7 @@ import { salesApi } from '../../api/sales'
 import { usersAPI } from '../../api/users'
 import { Badge, Button, EmptyState, PageHeader, SkeletonTable, inputClassName } from '../../components/ui'
 import { asArray, formatDate, formatMoney, getId } from '../phase4Utils'
+import { timeService } from '@/services/timeService'
 
 const priorityTone = {
   high: 'danger',
@@ -24,7 +25,7 @@ export default function SalesPipeline() {
   const [ownerFilter, setOwnerFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
 
-  const prospectsQuery = useQuery(['sales-queue-prospects', search, stageFilter, ownerFilter, priorityFilter], () => salesApi.getProspects({ limit: 200 }), {
+  const prospectsQuery = useQuery(['sales-queue-prospects', search, stageFilter, ownerFilter, priorityFilter], () => salesApi.getLeads({ limit: 200 }), {
     staleTime: 60 * 1000,
   })
   const stagesQuery = useQuery('sales-queue-stages', salesApi.getStages, { staleTime: 5 * 60 * 1000 })
@@ -66,7 +67,7 @@ export default function SalesPipeline() {
         const aPriority = priorityRank[normalizeText(a.priority || a.interest_level)] ?? 3
         const bPriority = priorityRank[normalizeText(b.priority || b.interest_level)] ?? 3
         if (aPriority !== bPriority) return aPriority - bPriority
-        return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0)
+        return timeService.instant(b.updated_at || b.created_at || 0) - timeService.instant(a.updated_at || a.created_at || 0)
       })
   }, [ownerFilter, priorityFilter, prospects, search, stageFilter])
 
@@ -75,8 +76,8 @@ export default function SalesPipeline() {
       const customFields = typeof prospect.custom_fields === 'string'
         ? (() => { try { return JSON.parse(prospect.custom_fields) || {} } catch { return {} } })()
         : (prospect.custom_fields || {})
-      return salesApi.updateProspectForm(getId(prospect), {
-        custom_fields: JSON.stringify({ ...customFields, meeting_scheduled: true, meeting_scheduled_at: new Date().toISOString() }),
+      return salesApi.updateLeadForm(getId(prospect), {
+        custom_fields: JSON.stringify({ ...customFields, meeting_scheduled: true, meeting_scheduled_at: timeService.toUtcISOString(timeService.now()) }),
       })
     },
     {
@@ -130,25 +131,25 @@ export default function SalesPipeline() {
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Stage</span>
           <select className={inputClassName} value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}>
-            <option value="">All stages</option>
-            {stageOptions.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All stages</option>
+            {stageOptions.map((stage) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={stage.id} value={stage.id}>{stage.name}</option>)}
           </select>
         </label>
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Priority</span>
           <select className={inputClassName} value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
-            <option value="">All priorities</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All priorities</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
           </select>
         </label>
         <label className="block lg:col-span-2">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Owner</span>
           <select className={inputClassName} value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)}>
-            <option value="">All owners</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All owners</option>
             {users.map((user) => (
-              <option key={getId(user)} value={getId(user)}>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={getId(user)} value={getId(user)}>
                 {user.first_name} {user.last_name}
               </option>
             ))}
@@ -224,8 +225,8 @@ export default function SalesPipeline() {
           <EmptyState
             icon={Filter}
             title="No leads in queue"
-            description="Clear filters or create a new prospect to populate the queue."
-            action={<Link className="inline-flex rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700" to="/sales/prospects?createProspect=true">Create prospect</Link>}
+            description="Clear filters or create a new lead to populate the queue."
+            action={<Link className="inline-flex rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700" to="/sales/prospects?createProspect=true">Create lead</Link>}
           />
         )}
       </div>
@@ -237,7 +238,7 @@ export default function SalesPipeline() {
         </span>
         <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1">
           <MoveRight className="h-3.5 w-3.5" />
-          Keeps existing prospect records and stage history
+          Keeps existing lead records and stage history
         </span>
       </div>
     </div>

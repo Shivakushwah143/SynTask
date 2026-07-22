@@ -1,23 +1,30 @@
-export function Table({ columns, data, rowKey = 'id', emptyMessage = 'No records found' }) {
+export function Table({ columns, data, rowKey = 'id', emptyMessage = 'No records found', onRowClick }) {
   return (
-    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-surface-border bg-surface/95 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
       <div className="viewport-scroll-x">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
-          <thead className="bg-gray-50 dark:bg-gray-950">
+        <table className="min-w-full divide-y divide-surface-border dark:divide-[var(--color-app-border)]">
+          <thead className="bg-surface-muted dark:bg-[var(--color-app-surface-muted)]">
             <tr>
               {columns.map((column) => (
-                <th key={column.key} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <th key={column.key} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.14em] text-text-muted dark:text-[var(--color-app-text-muted)]">
                   {column.header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-800 dark:bg-gray-900">
+          <tbody className="divide-y divide-surface-border bg-surface/95 dark:divide-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
             {data?.length ? (
               data.map((row, index) => (
-                <tr key={row[rowKey] || row._id || index} className="hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                <tr
+                  key={row[rowKey] || row._id || index}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  role={onRowClick ? 'button' : undefined}
+                  onKeyDown={onRowClick ? (event) => { if (event.key === 'Enter' || event.key === ' ') onRowClick(row) } : undefined}
+                  className={`transition-colors ${onRowClick ? 'cursor-pointer hover:bg-surface-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/35 dark:hover:bg-[var(--color-app-surface-muted)]' : 'hover:bg-surface-muted/80 dark:hover:bg-[var(--color-app-surface-muted)]'}`}
+                >
                   {columns.map((column) => (
-                    <td key={column.key} className="whitespace-nowrap px-4 py-3 text-sm text-gray-700 dark:text-gray-200">
+                    <td key={column.key} className="whitespace-nowrap px-5 py-4 text-sm leading-6 text-text-primary dark:text-[var(--color-app-text-secondary)]">
                       {column.render ? column.render(row) : row[column.key]}
                     </td>
                   ))}
@@ -25,7 +32,7 @@ export function Table({ columns, data, rowKey = 'id', emptyMessage = 'No records
               ))
             ) : (
               <tr>
-                <td className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400" colSpan={columns.length}>
+                <td className="px-4 py-10 text-center text-sm text-text-muted dark:text-[var(--color-app-text-muted)]" colSpan={columns.length}>
                   {emptyMessage}
                 </td>
               </tr>

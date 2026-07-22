@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useTasks } from '@/hooks/useTasks'
+import { timeService } from '@/services/timeService'
 
 const statuses = [
   { id: 'todo', label: 'To Do' },
@@ -61,7 +62,7 @@ export default function BoardView() {
                     )}
                     {task.due_date && (
                       <p className="mt-1 text-xs text-gray-500">
-                        Due: {new Date(task.due_date).toLocaleDateString()}
+                        Due: {timeService.format(task.due_date, { month: 'short', day: 'numeric', year: 'numeric' })}
                       </p>
                     )}
                   </div>

@@ -27,4 +27,26 @@ describe('tasks graph data helpers', () => {
 
     expect(summary).toEqual({ total: 3, active: 2, completed: 1 })
   })
+
+  test('resolves assignee name from assignable users when task has only id', () => {
+    const rows = buildTaskGraphRows([
+      { id: 't1', title: 'Follow up', assigned_to: 'u1' },
+      { id: 't2', title: 'Unowned' },
+    ], [
+      { id: 'u1', first_name: 'Anita', last_name: 'Rao' },
+    ])
+
+    expect(rows[0].assignee).toBe('Anita Rao')
+    expect(rows[1].assignee).toBe('Unassigned')
+  })
+
+  test('resolves employee assignee from current user fallback', () => {
+    const rows = buildTaskGraphRows([
+      { id: 't1', title: 'Employee task', assigned_to: 'employee-1' },
+    ], [
+      { id: 'employee-1', first_name: 'Asha', last_name: 'Patel', role: 'employee' },
+    ])
+
+    expect(rows[0].assignee).toBe('Asha Patel')
+  })
 })

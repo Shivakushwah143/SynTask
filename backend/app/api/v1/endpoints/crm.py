@@ -12,8 +12,9 @@ from app.api.dependencies import get_current_user
 from app.crm.application import build_crm_dashboard
 from app.crm.lead_timeline import CRMLeadTimelineService
 from app.api.v1.endpoints.sales_prospects import _get_company_prospects, _lead_identity_score, _serialize_prospect_identity
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.user import User, UserRole
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -29,10 +30,10 @@ async def crm_leads(
     assigned_to: Optional[str] = None,
     current_stage: Optional[str] = None,
     status: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False, "company_id": current_user.company_id}
     if current_user.role == UserRole.EMPLOYEE:
         current_user_id = str(current_user.id)

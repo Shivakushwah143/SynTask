@@ -12,14 +12,17 @@ import logging
 from typing import List, Optional, Dict, Set
 
 from app.models.user import User, UserRole, UserStatus, Lead, Manager
-from app.models.attendance import (
+from app.attendance_domain.models import (
     Attendance, AttendanceStatus, AttendanceSession, BreakLog,
     MonitoringSession, CameraSession, ScreenShareSession
 )
+from app.models.timeline import TimelineEventType, TimelineModule
 from app.api.dependencies import (
     get_current_user, get_current_company_admin_or_lead, get_current_company_admin
 )
 from app.core.security import decode_token_with_blacklist_check
+from app.services.timeline_service import create_timeline_event
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -101,7 +104,7 @@ def normalize_screen_status(value: Optional[str]) -> str:
 
 
 async def get_active_attendance(attendance: Attendance) -> tuple[float, float, dict]:
-    now_utc = datetime.utcnow()
+    now_utc = utc_now()
     working_seconds = attendance.total_working_hours
     break_seconds = attendance.break_duration
 
@@ -210,7 +213,7 @@ async def build_status_message(user: User, attendance: Attendance, message_type:
         "break_seconds": break_seconds,
         "work_type": wt["work_type"],
         "overtime_seconds": wt["overtime_seconds"],
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": utc_now().isoformat()
     }
 
 
@@ -275,7 +278,7 @@ class ConnectionManager:
                 "type": f"{frame_type}_update",
                 "employee_id": employee_id,
                 "data": frame_data,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": utc_now().isoformat()
             }
             dead = set()
             for ws in list(subscribers):
@@ -312,13 +315,13 @@ async def delayed_logout_check(user_id: str, user: User, company_id: str):
         return
 
     logger.info(f"User {user.email} did not reconnect within grace period. Finalizing shift.")
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    today_str = utc_now().strftime("%Y-%m-%d")
     attendance = await Attendance.find_one(
         Attendance.employee_id == user_id,
         Attendance.date == today_str
     )
     if attendance and attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
-        now_utc = datetime.utcnow()
+        now_utc = utc_now()
 
         if attendance.status == AttendanceStatus.WORKING:
             elapsed = await finalize_active_session(attendance, now_utc)
@@ -347,6 +350,25 @@ async def delayed_logout_check(user_id: str, user: User, company_id: str):
         attendance.screen_sharing_status = "Denied"
         attendance.updated_at = now_utc
         await attendance.save()
+
+        await create_timeline_event(
+            user_id=user_id,
+            company_id=company_id,
+            event_type=TimelineEventType.ATTENDANCE_CHECK_OUT,
+            title="Attendance Check-Out",
+            description="Stopped work session",
+            related_module=TimelineModule.ATTENDANCE,
+            related_record_id=str(attendance.id),
+            actor_id=user_id,
+            timestamp=attendance.logout_time or now_utc,
+            metadata={
+                "date": today_str,
+                "total_working_seconds": attendance.total_working_hours,
+                "work_type": attendance.work_type,
+                "source": "disconnect_timeout",
+            },
+            idempotency_key=f"attendance:{attendance.id}:check_out",
+        )
 
         broadcast_msg = {
             "type": "status_changed",
@@ -442,13 +464,13 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                 continue
 
             elif msg_type == "media_status":
-                today_str = datetime.utcnow().strftime("%Y-%m-%d")
+                today_str = utc_now().strftime("%Y-%m-%d")
                 attendance = await Attendance.find_one(
                     Attendance.employee_id == user_id_str,
                     Attendance.date == today_str
                 )
                 if attendance and attendance.status == AttendanceStatus.WORKING:
-                    now_utc = datetime.utcnow()
+                    now_utc = utc_now()
                     if "camera_status" in message:
                         attendance.camera_permission_status = normalize_camera_status(message.get("camera_status"))
                     if "screen_share_status" in message:
@@ -459,12 +481,13 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                 continue
 
             # WORKFLOW EVENTS (Start work, pause, resume, stop)
-            today_str = datetime.utcnow().strftime("%Y-%m-%d")
+            today_str = utc_now().strftime("%Y-%m-%d")
 
             if msg_type == "start_work":
                 camera_perm = normalize_camera_status(message.get("camera_permission", "Denied"))
                 screen_perm = normalize_screen_status(message.get("screen_share_permission", "Denied"))
-                now_utc = datetime.utcnow()
+                now_utc = utc_now()
+                should_record_check_in = False
 
                 # Check for existing record
                 attendance = await Attendance.find_one(
@@ -487,6 +510,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                         camera_permission_status=camera_perm,
                         screen_sharing_status=screen_perm
                     )
+                    should_record_check_in = True
                 else:
                     previous_status = attendance.status
                     if previous_status == AttendanceStatus.WORKING:
@@ -504,8 +528,24 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     if not attendance.login_time:
                         attendance.login_time = now_utc
                         attendance.is_late = now_utc.hour >= LATE_CLOCK_IN_HOUR_UTC
+                        should_record_check_in = True
 
                 await attendance.save()
+
+                if should_record_check_in:
+                    await create_timeline_event(
+                        user_id=user_id_str,
+                        company_id=user.company_id,
+                        event_type=TimelineEventType.ATTENDANCE_CHECK_IN,
+                        title="Attendance Check-In",
+                        description="Started work session",
+                        related_module=TimelineModule.ATTENDANCE,
+                        related_record_id=str(attendance.id),
+                        actor_id=user_id_str,
+                        timestamp=attendance.login_time or now_utc,
+                        metadata={"date": today_str, "is_late": attendance.is_late},
+                        idempotency_key=f"attendance:{attendance.id}:check_in",
+                    )
 
                 # Start AttendanceSession
                 session = AttendanceSession(
@@ -568,7 +608,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     Attendance.date == today_str
                 )
                 if attendance and attendance.status == AttendanceStatus.WORKING:
-                    now_utc = datetime.utcnow()
+                    now_utc = utc_now()
 
                     # End active AttendanceSession and accumulate time
                     elapsed = await finalize_active_session(attendance, now_utc)
@@ -604,7 +644,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     Attendance.date == today_str
                 )
                 if attendance and attendance.status == AttendanceStatus.ON_BREAK:
-                    now_utc = datetime.utcnow()
+                    now_utc = utc_now()
 
                     # End active BreakLog
                     elapsed_break = await finalize_active_break(attendance, now_utc)
@@ -637,7 +677,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     Attendance.date == today_str
                 )
                 if attendance and attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
-                    now_utc = datetime.utcnow()
+                    now_utc = utc_now()
 
                     if attendance.status == AttendanceStatus.WORKING:
                         elapsed = await finalize_active_session(attendance, now_utc)
@@ -660,6 +700,24 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
                     attendance.screen_sharing_status = "Denied"
                     attendance.updated_at = now_utc
                     await attendance.save()
+
+                    await create_timeline_event(
+                        user_id=user_id_str,
+                        company_id=user.company_id,
+                        event_type=TimelineEventType.ATTENDANCE_CHECK_OUT,
+                        title="Attendance Check-Out",
+                        description="Stopped work session",
+                        related_module=TimelineModule.ATTENDANCE,
+                        related_record_id=str(attendance.id),
+                        actor_id=user_id_str,
+                        timestamp=attendance.logout_time or now_utc,
+                        metadata={
+                            "date": today_str,
+                            "total_working_seconds": attendance.total_working_hours,
+                            "work_type": attendance.work_type,
+                        },
+                        idempotency_key=f"attendance:{attendance.id}:check_out",
+                    )
 
                     await manager.broadcast_monitoring_update(user, await build_status_message(user, attendance))
 
@@ -685,7 +743,7 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
 @router.get("/today")
 async def get_today_attendance(current_user: User = Depends(get_current_user)):
     """Fetch current employee's attendance record for today"""
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    today_str = utc_now().strftime("%Y-%m-%d")
     attendance = await Attendance.find_one(
         Attendance.employee_id == str(current_user.id),
         Attendance.date == today_str
@@ -745,7 +803,7 @@ async def get_timesheet_summary(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     else:
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        today_str = utc_now().strftime("%Y-%m-%d")
 
     attendance = await Attendance.find_one(
         Attendance.employee_id == str(current_user.id),
@@ -804,7 +862,7 @@ async def get_live_monitoring(current_user: User = Depends(get_current_user)):
     if not users and current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD]:
         raise HTTPException(status_code=403, detail="Only Managers/Admins can access live monitoring dashboard")
 
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    today_str = utc_now().strftime("%Y-%m-%d")
     live_dashboard = []
 
     for employee in users:
@@ -988,15 +1046,50 @@ async def get_dashboard_statistics(current_user: User = Depends(get_current_user
     """Fetch aggregated counters for dashboard widgets"""
     company_id = current_user.company_id
     if not company_id and current_user.role != UserRole.SUPER_ADMIN:
-        return {"success": True, "data": {}}
+        logger.info(
+            "attendance.dashboard_stats.no_company user_id=%s role=%s",
+            getattr(current_user, "id", None),
+            getattr(current_user, "role", None),
+        )
+        return {
+            "success": True,
+            "data": {
+                "total_employees": 0,
+                "present_today": 0,
+                "working_now": 0,
+                "on_break": 0,
+                "offline": 0,
+                "late_today": 0,
+            },
+        }
 
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    today_str = utc_now().strftime("%Y-%m-%d")
 
-    user_query = {}
+    user_query = {"role": UserRole.EMPLOYEE.value}
     if current_user.role != UserRole.SUPER_ADMIN:
         user_query["company_id"] = company_id
 
-    total_employees = await User.find(user_query, User.role == UserRole.EMPLOYEE).count()
+    logger.info(
+        "attendance.dashboard_stats.start user_id=%s role=%s company_id=%s date=%s",
+        getattr(current_user, "id", None),
+        getattr(current_user, "role", None),
+        company_id,
+        today_str,
+    )
+
+    try:
+        total_employees = await User.find(user_query).count()
+    except Exception as exc:
+        logger.exception(
+            "attendance.dashboard_stats.user_count_failed user_id=%s company_id=%s query=%s",
+            getattr(current_user, "id", None),
+            company_id,
+            user_query,
+        )
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Attendance dashboard employee count is temporarily unavailable",
+        ) from exc
 
     working_now = 0
     on_break = 0
@@ -1007,18 +1100,40 @@ async def get_dashboard_statistics(current_user: User = Depends(get_current_user
     if current_user.role != UserRole.SUPER_ADMIN:
         attendance_query["company_id"] = company_id
 
-    today_records = await Attendance.find(attendance_query).to_list()
+    try:
+        attendance_collection = Attendance.get_pymongo_collection()
+        present_today = await attendance_collection.count_documents(attendance_query)
+        working_now = await attendance_collection.count_documents({
+            **attendance_query,
+            "status": AttendanceStatus.WORKING.value,
+        })
+        on_break = await attendance_collection.count_documents({
+            **attendance_query,
+            "status": AttendanceStatus.ON_BREAK.value,
+        })
+        late_today = await attendance_collection.count_documents({
+            **attendance_query,
+            "is_late": True,
+        })
+    except Exception as exc:
+        logger.exception(
+            "attendance.dashboard_stats.attendance_query_failed user_id=%s company_id=%s query=%s",
+            getattr(current_user, "id", None),
+            company_id,
+            attendance_query,
+        )
+        raise HTTPException(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Attendance dashboard records are temporarily unavailable",
+        ) from exc
 
-    for record in today_records:
-        present_today += 1
-
-        if record.status == AttendanceStatus.WORKING:
-            working_now += 1
-        elif record.status == AttendanceStatus.ON_BREAK:
-            on_break += 1
-
-        if record.is_late:
-            late_today += 1
+    logger.info(
+        "attendance.dashboard_stats.success user_id=%s company_id=%s total_employees=%s records=%s",
+        getattr(current_user, "id", None),
+        company_id,
+        total_employees,
+        present_today,
+    )
 
     return {
         "success": True,
@@ -1031,3 +1146,4 @@ async def get_dashboard_statistics(current_user: User = Depends(get_current_user
             "late_today": late_today,
         }
     }
+

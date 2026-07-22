@@ -9,6 +9,8 @@ from app.models.user import User
 from app.models.task import Task, TaskComment
 from app.models.ticket import Ticket, TicketComment
 from app.api.dependencies import get_current_user, check_company_access
+from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -18,12 +20,12 @@ async def get_activity_timeline(
     entity_type: Optional[str] = None,  # task, ticket, all
     entity_id: Optional[str] = None,
     days: int = 30,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """Get activity timeline for user's company"""
-    start_date = datetime.utcnow() - timedelta(days=days)
+    skip, limit = pagination.skip, pagination.limit
+    start_date = utc_now() - timedelta(days=days)
     activities = []
     
     # Get task activities
@@ -131,4 +133,5 @@ async def get_activity_timeline(
         "skip": skip,
         "limit": limit
     }
+
 

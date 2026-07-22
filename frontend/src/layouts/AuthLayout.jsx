@@ -1,23 +1,23 @@
 const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, previewImage = null }) => {
   return (
-    <div className="flex min-h-screen bg-white dark:bg-gray-900">
+    <div className="flex min-h-screen bg-surface-muted dark:bg-black">
       {/* Left Side - Branding with Preview */}
       {showLeftBranding && (
-        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] flex-col items-center justify-between p-12 relative overflow-hidden">
+        <div className="relative hidden overflow-hidden bg-gradient-to-br from-black via-[#171411] to-[#231e19] p-12 lg:flex lg:w-1/2 flex-col items-center justify-between">
           {/* Animated background particles */}
           <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
-            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
+            <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-orange-500/18 blur-3xl animate-pulse"></div>
+            <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-blue-500/16 blur-3xl animate-pulse delay-1000"></div>
+            <div className="absolute left-1/2 top-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-green-500/8 blur-3xl animate-pulse delay-2000"></div>
             
             {/* Floating geometric shapes */}
-            <div className="absolute top-20 left-10 w-16 h-16 border border-white/10 rounded-xl rotate-45 animate-float"></div>
-            <div className="absolute bottom-32 right-10 w-12 h-12 border border-white/10 rounded-full animate-float-delayed"></div>
-            <div className="absolute top-1/3 right-20 w-8 h-8 border border-white/10 rounded-lg rotate-12 animate-float-slow"></div>
+            <div className="absolute left-10 top-20 h-16 w-16 rotate-45 rounded-xl border border-white/10 animate-float"></div>
+            <div className="absolute bottom-32 right-10 h-12 w-12 rounded-full border border-white/10 animate-float-delayed"></div>
+            <div className="absolute right-20 top-1/3 h-8 w-8 rotate-12 rounded-lg border border-white/10 animate-float-slow"></div>
             
             {/* Animated gradient orbs */}
-            <div className="absolute top-1/4 left-1/4 w-32 h-32 bg-gradient-to-r from-pink-500/20 to-purple-500/20 rounded-full blur-2xl animate-orbit"></div>
-            <div className="absolute bottom-1/4 right-1/4 w-40 h-40 bg-gradient-to-l from-blue-500/20 to-indigo-500/20 rounded-full blur-2xl animate-orbit-delayed"></div>
+            <div className="absolute left-1/4 top-1/4 h-32 w-32 rounded-full bg-gradient-to-r from-orange-500/20 to-amber-500/20 blur-2xl animate-orbit"></div>
+            <div className="absolute bottom-1/4 right-1/4 h-40 w-40 rounded-full bg-gradient-to-l from-blue-500/18 to-green-500/14 blur-2xl animate-orbit-delayed"></div>
           </div>
 
           {previewImage ? (
@@ -25,27 +25,27 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
             <div className="relative w-full h-full flex items-center justify-center z-10">
               {/* Glowing ring behind image */}
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-[90%] h-[90%] bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-purple-500/10 rounded-full blur-3xl animate-spin-slow"></div>
+                <div className="h-[90%] w-[90%] rounded-full bg-gradient-to-r from-orange-500/10 via-blue-500/10 to-green-500/10 blur-3xl animate-spin-slow"></div>
               </div>
               
               {/* Floating particles around image */}
               <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-purple-400 rounded-full animate-particle-float" style={{ animationDelay: '0s' }}></div>
-                <div className="absolute top-1/3 right-1/4 w-3 h-3 bg-blue-400 rounded-full animate-particle-float" style={{ animationDelay: '0.5s' }}></div>
-                <div className="absolute bottom-1/3 left-1/3 w-2 h-2 bg-pink-400 rounded-full animate-particle-float" style={{ animationDelay: '1s' }}></div>
-                <div className="absolute bottom-1/4 right-1/3 w-2.5 h-2.5 bg-indigo-400 rounded-full animate-particle-float" style={{ animationDelay: '1.5s' }}></div>
+                <div className="absolute left-1/4 top-1/4 h-2 w-2 rounded-full bg-orange-400 animate-particle-float" style={{ animationDelay: '0s' }}></div>
+                <div className="absolute right-1/4 top-1/3 h-3 w-3 rounded-full bg-blue-400 animate-particle-float" style={{ animationDelay: '0.5s' }}></div>
+                <div className="absolute bottom-1/3 left-1/3 h-2 w-2 rounded-full bg-green-400 animate-particle-float" style={{ animationDelay: '1s' }}></div>
+                <div className="absolute bottom-1/4 right-1/3 h-2.5 w-2.5 rounded-full bg-red-400 animate-particle-float" style={{ animationDelay: '1.5s' }}></div>
                 <div className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-white rounded-full animate-particle-float" style={{ animationDelay: '2s' }}></div>
               </div>
               
               {/* Image container with effects */}
               <div className="relative w-full max-w-2xl mx-auto animate-float-slow">
                 {/* Glow effect behind image */}
-                <div className="absolute -inset-4 bg-gradient-to-r from-purple-500/20 via-blue-500/20 to-purple-500/20 rounded-2xl blur-2xl animate-pulse"></div>
+                <div className="absolute -inset-4 rounded-2xl bg-gradient-to-r from-orange-500/20 via-blue-500/20 to-green-500/20 blur-2xl animate-pulse"></div>
                 
                 {/* Image with multiple effects */}
-                <div className="relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/20 backdrop-blur-sm">
+                <div className="relative overflow-hidden rounded-2xl shadow-2xl ring-1 ring-white/15 backdrop-blur-sm">
                   {/* Shimmer overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-shimmer"></div>
+                  <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer"></div>
                   
                   {/* Image */}
                   <img
@@ -58,16 +58,16 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
                   />
                   
                   {/* Border gradient animation */}
-                  <div className="absolute inset-0 rounded-2xl p-[2px] bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 animate-border-rotate">
-                    <div className="absolute inset-[2px] rounded-2xl bg-gradient-to-br from-[#1a1a2e]/50 to-[#0f3460]/50"></div>
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-orange-500 via-blue-500 to-green-500 p-[2px] animate-border-rotate">
+                    <div className="absolute inset-[2px] rounded-2xl bg-gradient-to-br from-black/70 to-[#1a1714]/70"></div>
                   </div>
                 </div>
                 
                 {/* Floating badges */}
-                <div className="absolute -top-4 -right-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg animate-bounce-slow">
+                <div className="absolute -right-4 -top-4 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 px-3 py-1.5 text-xs font-bold text-white shadow-lg animate-bounce-slow">
                   ✨ Live Demo
                 </div>
-                <div className="absolute -bottom-4 -left-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg animate-float">
+                <div className="absolute -bottom-4 -left-4 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-lg animate-float">
                   🚀 New Update
                 </div>
               </div>
@@ -99,7 +99,7 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
                   </div>
                   <div>
                     <h1 className="text-2xl font-bold text-white animate-slide-up">SynTask</h1>
-                    <p className="text-sm text-purple-200/80 animate-slide-up-delayed">Task Management & Ticketing Platform</p>
+                    <p className="text-sm text-orange-200/80 animate-slide-up-delayed">Task Management & Ticketing Platform</p>
                   </div>
                 </div>
                 
@@ -107,7 +107,7 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
                   <h2 className="text-4xl font-bold text-white mb-4 animate-slide-up">
                     Manage Tasks, Tickets & Teams in One Place
                   </h2>
-                  <p className="text-lg text-purple-200/80 animate-slide-up-delayed">
+                    <p className="text-lg text-orange-200/80 animate-slide-up-delayed">
                     Streamline project execution, automate workflows, track tickets, manage teams, and improve productivity with a unified collaboration platform designed for modern organizations.
                   </p>
                 </div>
@@ -115,12 +115,12 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
 
               {/* Bottom Partners */}
               <div className="w-full relative z-10 animate-fade-in">
-                <p className="text-sm text-purple-200/80 mb-6">Trusted by leading companies</p>
+                <p className="mb-6 text-sm text-orange-200/80">Trusted by leading companies</p>
                 <div className="flex gap-6 flex-wrap items-center justify-center">
                   {['Google', 'Microsoft', 'Slack', 'AWS', 'Atlassian', 'Shopify'].map((company, index) => (
                     <span 
                       key={company}
-                      className="text-white font-semibold text-sm hover:text-purple-200 transition-colors cursor-default animate-float"
+                      className="cursor-default text-sm font-semibold text-white transition-colors hover:text-orange-200 animate-float"
                       style={{ animationDelay: `${index * 0.2}s` }}
                     >
                       {company}
@@ -134,7 +134,7 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
       )}
 
       {/* Right Side - Form */}
-      <div className={`flex w-full ${showLeftBranding ? 'lg:w-1/2' : ''} bg-white dark:bg-gray-900 flex-col items-center justify-center p-4 py-8`}>
+      <div className={`flex w-full ${showLeftBranding ? 'lg:w-1/2' : ''} bg-surface-muted dark:bg-black flex-col items-center justify-center p-4 py-8`}>
         <div className={`w-full ${maxWidth}`}>
           {/* Mobile Logo (shown on mobile only) */}
           <div className="mb-8 text-center lg:hidden animate-fade-in-up">
@@ -148,17 +148,17 @@ const AuthLayout = ({ children, maxWidth = 'max-w-md', showLeftBranding = true, 
                 }}
               />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">SynTask</h1>
+            <h1 className="text-2xl font-bold text-text-primary dark:text-white">SynTask</h1>
           </div>
 
           {/* Form Container */}
-          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 sm:p-8 shadow-xl animate-fade-in-up">
+          <div className="rounded-2xl border border-surface-border bg-surface dark:border-gray-800 dark:bg-black p-6 shadow-xl animate-fade-in-up sm:p-8">
             {children}
           </div>
 
           <div className="mb-4 mt-6 text-center animate-fade-in">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Powered by <span className="font-semibold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors">Alphanexis</span>
+            <p className="text-xs text-text-muted dark:text-gray-400">
+              Powered by <span className="font-semibold text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-300 dark:hover:text-primary-200">Alphanexis</span>
             </p>
           </div>
         </div>

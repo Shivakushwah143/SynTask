@@ -7,7 +7,32 @@ const getProgress = (project) => {
   return clamp(Math.round((Number(project.completed_task_count || 0) / total) * 100))
 }
 
+const getUserDisplayName = (user) => (
+  user?.name
+  || [user?.first_name, user?.last_name].filter(Boolean).join(' ')
+  || user?.email
+  || ''
+)
+
+const getRoleOwnerLine = (project) => {
+  const assignedUsers = Array.isArray(project.assigned_users) ? project.assigned_users : []
+  const managerNames = assignedUsers
+    .filter((user) => String(user.role || '').toLowerCase() === 'manager')
+    .map(getUserDisplayName)
+    .filter(Boolean)
+  const leadNames = assignedUsers
+    .filter((user) => String(user.role || '').toLowerCase() === 'lead')
+    .map(getUserDisplayName)
+    .filter(Boolean)
+  const parts = []
+  if (managerNames.length) parts.push(`Manager: ${managerNames.join(', ')}`)
+  if (leadNames.length) parts.push(`Lead: ${leadNames.join(', ')}`)
+  return parts.join(' / ')
+}
+
 const getOwner = (project) => (
+  getRoleOwnerLine(project)
+  ||
   project.assigned_to_name
   || project.lead_name
   || project.owner_name
@@ -26,6 +51,8 @@ export function buildProjectGraphRows(projects, limit = 6) {
       name: project.name || 'Untitled project',
       key: project.key || project.project_id || '',
       owner: getOwner(project),
+      assigned_to: project.assigned_to || '',
+      lead_id: project.lead_id || '',
       progress,
       completedTasks,
       totalTasks,
@@ -43,4 +70,29 @@ export function buildProjectGraphSummary(projects) {
     summary.remainingTasks += Math.max(totalTasks - completedTasks, 0)
     return summary
   }, { totalTasks: 0, remainingTasks: 0 })
+}
+
+export function filterProjects(projects, { searchQuery = '', filters = {} } = {}) {
+  const query = searchQuery.trim().toLowerCase()
+  return projects.filter((project) => {
+    const matchesQuery = !query || [project.name, project.key, project.description, project.status, project.type]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query))
+    const matchesStatus = !filters.status || (project.status || '').toLowerCase() === filters.status
+    const matchesType = !filters.type || (project.type || '').toLowerCase() === filters.type
+    const matchesOwner = !filters.owner || project.assigned_to === filters.owner || project.lead_id === filters.owner
+    return matchesQuery && matchesStatus && matchesType && matchesOwner
+  })
+}
+
+export function getProjectGridPageSize(columns) {
+  const safeColumns = Number(columns) || 1
+  if (safeColumns >= 3) return 12
+  if (safeColumns === 2) return 10
+  return 6
+}
+
+export function getVisibleProjectCountForGrid({ columns, page = 1, total = 0 }) {
+  const pageSize = getProjectGridPageSize(columns)
+  return Math.min(Math.max(1, page) * pageSize, total)
 }

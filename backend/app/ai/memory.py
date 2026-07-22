@@ -11,6 +11,7 @@ from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, Use
 from app.models.client import Client, ClientStatus
 from app.models.project import Project, ProjectStatus
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 class AIMemoryService:
@@ -71,10 +72,10 @@ class AIMemoryService:
             ProjectMemory.memory_type == "active_project",
         )
         content = (
-            f"{project.name} is a {project.type.value} project with status {project.status.value}. "
+            f"{project.name} is a {getattr(project.type, 'value', project.type)} project with status {project.status.value}. "
             f"Lead: {project.lead_id or project.assigned_to or 'unassigned'}."
         )
-        now = datetime.utcnow()
+        now = utc_now()
         if memory:
             memory.title = project.name
             memory.content = content
@@ -92,7 +93,7 @@ class AIMemoryService:
             memory_type="active_project",
             source="system_project",
             importance=3,
-            tags=["project", project.status.value, project.type.value],
+            tags=["project", project.status.value, getattr(project.type, "value", project.type)],
             metadata={
                 "project_object_id": str(project.id),
                 "project_key": project.key,
@@ -114,7 +115,7 @@ class AIMemoryService:
             f"{f' in {client.industry}' if client.industry else ''}. "
             f"Projects: {', '.join(client.project_ids[:5]) if client.project_ids else 'none linked'}."
         )
-        now = datetime.utcnow()
+        now = utc_now()
         if memory:
             memory.title = client.name
             memory.content = content
@@ -265,7 +266,7 @@ class AIMemoryService:
             return
 
         memory_type = self._detect_memory_type(user_message)
-        now = datetime.utcnow()
+        now = utc_now()
         await UserMemory(
             company_id=current_user.company_id,
             user_id=str(current_user.id),
@@ -323,7 +324,7 @@ class AIMemoryService:
                     raise ValueError("Conversation does not belong to the current company")
                 return existing
 
-        now = datetime.utcnow()
+        now = utc_now()
         conversation = AIConversation(
             conversation_id=conversation_id or str(uuid4()),
             user_id=str(current_user.id),
@@ -361,7 +362,7 @@ class AIMemoryService:
         context: dict[str, Any],
         assistant_tokens_used: int | None = None,
     ) -> AIConversation:
-        now = datetime.utcnow()
+        now = utc_now()
         if isinstance(conversation.state, dict):
             conversation.state = AIConversationState.model_validate(conversation.state)
         intent = context.get("intent")
@@ -409,7 +410,7 @@ class AIMemoryService:
         if not current_user.company_id:
             return
 
-        now = datetime.utcnow()
+        now = utc_now()
         report_scope = context.get("report_scope", "self")
         await UserMemory(
             company_id=current_user.company_id,
@@ -453,3 +454,4 @@ class AIMemoryService:
                 created_at=now,
                 updated_at=now,
             ).insert()
+

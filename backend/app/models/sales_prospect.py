@@ -1,12 +1,13 @@
-"""
-Sales Prospect Model - Manages sales prospects/pipeline
+"""Lead model.
+
+Legacy storage and import names remain for API and database compatibility.
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from beanie import Document, Indexed
 from pydantic import EmailStr, Field
 from enum import Enum
-from pymongo import ASCENDING, IndexModel
+from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
 
 class InterestLevel(str, Enum):
@@ -23,7 +24,7 @@ class ProspectStatus(str, Enum):
 
 
 class SalesProspect(Document):
-    """Sales Prospect - Linked to contact, products, stages"""
+    """Lead linked to contacts, products, and pipeline stages."""
 
     # Basic Fields (from Contact or new)
     first_name: str
@@ -52,6 +53,17 @@ class SalesProspect(Document):
     relationship_type: Optional[str] = None
     channel: Optional[str] = None
     source: str = "bulk_upload"
+
+    # Optional Meta Lead Ads attribution. These are additive so existing leads
+    # retain their current CRM contract when the integration is disabled.
+    meta_lead_id: Optional[str] = None
+    meta_campaign_id: Optional[str] = None
+    meta_adset_id: Optional[str] = None
+    meta_ad_id: Optional[str] = None
+    meta_form_id: Optional[str] = None
+    meta_created_time: Optional[datetime] = None
+    meta_consent: Optional[bool] = None
+    meta_attribution: Dict[str, Any] = Field(default_factory=dict)
 
     # Additional Information (from Contact or new)
     designation: Optional[str] = None
@@ -93,13 +105,35 @@ class SalesProspect(Document):
             "contact_id",
             "deleted",
             ("country_code", "phone"),  # For duplicate check
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("current_stage", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("status", ASCENDING), ("closed_date", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("assigned_to", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("crm_company_id", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("country_code", ASCENDING), ("phone", ASCENDING)]),
+            IndexModel(
+                [("company_id", ASCENDING), ("meta_lead_id", ASCENDING)],
+                unique=True,
+                partialFilterExpression={"meta_lead_id": {"$type": "string"}},
+            ),
             IndexModel([
                 ("company_id", ASCENDING),
                 ("email", ASCENDING),
             ], unique=True, partialFilterExpression={"email": {"$type": "string"}}),
+            IndexModel(
+                [("prospect_name", TEXT), ("company_name", TEXT), ("email", TEXT), ("phone", TEXT)],
+                language_override="_text_language",
+            ),
             "crm_company_id",
         ]
 
     def unique_key(self) -> str:
         """Unique identifier: country_code + phone"""
         return f"{self.country_code}:{self.phone}"
+
+
+# Compatibility aliases: old names remain until persisted and API contracts
+# can migrate without breaking existing clients.
+Lead = SalesProspect
+LeadStatus = ProspectStatus

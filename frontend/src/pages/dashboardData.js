@@ -1,6 +1,7 @@
 import { differenceInCalendarDays, format, isValid, parseISO, startOfDay } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
-const PROJECT_STATUSES = ['active', 'planning', 'completed', 'on_hold']
+const PROJECT_STATUSES = ['created', 'planning', 'active', 'kickoff', 'execution', 'review', 'completed', 'reporting', 'on_hold', 'archived']
 export const TASK_PRIORITY_COLORS = {
   critical: '#991B1B',
   high: '#EF4444',
@@ -26,11 +27,11 @@ const truncate = (value, limit = 18) => {
 
 const parseDate = (value) => {
   if (!value) return null
-  const date = typeof value === 'string' ? parseISO(value) : new Date(value)
+  const date = typeof value === 'string' ? parseISO(value) : timeService.instant(value)
   return isValid(date) ? date : null
 }
 
-export function buildTaskDuePriorityData(tasks, today = new Date(), days = 7) {
+export function buildTaskDuePriorityData(tasks, today = timeService.now(), days = 7) {
   const start = startOfDay(today)
   return tasks
     .map((task) => {

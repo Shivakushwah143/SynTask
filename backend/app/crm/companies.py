@@ -8,11 +8,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 
 from app.crm.company_timeline import CRMCompanyTimelineService
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_company import CRMCompany
 from app.models.sales_contact import SalesContact
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -169,7 +170,7 @@ class CRMCompanyService:
         if existing:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company already exists")
 
-        now = datetime.utcnow()
+        now = utc_now()
         company = CRMCompany(
             name=name,
             company_id=tenant_id if current_user.role != UserRole.SUPER_ADMIN else str(payload.get("company_id") or ""),
@@ -203,20 +204,24 @@ class CRMCompanyService:
             company.updated_at = now
             await company.save()
 
-        await publish_crm_timeline_event(
-            event_name="CompanyCreated",
-            aggregate_type="crm_company",
-            aggregate_id=str(company.id),
-            company_id=company.company_id,
-            actor_id=str(getattr(current_user, "id", "")),
-            payload={
-                "company_id": str(company.id),
-                "company_name": company.name,
-                "primary_contact_id": company.primary_contact_id,
-                "timestamp": now.isoformat(),
-            },
-            metadata={"surface": "crm", "workflow": "companies"},
-        )
+        try:
+            await publish_crm_timeline_event(
+                event_name="CompanyCreated",
+                aggregate_type="crm_company",
+                aggregate_id=str(company.id),
+                company_id=company.company_id,
+                actor_id=str(getattr(current_user, "id", "")),
+                payload={
+                    "company_id": str(company.id),
+                    "company_name": company.name,
+                    "primary_contact_id": company.primary_contact_id,
+                    "timestamp": now.isoformat(),
+                },
+                metadata={"surface": "crm", "workflow": "companies"},
+            )
+        except Exception:
+            # Creation should still succeed even if the timeline subsystem is unavailable.
+            pass
 
         return {
             "message": "Company created successfully",
@@ -309,7 +314,7 @@ class CRMCompanyService:
         company = await _company_or_403(current_user, company_id)
         previous_name = company.name
         previous_primary_contact_id = company.primary_contact_id
-        now = datetime.utcnow()
+        now = utc_now()
 
         if "name" in payload and payload["name"] is not None:
             name = payload["name"].strip()
@@ -439,7 +444,7 @@ class CRMCompanyService:
     @staticmethod
     async def delete_company(current_user: User, company_id: str) -> Dict[str, Any]:
         company = await _company_or_403(current_user, company_id)
-        now = datetime.utcnow()
+        now = utc_now()
         company.deleted = True
         company.deleted_by = str(getattr(current_user, "id", ""))
         company.deleted_at = now
@@ -462,3 +467,4 @@ class CRMCompanyService:
         )
 
         return {"message": "Company deleted successfully"}
+

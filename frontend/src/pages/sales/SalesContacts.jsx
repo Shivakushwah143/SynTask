@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { Plus, Search, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { salesApi } from '../../api/sales'
-import { Badge, Button, ConfirmDialog, EmptyState, FormField, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
+import { Badge, Button, ConfirmDialog, EmptyState, FormField, inputClassName, Modal, PageHeader, PhoneInput, SkeletonTable, Table, isValidLocalPhone } from '../../components/ui'
 import { asArray, formatDate, getId, toFormData } from '../phase4Utils'
 
 export default function SalesContacts() {
@@ -60,7 +60,21 @@ function ContactModal({ isOpen, onClose, onDone }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add contact">
       <div className="grid gap-4 sm:grid-cols-2">
-        {['first_name', 'last_name', 'country_code', 'phone', 'email', 'company_name'].map((key) => (
+        {['first_name', 'last_name'].map((key) => (
+          <FormField key={key} label={key.replace('_', ' ')}>
+            <input className={inputClassName} value={form[key]} onChange={(event) => update(key, event.target.value)} />
+          </FormField>
+        ))}
+        <FormField label="Phone" required className="sm:col-span-2">
+          <PhoneInput
+            countryCode={form.country_code}
+            phoneNumber={form.phone}
+            onCountryCodeChange={(value) => update('country_code', value)}
+            onPhoneNumberChange={(value) => update('phone', value)}
+            required
+          />
+        </FormField>
+        {['email', 'company_name'].map((key) => (
           <FormField key={key} label={key.replace('_', ' ')}>
             <input className={inputClassName} value={form[key]} onChange={(event) => update(key, event.target.value)} />
           </FormField>
@@ -68,7 +82,7 @@ function ContactModal({ isOpen, onClose, onDone }) {
       </div>
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button loading={mutation.isLoading} onClick={() => mutation.mutate(form)}>Save</Button>
+        <Button loading={mutation.isLoading} onClick={() => mutation.mutate(form)} disabled={!isValidLocalPhone(form.phone)}>Save</Button>
       </div>
     </Modal>
   )

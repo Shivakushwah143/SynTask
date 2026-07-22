@@ -25,6 +25,65 @@ logger.info(f"Upload directory set to: {UPLOAD_DIR.absolute()}")
 PROJECT_UPLOAD_DIR = UPLOAD_DIR / "projects"
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def resolve_upload_path(root: Path, relative_path: str) -> Path:
+    """Resolve a requested upload path while preventing traversal outside root."""
+    root_path = root.resolve()
+    requested = (root_path / relative_path).resolve()
+    try:
+        requested.relative_to(root_path)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path",
+        )
+    return requested
+
+
+def detect_content_type(file_path: Path) -> str:
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    if content_type:
+        return content_type
+
+    ext = file_path.suffix.lower()
+    if ext in ['.jpg', '.jpeg']:
+        return 'image/jpeg'
+    if ext == '.png':
+        return 'image/png'
+    if ext == '.gif':
+        return 'image/gif'
+    if ext == '.webp':
+        return 'image/webp'
+    if ext == '.pdf':
+        return 'application/pdf'
+    if ext in ['.doc', '.docx']:
+        return 'application/msword'
+    if ext in ['.xls', '.xlsx']:
+        return 'application/vnd.ms-excel'
+    return 'application/octet-stream'
+
+
+def serve_upload_file(root: Path, relative_path: str, download_name: str | None = None) -> FileResponse:
+    file_path = resolve_upload_path(root, relative_path)
+    if not file_path.exists() or not file_path.is_file():
+        logger.warning(f"File not found: {relative_path}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+
+    content_type = detect_content_type(file_path)
+    headers = {}
+    if content_type.startswith('image/'):
+        headers['Cache-Control'] = 'private, max-age=86400'
+
+    return FileResponse(
+        path=file_path,
+        filename=download_name or file_path.name,
+        media_type=content_type,
+        headers=headers,
+    )
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
@@ -53,152 +112,37 @@ async def upload_file(
 
 
 @router.get("/clients/{filename}")
-async def get_client_file(filename: str):
+async def get_client_file(filename: str, current_user: User = Depends(get_current_user)):
     """Get client document file"""
-    # Sanitize filename to prevent directory traversal
     filename = Path(filename).name
-    
-    # Client files are stored in uploads/clients/
-    CLIENT_UPLOAD_DIR = UPLOAD_DIR / "clients"
-    file_path = CLIENT_UPLOAD_DIR / filename
-    
-    if not file_path.exists():
-        logger.warning(f"Client file not found: {filename}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
-        )
-    
-    # Detect content type
-    content_type, _ = mimetypes.guess_type(str(file_path))
-    if not content_type:
-        ext = file_path.suffix.lower()
-        if ext == '.pdf':
-            content_type = 'application/pdf'
-        elif ext in ['.doc', '.docx']:
-            content_type = 'application/msword'
-        elif ext in ['.xls', '.xlsx']:
-            content_type = 'application/vnd.ms-excel'
-        else:
-            content_type = 'application/octet-stream'
-    
-    return FileResponse(
-        path=file_path,
-        filename=filename,
-        media_type=content_type
-    )
+    return serve_upload_file(UPLOAD_DIR / "clients", filename, filename)
 
 
 @router.get("/projects/{filename}")
-async def get_project_file(filename: str):
+async def get_project_file(filename: str, current_user: User = Depends(get_current_user)):
     """Get project file"""
     filename = Path(filename).name
     
-    file_path = PROJECT_UPLOAD_DIR / filename
-    
-    if not file_path.exists():
-        logger.warning(f"Project file not found: {filename}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
-        )
-    
-    content_type, _ = mimetypes.guess_type(str(file_path))
-    if not content_type:
-        ext = file_path.suffix.lower()
-        if ext == '.pdf':
-            content_type = 'application/pdf'
-        elif ext in ['.doc', '.docx']:
-            content_type = 'application/msword'
-        elif ext in ['.xls', '.xlsx']:
-            content_type = 'application/vnd.ms-excel'
-        else:
-            content_type = 'application/octet-stream'
-    
-    return FileResponse(
-        path=file_path,
-        filename=filename,
-        media_type=content_type
-    )
+    return serve_upload_file(PROJECT_UPLOAD_DIR, filename, filename)
 
 
 @router.get("/msa/{filename}")
-async def get_msa_file(filename: str):
+async def get_msa_file(filename: str, current_user: User = Depends(get_current_user)):
     """Get MSA file (stamp image)"""
     filename = Path(filename).name
     
-    MSA_UPLOAD_DIR = UPLOAD_DIR / "msa"
-    file_path = MSA_UPLOAD_DIR / filename
-    
-    if not file_path.exists():
-        logger.warning(f"MSA file not found: {filename}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
-        )
-    
-    content_type, _ = mimetypes.guess_type(str(file_path))
-    if not content_type:
-        ext = file_path.suffix.lower()
-        if ext in ['.jpg', '.jpeg']:
-            content_type = 'image/jpeg'
-        elif ext == '.png':
-            content_type = 'image/png'
-        elif ext == '.gif':
-            content_type = 'image/gif'
-        elif ext == '.webp':
-            content_type = 'image/webp'
-        else:
-            content_type = 'application/octet-stream'
-    
-    return FileResponse(
-        path=file_path,
-        filename=filename,
-        media_type=content_type
-    )
+    return serve_upload_file(UPLOAD_DIR / "msa", filename, filename)
+
+
+@router.get("/leaves/{filename}")
+async def get_leave_file(filename: str, current_user: User = Depends(get_current_user)):
+    """Get leave attachment file."""
+    filename = Path(filename).name
+    return serve_upload_file(UPLOAD_DIR / "leaves", filename, filename)
 
 
 @router.get("/{filename}")
-async def get_file(filename: str):
-    """Get uploaded file - Public access for images"""
-    # Sanitize filename to prevent directory traversal
+async def get_file(filename: str, current_user: User = Depends(get_current_user)):
+    """Get uploaded file."""
     filename = Path(filename).name
-    
-    file_path = UPLOAD_DIR / filename
-    
-    if not file_path.exists():
-        logger.warning(f"File not found: {filename}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
-        )
-    
-    # Detect content type
-    content_type, _ = mimetypes.guess_type(str(file_path))
-    if not content_type:
-        # Default based on extension
-        ext = file_path.suffix.lower()
-        if ext in ['.jpg', '.jpeg']:
-            content_type = 'image/jpeg'
-        elif ext == '.png':
-            content_type = 'image/png'
-        elif ext == '.gif':
-            content_type = 'image/gif'
-        elif ext == '.webp':
-            content_type = 'image/webp'
-        elif ext == '.pdf':
-            content_type = 'application/pdf'
-        else:
-            content_type = 'application/octet-stream'
-    
-    # Add cache headers for images
-    headers = {}
-    if content_type.startswith('image/'):
-        headers['Cache-Control'] = 'public, max-age=31536000'  # 1 year
-    
-    return FileResponse(
-        path=file_path,
-        filename=filename,
-        media_type=content_type,
-        headers=headers
-    )
+    return serve_upload_file(UPLOAD_DIR, filename, filename)

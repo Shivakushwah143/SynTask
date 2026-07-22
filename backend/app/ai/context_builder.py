@@ -15,6 +15,7 @@ from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.ticket import Ticket, TicketPriority, TicketStatus
 from app.models.user import User, UserRole, UserStatus
 from app.api.dependencies import get_project_by_id
+from app.core.clock import utc_now
 
 
 class ContextBuilder:
@@ -81,7 +82,7 @@ class ContextBuilder:
 
         serialized_tasks: list[dict[str, Any]] = []
         today = for_date
-        now = datetime.utcnow()
+        now = utc_now()
         for task in tasks:
             due_date = task.due_date.date() if task.due_date else None
             days_until_due = (due_date - today).days if due_date else None
@@ -744,7 +745,7 @@ class ContextBuilder:
         # Get marketing projects
         marketing_projects = await Project.find(
             Project.company_id == company_id,
-            Project.type == ProjectType.MARKETING,
+            Project.type == ProjectType.MARKETING.value,
             Project.status != ProjectStatus.ARCHIVED,
         ).limit(limit).to_list()
         
@@ -792,7 +793,7 @@ class ContextBuilder:
                 "project_id": project.project_id,
                 "name": project.name,
                 "status": project.status.value,
-                "type": project.type.value,
+                "type": getattr(project.type, "value", project.type),
                 "lead_id": project.lead_id,
                 "start_date": project.start_date.isoformat() if project.start_date else None,
                 "delivery_date": project.delivery_date.isoformat() if project.delivery_date else None,
@@ -1070,3 +1071,4 @@ class ContextBuilder:
                 "industry": getattr(company, "industry", None),
             },
         }
+

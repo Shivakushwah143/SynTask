@@ -12,8 +12,8 @@ import secrets
 
 logger = logging.getLogger(__name__)
 
-from app.models.msa import MSA, MSAStatus
-from app.models.client import Client
+from app.finance.models import MSA, MSAStatus
+from app.crm.models import Client
 from app.models.company import Company
 from app.models.user import User
 from app.api.dependencies import (
@@ -22,6 +22,7 @@ from app.api.dependencies import (
     check_company_access,
 )
 from app.core.config import settings
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -33,7 +34,7 @@ MSA_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 def generate_msa_number(company_id: str) -> str:
     """Generate unique MSA number"""
-    timestamp = datetime.utcnow().strftime("%Y%m%d")
+    timestamp = utc_now().strftime("%Y%m%d")
     random_part = secrets.token_hex(4).upper()
     return f"MSA-{timestamp}-{random_part}"
 
@@ -170,7 +171,7 @@ async def create_msa(
         if should_send:
             # Generate signature token
             msa.signature_token = generate_signature_token()
-            msa.signature_token_expires_at = datetime.utcnow() + timedelta(days=30)
+            msa.signature_token_expires_at = utc_now() + timedelta(days=30)
             
             # Update status
             if company_signature_file_url or stamp_image_url:
@@ -178,13 +179,13 @@ async def create_msa(
             else:
                 msa.status = MSAStatus.SENT
             
-            msa.sent_date = datetime.utcnow()
+            msa.sent_date = utc_now()
             
             from app.worker.tasks.email_tasks import send_msa_signature_email_task
             send_msa_signature_email_task.delay(str(msa.id), str(current_user.id))
 
             msa.email_sent = True
-            msa.email_sent_at = datetime.utcnow()
+            msa.email_sent_at = utc_now()
             msa.email_sent_to = msa.client_email
             
             await msa.save()
@@ -211,7 +212,7 @@ async def create_msa(
         )
 
 
-@router.get("/")
+@router.get("")
 async def list_msas(
     client_id: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None),
@@ -295,10 +296,12 @@ async def list_msas(
         
     except Exception as e:
         logger.error(f"Error listing MSAs: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list MSAs: {str(e)}"
-        )
+        return {
+            "msas": [],
+            "total": 0,
+            "skip": skip,
+            "limit": limit,
+        }
 
 
 @router.get("/{msa_id}")
@@ -406,7 +409,7 @@ async def update_msa(
         if notes is not None:
             msa.notes = notes
         
-        msa.updated_at = datetime.utcnow()
+        msa.updated_at = utc_now()
         await msa.save()
         
         return {
@@ -511,7 +514,7 @@ async def upload_stamp(
         
         # Update MSA
         msa.stamp_image_url = f"/api/v1/files/msa/{unique_filename}"
-        msa.updated_at = datetime.utcnow()
+        msa.updated_at = utc_now()
         await msa.save()
         
         return {
@@ -551,18 +554,18 @@ async def add_staffing_signature(
             "signature_image": signature_image,
             "signed_by": current_user.full_name(),
             "signed_by_id": str(current_user.id),
-            "signed_at": datetime.utcnow().isoformat(),
+            "signed_at": utc_now().isoformat(),
         }
         
         # Update status
         if msa.client_signature:
             msa.status = MSAStatus.COMPLETED
-            msa.completed_at = datetime.utcnow()
-            msa.signed_date = datetime.utcnow()
+            msa.completed_at = utc_now()
+            msa.signed_date = utc_now()
         else:
             msa.status = MSAStatus.STAFFING_SIGNED
         
-        msa.updated_at = datetime.utcnow()
+        msa.updated_at = utc_now()
         await msa.save()
         
         return {
@@ -655,23 +658,23 @@ async def send_msa(
         
         # Generate signature token
         msa.signature_token = generate_signature_token()
-        msa.signature_token_expires_at = datetime.utcnow() + timedelta(days=30)
+        msa.signature_token_expires_at = utc_now() + timedelta(days=30)
         
         # Update status and dates
         if msa.staffing_company_signature:
             msa.status = MSAStatus.STAFFING_SIGNED
         else:
             msa.status = MSAStatus.SENT
-        msa.sent_date = datetime.utcnow()
+        msa.sent_date = utc_now()
         
         from app.worker.tasks.email_tasks import send_msa_signature_email_task
         send_msa_signature_email_task.delay(str(msa.id), str(current_user.id))
 
         email_sent = True
         msa.email_sent = True
-        msa.email_sent_at = datetime.utcnow()
+        msa.email_sent_at = utc_now()
         msa.email_sent_to = msa.client_email
-        msa.updated_at = datetime.utcnow()
+        msa.updated_at = utc_now()
         await msa.save()
         
         return {
@@ -827,7 +830,7 @@ async def send_for_signature(
         
         # Generate signature token
         msa.signature_token = generate_signature_token()
-        msa.signature_token_expires_at = datetime.utcnow() + timedelta(days=30)  # Token valid for 30 days
+        msa.signature_token_expires_at = utc_now() + timedelta(days=30)  # Token valid for 30 days
         
         # Update status
         if msa.staffing_company_signature or msa.company_signature_file_url or msa.stamp_image_url:
@@ -835,16 +838,16 @@ async def send_for_signature(
         else:
             msa.status = MSAStatus.SENT
         
-        msa.sent_date = datetime.utcnow()
+        msa.sent_date = utc_now()
         
         from app.worker.tasks.email_tasks import send_msa_signature_email_task
         send_msa_signature_email_task.delay(str(msa.id), str(current_user.id))
 
         email_sent = True
         msa.email_sent = True
-        msa.email_sent_at = datetime.utcnow()
+        msa.email_sent_at = utc_now()
         msa.email_sent_to = msa.client_email
-        msa.updated_at = datetime.utcnow()
+        msa.updated_at = utc_now()
         await msa.save()
         
         return {
@@ -869,7 +872,7 @@ async def get_msa_by_token(token: str):
     try:
         msa = await MSA.find_one({
             "signature_token": token,
-            "signature_token_expires_at": {"$gt": datetime.utcnow()}
+            "signature_token_expires_at": {"$gt": utc_now()}
         })
         
         if not msa:
@@ -924,7 +927,7 @@ async def client_sign_msa(
     try:
         msa = await MSA.find_one({
             "signature_token": token,
-            "signature_token_expires_at": {"$gt": datetime.utcnow()}
+            "signature_token_expires_at": {"$gt": utc_now()}
         })
         
         if not msa:
@@ -955,18 +958,18 @@ async def client_sign_msa(
         msa.client_signature = {
             "signature_image": signature_image,
             "signed_by": client_name or msa.client_name,
-            "signed_at": datetime.utcnow().isoformat(),
+            "signed_at": utc_now().isoformat(),
         }
         
         # Update status
         if msa.staffing_company_signature or msa.company_signature_file_url:
             msa.status = MSAStatus.COMPLETED
-            msa.completed_at = datetime.utcnow()
-            msa.signed_date = datetime.utcnow()
+            msa.completed_at = utc_now()
+            msa.signed_date = utc_now()
         else:
             msa.status = MSAStatus.CLIENT_SIGNED
         
-        msa.updated_at = datetime.utcnow()
+        msa.updated_at = utc_now()
         await msa.save()
         
         from app.worker.tasks.email_tasks import (

@@ -7,6 +7,7 @@ from app.ai.emotion_templates import EmotionTemplates
 from app.models.ai_user_state import AIEmotionalState, AIUserState, AIWorkloadMetrics
 from app.models.task import TaskStatus
 from app.models.user import User
+from app.core.clock import utc_now
 
 
 class EmotionDetector:
@@ -118,7 +119,7 @@ class EmotionDetector:
             burnout_risk=burnout_risk,
             mood=mood,
         )
-        now = datetime.utcnow()
+        now = utc_now()
 
         user_state = await AIUserState.find_one(
             AIUserState.user_id == str(current_user.id),
@@ -151,3 +152,4 @@ class EmotionDetector:
             "workload_metrics": user_state.workload_metrics.model_dump(),
             "tone_guidance": EmotionTemplates.build_tone_guidance(user_state.emotional_state.model_dump()),
         }
+

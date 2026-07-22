@@ -5,10 +5,11 @@ from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.sales_lead_note import SalesLeadNote
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 def _company_id_for_lead(current_user: User, prospect: SalesProspect) -> str:
@@ -129,7 +130,7 @@ class CRMLeadNotesService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Note content is required")
 
         company_id = _company_id_for_lead(current_user, prospect)
-        now = datetime.utcnow()
+        now = utc_now()
         note = SalesLeadNote(
             lead_id=str(prospect.id),
             company_id=company_id,
@@ -174,7 +175,7 @@ class CRMLeadNotesService:
         if not content_clean:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Note content is required")
 
-        now = datetime.utcnow()
+        now = utc_now()
         note.content = content_clean
         note.is_edited = True
         note.edited_at = now
@@ -210,7 +211,7 @@ class CRMLeadNotesService:
     @staticmethod
     async def delete_note(current_user: User, lead_id: str, note_id: str) -> Dict[str, Any]:
         prospect, note, company_id = await _load_note(current_user, lead_id, note_id)
-        now = datetime.utcnow()
+        now = utc_now()
         note.deleted = True
         note.deleted_at = now
         note.deleted_by = str(getattr(current_user, "id", ""))
@@ -242,3 +243,4 @@ class CRMLeadNotesService:
             "message": "Note deleted successfully",
             "note": _serialize_note(note, user_map),
         }
+

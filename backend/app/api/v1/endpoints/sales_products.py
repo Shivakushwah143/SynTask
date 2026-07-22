@@ -8,6 +8,7 @@ from app.api.dependencies import get_current_user, require_module
 from app.models.user import User, UserRole
 from app.models.sales_product import SalesProduct
 from app.models.sales_category import SalesCategory
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
 
@@ -21,7 +22,7 @@ def _ensure_create_permission(user: User):
 
 
 def _ensure_delete_permission(user: User):
-    if user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    if user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Delete not allowed for your role"
@@ -43,10 +44,10 @@ async def list_products(
     category_id: Optional[str] = None,
     state: Optional[str] = None,
     city: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
+    skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id

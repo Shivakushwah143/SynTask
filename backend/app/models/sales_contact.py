@@ -6,6 +6,7 @@ from typing import Optional, List
 from beanie import Document, Indexed
 from pydantic import EmailStr, Field
 from enum import Enum
+from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
 
 class ContactSharingAccess(str, Enum):
@@ -77,6 +78,15 @@ class SalesContact(Document):
             "company_name",
             "crm_company_id",
             "is_primary_contact",
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("crm_company_id", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("country_code", ASCENDING), ("phone", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("email", ASCENDING)]),
+            IndexModel(
+                [("first_name", TEXT), ("last_name", TEXT), ("company_name", TEXT), ("email", TEXT), ("phone", TEXT)],
+                language_override="_text_language",
+            ),
         ]
 
     def unique_key(self) -> str:
@@ -104,4 +114,7 @@ class ContactSharing(Document):
             "contact_id",
             "shared_with_user_id",
             "company_id",
+            IndexModel([("company_id", ASCENDING), ("shared_with_user_id", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("contact_id", ASCENDING)]),
+            IndexModel([("contact_id", ASCENDING), ("shared_with_user_id", ASCENDING)]),
         ]

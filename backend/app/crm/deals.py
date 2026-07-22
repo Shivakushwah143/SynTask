@@ -5,11 +5,12 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal, CRMProposalStatus
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -195,7 +196,7 @@ class CRMDealService:
         prospect = await _load_lead(current_user, lead_id)
         company_id = _company_id_for_user(current_user)
         deal = await CRMDeal.find_one({"company_id": company_id, "lead_id": str(prospect.id)})
-        now = datetime.utcnow()
+        now = utc_now()
         if not deal:
             deal = CRMDeal(company_id=company_id, lead_id=str(prospect.id), created_by=str(current_user.id), created_by_name=_display_name(current_user, str(current_user.id)))
 
@@ -270,7 +271,7 @@ class CRMDealService:
         assert deal is not None
         existing = await CRMProposal.find({"company_id": company_id, "deal_id": str(deal.id)}).sort("-version").to_list()
         version = (existing[0].version if existing else 0) + 1
-        now = datetime.utcnow()
+        now = utc_now()
         proposal = CRMProposal(
             company_id=company_id,
             deal_id=str(deal.id),
@@ -319,7 +320,7 @@ class CRMDealService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
         if proposal.archived or proposal.status == CRMProposalStatus.ARCHIVED:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Archived proposals cannot be modified")
-        now = datetime.utcnow()
+        now = utc_now()
         if "title" in payload:
             proposal.title = str(payload.get("title") or proposal.title).strip()
         if "summary" in payload:
@@ -366,7 +367,7 @@ class CRMDealService:
         proposal = await CRMProposal.get(proposal_id)
         if not proposal or proposal.lead_id != str(prospect.id) or proposal.company_id != company_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
-        now = datetime.utcnow()
+        now = utc_now()
         proposal.status = CRMProposalStatus.ARCHIVED
         proposal.archived = True
         proposal.archived_at = now
@@ -387,3 +388,4 @@ class CRMDealService:
         proposals = await CRMProposal.find({"company_id": company_id, "deal_id": proposal.deal_id}).sort("-version").to_list()
         deal = await CRMDeal.get(proposal.deal_id)
         return {"message": "Proposal archived successfully", "deal": _serialize_deal(deal, proposals), "proposal": _serialize_proposal(proposal), "proposals": [_serialize_proposal(item) for item in proposals]}
+

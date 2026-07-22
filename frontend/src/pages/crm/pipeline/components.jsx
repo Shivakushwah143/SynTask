@@ -1,23 +1,25 @@
-import { memo, useMemo } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, CalendarDays, ChevronDown, Filter, Mail, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
+import { AlertCircle, CalendarDays, ChevronDown, Filter, MoreHorizontal, MoveRight, RefreshCw, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, getStageDealValue, getStageKey } from './utils'
 
-const leadColumnStyle = 'w-[260px] flex-none snap-start'
-const stageAccents = ['#7c3aed', '#f59e0b', '#22c55e', '#0ea5e9', '#f97316', '#ec4899', '#14b8a6']
-const priorityStyles = {
-  critical: 'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-200 dark:ring-rose-900',
-  high: 'bg-orange-100 text-orange-700 ring-orange-200 dark:bg-orange-950/40 dark:text-orange-200 dark:ring-orange-900',
-  medium: 'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900',
-  low: 'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-900',
+const leadColumnStyle = 'w-[300px] flex-none snap-start'
+export const pipelineLeadCardClassNames = {
+  column: leadColumnStyle,
+  actions: 'mt-4 flex flex-col gap-2 border-t border-surface-border/70 pt-3 dark:border-gray-800',
+  actionButton: 'min-h-10 w-full justify-between rounded-lg border border-surface-border/80 bg-surface px-3 text-xs font-semibold text-text-primary hover:bg-surface-muted dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800',
+  nextButton: 'min-h-10 w-full justify-center rounded-lg px-3 text-xs font-semibold shadow-sm',
+  stagePill: 'inline-flex min-h-8 w-full items-center justify-center rounded-lg bg-surface-muted px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary dark:bg-gray-800 dark:text-gray-300',
 }
+const stageAccents = ['#ea580c', '#d97706', '#b45309', '#f59e0b', '#ca8a04', '#f97316', '#a16207']
 const iconTileStyles = [
-  'bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-200',
-  'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-200',
+  'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200',
+  'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
   'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200',
   'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
 ]
@@ -43,10 +45,10 @@ export const PipelineTopMetrics = memo(function PipelineTopMetrics({ visibleLead
     const wonLeads = visibleLeads.filter((lead) => getLeadStageKey(lead).includes('won')).length
     const hotLeads = visibleLeads.filter((lead) => ['critical', 'high'].includes(getLeadPriority(lead))).length
     return [
-      { label: 'Total Leads', value: totalLeads, helper: 'Visible after filters', icon: Users, tone: 'bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-200' },
+      { label: 'Total Leads', value: totalLeads, helper: 'Visible after filters', icon: Users, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200' },
       { label: 'Total Value', value: formatCurrency(totalValue, currency), helper: 'Pipeline value', icon: TrendingUp, tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' },
       { label: 'Hot Leads', value: hotLeads, helper: 'Critical or high priority', icon: Target, tone: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200' },
-      { label: 'Active Stages', value: activeStages, helper: 'With at least one lead', icon: Sparkles, tone: 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-200' },
+      { label: 'Active Stages', value: activeStages, helper: 'With at least one lead', icon: Sparkles, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200' },
       { label: 'Won', value: wonLeads, helper: 'Visible won leads', icon: CalendarDays, tone: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200' },
     ]
   }, [currency, stages, visibleLeads])
@@ -54,17 +56,17 @@ export const PipelineTopMetrics = memo(function PipelineTopMetrics({ visibleLead
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {metrics.map((metric) => (
-        <article key={metric.label} className="rounded-xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <article key={metric.label} className="rounded-xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center gap-3">
             <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${metric.tone}`}>
               <metric.icon className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{metric.label}</p>
-              <p className="mt-1 truncate text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">{metric.value}</p>
+              <p className="truncate text-xs font-medium text-text-secondary dark:text-gray-400">{metric.label}</p>
+              <p className="mt-1 truncate text-xl font-semibold tracking-tight text-text-primary dark:text-gray-100">{metric.value}</p>
             </div>
           </div>
-          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">{metric.helper}</p>
+          <p className="mt-3 text-xs text-text-secondary dark:text-gray-400">{metric.helper}</p>
         </article>
       ))}
     </div>
@@ -82,13 +84,13 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
   currency = 'INR',
 }) {
   return (
-    <div className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="grid flex-1 gap-3 md:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(150px,1fr))]">
-          <label className="block">
+    <div className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="grid gap-3">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(150px,1fr))]">
+          <label className="block min-w-0">
             <span className="sr-only">Search</span>
             <div className="relative">
-              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
               <input
                 value={searchValue}
                 onChange={(event) => onSearchChange?.(event.target.value)}
@@ -98,7 +100,7 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               />
             </div>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="sr-only">Owner</span>
             <select
               className="input"
@@ -106,15 +108,15 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               onChange={(event) => onChange({ owner: event.target.value })}
               aria-label="Filter by owner"
             >
-              <option value="">Owner: All</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Owner: All</option>
               {ownerOptions.map((option) => (
-                <option key={option.value} value={option.value}>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="sr-only">Priority</span>
             <select
               className="input"
@@ -122,14 +124,14 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               onChange={(event) => onChange({ priority: event.target.value })}
               aria-label="Filter by priority"
             >
-              <option value="">Priority: All</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Priority: All</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="critical">Critical</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="sr-only">Current Stage</span>
             <select
               className="input"
@@ -146,10 +148,75 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
             </select>
           </label>
         </div>
+      </div>
+      <div className="space-y-4">
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,1fr)]">
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Tags</span>
+            <input
+              className="input"
+              value={filters.tags}
+              onChange={(event) => onChange({ tags: event.target.value })}
+              placeholder="Enter comma-separated tags"
+              aria-label="Filter by tags"
+            />
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Min deal value</span>
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              value={filters.minValue}
+              onChange={(event) => onChange({ minValue: event.target.value })}
+              placeholder={currency === 'INR' ? '0' : 'Min value'}
+              aria-label="Minimum deal value"
+            />
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Max deal value</span>
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              value={filters.maxValue}
+              onChange={(event) => onChange({ maxValue: event.target.value })}
+              placeholder="No cap"
+              aria-label="Maximum deal value"
+            />
+          </label>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0">
+              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created from</span>
+              <input
+                className="input"
+                type="date"
+                value={filters.createdFrom}
+                onChange={(event) => onChange({ createdFrom: event.target.value })}
+                aria-label="Filter by created from date"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created to</span>
+              <input
+                className="input"
+                type="date"
+                value={filters.createdTo}
+                onChange={(event) => onChange({ createdTo: event.target.value })}
+                aria-label="Filter by created to date"
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-end border-t border-surface-border/70 pt-4 dark:border-gray-800">
         <Button
           type="button"
           variant="secondary"
           size="sm"
+          className="w-full justify-center sm:w-auto sm:whitespace-nowrap"
           onClick={() => {
             if (onResetFilters) {
               onResetFilters()
@@ -172,68 +239,6 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
           Reset filters
         </Button>
       </div>
-      <div className="space-y-4">
-        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,1fr)]">
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Tags</span>
-            <input
-              className="input"
-              value={filters.tags}
-              onChange={(event) => onChange({ tags: event.target.value })}
-              placeholder="Enter comma-separated tags"
-              aria-label="Filter by tags"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Min deal value</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={filters.minValue}
-              onChange={(event) => onChange({ minValue: event.target.value })}
-              placeholder={currency === 'INR' ? '0' : 'Min value'}
-              aria-label="Minimum deal value"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Max deal value</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={filters.maxValue}
-              onChange={(event) => onChange({ maxValue: event.target.value })}
-              placeholder="No cap"
-              aria-label="Maximum deal value"
-            />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Created from</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.createdFrom}
-                onChange={(event) => onChange({ createdFrom: event.target.value })}
-                aria-label="Filter by created from date"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Created to</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.createdTo}
-                onChange={(event) => onChange({ createdTo: event.target.value })}
-                aria-label="Filter by created to date"
-              />
-            </label>
-          </div>
-        </div>
-      </div>
     </div>
   )
 })
@@ -243,7 +248,7 @@ export const PipelineLoadingState = memo(function PipelineLoadingState() {
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         {[1, 2, 3].map((item) => (
-          <article key={item} className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
+          <article key={item} className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="mt-3 h-8 w-28" />
             <Skeleton className="mt-2 h-4 w-36" />
@@ -252,12 +257,12 @@ export const PipelineLoadingState = memo(function PipelineLoadingState() {
       </div>
       <div className="flex gap-4 overflow-x-auto pb-4">
         {[1, 2, 3, 4].map((column) => (
-          <div key={column} className="w-80 flex-none rounded-[28px] border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
+          <div key={column} className="w-80 flex-none rounded-[28px] border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
             <Skeleton className="h-5 w-24" />
             <Skeleton className="mt-2 h-4 w-28" />
             <div className="mt-4 space-y-3">
               {[1, 2, 3].map((card) => (
-                <div key={card} className="rounded-2xl border border-surface-border/80 p-4">
+                <div key={card} className="rounded-2xl border border-surface-border/80 bg-surface-muted p-4">
                   <Skeleton className="h-4 w-2/3" />
                   <Skeleton className="mt-3 h-4 w-1/2" />
                   <Skeleton className="mt-4 h-4 w-1/3" />
@@ -292,7 +297,7 @@ export const PipelineEmptyBoardState = memo(function PipelineEmptyBoardState({ o
     <CRMEmptyState
       icon={MoveRight}
       title="No leads in the pipeline"
-      description="Create prospects in Sales or clear the filters to see the board."
+      description="Create leads in Sales or clear the filters to see the board."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={onResetFilters}>
@@ -317,7 +322,7 @@ export const PipelineSearchEmptyState = memo(function PipelineSearchEmptyState({
 
 export const PipelineStageEmptyState = memo(function PipelineStageEmptyState({ label }) {
   return (
-    <div className="rounded-2xl border border-dashed border-surface-border/80 bg-gradient-to-b from-white to-slate-50/70 px-4 py-10 text-center text-sm text-gray-500 dark:border-gray-800 dark:from-gray-900 dark:to-gray-950 dark:text-gray-400">
+    <div className="rounded-2xl border border-dashed border-surface-border/80 bg-gradient-to-b from-surface to-surface-muted px-4 py-10 text-center text-sm text-text-secondary dark:border-gray-800 dark:from-gray-900 dark:to-gray-950 dark:text-gray-400">
       No leads in {label}
     </div>
   )
@@ -328,10 +333,12 @@ export const PipelineBoard = memo(function PipelineBoard({
   currency = 'INR',
   activeLeadId = null,
   onMoveLeadToStage,
+  getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
   onResetFilters,
   visibleLeads = [],
+  hasActiveFilters = false,
 }) {
   const hasStages = stages.length > 0
   const totalLeads = stages.reduce((sum, stage) => sum + (stage.leads?.length || 0), 0)
@@ -340,12 +347,12 @@ export const PipelineBoard = memo(function PipelineBoard({
     return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
   }
 
-  if (totalLeads === 0) {
-    return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
+  if (hasActiveFilters && visibleLeads.length === 0) {
+    return <PipelineSearchEmptyState onResetFilters={onResetFilters} />
   }
 
-  if (visibleLeads.length === 0) {
-    return <PipelineSearchEmptyState onResetFilters={onResetFilters} />
+  if (totalLeads === 0) {
+    return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
   }
 
   return (
@@ -356,10 +363,12 @@ export const PipelineBoard = memo(function PipelineBoard({
             <PipelineColumn
               key={stage.key || stage.id || stage.name || index}
               stage={stage}
+              stages={stages}
               accent={stageAccents[index % stageAccents.length]}
               currency={currency}
               activeLeadId={activeLeadId}
               onMoveLeadToStage={onMoveLeadToStage}
+              getAllowedStageKeys={getAllowedStageKeys}
               onCopyLeadId={onCopyLeadId}
               onLeadSelect={onLeadSelect}
             />
@@ -372,42 +381,45 @@ export const PipelineBoard = memo(function PipelineBoard({
 
 export const PipelineColumn = memo(function PipelineColumn({
   stage,
+  stages = [],
   accent = stageAccents[0],
   currency = 'INR',
   activeLeadId = null,
   onMoveLeadToStage,
+  getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
 }) {
   const leads = stage.leads || []
   const isActive = leads.some((lead) => (lead.id || lead._id) === activeLeadId)
+  const allowedStageKeys = useMemo(() => new Set(getAllowedStageKeys?.(stage) || []), [getAllowedStageKeys, stage])
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: stage.key })
   return (
     <section
       ref={setDroppableRef}
-      className={`flex max-h-[calc(100vh-15rem)] flex-none flex-col overflow-hidden rounded-xl border border-surface-border/80 bg-white shadow-sm transition-shadow dark:border-gray-800 dark:bg-gray-900 ${leadColumnStyle} snap-start ${isOver ? 'ring-2 ring-primary-500/30 shadow-lg' : ''}`}
+      className={`flex max-h-[calc(100vh-15rem)] flex-none flex-col overflow-hidden rounded-xl border border-surface-border/80 bg-surface/95 shadow-sm transition-shadow dark:border-gray-800 dark:bg-gray-900 ${pipelineLeadCardClassNames.column} snap-start ${isOver ? 'ring-2 ring-primary-500/30 shadow-lg' : ''}`}
       aria-label={`${stage.name} stage`}
     >
       <div className="h-1.5 w-full" style={{ backgroundColor: accent }} />
-      <header className="sticky top-0 z-20 border-b border-surface-border/80 bg-white/95 px-3.5 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
+      <header className="sticky top-0 z-20 border-b border-surface-border/80 bg-surface/95 px-3.5 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+            <h3 className="truncate text-sm font-semibold tracking-tight text-text-primary dark:text-gray-100">
               {stage.name}
             </h3>
-            <p className="mt-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
+            <p className="mt-2 text-xs font-semibold text-text-secondary dark:text-gray-200">
               {formatCurrency(getStageDealValue(leads), currency)}
             </p>
           </div>
           <Badge label={`${leads.length}`} colorKey="draft" />
         </div>
-        <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+        <div className="mt-3 flex items-center justify-between text-[11px] text-text-muted dark:text-gray-400">
           <span>Avg age: {Math.round((leads.reduce((sum, lead) => sum + Number(lead.days_in_stage || 0), 0) / Math.max(leads.length, 1)) || 0)} days</span>
           <span className="text-rose-500">Hot: {leads.filter((lead) => ['critical', 'high'].includes(getLeadPriority(lead))).length}</span>
         </div>
       </header>
       <div
-        className={`flex-1 space-y-3 overflow-y-auto bg-gray-50/70 p-3 dark:bg-gray-950/30 ${isActive ? 'bg-primary-50/30 dark:bg-primary-950/10' : ''}`}
+        className={`flex-1 space-y-3 overflow-y-auto bg-surface-muted/70 p-3 dark:bg-gray-950/30 ${isActive ? 'bg-primary-50/30 dark:bg-primary-950/10' : ''}`}
         data-stage-key={stage.key}
       >
         <SortableContext items={leads.map((lead) => lead.id || lead._id)} strategy={verticalListSortingStrategy}>
@@ -419,8 +431,10 @@ export const PipelineColumn = memo(function PipelineColumn({
                 key={lead.id || lead._id || `${stage.key}-${index}`}
                 lead={lead}
                 stage={stage}
+                stages={stages}
                 currency={currency}
                 onMoveLeadToStage={onMoveLeadToStage}
+                allowedStageKeys={allowedStageKeys}
                 onCopyLeadId={onCopyLeadId}
                 onLeadSelect={onLeadSelect}
               />
@@ -432,11 +446,29 @@ export const PipelineColumn = memo(function PipelineColumn({
   )
 })
 
+function StageProgress({ stage, stages = [] }) {
+  const currentIndex = Math.max(0, stages.findIndex((item) => item.key === stage.key))
+  const total = Math.max(stages.length, 1)
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between text-[11px] font-medium text-text-muted dark:text-gray-400">
+        <span>Step {currentIndex + 1} of {total}</span>
+        <span>{Math.round(((currentIndex + 1) / total) * 100)}%</span>
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-muted dark:bg-gray-800">
+        <div className="h-full rounded-full bg-primary-500" style={{ width: `${((currentIndex + 1) / total) * 100}%` }} />
+      </div>
+    </div>
+  )
+}
+
 export const PipelineLeadCard = memo(function PipelineLeadCard({
   lead,
   stage,
+  stages = [],
   currency = 'INR',
   onMoveLeadToStage,
+  allowedStageKeys = new Set(),
   onCopyLeadId,
   onLeadSelect,
 }) {
@@ -445,8 +477,91 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   const dealValue = getLeadDealValue(lead)
   const ownerLabel = getLeadOwnerLabel(lead)
   const contactLabel = getLeadContactLabel(lead)
-  const dueText = lead.next_follow_up_at || lead.next_followup_at || lead.follow_up_date || lead.next_activity_at
   const sortableId = lead.id || lead._id
+  const [menuOpen, setMenuOpen] = useState(false)
+  const actionButtonRef = useRef(null)
+  const menuRef = useRef(null)
+  const [menuPosition, setMenuPosition] = useState(null)
+  const stageActions = useMemo(() => {
+    const wantedActions = [
+      { label: 'Contacted', stageNames: ['Contacted', 'Follow Up Call', 'Follow-Up Call'] },
+      { label: 'Qualified', stageNames: ['Qualified', 'Qualification'] },
+      { label: 'Discovery', stageNames: ['Discovery', 'Schedule a Meeting', 'Discovery Scheduled'] },
+      { label: 'Schedule a Meeting', stageNames: ['Discovery', 'Schedule a Meeting', 'Discovery Scheduled'] },
+      { label: 'Proposal', stageNames: ['Proposal', 'Send Proposal', 'Proposal Sent'] },
+      { label: 'Send Proposal', stageNames: ['Proposal', 'Send Proposal', 'Proposal Sent'] },
+      { label: 'Negotiation', stageNames: ['Negotiation'] },
+      { label: 'Won', stageNames: ['Won'] },
+      { label: 'Lost', stageNames: ['Lost'] },
+    ]
+    const stageLookup = new Map()
+    ;(stages || []).forEach((candidate) => {
+      const key = getStageKey(candidate)
+      const canonicalName = String(candidate?.name || candidate?.label || candidate?.title || '').toLowerCase()
+      stageLookup.set(canonicalName, { key, label: candidate?.name || candidate?.label || candidate?.title || 'Stage' })
+      stageLookup.set(String(key).toLowerCase(), { key, label: candidate?.name || candidate?.label || candidate?.title || 'Stage' })
+    })
+    const preferredActions = wantedActions
+      .map((action) => {
+        for (const candidateName of action.stageNames) {
+          const found = stageLookup.get(candidateName.toLowerCase())
+          if (found && allowedStageKeys.has(found.key)) {
+            return { key: found.key, label: action.label }
+          }
+        }
+        return null
+      })
+      .filter(Boolean)
+    const preferredKeys = new Set(preferredActions.map((action) => action.key))
+    const fallbackActions = (stages || [])
+      .filter((candidate) => allowedStageKeys.has(candidate.key) && !preferredKeys.has(candidate.key))
+      .map((candidate) => ({ key: candidate.key, label: candidate.name || candidate.label || candidate.title || 'Stage' }))
+    return [...preferredActions, ...fallbackActions]
+  }, [allowedStageKeys, stages])
+  const previousStage = useMemo(() => stages.find((candidate) => candidate.key === stage.previousStageKey), [stage.previousStageKey, stages])
+  const nextStage = useMemo(() => stages.find((candidate) => candidate.key === stage.nextStageKey), [stage.nextStageKey, stages])
+  const canMovePrevious = previousStage ? allowedStageKeys.has(previousStage.key) : false
+  const canMoveNext = nextStage ? allowedStageKeys.has(nextStage.key) : false
+  const nextStageLabel = nextStage?.name || nextStage?.label || nextStage?.title || 'next stage'
+
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const updatePosition = () => {
+      const rect = actionButtonRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const width = 224
+      const margin = 12
+      const left = Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin)
+      const spaceBelow = window.innerHeight - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+      const renderAbove = spaceBelow < 180 && spaceAbove > spaceBelow
+      const maxHeight = Math.max(180, Math.min(320, (renderAbove ? spaceAbove : spaceBelow) - 8))
+      setMenuPosition(
+        renderAbove
+          ? { bottom: window.innerHeight - rect.top + 8, left, width, maxHeight }
+          : { top: rect.bottom + 8, left, width, maxHeight }
+      )
+    }
+    updatePosition()
+    const handlePointerDown = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target) && actionButtonRef.current && !actionButtonRef.current.contains(event.target)) {
+        setMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [menuOpen])
   const {
     attributes,
     listeners,
@@ -464,12 +579,55 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
+  const menuNode = menuOpen && typeof document !== 'undefined' ? createPortal((
+    <div
+      ref={menuRef}
+      className="fixed z-[9999] overflow-y-auto rounded-2xl border border-surface-border/80 bg-surface/95 p-2 shadow-2xl backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/98"
+      style={menuPosition || { width: 224, top: 'auto', left: 'auto', maxHeight: 280 }}
+    >
+      <ActionItem
+        label="Copy lead ID"
+        onClick={() => {
+          onCopyLeadId?.(lead)
+          setMenuOpen(false)
+        }}
+      />
+      {stageActions.map((action) => (
+        <ActionItem
+          key={`${action.key}-${action.label}`}
+          label={`Move to ${action.label}`}
+          onClick={() => {
+            onMoveLeadToStage?.(lead, action.key)
+            setMenuOpen(false)
+          }}
+        />
+      ))}
+      <ActionItem
+        label="Move to previous stage"
+        disabled={!canMovePrevious}
+        onClick={() => {
+          if (!canMovePrevious) return
+          onMoveLeadToStage?.(lead, stage.previousStageKey)
+          setMenuOpen(false)
+        }}
+      />
+      <ActionItem
+        label="Move to next stage"
+        disabled={!canMoveNext}
+        onClick={() => {
+          if (!canMoveNext) return
+          onMoveLeadToStage?.(lead, stage.nextStageKey)
+          setMenuOpen(false)
+        }}
+      />
+    </div>
+  ), document.body) : null
 
   return (
     <article
       ref={setNodeRef}
       style={leadStyle}
-      className="group rounded-xl border border-surface-border/80 bg-white p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-900"
+      className="group rounded-xl border border-surface-border bg-surface p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md focus-within:ring-2 focus-within:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-900"
       aria-label={`${lead.company_name || contactLabel} lead card`}
     >
       <div className="flex items-start gap-3">
@@ -487,47 +645,31 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           onClick={() => onLeadSelect?.(lead)}
           className="min-w-0 flex-1 text-left focus-visible:outline-none"
         >
-          <div className="min-w-0">
-            <h4 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {lead.company_name || contactLabel}
-            </h4>
-            <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
-              {contactLabel}
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h4 className="truncate text-sm font-semibold text-text-primary dark:text-gray-100">
+                {lead.company_name || contactLabel}
+              </h4>
+              <p className="mt-1 truncate text-xs text-text-secondary dark:text-gray-400">
+                {contactLabel}
+              </p>
+            </div>
+            <div className="inline-flex h-6 min-w-14 items-center justify-center rounded-full border border-dashed border-surface-border/80 px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted dark:border-gray-800 dark:text-gray-500">
+              AI
+            </div>
           </div>
         </button>
       </div>
 
-      <div className="mt-3 grid gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
         <LeadMetaRow label="Owner" value={ownerLabel} />
-        <LeadMetaRow label="Deal value" value={formatCurrency(dealValue, currency)} strong />
-        <LeadMetaRow label="Days in stage" value={`${Number(lead.days_in_stage || 0)} days`} />
+        <LeadMetaRow label="Value" value={formatCurrency(dealValue, currency)} strong />
+        <LeadMetaRow label="Priority" value={<Badge label={priority} colorKey={priority} className="text-[10px]" />} />
+        <LeadMetaRow label="Days" value={String(Math.max(Number(lead.days_in_stage || 0), 0))} />
+        <LeadMetaRow label="Created" value={formatShortDate(lead.created_at || lead.createdAt || lead.created_date)} />
+        <LeadMetaRow label="Stage" value={stage.name} />
       </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ring-1 ${priorityStyles[priority] || priorityStyles.medium}`}>
-          {priority}
-        </span>
-        {dueText ? (
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-            Next: {formatShortDate(dueText)}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-border/70 pt-3 dark:border-gray-800">
-        <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-          <button type="button" className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label={`Call ${lead.company_name || contactLabel}`}>
-            <Phone className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label={`Email ${lead.company_name || contactLabel}`}>
-            <Mail className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-100 text-[10px] font-semibold text-primary-700 dark:bg-primary-950/40 dark:text-primary-200">
-          {ownerLabel.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'NA'}
-        </span>
-      </div>
+      <StageProgress stage={stage} stages={stages} />
 
       {tags.length ? (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -535,44 +677,54 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
             <Badge key={tag} label={tag} colorKey="draft" className="text-[10px]" />
           ))}
           {tags.length > 4 ? (
-            <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+            <span className="inline-flex items-center rounded-full bg-surface-muted px-2.5 py-1 text-[10px] font-medium text-text-muted dark:bg-gray-800 dark:text-gray-400">
               +{tags.length - 4}
             </span>
           ) : null}
         </div>
       ) : null}
 
-      <details className="mt-3 relative">
-        <summary className="list-none">
-          <Button type="button" variant="ghost" size="sm" className="w-full justify-between px-2">
+      <div className={pipelineLeadCardClassNames.actions}>
+        {canMoveNext ? (
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            className={pipelineLeadCardClassNames.nextButton}
+            aria-label={`Move ${lead.company_name || contactLabel} to ${nextStageLabel}`}
+            onClick={() => onMoveLeadToStage?.(lead, stage.nextStageKey)}
+          >
+            Move to {nextStageLabel}
+          </Button>
+        ) : null}
+        <div className="relative" ref={actionButtonRef}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={pipelineLeadCardClassNames.actionButton}
+            aria-label={`Open actions for ${lead.company_name || contactLabel}`}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
             <MoreHorizontal className="h-4 w-4" />
-            Actions
+            More actions
             <ChevronDown className="h-3.5 w-3.5" />
           </Button>
-        </summary>
-        <div className="absolute left-0 z-30 mt-2 w-56 overflow-hidden rounded-2xl border border-surface-border/80 bg-white p-2 shadow-lg dark:border-gray-800 dark:bg-gray-900">
-          <ActionItem label="Copy lead ID" onClick={() => onCopyLeadId?.(lead)} />
-          <ActionItem
-            label="Move to previous stage"
-            disabled={!stage.previousStageKey}
-            onClick={() => stage.previousStageKey && onMoveLeadToStage?.(lead, stage.previousStageKey)}
-          />
-          <ActionItem
-            label="Move to next stage"
-            disabled={!stage.nextStageKey}
-            onClick={() => stage.nextStageKey && onMoveLeadToStage?.(lead, stage.nextStageKey)}
-          />
+          {menuNode}
         </div>
-      </details>
+        <span className={pipelineLeadCardClassNames.stagePill}>
+          {stage.name}
+        </span>
+      </div>
     </article>
   )
 })
 
 function LeadMetaRow({ label, value, strong = false }) {
   return (
-    <div className="flex items-start justify-between gap-3">
-      <span>{label}</span>
-      <span className={strong ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-200'}>
+    <div className="min-w-0 rounded-lg border border-surface-border/70 bg-surface-muted/70 px-2.5 py-2 dark:border-gray-800 dark:bg-gray-950/40">
+      <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted dark:text-gray-500">{label}</span>
+      <span className={strong ? 'mt-1 block truncate font-semibold text-text-primary dark:text-gray-100' : 'mt-1 block truncate text-text-secondary dark:text-gray-200'}>
         {value}
       </span>
     </div>
@@ -600,15 +752,15 @@ export const PipelineInsightRail = memo(function PipelineInsightRail({ visibleLe
 
   return (
     <aside className="space-y-4">
-      <section className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <section className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-700 dark:bg-primary-950/40 dark:text-primary-200">
               <Sparkles className="h-4 w-4" />
             </span>
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">AI Assistant</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Top priorities</p>
+              <h3 className="text-sm font-semibold text-text-primary dark:text-gray-100">AI Assistant</h3>
+              <p className="text-xs text-text-secondary dark:text-gray-400">Top priorities</p>
             </div>
           </div>
           <Badge label="Beta" colorKey="draft" />
@@ -619,14 +771,14 @@ export const PipelineInsightRail = memo(function PipelineInsightRail({ visibleLe
               key={lead.id || lead._id || index}
               type="button"
               onClick={() => onLeadSelect?.(lead)}
-              className="w-full rounded-xl border border-rose-100 bg-rose-50/50 p-3 text-left transition hover:border-primary-200 hover:bg-primary-50/50 dark:border-rose-950/40 dark:bg-rose-950/10 dark:hover:border-primary-800 dark:hover:bg-primary-950/20"
+            className="w-full rounded-xl border border-orange-100 bg-orange-50/50 p-3 text-left transition hover:border-primary-200 hover:bg-primary-50/50 dark:border-orange-950/40 dark:bg-orange-950/10 dark:hover:border-primary-800 dark:hover:bg-primary-950/20"
             >
               <div className="flex gap-3">
-                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-xs font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-200">
+              <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-700 dark:bg-orange-950/50 dark:text-orange-200">
                   {index + 1}
                 </span>
                 <div className="min-w-0">
-                  <p className="line-clamp-2 text-xs font-semibold text-gray-900 dark:text-gray-100">
+                  <p className="line-clamp-2 text-xs font-semibold text-text-primary dark:text-gray-100">
                     {lead.company_name || getLeadContactLabel(lead)}
                   </p>
                   <p className="mt-1 text-xs text-primary-700 dark:text-primary-300">View now</p>
@@ -634,35 +786,35 @@ export const PipelineInsightRail = memo(function PipelineInsightRail({ visibleLe
               </div>
             </button>
           )) : (
-            <p className="rounded-xl bg-gray-50 p-3 text-xs text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">No urgent leads in the current view.</p>
+            <p className="rounded-xl bg-surface-muted p-3 text-xs text-text-secondary dark:bg-gray-950/40 dark:text-gray-400">No urgent leads in the current view.</p>
           )}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Stage Performance</h3>
+      <section className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <h3 className="text-sm font-semibold text-text-primary dark:text-gray-100">Stage Performance</h3>
         <div className="mt-4 space-y-3">
           {stagePerformance.slice(0, 6).map((stage) => {
             const percent = Math.round((stage.count / stageTotal) * 100)
             return (
               <div key={stage.name}>
                 <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate text-gray-600 dark:text-gray-300">{stage.name}</span>
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">{stage.count} ({percent}%)</span>
+                  <span className="truncate text-text-secondary dark:text-gray-300">{stage.name}</span>
+                  <span className="font-semibold text-text-primary dark:text-gray-100">{stage.count} ({percent}%)</span>
                 </div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-muted dark:bg-gray-800">
                   <div className="h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: stage.color }} />
                 </div>
-                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{formatCurrency(stage.value, currency)}</p>
+                <p className="mt-1 text-[11px] text-text-muted dark:text-gray-400">{formatCurrency(stage.value, currency)}</p>
               </div>
             )
           })}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <section className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Recent Activities</h3>
+          <h3 className="text-sm font-semibold text-text-primary dark:text-gray-100">Recent Activities</h3>
           <span className="text-xs font-medium text-primary-700 dark:text-primary-300">View all</span>
         </div>
         <div className="mt-4 space-y-3">
@@ -671,14 +823,14 @@ export const PipelineInsightRail = memo(function PipelineInsightRail({ visibleLe
               key={lead.id || lead._id || index}
               type="button"
               onClick={() => onLeadSelect?.(lead)}
-              className="flex w-full items-start gap-3 rounded-xl p-2 text-left transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
+            className="flex w-full items-start gap-3 rounded-xl p-2 text-left transition hover:bg-surface-muted dark:hover:bg-gray-800/60"
             >
               <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${iconTileStyles[index % iconTileStyles.length]}`}>
                 <MoveRight className="h-4 w-4" />
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-xs font-semibold text-gray-900 dark:text-gray-100">{lead.company_name || getLeadContactLabel(lead)}</span>
-                <span className="mt-1 block truncate text-[11px] text-gray-500 dark:text-gray-400">
+                <span className="block truncate text-xs font-semibold text-text-primary dark:text-gray-100">{lead.company_name || getLeadContactLabel(lead)}</span>
+                <span className="mt-1 block truncate text-[11px] text-text-secondary dark:text-gray-400">
                   {getLeadOwnerLabel(lead)}
                 </span>
               </span>
@@ -700,9 +852,9 @@ function ActionItem({ label, onClick, disabled = false }) {
         event.stopPropagation()
         onClick?.()
       }}
-      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-200 dark:hover:bg-gray-800"
+      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-200 dark:hover:bg-gray-800"
     >
-      <span>{label}</span>
+      <span className="min-w-0 truncate">{label}</span>
     </button>
   )
 }

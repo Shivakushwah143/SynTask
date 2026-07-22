@@ -8,6 +8,7 @@ from datetime import datetime
 from app.models.workflow import Workflow, WorkflowStatus, WorkflowTransition
 from app.models.user import User
 from app.api.dependencies import get_current_user, get_current_company_admin, check_company_access
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -86,7 +87,7 @@ async def update_workflow_status(
         status_obj.category = category
     if order is not None:
         status_obj.order = order
-    status_obj.updated_at = datetime.utcnow()
+    status_obj.updated_at = utc_now()
     await status_obj.save()
     return {"message": "Workflow status updated successfully"}
 
@@ -188,7 +189,7 @@ async def update_workflow_transition(
         transition.from_status = from_status.lower()
     if to_status is not None:
         transition.to_status = to_status.lower()
-    transition.updated_at = datetime.utcnow()
+    transition.updated_at = utc_now()
     await transition.save()
     return {"message": "Workflow transition updated successfully"}
 
@@ -294,7 +295,7 @@ async def update_workflow(
         workflow.initial_status = initial_status.lower()
     if is_default is not None:
         workflow.is_default = is_default
-    workflow.updated_at = datetime.utcnow()
+    workflow.updated_at = utc_now()
     await workflow.save()
     return {"message": "Workflow updated successfully"}
 
@@ -423,11 +424,12 @@ async def activate_workflow(
     check_company_access(current_user, workflow.company_id)
     
     workflow.is_active = not workflow.is_active
-    workflow.updated_at = datetime.utcnow()
+    workflow.updated_at = utc_now()
     await workflow.save()
     
     return {
         "message": f"Workflow {'activated' if workflow.is_active else 'deactivated'} successfully",
         "is_active": workflow.is_active
     }
+
 

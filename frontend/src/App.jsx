@@ -1,10 +1,9 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import Loader from './components/Loader'
 import { useUIStore } from './store/uiStore'
 import { useAuthStore } from './store/authStore'
 import { useTheme } from './hooks/useTheme'
-import { PageLoader } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import ConfirmDialog from './components/ConfirmDialog'
 import UndoBar from './components/UndoBar'
@@ -28,10 +27,14 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Users = lazy(() => import('./pages/Users'))
 const Departments = lazy(() => import('./pages/Departments'))
+const AdminPermissions = lazy(() => import('./pages/AdminPermissions'))
 const AIPrioritization = lazy(() => import('./pages/AIPrioritization'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Subscriptions = lazy(() => import('./pages/Subscriptions'))
 const ActivityLog = lazy(() => import('./pages/ActivityLog'))
+const Timeline = lazy(() => import('./pages/Timeline'))
+const Leaves = lazy(() => import('./pages/Leaves'))
+const EODReports = lazy(() => import('./pages/EODReports'))
 const Settings = lazy(() => import('./pages/Settings'))
 const MyTeam = lazy(() => import('./pages/MyTeam'))
 const NotFound = lazy(() => import('./pages/NotFound'))
@@ -45,11 +48,13 @@ const Chat = lazy(() => import('./pages/Chat'))
 const Clients = lazy(() => import('./pages/Clients'))
 const ClientWorkspacePage = lazy(() => import('./pages/ClientWorkspace'))
 const Invoices = lazy(() => import('./pages/Invoices'))
-const MSA = lazy(() => import('./pages/MSA'))
-const MSASign = lazy(() => import('./pages/MSASign'))
+// MSA hidden by request. Keep implementation available for later restore.
+// const MSA = lazy(() => import('./pages/MSA'))
+// const MSASign = lazy(() => import('./pages/MSASign'))
 const Ledger = lazy(() => import('./pages/Ledger'))
 const Meetings = lazy(() => import('./pages/Meetings'))
-const Calendar = lazy(() => import('./pages/Calendar'))
+const WorkspaceCalendar = lazy(() => import('./pages/WorkspaceCalendar'))
+const ContentCalendar = lazy(() => import('./pages/ContentCalendar'))
 const Timesheet = lazy(() => import('./pages/Timesheet'))
 const Reports = lazy(() => import('./pages/Reports'))
 const AIChat = lazy(() => import('./pages/AIChat'))
@@ -58,9 +63,11 @@ const CreativeDirector = lazy(() => import('./pages/CreativeDirector'))
 const MarketingChat = lazy(() => import('./pages/MarketingChat'))
 const MarketingCalendar = lazy(() => import('./pages/marketing/calendar/page'))
 const Notifications = lazy(() => import('./pages/Notifications'))
+const ScheduledJobs = lazy(() => import('./pages/ScheduledJobs'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
+const GoogleWorkspace = lazy(() => import('./pages/GoogleWorkspace'))
 
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
@@ -70,6 +77,7 @@ const BulkLeads = lazy(() => import('./pages/BulkLeads'))
 const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
 const SalesSettings = lazy(() => import('./pages/sales/SalesSettings'))
 const CRMPipelinePage = lazy(() => import('./pages/crm/pipeline/page'))
+const CRMDashboardPage = lazy(() => import('./pages/crm/dashboard/page'))
 const CRMLeadWorkspacePage = lazy(() => import('./pages/crm/leads/workspace'))
 const CRMCompaniesPage = lazy(() => import('./pages/crm/companies/page'))
 const CRMCompanyWorkspacePage = lazy(() => import('./pages/crm/companies/workspace'))
@@ -79,6 +87,17 @@ const CRMCalendarPage = lazy(() => import('./pages/crm/calendar/page'))
 const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
+const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
+const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
+const RecruitmentJobsPage = lazy(() => import('./modules/hr/recruitment/pages/JobsPage'))
+const RecruitmentInboxPage = lazy(() => import('./modules/hr/recruitment/pages/InboxPage'))
+const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pages/CandidatesPage'))
+const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
+const RecruitmentInterviewsPage = lazy(() => import('./modules/hr/recruitment/pages/InterviewsPage'))
+const RecruitmentReportsPage = lazy(() => import('./modules/hr/recruitment/pages/ReportsPage'))
+const CareersLandingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareersLandingPage })))
+const CareerJobDetailsPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerJobDetailsPage })))
+const CareerTrackingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerTrackingPage })))
 
 const AdminDashboard = lazy(() => import('./pages/superadmin/AdminDashboard'))
 const TenantManagement = lazy(() => import('./pages/superadmin/TenantManagement'))
@@ -132,20 +151,20 @@ const ModuleGuard = ({ module, children }) => {
   return <Navigate to="/dashboard" replace />
 }
 
-const withBoundary = (component) => (
-  <ErrorBoundary>
-    {component}
-  </ErrorBoundary>
-);
+const LegacySalesLeadRedirect = () => {
+  const { id } = useParams()
+  return <Navigate to={`/crm/leads/${id}`} replace />
+}
 
 function App() {
   useTheme()
   const location = useLocation()
-
   const withBoundary = (element) => <ErrorBoundary key={location.pathname}>{element}</ErrorBoundary>
-
   const setLoading = useUIStore?.getState?.().setLoading
 
+  useEffect(() => {
+    useAuthStore.getState().initializeAuth()
+  }, [])
 
   useEffect(() => {
     applySeoMeta(getSeoMeta(location.pathname))
@@ -169,17 +188,26 @@ function App() {
         <Route path="/admin-request" element={<PublicRoute><AuthLayout maxWidth="max-w-5xl"><AdminRequest /></AuthLayout></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />
         <Route path="/reset-password" element={<PublicRouteAllowAuth><AuthLayout><ResetPassword /></AuthLayout></PublicRouteAllowAuth>} />
+        {/* MSA hidden by request. Keep route commented for later restore.
         <Route path="/msa/sign/:token" element={<PublicRouteAllowAuth><MSASign /></PublicRouteAllowAuth>} />
+        */}
+        <Route path="/careers" element={withBoundary(<CareersLandingPage />)} />
+        <Route path="/careers/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
+        <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={withBoundary(<Dashboard />)} />
+          <Route path="workflow" element={<Navigate to="/crm/pipeline" replace />} />
+          <Route path="leads" element={<Navigate to="/crm/leads" replace />} />
           <Route path="tasks" element={withBoundary(<Tasks />)} />
           <Route path="tickets" element={withBoundary(<Tickets />)} />
           <Route path="chat" element={withBoundary(<Chat />)} />
           <Route path="clients" element={withBoundary(<Clients />)} />
           <Route path="clients/:clientId/workspace" element={withBoundary(<ClientWorkspacePage />)} />
           <Route path="invoices" element={withBoundary(<Invoices />)} />
+          {/* MSA hidden by request. Keep route commented for later restore.
           <Route path="msa" element={withBoundary(<MSA />)} />
+          */}
           <Route path="ledger" element={withBoundary(<Ledger />)} />
           <Route path="bulk-leads" element={<CompanyAdminGuard>{withBoundary(<BulkLeads />)}</CompanyAdminGuard>} />
           <Route path="projects" element={withBoundary(<Projects />)} />
@@ -189,14 +217,20 @@ function App() {
           <Route path="workflows" element={<CompanyAdminGuard>{withBoundary(<WorkflowAdmin />)}</CompanyAdminGuard>} />
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
-          <Route path="calendar" element={withBoundary(<Calendar />)} />
+          <Route path="calendar" element={withBoundary(<WorkspaceCalendar />)} />
+          <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
+          <Route path="content-calendar" element={withBoundary(<ContentCalendar />)} />
+          <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
           <Route path="attendance" element={withBoundary(<Attendance />)} />
+          <Route path="attendance/live" element={<Navigate to="/live-monitor" replace />} />
+          <Route path="attendance/reports" element={<Navigate to="/attendance-reports" replace />} />
           <Route path="live-monitor" element={withBoundary(<LiveMonitor />)} />
           <Route path="attendance-reports" element={withBoundary(<AttendanceReports />)} />
 
         <Route path="reports" element={withBoundary(<Reports />)} />
         <Route path="notifications" element={withBoundary(<Notifications />)} />
+        <Route path="scheduled-jobs" element={withBoundary(<ScheduledJobs />)} />
         <Route path="ai-assistant" element={withBoundary(<AIChat />)} />
         <Route path="ai-hub" element={withBoundary(<AIHub />)} />
         <Route path="creative-director" element={withBoundary(<CreativeDirector />)} />
@@ -205,11 +239,27 @@ function App() {
         <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="departments" element={withBoundary(<Departments />)} />
+          <Route path="admin-permissions" element={<CompanyAdminGuard>{withBoundary(<AdminPermissions />)}</CompanyAdminGuard>} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
         <Route path="activity" element={withBoundary(<ActivityLog />)} />
+        <Route path="timeline" element={withBoundary(<Timeline />)} />
+        <Route path="leaves" element={withBoundary(<Leaves />)} />
+        <Route path="eod" element={withBoundary(<EODReports />)} />
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
+          <Route path="hr">
+            <Route index element={withBoundary(<HRDepartment />)} />
+            <Route path="recruitment">
+              <Route index element={withBoundary(<RecruitmentDashboard />)} />
+              <Route path="jobs" element={withBoundary(<RecruitmentJobsPage />)} />
+              <Route path="inbox" element={withBoundary(<RecruitmentInboxPage />)} />
+              <Route path="candidates" element={withBoundary(<RecruitmentCandidatesPage />)} />
+              <Route path="resume-pool" element={withBoundary(<RecruitmentResumePoolPage />)} />
+              <Route path="interviews" element={withBoundary(<RecruitmentInterviewsPage />)} />
+              <Route path="reports" element={withBoundary(<RecruitmentReportsPage />)} />
+            </Route>
+          </Route>
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
             <Route index element={<Navigate to="pipeline" replace />} />
             <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
@@ -222,6 +272,7 @@ function App() {
             <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
             <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
+            <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
             <Route path="settings" element={withBoundary(<CRMSettingsPage />)} />
           </Route>
       </Route>
@@ -231,7 +282,7 @@ function App() {
           <Route path="contacts" element={withBoundary(<SalesContacts />)} />
           <Route path="contacts/:id" element={withBoundary(<ContactDetail />)} />
           <Route path="prospects" element={<Navigate to="/crm/leads" replace />} />
-          <Route path="prospects/:id" element={<Navigate to="/crm/leads" replace />} />
+          <Route path="prospects/:id" element={<LegacySalesLeadRedirect />} />
           <Route path="queue" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="pipeline" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="reports" element={withBoundary(<SalesReports />)} />
@@ -256,7 +307,7 @@ function App() {
       </Routes>
       <ConfirmDialog />
       <UndoBar />
-      {import.meta.env.DEV && <Agentation />}
+      {import.meta.env.DEV && import.meta.env.VITE_ENABLE_AGENTATION === 'true' && <Agentation />}
     </Suspense>
   )
 }

@@ -22,6 +22,9 @@ from app.api.dependencies import (
     check_company_access
 )
 from app.services.user_service import UserService
+from app.api.deps import Pagination20, PaginationParams
+from app.core.clock import utc_now
+from app.schemas.admin_permissions import normalize_modules
 
 router = APIRouter()
 
@@ -45,7 +48,7 @@ async def _resolve_department(company_id: Optional[str], department_id: Optional
 
 async def _build_department_name_map(company_id: Optional[str], users: list[User]) -> dict[str, str]:
     department_ids = {
-        getattr(user, "department_id", None)
+        str(getattr(user, "department_id", None))
         for user in users
         if getattr(user, "department_id", None)
     }
@@ -72,6 +75,11 @@ async def _build_department_name_map(company_id: Optional[str], users: list[User
         }
     ).to_list()
     return {str(department.id): department.name for department in departments}
+
+
+def _department_id_value(user: User) -> Optional[str]:
+    department_id = getattr(user, "department_id", None)
+    return str(department_id) if department_id else None
 
 
 async def _notify_department_assignment(
@@ -169,11 +177,11 @@ async def list_users(
     company_id: str = None,
     role: str = None,
     status_filter: str = Query(None, alias="status"),
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
     """List users with hierarchical RBAC filtering"""
+    skip, limit = pagination.skip, pagination.limit
     # Super Admin can see all users
     if current_user.role == UserRole.SUPER_ADMIN:
         query = {}
@@ -280,8 +288,8 @@ async def list_users(
                 "status": user.status.value,
                 "company_id": user.company_id,
                 "reports_to": user.reports_to,
-                "department_id": getattr(user, "department_id", None),
-                "department_name": department_name_map.get(getattr(user, "department_id", None), None),
+                "department_id": _department_id_value(user),
+                "department_name": department_name_map.get(_department_id_value(user), None),
                 "modules": getattr(user, "modules", []),
                 "active_module": getattr(user, "active_module", None),
                 "created_at": user.created_at,
@@ -368,7 +376,11 @@ async def get_assignable_users(
     # Admin or Super Admin
     is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
     if is_admin or current_user.role == UserRole.SUPER_ADMIN:
-        # Admin can assign to Leads and Employees
+        # Admin can assign tasks to Managers, Leads, and Employees
+        managers = await Manager.find({
+            "company_id": current_user.company_id,
+            "status": UserStatus.ACTIVE
+        }).to_list()
         leads = await Lead.find({
             "company_id": current_user.company_id,
             "status": UserStatus.ACTIVE
@@ -377,7 +389,7 @@ async def get_assignable_users(
             "company_id": current_user.company_id,
             "status": UserStatus.ACTIVE
         }).to_list()
-        users = leads + employees
+        users = managers + leads + employees
     
     elif current_user.role == UserRole.EMPLOYEE:
         if for_tickets:
@@ -437,6 +449,16 @@ async def get_assignable_users(
                     if str(emp.id) not in all_employee_ids:
                         all_employee_ids.add(str(emp.id))
                         users.append(emp)
+
+    elif current_user.role == UserRole.MANAGER:
+        all_users = await User.find({
+            "company_id": current_user.company_id,
+            "status": UserStatus.ACTIVE,
+        }).to_list()
+        users = [
+            item for item in all_users
+            if item.role in [UserRole.LEAD, UserRole.EMPLOYEE]
+        ]
     
     return {
         "users": [
@@ -459,89 +481,130 @@ async def get_assignable_users(
 async def get_my_team(
     current_user: User = Depends(get_current_user)
 ):
-    """Get team members for current Lead"""
-    if current_user.role != UserRole.LEAD:
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only Leads can access their team"
-        )
-    
-    # Get Lead with managed_employee_ids
-    lead = await Lead.get(str(current_user.id))
-    if not lead:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail="Lead not found"
-        )
-    
-    # Get all employees under this Lead
-    managed_ids = getattr(lead, "managed_employee_ids", []) or []
-    
-    # Get employees by lead_id
-    employees_by_lead = await Employee.find({
-        "company_id": current_user.company_id,
-        "status": UserStatus.ACTIVE,
-        "lead_id": str(current_user.id)
-    }).to_list()
-    
-    # Get employees by managed_employee_ids
-    employees_by_managed = []
-    if managed_ids:
-        employees_by_managed = await Employee.find({
-            "company_id": current_user.company_id,
-            "status": UserStatus.ACTIVE,
-            "_id": {"$in": managed_ids}
-        }).to_list()
-    
-    # Combine and remove duplicates
-    all_employee_ids = set()
-    team_members = []
-    for emp in employees_by_lead + employees_by_managed:
-        if str(emp.id) not in all_employee_ids:
-            all_employee_ids.add(str(emp.id))
-            team_members.append(emp)
-    
-    # Get task and ticket counts for each team member
-    from app.models.task import Task
-    from app.models.ticket import Ticket
-    
-    team_data = []
-    for employee in team_members:
-        task_count = await Task.find({
-            "assigned_to": str(employee.id),
-            "company_id": current_user.company_id
-        }).count()
-        
-        ticket_count = await Ticket.find({
-            "assigned_to": str(employee.id),
-            "company_id": current_user.company_id
-        }).count()
-        
-        team_data.append({
-            "id": str(employee.id),
-            "email": employee.email,
-            "first_name": employee.first_name,
-            "last_name": employee.last_name,
-            "role": employee.role.value,
-            "status": employee.status.value,
-            "department_id": getattr(employee, "department_id", None),
-            "designation": employee.designation,
-            "phone": employee.phone,
-            "created_at": employee.created_at,
-            "task_count": task_count,
-            "ticket_count": ticket_count,
-        })
-    
-    return {
-        "team_members": team_data,
-        "total": len(team_data),
-        "lead_info": {
-            "id": str(lead.id),
-            "first_name": lead.first_name,
-            "last_name": lead.last_name,
-            "team_name": lead.team_name,
+    """Get team members for the current user based on hierarchy."""
+    try:
+        if current_user.role not in [UserRole.LEAD, UserRole.MANAGER, UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+
+        team_members = []
+        lead = None
+
+        if current_user.role == UserRole.LEAD:
+            lead = await Lead.get(str(current_user.id))
+            if not lead:
+                return {"team_members": [], "total": 0, "lead_info": {"id": str(current_user.id), "first_name": current_user.first_name, "last_name": current_user.last_name, "team_name": None}}
+
+            managed_ids = getattr(lead, "managed_employee_ids", []) or []
+            employees_by_lead = await Employee.find({
+                "company_id": current_user.company_id,
+                "status": UserStatus.ACTIVE,
+                "lead_id": str(current_user.id)
+            }).to_list()
+
+            employees_by_managed = []
+            if managed_ids:
+                employees_by_managed = await Employee.find({
+                    "company_id": current_user.company_id,
+                    "status": UserStatus.ACTIVE,
+                    "_id": {"$in": managed_ids}
+                }).to_list()
+
+            all_employee_ids = set()
+            for emp in employees_by_lead + employees_by_managed:
+                if str(emp.id) not in all_employee_ids:
+                    all_employee_ids.add(str(emp.id))
+                    team_members.append(emp)
+
+        elif current_user.role == UserRole.MANAGER:
+            subordinates = await current_user.get_all_subordinates()
+            subordinate_ids = {str(sub.id) for sub in subordinates}
+            subordinate_ids.add(str(current_user.id))
+
+            all_users = await User.find({
+                "company_id": current_user.company_id,
+                "status": UserStatus.ACTIVE,
+            }).to_list()
+            team_members = [
+                user for user in all_users
+                if str(user.id) in subordinate_ids and str(user.id) != str(current_user.id)
+            ]
+
+        else:
+            all_users = await User.find({
+                "company_id": current_user.company_id,
+                "status": UserStatus.ACTIVE,
+            }).to_list()
+            team_members = [
+                user
+                for user in all_users
+                if getattr(user, "role", None) in [UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE]
+            ]
+
+        from app.models.task import Task
+        from app.models.ticket import Ticket
+
+        team_data = []
+        for employee in team_members:
+            try:
+                task_count = await Task.find({
+                    "assigned_to": str(employee.id),
+                    "company_id": current_user.company_id
+                }).count()
+            except Exception:
+                task_count = 0
+
+            try:
+                ticket_count = await Ticket.find({
+                    "assigned_to": str(employee.id),
+                    "company_id": current_user.company_id
+                }).count()
+            except Exception:
+                ticket_count = 0
+
+            team_data.append({
+                "id": str(employee.id),
+                "email": employee.email,
+                "first_name": employee.first_name,
+                "last_name": employee.last_name,
+                "role": getattr(employee.role, "value", employee.role),
+                "status": getattr(employee.status, "value", employee.status),
+                "department_id": getattr(employee, "department_id", None),
+                "designation": getattr(employee, "designation", None),
+                "phone": getattr(employee, "phone", None),
+                "created_at": getattr(employee, "created_at", None),
+                "task_count": task_count,
+                "ticket_count": ticket_count,
+            })
+
+        return {
+            "team_members": team_data,
+            "total": len(team_data),
+            "lead_info": {
+                "id": str(getattr(lead, "id", current_user.id)),
+                "first_name": getattr(lead, "first_name", current_user.first_name),
+                "last_name": getattr(lead, "last_name", current_user.last_name),
+                "team_name": getattr(lead, "team_name", None),
+            }
         }
-    }
+    except HTTPException:
+        raise
+    except Exception as error:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error loading my team: {error}", exc_info=True)
+        return {
+            "team_members": [],
+            "total": 0,
+            "lead_info": {
+                "id": str(current_user.id),
+                "first_name": current_user.first_name,
+                "last_name": current_user.last_name,
+                "team_name": None,
+            },
+        }
 
 
 # ==================== USER CRUD ENDPOINTS ====================
@@ -621,11 +684,16 @@ async def create_lead(
     team_name: Optional[str] = Form(None),
     department_id: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_company_admin)
+    current_user: User = Depends(get_current_company_admin_or_lead)
 ):
-    """Create a Lead (Company Admin only)"""
+    """Create a Lead (Admin or Manager only)."""
+    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only Admins and Managers can create leads"
+        )
     # Check if email already exists
-    existing = await User.find_one(User.email == email)
+    existing = await User.find_one({"email": email})
     if existing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -641,7 +709,7 @@ async def create_lead(
         first_name=first_name,
         last_name=last_name,
         company_id=current_user.company_id,
-        reports_to=None,
+        reports_to=str(current_user.id) if current_user.role == UserRole.MANAGER else None,
         ancestors=[],
         team_name=team_name,
         department_id=department_id if department_doc else None,
@@ -688,9 +756,23 @@ async def create_employee(
     phone: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
+
+    print("\n========== CREATE EMPLOYEE API ==========")
+    print(f"[DEBUG] Email          : {email}")
+    print(f"[DEBUG] Password       : {password}")
+    print(f"[DEBUG] First Name     : {first_name}")
+    print(f"[DEBUG] Last Name      : {last_name}")
+    print(f"[DEBUG] Lead ID        : {lead_id}")
+    print(f"[DEBUG] Department ID  : {department_id}")
+    print(f"[DEBUG] Designation    : {designation}")
+    print(f"[DEBUG] Phone          : {phone}")
+    print(f"[DEBUG] Current User ID: {current_user.id}")
+    print(f"[DEBUG] Current User Email: {current_user.email}")
+    print(f"[DEBUG] Current User Role : {current_user.role}")
+    print("=========================================\n")
     """Create an Employee (Company Admin or Lead)"""
     # Check if email already exists
-    existing = await User.find_one(User.email == email)
+    existing = await User.find_one({"email": email})
     if existing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -699,19 +781,30 @@ async def create_employee(
 
     department_doc = await _resolve_department(current_user.company_id, department_id)
     
-    # If current user is a Lead, automatically assign employee to this Lead
+    # If current user is a Lead, automatically assign employee to this Lead.
+    # Managers may create employees, but the employee must sit under one of
+    # their leads so the Manager -> Lead -> Employee hierarchy remains intact.
     final_lead_id = lead_id
     if current_user.role == UserRole.LEAD:
         final_lead_id = str(current_user.id)
+    elif current_user.role == UserRole.MANAGER and not final_lead_id:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Manager must assign employee to a lead"
+        )
     
-    # Validate lead_id if provided (for Company Admin)
-    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
-    if final_lead_id and is_admin:
+    # Validate lead_id if provided (for Company Admin or Manager)
+    if final_lead_id and current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
         lead = await User.get(final_lead_id)
         if not lead or lead.role != UserRole.LEAD or lead.company_id != current_user.company_id:
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Invalid Lead ID"
+            )
+        if current_user.role == UserRole.MANAGER and str(current_user.id) not in [lead.reports_to, *(lead.ancestors or [])]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Manager can assign employees only to their leads"
             )
     
     # Create Employee
@@ -728,9 +821,6 @@ async def create_employee(
         phone=phone,
         status=UserStatus.ACTIVE
     )
-    await UserService.update_hierarchy_ancestors(employee)
-    
-    from app.services.user_service import UserService
     await UserService.update_hierarchy_ancestors(employee)
     await employee.insert()
     
@@ -798,7 +888,7 @@ async def update_user_status(
     check_company_access(current_user, user.company_id)
     
     user.status = new_status
-    user.updated_at = datetime.utcnow()
+    user.updated_at = utc_now()
     await user.save()
     
     return {"message": "User status updated successfully"}
@@ -933,7 +1023,7 @@ async def update_user(
         normalized_email = email.lower()
         # Only check uniqueness if changing email
         if normalized_email != user.email:
-            existing = await User.find_one(User.email == normalized_email)
+            existing = await User.find_one({"email": normalized_email})
             if existing and existing.id != user.id:
                 raise HTTPException(
                     status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -957,7 +1047,7 @@ async def update_user(
                 assigned_by=current_user,
                 previous_department_name=previous_department_name,
             )
-    user.updated_at = datetime.utcnow()
+    user.updated_at = utc_now()
     await user.save()
 
     return {"message": "User updated successfully"}
@@ -1012,7 +1102,7 @@ async def create_user_hierarchical(
         )
     
     # Check if email already exists
-    existing = await User.find_one(User.email == email.lower())
+    existing = await User.find_one({"email": email.lower()})
     if existing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -1022,18 +1112,8 @@ async def create_user_hierarchical(
     # Determine company_id
     company_id = current_user.company_id if current_user.company_id else None
     
-    # Modules parsing (comma-separated); default to ["task"]
-    allowed_modules = {"task", "sales"}
-    parsed_modules = []
-    if modules:
-        parsed_modules = [
-            m.strip()
-            for m in modules.split(",")
-            if m and m.strip() in allowed_modules
-        ]
-    if not parsed_modules:
-        parsed_modules = ["task"]
-    active_module = parsed_modules[0]
+    parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
+    active_module = parsed_modules[0] if parsed_modules else "task"
 
     department_doc = await _resolve_department(company_id, department_id) if company_id else None
 
@@ -1153,3 +1233,4 @@ async def create_user_hierarchical(
         "role": target_role.value,
         "reports_to": reports_to
     }
+

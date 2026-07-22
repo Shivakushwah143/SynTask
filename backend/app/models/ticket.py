@@ -95,6 +95,12 @@ class Ticket(Document):
             IndexModel([("company_id", ASCENDING), ("created_by", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("priority", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("priority", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("type", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("created_by", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("status", ASCENDING), ("priority", ASCENDING), ("escalated", ASCENDING), ("created_at", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("ticket_number", ASCENDING)]),
             IndexModel([("title", TEXT), ("description", TEXT)]),
@@ -124,4 +130,3 @@ class TicketComment(Document):
             "company_id",
             IndexModel([("ticket_id", ASCENDING), ("company_id", ASCENDING), ("created_at", ASCENDING)]),
         ]
-

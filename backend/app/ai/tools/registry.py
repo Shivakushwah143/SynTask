@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.ai.tools.core import BaseTool, ToolContext, ToolHandler, ToolResult
 from app.crm.context_builder import CRMContextBuilder
 from app.crm.deals import CRMDealService
@@ -17,9 +17,10 @@ from app.crm.pipeline import CRMPipelineService
 from app.services.notification_service import notification_service
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.meeting import Meeting, MeetingStatus
-from app.models.notification import Notification, NotificationType
-from app.models.sales_prospect import SalesProspect
+from app.notification_center.models import Notification, NotificationType
+from app.crm.models import SalesProspect
 from app.models.user import User, UserRole, UserStatus
+from app.core.clock import utc_now
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -40,7 +41,7 @@ def _priority_value(value: Optional[str]) -> CRMActivityPriority:
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return utc_now()
 
 
 def _lead_or_404(current_user: User, lead_id: str) -> SalesProspect:
@@ -657,3 +658,4 @@ def build_default_tool_registry() -> ToolRegistry:
 
 def register_default_tools(executor) -> ToolRegistry:
     return build_default_tool_registry()
+

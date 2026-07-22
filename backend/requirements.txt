@@ -15,6 +15,7 @@ python-dotenv==1.0.0
 pydantic[email]==2.5.3
 pydantic-settings==2.1.0
 slowapi==0.1.9
+google-auth==2.29.0
 
 # JWT & Password
 bcrypt==4.1.2
@@ -61,3 +62,8 @@ reportlab==4.1.0
 
 # HTTP Requests (legacy smoke scripts only)
 requests==2.31.0
+
+# Central RAG foundation
+openai==1.93.0
+qdrant-client==1.14.3
+pypdf==5.7.0

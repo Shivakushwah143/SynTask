@@ -1113,7 +1113,7 @@ function TestimonialsSection() {
                     transition={{ duration: 0.5, delay: 0.2 }}
                     className="text-7xl font-serif text-primary-200 dark:text-primary-800"
                   >
-                    "
+                    &quot;
                   </motion.div>
 
                   <motion.blockquote
@@ -1375,31 +1375,6 @@ const Header = () => {
       transition: { type: 'spring', stiffness: 400, damping: 10 }
     },
     tap: { scale: 0.95 }
-  };
-
-  const dropdownVariants = {
-    hidden: { 
-      opacity: 0, 
-      y: -10,
-      scale: 0.95
-    },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      scale: 1,
-      transition: { 
-        type: 'spring',
-        stiffness: 300,
-        damping: 20,
-        duration: 0.2
-      }
-    },
-    exit: {
-      opacity: 0,
-      y: -10,
-      scale: 0.95,
-      transition: { duration: 0.15 }
-    }
   };
 
   const mobileMenuVariants = {
@@ -1764,7 +1739,7 @@ const Header = () => {
 
 // ---- Main NewLanding Component ----
 function NewLanding() {
-  const { theme, toggleTheme } = useTheme()
+  useTheme()
   const [openFaq, setOpenFaq] = useState(0)
 
   return (

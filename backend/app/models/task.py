@@ -24,6 +24,20 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class TaskHealthStatus(str, Enum):
+    HEALTHY = "healthy"
+    DUE_TODAY = "due_today"
+    OVERDUE = "overdue"
+    EXTENDED = "extended"
+    COMPLETED = "completed"
+
+
+class TaskExtensionStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class Task(Document):
     """Task Model. project_id is the logical project identifier (Project.project_id string), not MongoDB ObjectId."""
     title: str
@@ -49,6 +63,9 @@ class Task(Document):
     due_date: Optional[datetime] = None
     start_date: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    health_status: TaskHealthStatus = TaskHealthStatus.HEALTHY
+    health_updated_at: datetime = Field(default_factory=datetime.utcnow)
+    extension_count: int = 0
     
     # Attachments
     attachments: List[str] = []  # File URLs
@@ -102,6 +119,7 @@ class Task(Document):
             "created_by",
             "assigned_to",
             "status",
+            "health_status",
             "priority",
             "progress_percentage",
             "project_id",
@@ -110,10 +128,19 @@ class Task(Document):
             "parent_task_id",
             "expected_completion_time",
             IndexModel([("company_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("health_status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("project_object_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("due_date", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("health_status", ASCENDING), ("due_date", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("updated_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("due_date", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("created_by", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("sprint_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("epic_id", ASCENDING), ("status", ASCENDING)]),
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("parent_task_id", ASCENDING)]),
@@ -142,4 +169,33 @@ class TaskComment(Document):
             "user_id",
             "company_id",
             IndexModel([("task_id", ASCENDING), ("company_id", ASCENDING), ("created_at", ASCENDING)]),
+        ]
+
+
+class TaskExtensionRequest(Document):
+    """Employee request to move a task deadline."""
+
+    task_id: Indexed(str)
+    company_id: Indexed(str)
+    employee_id: Indexed(str)
+    current_due_date: datetime
+    requested_due_date: datetime
+    reason: str
+    status: TaskExtensionStatus = TaskExtensionStatus.PENDING
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    review_comment: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "task_extension_requests"
+        indexes = [
+            "task_id",
+            "company_id",
+            "employee_id",
+            "status",
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)]),
+            IndexModel([("task_id", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("employee_id", ASCENDING), ("status", ASCENDING)]),
         ]

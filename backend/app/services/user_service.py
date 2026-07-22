@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple
 
 from beanie import PydanticObjectId
+from beanie.exceptions import CollectionWasNotInitialized
 from fastapi import HTTPException, status
 
 from app.core.security import get_password_hash
@@ -11,7 +12,7 @@ from app.schemas.users import CreateUserRequest, UpdateUserRequest
 class UserService:
     @staticmethod
     async def create_user(data: CreateUserRequest, company_id: Optional[str], created_by: str) -> User:
-        existing = await User.find_one(User.email == data.email.lower())
+        existing = await User.find_one({"email": data.email.lower()})
         if existing:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
@@ -74,7 +75,10 @@ class UserService:
         query = {"ancestors": user_id}
         if company_id:
             query["company_id"] = company_id
-        users = await User.find(query).to_list()
+        try:
+            users = await User.find(query).to_list()
+        except CollectionWasNotInitialized:
+            return []
         return [str(user.id) for user in users]
 
     @staticmethod

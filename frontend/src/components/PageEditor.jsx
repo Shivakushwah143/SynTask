@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Save, X } from 'lucide-react'
 import { projectsApi } from '../api/projects'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const PageEditor = ({ projectId, page, onClose, onSave }) => {
   const [title, setTitle] = useState('')
@@ -145,7 +145,7 @@ const PageEditor = ({ projectId, page, onClose, onSave }) => {
         <div>
           {page && (
             <span>
-              Last updated {format(new Date(page.updated_at || page.created_at), 'MMM d, yyyy h:mm a')}
+              Last updated {format(timeService.instant(page.updated_at || page.created_at), 'MMM d, yyyy h:mm a')}
             </span>
           )}
         </div>

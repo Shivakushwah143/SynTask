@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -81,7 +82,7 @@ async def create_board_column(
     }
     
     project.board_columns.append(new_column)
-    project.updated_at = datetime.utcnow()
+    project.updated_at = utc_now()
     await project.save()
     
     return {"message": "Column created successfully", "column": new_column}
@@ -134,7 +135,7 @@ async def update_board_column(
     if order is not None:
         project.board_columns[column_index]["order"] = order
     
-    project.updated_at = datetime.utcnow()
+    project.updated_at = utc_now()
     await project.save()
     
     return {
@@ -199,3 +200,4 @@ async def delete_board_column(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot delete column with {tasks_in_column} task(s). Please move tasks first."
         )
+

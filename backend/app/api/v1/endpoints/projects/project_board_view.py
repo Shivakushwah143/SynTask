@@ -109,6 +109,16 @@ async def get_project_board(
         {"id": "completed", "label": "COMPLETED", "color": "bg-green-100", "order": 3},
     ]
     sorted_columns = sorted(board_columns, key=lambda x: x.get("order", 0))
+    assigned_ids = project_assignee_ids(project)
+    assigned_users = []
+    for user_id in assigned_ids:
+        assigned_user = await User.get(user_id)
+        if assigned_user:
+            assigned_users.append({
+                "id": str(assigned_user.id),
+                "name": assigned_user.full_name(),
+                "role": assigned_user.role.value,
+            })
     
     return {
         "project": {
@@ -117,7 +127,18 @@ async def get_project_board(
             "name": project.name,
             "key": project.key,
             "description": project.description,
-            "status": project.status.value,
+            "type": enum_or_string_value(project.type, ProjectType.SOFTWARE.value),
+            "status": enum_or_string_value(project.status),
+            "lead_id": project.lead_id,
+            "assigned_to": project.assigned_to,
+            "assigned_user_ids": getattr(project, "assigned_user_ids", []) or ([project.assigned_to] if project.assigned_to else []),
+            "assigned_users": assigned_users,
+            "created_by": project.created_by,
+            "start_date": project.start_date.isoformat() if project.start_date else None,
+            "delivery_date": project.delivery_date.isoformat() if project.delivery_date else None,
+            "end_date": project.end_date.isoformat() if project.end_date else None,
+            "created_at": project.created_at.isoformat() if project.created_at else None,
+            "updated_at": project.updated_at.isoformat() if project.updated_at else None,
         },
         "board_columns": sorted_columns,
         "tasks_by_status": tasks_by_status,

@@ -4,6 +4,7 @@ from .shared import *
 from app.events import publish_event
 from app.events.factories import build_domain_event
 from app.creative.service import CreativeReviewService
+from app.core.clock import utc_now
 
 creative_review_service = CreativeReviewService()
 
@@ -73,7 +74,7 @@ async def upload_project_file(
         "url": file_url,
         "type": file_ext[1:] if file_ext else "unknown",
         "size": file_size,
-        "uploaded_at": datetime.utcnow().isoformat(),
+        "uploaded_at": utc_now().isoformat(),
         "uploaded_by": str(current_user.id),
         "uploaded_by_name": current_user.full_name(),
     }
@@ -81,7 +82,7 @@ async def upload_project_file(
     if not project.files:
         project.files = []
     project.files.append(file_record)
-    project.updated_at = datetime.utcnow()
+    project.updated_at = utc_now()
     
     await project.save()
 
@@ -171,10 +172,11 @@ async def delete_project_file(
     except Exception:
         pass
     
-    project.updated_at = datetime.utcnow()
+    project.updated_at = utc_now()
     await project.save()
     
     return {
         "message": "File deleted successfully",
         "file": removed_file,
     }
+

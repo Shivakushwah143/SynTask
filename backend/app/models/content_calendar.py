@@ -66,6 +66,15 @@ class ContentCalendarItem(Document):
     photographer: Optional[str] = None
     team: List[str] = Field(default_factory=list)
     assets_required: List[str] = Field(default_factory=list)
+    category: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    time: Optional[str] = None
+    assigned_person: Optional[str] = None
+    reminder: Optional[str] = None
+    color: Optional[str] = None
+    attachment: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     draft_at: datetime = Field(default_factory=datetime.utcnow)
     planned_at: Optional[datetime] = None

@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Building2, Check, X, Plus, RefreshCw } from 'lucide-react'
+import { format } from 'date-fns'
+import { Building2, Check, CreditCard, Globe2, Mail, Plus, RefreshCw, ShieldCheck, User, X } from 'lucide-react'
 import { companiesAPI } from '../api/companies'
 import { useConfirmation } from '../hooks/useConfirmation'
+import { Button, FormField, Modal, PasswordInput, PhoneInput, inputClassName } from '../components/ui'
 import toast from 'react-hot-toast'
+import { timeService } from '@/services/timeService'
 
 const Companies = () => {
   const { confirm } = useConfirmation()
   const [companies, setCompanies] = useState([])
+  const [totalCompanies, setTotalCompanies] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(null)
   const [showRegisterModal, setShowRegisterModal] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
@@ -15,29 +20,44 @@ const Companies = () => {
   const [submitting, setSubmitting] = useState(false)
 
   // Fetch companies
-  const fetchCompanies = async () => {
+  const fetchCompanies = async ({ skip = 0, limit = 20, append = false } = {}) => {
     try {
-      setLoading(true)
+      if (append) {
+        setLoadingMore(true)
+      } else {
+        setLoading(true)
+      }
       setError(null)
       console.log('📡 Fetching companies...')
-      const data = await companiesAPI.listCompanies()
+      const data = await companiesAPI.listCompanies(null, skip, limit)
       console.log('✅ Companies received:', data)
       
       if (data && Array.isArray(data.companies)) {
-        setCompanies(data.companies)
+        setCompanies((current) => {
+          if (!append) return data.companies
+          const existingIds = new Set(current.map((company) => company.id))
+          return [...current, ...data.companies.filter((company) => !existingIds.has(company.id))]
+        })
+        setTotalCompanies(Number(data.total || 0))
       } else {
         console.warn('⚠️ Unexpected data format:', data)
-        setCompanies([])
+        if (!append) setCompanies([])
+        setTotalCompanies(0)
       }
     } catch (error) {
       console.error('❌ Error loading companies:', error)
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to load companies'
       setError(errorMsg)
       toast.error(errorMsg)
-      setCompanies([])
+      if (!append) setCompanies([])
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
+  }
+
+  const handleShowMore = () => {
+    fetchCompanies({ skip: companies.length, limit: 10, append: true })
   }
 
   useEffect(() => {
@@ -275,7 +295,7 @@ const Companies = () => {
                     <p className="text-sm text-gray-500">{company.email}</p>
                     {company.created_at && (
                       <p className="text-xs text-gray-400 mt-1">
-                        Registered: {new Date(company.created_at).toLocaleDateString()}
+                        Registered: {format(timeService.instant(company.created_at), 'MMM d, yyyy')}
                       </p>
                     )}
                   </div>
@@ -317,174 +337,207 @@ const Companies = () => {
         )}
       </div>
 
+      {companies.length > 0 && companies.length < totalCompanies ? (
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-gray-200 bg-white p-4 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] sm:flex-row sm:justify-between">
+          <p className="text-sm text-gray-600 dark:text-[var(--color-app-text-muted)]">
+            Showing {companies.length} of {totalCompanies} companies
+          </p>
+          <Button type="button" variant="secondary" loading={loadingMore} loadingText="Loading" onClick={handleShowMore}>
+            Show 10 more
+          </Button>
+        </div>
+      ) : null}
+
       {/* Register Company Modal */}
-      {showRegisterModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Register New Company</h2>
-            <form onSubmit={handleRegisterSubmit} className="space-y-4">
+      <Modal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        title="Register company"
+        description="Create a tenant record. Approval and admin setup can happen after review."
+        size="lg"
+      >
+        <form onSubmit={handleRegisterSubmit} className="space-y-6">
+          <div className="rounded-2xl border border-primary-100 bg-primary-50/70 p-4 dark:border-primary-900/50 dark:bg-primary-950/20">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-white p-2 text-primary-600 shadow-sm dark:bg-[var(--color-app-surface)]">
+                <Building2 className="h-5 w-5" aria-hidden="true" />
+              </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Company Name *
-                </label>
+                <p className="text-sm font-semibold text-gray-900 dark:text-[var(--color-app-text)]">Company profile</p>
+                <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-[var(--color-app-text-muted)]">
+                  Use official business contact details so billing, approvals, and tenant ownership stay clear.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Company name" required className="sm:col-span-2">
+              <div className="relative">
+                <Building2 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
                 <input
                   type="text"
                   name="name"
                   required
-                  className="input"
+                  className={`${inputClassName} pl-11`}
                   placeholder="TechCorp Inc."
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email *
-                </label>
+            </FormField>
+
+            <FormField label="Email" required>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
                 <input
                   type="email"
                   name="email"
                   required
-                  className="input"
+                  className={`${inputClassName} pl-11`}
                   placeholder="contact@techcorp.com"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone *
-                </label>
-                <input
-                  type="tel"
-                  name="phone"
-                  required
-                  className="input"
-                  placeholder="+1 234 567 8900"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Website
-                </label>
+            </FormField>
+
+            <FormField label="Phone" required>
+              <PhoneInput name="phone" required />
+            </FormField>
+
+            <FormField label="Website (optional)" helperText="Include https:// for best results." className="sm:col-span-2">
+              <div className="relative">
+                <Globe2 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
                 <input
                   type="url"
                   name="website"
-                  className="input"
+                  className={`${inputClassName} pl-11`}
                   placeholder="https://techcorp.com"
                 />
               </div>
-              <div className="flex space-x-3 pt-4">
-                <button 
-                  type="submit" 
-                  disabled={submitting}
-                  className="btn btn-primary flex-1"
-                >
-                  {submitting ? 'Registering...' : 'Register Company'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowRegisterModal(false)}
-                  disabled={submitting}
-                  className="btn btn-secondary flex-1"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+            </FormField>
           </div>
-        </div>
-      )}
+
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-5 dark:border-[var(--color-app-border)] sm:flex-row sm:justify-end">
+            <Button type="button" variant="secondary" onClick={() => setShowRegisterModal(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={submitting} loadingText="Registering">
+              <Plus className="h-4 w-4" />
+              Register Company
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Approve Company Modal */}
-      {showApproveModal && selectedCompany && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
-            <h2 className="text-xl font-bold mb-2">Approve Company</h2>
-            <p className="text-gray-600 mb-4">
-              Create Company Admin for: <strong>{selectedCompany.name}</strong>
-            </p>
-            <form onSubmit={handleApproveSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Admin First Name *
-                </label>
-                <input
-                  type="text"
-                  name="admin_first_name"
-                  required
-                  className="input"
-                  placeholder="John"
-                />
+      <Modal
+        isOpen={showApproveModal && Boolean(selectedCompany)}
+        onClose={() => {
+          setShowApproveModal(false)
+          setSelectedCompany(null)
+        }}
+        title="Approve company"
+        description={selectedCompany ? `Create company admin for ${selectedCompany.name}.` : ''}
+        size="lg"
+      >
+        {selectedCompany ? (
+          <form onSubmit={handleApproveSubmit} className="space-y-6">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-white p-2 text-emerald-600 shadow-sm dark:bg-[var(--color-app-surface)]">
+                  <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-[var(--color-app-text)]">{selectedCompany.name}</p>
+                  <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-[var(--color-app-text-muted)]">
+                    Approval activates tenant access and creates first company admin.
+                  </p>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Admin Last Name *
-                </label>
-                <input
-                  type="text"
-                  name="admin_last_name"
-                  required
-                  className="input"
-                  placeholder="Doe"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Admin Email *
-                </label>
-                <input
-                  type="email"
-                  name="admin_email"
-                  required
-                  className="input"
-                  placeholder="admin@company.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Admin Password *
-                </label>
-                <input
-                  type="password"
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Admin first name" required>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input
+                    type="text"
+                    name="admin_first_name"
+                    required
+                    className={`${inputClassName} pl-11`}
+                    placeholder="John"
+                  />
+                </div>
+              </FormField>
+
+              <FormField label="Admin last name" required>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input
+                    type="text"
+                    name="admin_last_name"
+                    required
+                    className={`${inputClassName} pl-11`}
+                    placeholder="Doe"
+                  />
+                </div>
+              </FormField>
+
+              <FormField label="Admin email" required>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <input
+                    type="email"
+                    name="admin_email"
+                    required
+                    className={`${inputClassName} pl-11`}
+                    placeholder="admin@company.com"
+                  />
+                </div>
+              </FormField>
+
+              <FormField label="Admin password" required>
+                <PasswordInput
                   name="admin_password"
                   required
                   minLength={8}
-                  className="input"
+                  className={inputClassName}
                   placeholder="Min 8 characters"
+                  toggleLabel="admin password"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Subscription Plan
-                </label>
-                <select name="subscription_plan" className="input">
-                  <option value="free">Free</option>
-                  <option value="basic">Basic</option>
-                  <option value="professional">Professional</option>
-                  <option value="enterprise">Enterprise</option>
-                </select>
-              </div>
-              <div className="flex space-x-3 pt-4">
-                <button 
-                  type="submit" 
-                  disabled={submitting}
-                  className="btn btn-primary flex-1"
-                >
-                  {submitting ? 'Approving...' : 'Approve & Create Admin'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowApproveModal(false)
-                    setSelectedCompany(null)
-                  }}
-                  disabled={submitting}
-                  className="btn btn-secondary flex-1"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+              </FormField>
+
+              <FormField label="Subscription plan" className="sm:col-span-2">
+                <div className="relative">
+                  <CreditCard className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <select name="subscription_plan" className={`${inputClassName} pl-11`}>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="free">Free</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="basic">Basic</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="professional">Professional</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+              </FormField>
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-5 dark:border-[var(--color-app-border)] sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowApproveModal(false)
+                  setSelectedCompany(null)
+                }}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={submitting} loadingText="Approving">
+                <Check className="h-4 w-4" />
+                Approve & Create Admin
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
     </div>
   )
 }

@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 from app.api.dependencies import get_current_user
 from app.crm.contacts import CRMContactService
 from app.models.user import User
+from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
 
@@ -48,10 +49,10 @@ class CRMContactUpdatePayload(BaseModel):
 async def list_contacts(
     search: Optional[str] = None,
     company_id: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
+    skip, limit = pagination.skip, pagination.limit
     return await CRMContactService.list_contacts(current_user, search=search, company_id=company_id, skip=skip, limit=limit)
 
 

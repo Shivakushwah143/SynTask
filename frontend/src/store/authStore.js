@@ -43,7 +43,7 @@ export const useAuthStore = create(
     setAuth: (user, token, refreshToken, rememberMe) => {
       const normalizedUser = normalizeUser(user)
       saveAuthTokens(token, refreshToken, rememberMe)
-      saveUserData(normalizedUser)
+      saveUserData(normalizedUser, rememberMe)
       
       set({
         user: normalizedUser,

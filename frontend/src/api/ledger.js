@@ -1,9 +1,23 @@
 import api from './axios'
+import { getAccessToken } from '../utils/storage'
+
+const withAuthHeaders = (headers = {}) => {
+  const token = getAccessToken()
+  if (!token) return headers
+
+  return {
+    ...headers,
+    Authorization: `Bearer ${token}`,
+  }
+}
 
 export const ledgerAPI = {
   // Get ledger data
   getLedger: async (params = {}) => {
-    const response = await api.get('/ledger', { params })
+    const response = await api.get('/ledger', {
+      params,
+      headers: withAuthHeaders(),
+    })
     return response.data
   },
 
@@ -17,9 +31,9 @@ export const ledgerAPI = {
     if (paymentData.notes) formData.append('notes', paymentData.notes)
     
     const response = await api.post(`/ledger/${invoiceId}/payment`, formData, {
-      headers: {
+      headers: withAuthHeaders({
         'Content-Type': 'multipart/form-data'
-      }
+      }),
     })
     return response.data
   },
@@ -30,9 +44,9 @@ export const ledgerAPI = {
     formData.append('tds_amount', tdsAmount)
     
     const response = await api.put(`/ledger/${invoiceId}/tds`, formData, {
-      headers: {
+      headers: withAuthHeaders({
         'Content-Type': 'multipart/form-data'
-      }
+      }),
     })
     return response.data
   },

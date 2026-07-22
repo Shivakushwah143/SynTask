@@ -17,7 +17,7 @@ from app.models.company_subscription import CompanySubscription
 from app.models.usage_tracking import UsageTracking
 from app.models.billing_transaction import BillingTransaction
 from app.models.payment_webhook import PaymentWebhook
-from app.models.task import Task, TaskComment
+from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
 from app.models.project import Project, Epic, Sprint
@@ -42,6 +42,15 @@ from app.models.ai_conversation import AIConversation
 from app.models.ai_user_state import AIUserState
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
 from app.models.knowledge import KnowledgeRecord
+from app.models.agent import AgentDefinition, AgentRun, AgentRunEvent, ActionProposal, SpecialistDefinition
+from app.rag.models import (
+    RAGCitation,
+    RAGKnowledgeChunk,
+    RAGKnowledgeSource,
+    RAGKnowledgeSourceVersion,
+    RAGRetrievalRun,
+)
+from app.rag.feedback import RAGFeedback
 from app.models.creative_review import (
     CreativeAssetMetadata,
     CreativeCampaignReview,
@@ -72,13 +81,34 @@ from app.models.attendance import (
     Attendance, AttendanceSession, BreakLog,
     MonitoringSession, CameraSession, ScreenShareSession
 )
+from app.models.timeline import TimelineEvent
+from app.models.leave import LeaveRequest
+from app.models.eod import EODReport
+from app.models.scheduled_job import ScheduledJob
 from app.models.capability import seed_default_capabilities
+from app.integrations.meta.models import (
+    MetaIntegrationSettings,
+    MetaMarketingInsight,
+    MetaSyncRun,
+    MetaWebhookEvent,
+)
+from app.integrations.google_workspace.models import (
+    GoogleWorkspaceConnection,
+    GoogleWorkspaceMail,
+    GoogleWorkspaceCalendarEvent,
+)
+from app.recruitment.models import (
+    Application, Candidate, CandidateNote, CandidateTimeline, Interview,
+    InterviewFeedback, Offer, RecruitmentAttachment, RecruitmentAudit,
+    RecruitmentImportJob, RecruitmentJob, RecruitmentOutbox, Resume,
+)
 
 logger = logging.getLogger(__name__)
 
 
 # Global MongoDB client
 client: AsyncIOMotorClient = None
+MONGODB_TIMEOUT_MS = 5000
 
 
 async def init_db():
@@ -100,15 +130,15 @@ async def init_db():
             # For mongodb+srv://, don't set tls explicitly - it's automatic
             client = AsyncIOMotorClient(
                 mongodb_url,
-                serverSelectionTimeoutMS=30000,  # 30 seconds timeout
-                connectTimeoutMS=20000,  # 20 seconds connection timeout
+                serverSelectionTimeoutMS=MONGODB_TIMEOUT_MS,
+                connectTimeoutMS=MONGODB_TIMEOUT_MS,
             )
         else:
-            # For regular mongodb:// connections, configure TLS if needed
+            # For regular mongodb:// connections, fail fast in dev/QA.
             client = AsyncIOMotorClient(
                 mongodb_url,
-                serverSelectionTimeoutMS=30000,
-                connectTimeoutMS=20000,
+                serverSelectionTimeoutMS=MONGODB_TIMEOUT_MS,
+                connectTimeoutMS=MONGODB_TIMEOUT_MS,
             )
         
         # Ping the database to verify connection
@@ -142,6 +172,7 @@ async def init_db():
                 PaymentWebhook,
                 Task,
                 TaskComment,
+                TaskExtensionRequest,
                 Ticket,
                 TicketComment,
                 Notification,
@@ -178,6 +209,17 @@ async def init_db():
                 UserMemory,
                 ClientMemory,
                 KnowledgeRecord,
+                AgentDefinition,
+                SpecialistDefinition,
+                AgentRun,
+                AgentRunEvent,
+                ActionProposal,
+                RAGKnowledgeSource,
+                RAGKnowledgeSourceVersion,
+                RAGKnowledgeChunk,
+                RAGRetrievalRun,
+                RAGCitation,
+                RAGFeedback,
                 CreativeAssetMetadata,
                 CreativeCampaignReview,
                 CreativeReview,
@@ -213,6 +255,30 @@ async def init_db():
                 MonitoringSession,
                 CameraSession,
                 ScreenShareSession,
+                TimelineEvent,
+                LeaveRequest,
+                EODReport,
+                ScheduledJob,
+                MetaIntegrationSettings,
+                MetaWebhookEvent,
+                MetaSyncRun,
+                MetaMarketingInsight,
+                GoogleWorkspaceConnection,
+                GoogleWorkspaceMail,
+                GoogleWorkspaceCalendarEvent,
+                RecruitmentJob,
+                Candidate,
+                Application,
+                Resume,
+                Interview,
+                InterviewFeedback,
+                Offer,
+                CandidateNote,
+                RecruitmentAttachment,
+                RecruitmentImportJob,
+                CandidateTimeline,
+                RecruitmentOutbox,
+                RecruitmentAudit,
             ]
         )
 
@@ -222,6 +288,13 @@ async def init_db():
         
     except Exception as e:
         logger.error(f"Failed to connect to MongoDB: {str(e)}")
+        if client:
+            client.close()
+            client = None
+        logger.warning(
+            "MongoDB initialization failed. "
+            "Set MONGODB_URL to a reachable database to enable persistence."
+        )
         raise
 
 

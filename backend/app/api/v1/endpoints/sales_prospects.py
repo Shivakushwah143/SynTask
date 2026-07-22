@@ -9,17 +9,20 @@ import io
 import re
 from pydantic import BaseModel
 
+from app.api.deps import Pagination50, PaginationParams
 from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_capability, require_module
+from app.core.rbac_visibility import build_visibility_query, require_owned_record_access
 from app.models.user import User, UserRole, UserStatus
 from app.models.department import Department
 from app.models.crm_company import CRMCompany
-from app.models.sales_prospect import SalesProspect, InterestLevel, ProspectStatus
+from app.crm.models import SalesProspect, InterestLevel, ProspectStatus
 from app.models.sales_contact import SalesContact
 from app.models.sales_category import SalesCategory
 from app.models.sales_product import SalesProduct
 from app.models.sales_masters import SalesStage
 from app.models.sales_import_job import SalesImportJob
 from app.crm.lead_engine import LeadEngine
+from app.core.clock import utc_now
 
 
 router = APIRouter()
@@ -33,6 +36,71 @@ class LeadMergeRequest(BaseModel):
 class BulkLeadMergeRequest(BaseModel):
     target_lead_id: str
     source_lead_ids: List[str]
+
+
+async def bulk_merge_prospects(payload: BulkLeadMergeRequest, current_user: User):
+    target = await SalesProspect.get(payload.target_lead_id)
+    if not target or target.deleted:
+        raise HTTPException(status_code=404, detail="Target prospect not found")
+
+    await require_owned_record_access(
+        current_user,
+        target,
+        ownership_fields=("assigned_to", "assigned_by", "created_by"),
+    )
+
+    total_requested = len(payload.source_lead_ids or [])
+    total_merged = 0
+    total_failed = 0
+    total_skipped = 0
+    errors = []
+
+    for source_id in payload.source_lead_ids or []:
+        if source_id == payload.target_lead_id:
+            total_skipped += 1
+            errors.append({"lead_id": source_id, "reason": "Cannot merge a prospect into itself"})
+            continue
+
+        source = await SalesProspect.get(source_id)
+        if not source or source.deleted:
+            total_failed += 1
+            errors.append({"lead_id": source_id, "reason": "Source prospect not found"})
+            continue
+
+        try:
+            await require_owned_record_access(
+                current_user,
+                source,
+                ownership_fields=("assigned_to", "assigned_by", "created_by"),
+            )
+        except HTTPException:
+            total_failed += 1
+            errors.append({"lead_id": source_id, "reason": "Access denied"})
+            continue
+
+        merged_tags = list({*(target.tag or []), *(source.tag or [])})
+        merged_products = list({*(target.product_ids or []), *(source.product_ids or [])})
+        target.tag = merged_tags
+        target.product_ids = merged_products
+        target.updated_at = utc_now()
+        await target.save()
+
+        source.deleted = True
+        source.updated_at = utc_now()
+        await source.save()
+
+        total_merged += 1
+
+    return {
+        "summary": {
+            "total_requested": total_requested,
+            "total_merged": total_merged,
+            "total_failed": total_failed,
+            "total_skipped": total_skipped,
+        },
+        "errors": errors,
+        "target_lead_id": payload.target_lead_id,
+    }
 
 
 def _normalize_lead_csv_header(header: str) -> str:
@@ -180,12 +248,14 @@ def _serialize_prospect_identity(prospect: SalesProspect):
 
 
 async def _get_company_prospects(current_user: User, include_deleted: bool = False) -> List[SalesProspect]:
-    query = {"company_id": current_user.company_id}
+    query = {}
     if not include_deleted:
         query["deleted"] = False
-    if current_user.role == UserRole.EMPLOYEE:
-        current_user_id = str(current_user.id)
-        query["$or"] = [{"assigned_to": current_user_id}, {"assigned_by": current_user_id}]
+    query = await build_visibility_query(
+        current_user,
+        ownership_fields=("assigned_to", "assigned_by", "created_by"),
+        base_query=query,
+    )
     return await SalesProspect.find(query).sort(-SalesProspect.updated_at).to_list()
 
 
@@ -202,23 +272,16 @@ async def list_prospects(
     assigned_by: Optional[str] = None,
     channel: Optional[str] = None,
     interest_level: Optional[str] = None,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1),
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
     """List prospects with role-based filtering"""
+    skip, limit = pagination.skip, pagination.limit
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"list_prospects START: user={current_user.id}, role={current_user.role}, limit={limit}, skip={skip}")
     
     query = {"deleted": False}
-    if current_user.role != UserRole.SUPER_ADMIN:
-        query["company_id"] = current_user.company_id
-    if current_user.role == UserRole.EMPLOYEE:
-        query["$or"] = [
-            {"assigned_to": str(current_user.id)},
-            {"assigned_by": str(current_user.id)}
-        ]
     if search:
         search_or_condition = [
             {"prospect_name": {"$regex": search, "$options": "i"}},
@@ -230,19 +293,10 @@ async def list_prospects(
         else:
             query["$or"] = search_or_condition
     
-    # Handle assigned_to filter for employees
     if assigned_to:
-        if current_user.role == UserRole.EMPLOYEE:
-            # Employee can only filter by their own ID
-            if assigned_to != str(current_user.id):
-                return {"total": 0, "items": []}
         query["assigned_to"] = assigned_to
     
     if assigned_by:
-        if current_user.role == UserRole.EMPLOYEE:
-            # Employee can only filter by their own ID
-            if assigned_by != str(current_user.id):
-                return {"total": 0, "items": []}
         query["assigned_by"] = assigned_by
     
     if category_id:
@@ -263,6 +317,12 @@ async def list_prospects(
         query["channel"] = channel
     if interest_level:
         query["interest_level"] = interest_level
+
+    query = await build_visibility_query(
+        current_user,
+        ownership_fields=("assigned_to", "assigned_by", "created_by"),
+        base_query=query,
+    )
     
     total = await SalesProspect.find(query).count()
     prospects = await SalesProspect.find(query).skip(skip).limit(limit).sort(-SalesProspect.created_at).to_list()
@@ -296,6 +356,100 @@ async def list_prospects(
     }
 
 
+@router.get("/duplicates")
+async def get_duplicate_prospects(search: Optional[str] = None, current_user: User = Depends(get_current_user)):
+    prospects = await _get_company_prospects(current_user)
+    groups_by_key: dict[str, list[dict]] = {}
+    for prospect in prospects:
+        email, phone, name = _lead_identity_score(prospect)
+        if search:
+            query = search.strip().lower()
+            if query not in email and query not in phone and query not in name:
+                continue
+        for key in [f"email:{email}" if email else "", f"phone:{phone}" if phone else "", f"name:{name}" if name else ""]:
+            if key:
+                groups_by_key.setdefault(key, []).append(_serialize_prospect_identity(prospect))
+
+    groups = [
+        {"match_key": key, "prospects": items, "leads": items}
+        for key, items in groups_by_key.items()
+        if len(items) > 1
+    ]
+    return {"total_groups": len(groups), "groups": groups}
+
+
+@router.get("/imports")
+async def list_import_history(current_user: User = Depends(get_current_user)):
+    query = {"company_id": current_user.company_id}
+    jobs = await SalesImportJob.find(query).sort(-SalesImportJob.created_at).limit(50).to_list()
+    return {
+        "items": [
+            {
+                "id": str(job.id),
+                "filename": job.filename,
+                "strategy": job.strategy,
+                "status": job.status,
+                "total_rows": job.total_rows,
+                "total_uploaded": job.total_uploaded,
+                "skipped_rows": job.skipped_rows,
+                "failed_rows": job.failed_rows,
+                "created_at": job.created_at,
+                "completed_at": job.completed_at,
+            }
+            for job in jobs
+        ]
+    }
+
+
+@router.get("/search/contact")
+async def search_contact_for_prospect(
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
+    name: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Search existing contact to convert to prospect."""
+    query = {"deleted": False}
+
+    if phone:
+        query["phone"] = phone
+    if email:
+        query["email"] = email.lower()
+    if name:
+        parts = name.split()
+        if len(parts) >= 2:
+            query["first_name"] = {"$regex": parts[0], "$options": "i"}
+            query["last_name"] = {"$regex": parts[1], "$options": "i"}
+        else:
+            query["$or"] = [
+                {"first_name": {"$regex": name, "$options": "i"}},
+                {"last_name": {"$regex": name, "$options": "i"}},
+            ]
+
+    query = await build_visibility_query(
+        current_user,
+        ownership_fields=("created_by",),
+        base_query=query,
+    )
+
+    contacts = await SalesContact.find(query).limit(10).to_list()
+    return {
+        "contacts": [
+            {
+                "id": str(c.id),
+                "first_name": c.first_name,
+                "last_name": c.last_name,
+                "full_name": c.full_name(),
+                "phone": c.phone,
+                "country_code": c.country_code,
+                "email": c.email,
+                "company_name": c.company_name,
+            }
+            for c in contacts
+        ]
+    }
+
+
 @router.get("/{prospect_id}")
 async def get_prospect(
     prospect_id: str,
@@ -306,14 +460,11 @@ async def get_prospect(
     if not prospect or prospect.deleted:
         raise HTTPException(status_code=404, detail="Prospect not found")
     
-    # Check access
-    if current_user.role != UserRole.SUPER_ADMIN:
-        if prospect.company_id != current_user.company_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        if current_user.role == UserRole.EMPLOYEE:
-            # Employee can view if assigned to them OR assigned by them
-            if prospect.assigned_to != str(current_user.id) and prospect.assigned_by != str(current_user.id):
-                raise HTTPException(status_code=403, detail="Access denied")
+    await require_owned_record_access(
+        current_user,
+        prospect,
+        ownership_fields=("assigned_to", "assigned_by", "created_by"),
+    )
     
     return {
         "id": str(prospect.id),
@@ -355,18 +506,18 @@ async def get_prospect(
     }
 
 
-@router.post("/", dependencies=[Depends(require_capability("import_leads"))])
+@router.post("/")
 async def create_prospect(
     first_name: str = Form(...),
     last_name: str = Form(...),
     country_code: str = Form(...),
     phone: str = Form(...),
-    category_id: str = Form(...),
-    product_ids: str = Form(...),  # Comma-separated or pipe-separated
-    interest_level: str = Form(...),
-    estimated_close_date: str = Form(...),  # DD-MM-YYYY
-    assigned_to: str = Form(...),
-    current_stage: str = Form(...),
+    category_id: Optional[str] = Form(None),
+    product_ids: Optional[str] = Form(None),  # Comma-separated or pipe-separated
+    interest_level: Optional[str] = Form(None),
+    estimated_close_date: Optional[str] = Form(None),  # DD-MM-YYYY
+    assigned_to: Optional[str] = Form(None),
+    current_stage: Optional[str] = Form(None),
     email: Optional[str] = Form(None),
     contact_id: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),  # DD-MM-YYYY
@@ -396,11 +547,11 @@ async def create_prospect(
             "country_code": country_code,
             "phone": phone,
             "category_id": category_id,
-            "product_ids": _parse_multi_value(product_ids),
-            "interest_level": interest_level,
-            "estimated_close_date": estimated_close_date,
+            "product_ids": _parse_multi_value(product_ids) if product_ids else [],
+            "interest_level": interest_level or "medium",
+            "estimated_close_date": estimated_close_date or utc_now().date().isoformat(),
             "assigned_to": assigned_to,
-            "current_stage": current_stage,
+            "current_stage": current_stage or "new",
             "email": email,
             "contact_id": contact_id,
             "due_date": due_date,
@@ -462,6 +613,18 @@ async def update_prospect(
     return {"message": result["message"]}
 
 
+@router.post("/merge")
+async def merge_prospects(payload: BulkLeadMergeRequest | LeadMergeRequest, current_user: User = Depends(get_current_user)):
+    if isinstance(payload, LeadMergeRequest):
+        merge_payload = BulkLeadMergeRequest(
+            target_lead_id=payload.target_lead_id,
+            source_lead_ids=[payload.source_lead_id],
+        )
+    else:
+        merge_payload = payload
+    return await bulk_merge_prospects(merge_payload, current_user)
+
+
 @router.post("/bulk-upload", dependencies=[Depends(require_capability("import_leads")), Depends(require_module("sales"))])
 async def bulk_upload_prospects(
     strategy: str = Form(...),
@@ -497,74 +660,7 @@ async def preview_bulk_upload_prospects(
     )
 
 
-@router.get("/imports")
-async def list_import_history(current_user: User = Depends(get_current_user)):
-    query = {"company_id": current_user.company_id}
-    jobs = await SalesImportJob.find(query).sort(-SalesImportJob.created_at).limit(50).to_list()
-    return {
-        "items": [
-            {
-                "id": str(job.id),
-                "filename": job.filename,
-                "strategy": job.strategy,
-                "status": job.status,
-                "total_rows": job.total_rows,
-                "total_uploaded": job.total_uploaded,
-                "skipped_rows": job.skipped_rows,
-                "failed_rows": job.failed_rows,
-                "created_at": job.created_at,
-                "completed_at": job.completed_at,
-            }
-            for job in jobs
-        ]
-    }
-
-
 @router.post("/imports/{job_id}/retry")
 async def retry_import_job(job_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
     return await LeadEngine.retry_import_job(current_user, job_id)
 
-
-@router.get("/search/contact")
-async def search_contact_for_prospect(
-    phone: Optional[str] = None,
-    email: Optional[str] = None,
-    name: Optional[str] = None,
-    current_user: User = Depends(get_current_user)
-):
-    """Search existing contact to convert to prospect"""
-    query = {"deleted": False}
-    if current_user.role != UserRole.SUPER_ADMIN:
-        query["company_id"] = current_user.company_id
-    
-    if phone:
-        query["phone"] = phone
-    if email:
-        query["email"] = email.lower()
-    if name:
-        parts = name.split()
-        if len(parts) >= 2:
-            query["first_name"] = {"$regex": parts[0], "$options": "i"}
-            query["last_name"] = {"$regex": parts[1], "$options": "i"}
-        else:
-            query["$or"] = [
-                {"first_name": {"$regex": name, "$options": "i"}},
-                {"last_name": {"$regex": name, "$options": "i"}},
-            ]
-    
-    contacts = await SalesContact.find(query).limit(10).to_list()
-    return {
-        "contacts": [
-            {
-                "id": str(c.id),
-                "first_name": c.first_name,
-                "last_name": c.last_name,
-                "full_name": c.full_name(),
-                "phone": c.phone,
-                "country_code": c.country_code,
-                "email": c.email,
-                "company_name": c.company_name,
-            }
-            for c in contacts
-        ]
-    }

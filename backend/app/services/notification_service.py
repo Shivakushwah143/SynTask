@@ -5,23 +5,24 @@ import logging
 import inspect
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from hashlib import sha256
 from typing import Any, Optional
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from app.core.config import settings
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.ai_log import AIInteractionLog
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.notification import Notification, NotificationType
+from app.core.clock import clock_service
 
 logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return clock_service.aware_utc_now()
 
 
 def _safe_str(value: Any) -> str:
@@ -164,6 +165,10 @@ class EmailService:
         )
 
 
+# Backward-compatible alias retained for existing tests and callers.
+BrevoEmailProvider = EmailService
+
+
 class WhatsAppNoopProvider:
     async def send_message(
         self,
@@ -187,8 +192,9 @@ class NotificationService:
         self,
         *,
         email_service: Optional[EmailService] = None,
+        email_provider: Optional[EmailService] = None,
     ) -> None:
-        self.email_service = email_service or EmailService()
+        self.email_service = email_service or email_provider or EmailService()
         self.whatsapp_provider = WhatsAppNoopProvider()
 
     @staticmethod

@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react'
-import { X, MessageSquare, Paperclip, Send, User, Edit, Trash2, Save } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { X, Send, User, Edit, Trash2, Save } from 'lucide-react'
 import { ticketsAPI } from '../api/tickets'
-import { filesAPI } from '../api/files'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import { useConfirmation } from '../hooks/useConfirmation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMembers }) => {
   const { user } = useAuthStore()
@@ -27,24 +27,18 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
   const [deleting, setDeleting] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Safety check
-  if (!ticket) {
-    return null
-  }
-
   // Update state when ticket changes
   useEffect(() => {
-    if (ticket) {
-      setAssignTo(ticket.assigned_to || '')
-      setEditForm({
-        title: ticket.title || '',
-        description: ticket.description || '',
-        type: ticket.type || 'support',
-        priority: ticket.priority || 'medium',
-      })
-      setIsEditing(false)
-    }
-  }, [ticket?.id, ticket?.assigned_to, ticket?.title, ticket?.description, ticket?.type, ticket?.priority])
+    if (!ticket) return
+    setAssignTo(ticket.assigned_to || '')
+    setEditForm({
+      title: ticket.title || '',
+      description: ticket.description || '',
+      type: ticket.type || 'support',
+      priority: ticket.priority || 'medium',
+    })
+    setIsEditing(false)
+  }, [ticket])
 
   const statuses = {
     open: { label: 'Open', color: 'badge-warning' },
@@ -55,6 +49,18 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
     reopened: { label: 'Reopened', color: 'badge-warning' },
   }
 
+  const loadComments = useCallback(async () => {
+    try {
+      setLoadingComments(true)
+      const data = await ticketsAPI.getComments(ticket.id)
+      setComments(data.comments || [])
+    } catch (error) {
+      console.error('Error loading comments:', error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }, [ticket])
+
   useEffect(() => {
     if (ticket?.id) {
       loadComments()
@@ -63,7 +69,12 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
         loadAssignableUsers()
       }
     }
-  }, [ticket?.id, user])
+  }, [ticket, user, loadComments])
+
+  // Safety check after hooks so React hook order stays stable.
+  if (!ticket) {
+    return null
+  }
 
   const loadAssignableUsers = async () => {
     try {
@@ -77,18 +88,6 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
       setAssignableUsers(uniqueUsers)
     } catch (error) {
       console.error('Error loading assignable users:', error)
-    }
-  }
-
-  const loadComments = async () => {
-    try {
-      setLoadingComments(true)
-      const data = await ticketsAPI.getComments(ticket.id)
-      setComments(data.comments || [])
-    } catch (error) {
-      console.error('Error loading comments:', error)
-    } finally {
-      setLoadingComments(false)
     }
   }
 
@@ -484,7 +483,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                         )}
                       </div>
                       <span className="text-xs text-gray-500">
-                        {format(new Date(comment.created_at), 'MMM d, h:mm a')}
+                        {format(timeService.instant(comment.created_at), 'MMM d, h:mm a')}
                       </span>
                     </div>
                     <p className="text-sm text-gray-700 ml-6">{comment.content}</p>

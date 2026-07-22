@@ -10,8 +10,19 @@ import { formatShortDate } from '../pipeline/utils'
 export const LEAD_NOTES_QUERY_KEY = 'crm-lead-notes'
 const WORKSPACE_QUERY_KEY = 'crm-lead-workspace'
 
-const getErrorMessage = (error, fallback) =>
-  error?.response?.data?.detail || error?.message || fallback
+const getErrorMessage = (error, fallback) => {
+  const detail = error?.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (detail && typeof detail === 'object') {
+    try {
+      return JSON.stringify(detail)
+    } catch {
+      return fallback
+    }
+  }
+  if (typeof error?.message === 'string' && error.message.trim()) return error.message
+  return fallback
+}
 
 const refreshLeadData = (queryClient, leadId) => {
   queryClient.invalidateQueries([LEAD_NOTES_QUERY_KEY, leadId])

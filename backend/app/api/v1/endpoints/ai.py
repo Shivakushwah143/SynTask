@@ -135,6 +135,34 @@ async def generate_chat_response(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from error
 
 
+@router.post("/marketing-chat", response_model=AIChatResponse)
+async def generate_marketing_chat_response(
+    payload: AIChatRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a marketing-focused client support assistant response."""
+    current_user = await _require_company_context(current_user)
+    try:
+        return await ai_service.generate_marketing_chat_response(current_user, payload)
+    except ValueError as error:
+        message = str(error)
+        if "not found" in message.lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message) from error
+        if "not allowed" in message.lower() or "belongs to the same company" in message.lower():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message) from error
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from error
+
+
+@router.post("/sales-agent", response_model=AISalesAgentResponse)
+async def generate_sales_agent_response(
+    payload: AISalesAgentRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a sales-agent recommendation and optional execution plan for a lead."""
+    current_user = await _require_company_context(current_user)
+    return await sales_agent.analyze(current_user, payload)
+
+
 @router.get("/logs", response_model=list[AILogListItem])
 async def list_ai_logs(
     limit: int = Query(20, ge=1, le=100),

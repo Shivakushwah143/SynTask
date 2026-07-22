@@ -12,6 +12,7 @@ from app.models.task import Task, TaskStatus
 from app.models.ticket import Ticket, TicketStatus
 from app.models.company import Company
 from app.api.dependencies import get_current_user, get_current_super_admin, get_current_company_admin
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -133,7 +134,7 @@ async def get_analytics_charts(
 ):
     """Get analytics data for charts"""
     # Calculate date range
-    end_date = datetime.utcnow()
+    end_date = utc_now()
     if period == "week":
         start_date = end_date - timedelta(days=7)
     elif period == "month":
@@ -193,4 +194,5 @@ async def get_analytics_charts(
         },
         "period": period
     }
+
 

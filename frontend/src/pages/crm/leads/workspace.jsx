@@ -1,12 +1,13 @@
-import { useCallback, useMemo, useState } from 'react'
-import { useQuery, useQueryClient } from 'react-query'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
 import { EmailComposer } from '../../../components/EmailComposer'
-import { Button } from '../../../components/ui'
-import { LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadSummaryCards, LeadTasksTab, LeadWorkspace } from './components'
+import { Button, ConfirmDialog } from '../../../components/ui'
+import { LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadTasksTab, LeadWorkspace } from './components'
 import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
 import { LEAD_NOTES_QUERY_KEY, LeadNotesTab } from './notes'
 import { LeadTimelineTab } from './timeline'
@@ -22,12 +23,24 @@ export default function CRMLeadWorkspacePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [timelineSearch, setTimelineSearch] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
+  const [pendingLeadUpdate, setPendingLeadUpdate] = useState(null)
+  const [proposalForm, setProposalForm] = useState({
+    title: '',
+    summary: '',
+    status: 'draft',
+    deal_value: '',
+    expected_close_date: '',
+    probability: '0',
+    negotiation_notes: '',
+    competitors: '',
+    decision_maker: '',
+  })
 
   const activeTab = searchParams.get(ACTIVE_TAB_KEY) || 'overview'
 
   const leadQuery = useQuery(
     [WORKSPACE_QUERY_KEY, leadId],
-    () => salesApi.getProspect(leadId),
+    () => salesApi.getLead(leadId),
     {
       enabled: Boolean(leadId),
       retry: false,
@@ -71,6 +84,25 @@ export default function CRMLeadWorkspacePage() {
   const proposals = useMemo(() => (Array.isArray(proposalQuery.data?.proposals) ? proposalQuery.data.proposals : []), [proposalQuery.data])
   const leadLabel = lead?.company_name || lead?.prospect_name || 'Lead'
 
+  useEffect(() => {
+    const latestProposal = proposals[0] || null
+    setProposalForm({
+      title: latestProposal?.title || '',
+      summary: latestProposal?.summary || '',
+      status: latestProposal?.status || 'draft',
+      deal_value: String(deal?.value ?? latestProposal?.deal_value ?? ''),
+      expected_close_date: latestProposal?.expected_close_date || deal?.expected_close_date || '',
+      probability: String(latestProposal?.probability ?? deal?.probability ?? 0),
+      negotiation_notes: latestProposal?.negotiation_notes || deal?.negotiation_notes || '',
+      competitors: Array.isArray(latestProposal?.competitors)
+        ? latestProposal.competitors.join(', ')
+        : Array.isArray(deal?.competitors)
+          ? deal.competitors.join(', ')
+          : '',
+      decision_maker: latestProposal?.decision_maker || deal?.decision_maker || '',
+    })
+  }, [deal, proposals])
+
   const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId], { exact: true })
     queryClient.invalidateQueries([LEAD_FILES_QUERY_KEY, leadId], { exact: true })
@@ -88,6 +120,76 @@ export default function CRMLeadWorkspacePage() {
   }, [setSearchParams])
 
   const openComposer = useCallback(() => setComposerOpen(true), [])
+  const leadUpdateMutation = useMutation(
+    (payload) => salesApi.updateLeadForm(leadId, payload),
+    {
+      onSuccess: async () => {
+        toast.success('Lead updated')
+        setPendingLeadUpdate(null)
+        await leadQuery.refetch()
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'timeline'], { exact: true })
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'history'], { exact: true })
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Lead update failed')
+      },
+    },
+  )
+  const proposalMutation = useMutation(
+    (payload) => {
+      const proposalId = payload.proposalId || proposalQuery.data?.proposals?.[0]?.id || null
+      if (payload.action === 'archive') return crmApi.archiveLeadProposal(leadId, proposalId)
+      if (proposalId) return crmApi.updateLeadProposal(leadId, proposalId, payload.body)
+      return crmApi.createLeadProposal(leadId, payload.body)
+    },
+    {
+      onSuccess: async () => {
+        toast.success('Proposal saved')
+        await proposalQuery.refetch()
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'timeline'], { exact: true })
+        queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'history'], { exact: true })
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Proposal save failed')
+      },
+    },
+  )
+
+  const handleProposalChange = useCallback((field, value) => {
+    setProposalForm((state) => ({ ...state, [field]: value }))
+  }, [])
+
+  const handleProposalSubmit = useCallback(() => {
+    const competitors = proposalForm.competitors
+      ? proposalForm.competitors.split(',').map((item) => item.trim()).filter(Boolean)
+      : []
+    proposalMutation.mutate({
+      body: {
+        title: proposalForm.title,
+        summary: proposalForm.summary,
+        status: proposalForm.status,
+        deal_value: proposalForm.deal_value === '' ? undefined : Number(proposalForm.deal_value),
+        expected_close_date: proposalForm.expected_close_date || undefined,
+        probability: proposalForm.probability === '' ? undefined : Number(proposalForm.probability),
+        negotiation_notes: proposalForm.negotiation_notes,
+        competitors,
+        decision_maker: proposalForm.decision_maker,
+      },
+    })
+  }, [proposalForm, proposalMutation])
+
+  const handleProposalArchive = useCallback((proposal) => {
+    proposalMutation.mutate({ action: 'archive', proposalId: proposal?.id })
+  }, [proposalMutation])
+
+  const handleLeadOverviewSubmit = useCallback((payload) => {
+    setPendingLeadUpdate(payload)
+  }, [])
+
+  const handleConfirmLeadUpdate = useCallback(() => {
+    if (!pendingLeadUpdate) return
+    leadUpdateMutation.mutate(pendingLeadUpdate)
+  }, [leadUpdateMutation, pendingLeadUpdate])
 
   let body
   if (activeTab === 'notes') body = <LeadNotesTab leadId={leadId} lead={lead} />
@@ -102,21 +204,11 @@ export default function CRMLeadWorkspacePage() {
       <LeadProposalTab
         deal={deal}
         proposals={proposals}
-        form={{
-          title: proposals[0]?.title || '',
-          summary: proposals[0]?.summary || '',
-          status: proposals[0]?.status || 'draft',
-          deal_value: String(deal?.value ?? proposals[0]?.deal_value ?? ''),
-          expected_close_date: proposals[0]?.expected_close_date || deal?.expected_close_date || '',
-          probability: String(proposals[0]?.probability ?? deal?.probability ?? 0),
-          negotiation_notes: proposals[0]?.negotiation_notes || deal?.negotiation_notes || '',
-          competitors: Array.isArray(proposals[0]?.competitors) ? proposals[0].competitors.join(', ') : (Array.isArray(deal?.competitors) ? deal.competitors.join(', ') : ''),
-          decision_maker: proposals[0]?.decision_maker || deal?.decision_maker || '',
-        }}
-        onChange={() => {}}
-        onSubmit={() => {}}
-        onArchive={() => {}}
-        isSaving={false}
+        form={proposalForm}
+        onChange={handleProposalChange}
+        onSubmit={handleProposalSubmit}
+        onArchive={handleProposalArchive}
+        isSaving={proposalMutation.isLoading}
         isLoading={proposalQuery.isLoading}
         errorMessage={proposalQuery.isError ? proposalQuery.error?.response?.data?.detail || 'Proposal data could not be loaded.' : ''}
         onRetry={() => proposalQuery.refetch()}
@@ -150,7 +242,11 @@ export default function CRMLeadWorkspacePage() {
   } else {
     body = (
       <div className="space-y-4">
-        <LeadOverview lead={lead} />
+        <LeadOverview
+          lead={lead}
+          onSubmit={handleLeadOverviewSubmit}
+          isSaving={leadUpdateMutation.isLoading}
+        />
       </div>
     )
   }
@@ -225,6 +321,17 @@ export default function CRMLeadWorkspacePage() {
           related_entity_type: 'lead',
           related_entity_id: leadId,
           related_module: 'crm',
+        }}
+      />
+      <ConfirmDialog
+        isOpen={Boolean(pendingLeadUpdate)}
+        title="Confirm lead changes"
+        message="Review accuracy before saving. These changes will update the lead record."
+        confirmLabel="Save changes"
+        loading={leadUpdateMutation.isLoading}
+        onConfirm={handleConfirmLeadUpdate}
+        onClose={() => {
+          if (!leadUpdateMutation.isLoading) setPendingLeadUpdate(null)
         }}
       />
     </>

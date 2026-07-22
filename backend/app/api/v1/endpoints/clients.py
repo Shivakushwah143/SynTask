@@ -11,7 +11,7 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-from app.models.client import Client, ClientStatus
+from app.crm.models import Client, ClientStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.crm.client_workspace import ClientWorkspaceService
@@ -23,6 +23,8 @@ from app.api.dependencies import (
 )
 
 from app.core.config import settings
+from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -34,7 +36,7 @@ PROJECT_UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "projects"
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@router.post("/")
+@router.post("")
 async def create_client(
     name: str = Form(...),
     email: Optional[str] = Form(None),
@@ -122,15 +124,15 @@ async def create_client(
     }
 
 
-@router.get("/")
+@router.get("")
 async def list_clients(
     status_filter: Optional[str] = None,
     assigned_to: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """List all clients for the current user's company"""
+    skip, limit = pagination.skip, pagination.limit
     # Super admins and admins with no company can see all clients
     if current_user.role == UserRole.SUPER_ADMIN:
         query = {}
@@ -350,7 +352,7 @@ async def update_client(
         except:
             pass
     
-    client.updated_at = datetime.utcnow()
+    client.updated_at = utc_now()
     await client.save()
     
     return {
@@ -413,9 +415,9 @@ async def add_project_to_client(
         except:
             pass
     
-    client.updated_at = datetime.utcnow()
+    client.updated_at = utc_now()
     await client.save()
-    project.updated_at = datetime.utcnow()
+    project.updated_at = utc_now()
     await project.save()
     
     return {
@@ -454,14 +456,14 @@ async def remove_project_from_client(
     if project_id in client.projects_delivery_date:
         del client.projects_delivery_date[project_id]
     
-    client.updated_at = datetime.utcnow()
+    client.updated_at = utc_now()
     await client.save()
 
     try:
         project = await Project.get(project_id)
         if project and project.client_id == str(client.id):
             project.client_id = None
-            project.updated_at = datetime.utcnow()
+            project.updated_at = utc_now()
             await project.save()
     except Exception:
         logger.debug("Unable to clear client_id on project %s", project_id)
@@ -526,12 +528,12 @@ async def upload_client_document(
         "url": file_url,
         "type": file_ext[1:] if file_ext else "unknown",
         "size": file_size,
-        "uploaded_at": datetime.utcnow().isoformat(),
+        "uploaded_at": utc_now().isoformat(),
         "uploaded_by": str(current_user.id),
     }
     
     client.documents.append(document_data)
-    client.updated_at = datetime.utcnow()
+    client.updated_at = utc_now()
     await client.save()
 
     # Also copy to associated projects so assigned leads/employees can see it
@@ -554,14 +556,14 @@ async def upload_client_document(
                 "url": f"/api/v1/files/projects/{project_filename}",
                 "type": document_data["type"],
                 "size": document_data["size"],
-                "uploaded_at": datetime.utcnow().isoformat(),
+                "uploaded_at": utc_now().isoformat(),
                 "uploaded_by": str(current_user.id),
                 "uploaded_by_name": current_user.full_name(),
             }
             if not project.files:
                 project.files = []
             project.files.append(project_file)
-            project.updated_at = datetime.utcnow()
+            project.updated_at = utc_now()
             await project.save()
         except Exception as e:
             logger.error(f"Failed to copy client document to project {project_id}: {e}")
@@ -607,7 +609,7 @@ async def delete_client_document(
     except:
         pass  # Don't fail if file deletion fails
     
-    client.updated_at = datetime.utcnow()
+    client.updated_at = utc_now()
     await client.save()
     
     return {
@@ -647,3 +649,4 @@ async def delete_client(
     return {
         "message": "Client deleted successfully",
     }
+

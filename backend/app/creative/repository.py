@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from app.core.clock import utc_now
 from app.models.creative_review import (
     CreativeAssetMetadata,
     CreativeCampaignReview,
@@ -16,27 +17,27 @@ from app.models.creative_review import (
 
 class CreativeRepository:
     async def save_asset_metadata(self, asset: CreativeAssetMetadata) -> CreativeAssetMetadata:
-        asset.updated_at = datetime.utcnow()
+        asset.updated_at = utc_now()
         await asset.save()
         return asset
 
     async def create_review(self, review: CreativeReview) -> CreativeReview:
-        review.updated_at = datetime.utcnow()
+        review.updated_at = utc_now()
         await review.insert()
         return review
 
     async def update_review(self, review: CreativeReview) -> CreativeReview:
-        review.updated_at = datetime.utcnow()
+        review.updated_at = utc_now()
         await review.save()
         return review
 
     async def create_campaign_review(self, campaign: CreativeCampaignReview) -> CreativeCampaignReview:
-        campaign.updated_at = datetime.utcnow()
+        campaign.updated_at = utc_now()
         await campaign.insert()
         return campaign
 
     async def update_campaign_review(self, campaign: CreativeCampaignReview) -> CreativeCampaignReview:
-        campaign.updated_at = datetime.utcnow()
+        campaign.updated_at = utc_now()
         await campaign.save()
         return campaign
 

@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
-from app.crm.timeline import publish_crm_timeline_event
+from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.notification import Notification, NotificationType
-from app.models.sales_prospect import ProspectStatus, SalesProspect
+from app.crm.models import ProspectStatus, SalesProspect
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -19,7 +20,7 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 
 async def handle_lost_workflow(current_user: User, lead: SalesProspect, reason: Optional[str]) -> Dict[str, Any]:
     company_id = str(getattr(lead, "company_id", "") or "")
-    now = datetime.utcnow()
+    now = utc_now()
     lead.status = ProspectStatus.LOST
     lead.reason_for_lost = reason.strip() if reason else None
     lead.closed_date = now
@@ -99,3 +100,4 @@ async def handle_lost_workflow(current_user: User, lead: SalesProspect, reason: 
         "notification_id": str(notification.id),
         "message": "Lost lead moved to nurture",
     }
+

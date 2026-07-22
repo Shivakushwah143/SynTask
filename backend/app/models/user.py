@@ -7,6 +7,7 @@ from beanie import Document, Indexed
 from pydantic import EmailStr, Field
 from enum import Enum
 from pymongo import ASCENDING, IndexModel
+from app.core.clock import utc_now
 
 
 class UserRole(str, Enum):
@@ -35,16 +36,24 @@ class UserStatus(str, Enum):
     PENDING = "pending"
 
 
+class AuthProvider(str, Enum):
+    LOCAL = "local"
+    GOOGLE = "google"
+
+
 class User(Document):
     """Base User Model with Hierarchical RBAC"""
     email: Indexed(EmailStr, unique=True)
-    password_hash: str
+    password_hash: Optional[str] = None
+    provider: AuthProvider = AuthProvider.LOCAL
+    google_id: Optional[str] = None
     first_name: str
     last_name: str
     role: UserRole
     status: UserStatus = UserStatus.PENDING
     # Modules the user can access (e.g., task management, sales tracker)
     modules: List[str] = Field(default_factory=lambda: ["task"])
+    previous_role: Optional[UserRole] = None
     # Preferred/last active module for UI landing
     active_module: Optional[str] = Field(default="task")
     phone: Optional[str] = None
@@ -57,9 +66,14 @@ class User(Document):
     created_by: Optional[str] = None  # User ID who created this user
     ancestors: List[str] = Field(default_factory=list)  # Root-to-parent user IDs for hierarchy lookups
     
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     last_login: Optional[datetime] = None
+    timezone: Optional[str] = Field(default=None)
+    automatic_time: bool = True
+    manual_time: Optional[datetime] = None
+    hour_format: str = "12"
+    show_seconds: bool = False
     is_email_verified: bool = False
     two_factor_enabled: bool = False
     two_factor_secret: Optional[str] = None  # Encrypted with ENCRYPTION_KEY
@@ -82,6 +96,8 @@ class User(Document):
             "company_id",
             "role",
             "status",
+            "provider",
+            "google_id",
             "reports_to",
             "created_by",
             "ancestors",
@@ -121,9 +137,9 @@ class User(Document):
         if self.role == UserRole.ADMIN:
             return target_role in [UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE]
         
-        # Manager can create Manager, Lead
+        # Manager can create Lead and Employee
         if self.role == UserRole.MANAGER:
-            return target_role in [UserRole.MANAGER, UserRole.LEAD]
+            return target_role in [UserRole.LEAD, UserRole.EMPLOYEE]
         
         # Lead can create Employee
         if self.role == UserRole.LEAD:
@@ -189,11 +205,12 @@ CompanyAdmin = Admin
 
 
 class Manager(User):
-    """Manager - Manages teams and can have nested managers"""
+    """Manager - Manages projects and teams."""
     role: UserRole = UserRole.MANAGER
     permissions: List[str] = [
-        "create_managers",
         "create_leads",
+        "create_employees",
+        "manage_tasks",
         "assign_tasks",
         "manage_team",
         "view_team_reports",

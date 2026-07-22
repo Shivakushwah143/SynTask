@@ -14,6 +14,7 @@ from app.ai.providers.openai import OpenAIProvider
 from app.ai.response_parser import ResponseParser
 from app.ai.role_engine import RoleEngine
 from app.core.config import settings
+from app.core.clock import utc_now
 from app.models.user import User
 from app.schemas.ai import (
     TaskBreakdownLLMResponse,
@@ -129,7 +130,7 @@ class TaskBreakdownAgent:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.utcnow(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -158,7 +159,7 @@ class TaskBreakdownAgent:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=True,
-                generated_at=datetime.utcnow(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "error": str(error),

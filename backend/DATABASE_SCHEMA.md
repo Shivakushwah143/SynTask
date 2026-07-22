@@ -2,7 +2,7 @@
 
 Database: `alphanexis_task_management`
 
-This document is generated from all Beanie `Document` models under `backend/app/models`. Current code defines **52 unique MongoDB collection names** across **57 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
+This document is generated from Beanie `Document` models under `backend/app/models` and integration-owned models. Current code defines **56 unique MongoDB collection names** across **61 document classes**. The audit brief referenced 45 collections; this document uses the current code as the source of truth.
 
 ## Collection Summary
 
@@ -24,6 +24,10 @@ This document is generated from all Beanie `Document` models under `backend/app/
 | `issue_links` | IssueLink | IssueLink persistence collection. |
 | `issue_types` | IssueType | IssueType persistence collection. |
 | `meetings` | Meeting | Meeting scheduling and Zoom metadata. |
+| `meta_integration_settings` | MetaIntegrationSettings | Tenant-scoped Meta connection state and encrypted tokens. |
+| `meta_marketing_insights` | MetaMarketingInsight | Read-only tenant campaign performance snapshots. |
+| `meta_sync_runs` | MetaSyncRun | Meta synchronization status, cursors, attempts, and redacted errors. |
+| `meta_webhook_events` | MetaWebhookEvent | Durable inbound Meta event inbox with idempotency and correlation IDs. |
 | `msas` | MSA | Master service agreements and signature workflow data. |
 | `notifications` | Notification | In-app notification records. |
 | `pages` | Page | Page persistence collection. |
@@ -597,7 +601,7 @@ Indexes: `['company_id', 'client_id', 'status', 'signature_token', 'created_by']
 
 #### Model: `Notification`
 
-Indexes: `['user_id', 'company_id', 'is_read', 'type']`
+Indexes: `['user_id', 'company_id', 'is_read', 'type', 'priority', 'scheduled_for']`
 
 | Field | Type | Required | Indexed | Description |
 |---|---|---|---|---|
@@ -612,11 +616,37 @@ Indexes: `['user_id', 'company_id', 'is_read', 'type']`
 | `related_type` | `Optional[str]` | No | No | Model field |
 | `action_url` | `Optional[str]` | No | No | Model field |
 | `metadata` | `Optional[Dict[str, Any]]` | No | No | Model field |
+| `priority` | `str` | No | Yes | Notification priority: `info`, `medium`, `high`, or `critical` |
+| `scheduled_for` | `Optional[datetime.datetime]` | No | Yes | Reminder due date bucket used for scheduled notification display |
+| `toast_shown_at` | `Optional[datetime.datetime]` | No | No | Timestamp when a dashboard toast was acknowledged |
 | `is_read` | `bool` | No | Yes | Model field |
 | `read_at` | `Optional[datetime.datetime]` | No | No | Model field |
 | `email_sent` | `bool` | No | No | Model field |
 | `email_sent_at` | `Optional[datetime.datetime]` | No | No | Model field |
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+
+Reminder notifications store `metadata.reminder_key` as `entityType:entityId:userId:reminderType:YYYY-MM-DD`. A partial unique index on `(company_id, user_id, metadata.reminder_key)` applies only when `metadata.reminder_key` is a string, preventing duplicate reminder notifications while preserving tenant isolation and allowing legacy notifications without reminder metadata.
+
+### `scheduled_jobs`
+
+#### Model: `ScheduledJob`
+
+Indexes: `['created_by', 'company_id', 'status', 'run_at', ('status', 'run_at'), ('company_id', 'status')]`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `ObjectId` | No | Yes | Primary key |
+| `action_type` | `ScheduledJobActionType` | Yes | No | `CREATE_PROJECT` or `CREATE_TASK` |
+| `payload` | `Dict[str, Any]` | Yes | No | Validated action payload reused by the existing project/task creation services |
+| `run_at` | `datetime.datetime` | Yes | Yes | UTC execution time checked by the one-minute scheduler loop |
+| `status` | `ScheduledJobStatus` | No | Yes | `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, or `CANCELLED` |
+| `created_by` | `str` | Yes | Yes | User ID of the scheduler/creator |
+| `company_id` | `Optional[str]` | No | Yes | Tenant scope key used for all list/action authorization |
+| `retry_count` | `int` | No | No | Retry attempts tracked by the execution worker |
+| `error` | `Optional[str]` | No | No | Last execution failure detail |
+| `notes` | `Optional[str]` | No | No | User-provided schedule notes |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `completed_at` | `Optional[datetime.datetime]` | No | No | Completion, failure terminal, or cancellation timestamp |
 
 ### `pages`
 
@@ -856,7 +886,7 @@ Indexes: `['company_id', 'category_id', 'name', 'deleted']`
 
 #### Model: `SalesProspect`
 
-Indexes: `['company_id', 'assigned_to', 'assigned_by', 'current_stage', 'status', 'category_id', 'contact_id', 'deleted', ('country_code', 'phone')]`
+Indexes: includes a partial unique `('company_id', 'meta_lead_id')` index for Meta Lead Ads replay protection.
 
 | Field | Type | Required | Indexed | Description |
 |---|---|---|---|---|
@@ -882,6 +912,14 @@ Indexes: `['company_id', 'assigned_to', 'assigned_by', 'current_stage', 'status'
 | `company_name` | `Optional[str]` | No | No | Model field |
 | `relationship_type` | `Optional[str]` | No | No | Model field |
 | `channel` | `Optional[str]` | No | No | Model field |
+| `meta_lead_id` | `Optional[str]` | No | Yes | Tenant-scoped Meta replay key |
+| `meta_campaign_id` | `Optional[str]` | No | No | Meta campaign attribution |
+| `meta_adset_id` | `Optional[str]` | No | No | Meta ad-set attribution |
+| `meta_ad_id` | `Optional[str]` | No | No | Meta ad attribution |
+| `meta_form_id` | `Optional[str]` | No | No | Meta Lead Ads form attribution |
+| `meta_created_time` | `Optional[datetime.datetime]` | No | No | Provider lead creation time |
+| `meta_consent` | `Optional[bool]` | No | No | Provider consent value when supplied |
+| `meta_attribution` | `Dict[str, Any]` | No | No | Provider attribution snapshot |
 | `designation` | `Optional[str]` | No | No | Model field |
 | `nationality` | `Optional[List[str]]` | No | No | Model field |
 | `language` | `Optional[List[str]]` | No | No | Model field |

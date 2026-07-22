@@ -120,6 +120,7 @@ async def get_issue_links(
     }
 
 
+@router.delete("/{link_id}")
 @router.delete("/links/{link_id}")
 async def delete_issue_link(
     link_id: str,
@@ -139,5 +140,4 @@ async def delete_issue_link(
     await issue_link.delete()
     
     return {"message": "Issue link deleted successfully"}
-
 

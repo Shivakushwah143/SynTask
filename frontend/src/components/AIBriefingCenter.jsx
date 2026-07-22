@@ -10,37 +10,23 @@ import {
   FileText,
   MessageCircle,
   Sparkles,
-  Wand2,
-
   Ticket,
-  
-  
   Users,
   X,
   Zap,
   TrendingUp,
   Activity,
   Target,
-  Cpu,
   Radar,
-  Shield,
-  Network,
-  Scan,
-  Binary,
-  Globe,
-  Menu,
   Keyboard,
   Eye,
-  Type,
-  Maximize2,
-  Minimize2,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
-import { ROLE, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
-import * as d3 from 'd3'
+import { ROLE, normalizeRole } from '../utils/roles'
 import { buildBriefingChartData } from './aiBriefingData'
+import { timeService } from '@/services/timeService'
 
 // ===== CONSTANTS & CONFIGURATIONS =====
 const STATUS_TONE = {
@@ -74,12 +60,12 @@ const KEYBOARD_SHORTCUTS = [
 const FONT_SIZES = { small: '14px', medium: '16px', large: '18px' }
 
 // ===== UTILITY FUNCTIONS =====
-const todayKey = () => new Date().toISOString().slice(0, 10)
+const todayKey = () => timeService.toUtcISOString(timeService.now()).slice(0, 10)
 
 const isOverdue = (item) => {
   if (!item?.due_date) return false
-  const due = new Date(item.due_date)
-  const now = new Date()
+  const due = timeService.instant(item.due_date)
+  const now = timeService.now()
   return due < now && !COMPLETED_STATUSES.includes(String(item.status || '').toLowerCase())
 }
 
@@ -102,20 +88,18 @@ const calculateMetrics = (tasks) => ({
 })
 
 // ===== BRIEFING BUILDER =====
-const buildBriefing = ({ user, stats, recentTasks, recentTickets }) => {
+export const buildBriefing = ({ user, stats, recentTasks, recentTickets }) => {
   const role = normalizeRole(stats?.role || user?.role)
   const name = user?.first_name || 'there'
   const metrics = calculateMetrics(recentTasks)
   const activeTickets = filterActive(recentTickets)
-  const hasAdminAccess = hasCompanyAdminAccess(role)
-
   // Role-based configuration
   const roleConfigs = {
     [ROLE.ADMIN]: () => {
-      const activeProjects = stats?.active_projects ?? stats?.total_projects ?? 12
+      const activeProjects = stats?.active_projects ?? stats?.total_projects ?? 0
       const activeTasks = stats?.active_tasks || 0
       const openTickets = stats?.open_tickets || stats?.total_tickets || 0
-      const atRisk = Math.max(openTickets, metrics.overdue.length, Math.ceil(activeTasks * 0.15))
+      const atRisk = Math.max(openTickets, metrics.overdue.length)
 
       return {
         role,
@@ -132,8 +116,8 @@ const buildBriefing = ({ user, stats, recentTasks, recentTickets }) => {
           {
             title: 'Recommendations',
             items: [
-              activeTasks ? `Review ${activeTasks} active tasks across delivery` : 'Review company delivery queue',
-              openTickets ? `Follow up on ${openTickets} open requests` : 'Check client request health',
+              activeTasks ? `Review ${activeTasks} active tasks across delivery` : 'No active delivery tasks found in current dashboard data',
+              openTickets ? `Follow up on ${openTickets} open requests` : 'No open requests found in current dashboard data',
             ],
           },
         ],
@@ -219,17 +203,15 @@ const buildBriefing = ({ user, stats, recentTasks, recentTickets }) => {
       subtitle: 'Your day is ready to start',
       metrics: [
         { label: 'Priorities', value: recentTasks.length || stats?.my_tasks || 0, caption: 'Today' },
-        { label: 'Estimated Work', value: metrics.estimatedHours ? `${metrics.estimatedHours.toFixed(1)}h` : '6.5h', caption: 'Planned' },
+        { label: 'Estimated Work', value: metrics.estimatedHours ? `${metrics.estimatedHours.toFixed(1)}h` : '0h', caption: 'Planned' },
         { label: 'Requests', value: stats?.my_tickets || activeTickets.length || 0, caption: 'Open' },
       ],
       sections: [
         {
           title: "Today's Priorities",
-          items: (recentTasks.length ? recentTasks : [
-            { title: 'Review your task queue' },
-            { title: 'Update active work' },
-            { title: 'Prepare client status' }
-          ]).slice(0, 3).map(task => task.title),
+          items: recentTasks.length
+            ? recentTasks.slice(0, 3).map(task => task.title)
+            : ['No active tasks found in your current dashboard data'],
         },
       ],
       risk: metrics.overdue[0]?.title ? `${metrics.overdue[0].title} is overdue` : 
@@ -246,9 +228,12 @@ const buildBriefing = ({ user, stats, recentTasks, recentTickets }) => {
 }
 
 // ===== SUGGESTION BUILDER =====
-const buildSuggestions = ({ stats, recentTasks, recentTickets }) => {
+export const buildSuggestions = ({ stats, recentTasks, recentTickets }) => {
   const suggestions = []
   const metrics = calculateMetrics(recentTasks)
+  const activeTickets = filterActive(recentTickets)
+  const visibleTaskCount = stats?.my_tasks ?? stats?.team_tasks ?? stats?.total_tasks ?? recentTasks.length
+  const visibleTicketCount = stats?.my_tickets ?? stats?.open_tickets ?? stats?.total_tickets ?? recentTickets.length
   const waitingTicket = recentTickets.find(ticket => 
     ['waiting_for_customer', 'open'].includes(String(ticket.status || '').toLowerCase())
   )
@@ -259,8 +244,8 @@ const buildSuggestions = ({ stats, recentTasks, recentTickets }) => {
       condition: (stats?.my_tasks || stats?.team_tasks || stats?.total_tasks || recentTasks.length) === 0,
       tone: 'amber',
       icon: CheckSquare,
-      title: 'No assigned task detected',
-      detail: 'Create or assign work so today has a clear owner.',
+      title: '0 tasks visible',
+      detail: `${visibleTicketCount} request${visibleTicketCount === 1 ? '' : 's'} are visible, but no active tasks were returned for this dashboard view.`,
       path: '/tasks',
       actions: ['View', 'Assign'],
     },
@@ -312,8 +297,8 @@ const buildSuggestions = ({ stats, recentTasks, recentTickets }) => {
     suggestions.push({
       tone: 'green',
       icon: CheckCircle2,
-      title: 'Workspace looks stable',
-      detail: "Generate a daily report to capture today's operating picture.",
+      title: `${metrics.active.length} active task${metrics.active.length === 1 ? '' : 's'}, ${activeTickets.length} open request${activeTickets.length === 1 ? '' : 's'}`,
+      detail: `${visibleTaskCount} task${visibleTaskCount === 1 ? '' : 's'} and ${visibleTicketCount} request${visibleTicketCount === 1 ? '' : 's'} are visible in current dashboard data.`,
       path: '/reports',
       actions: ['View', 'Generate Plan'],
     })
@@ -321,16 +306,6 @@ const buildSuggestions = ({ stats, recentTasks, recentTickets }) => {
 
   return suggestions.slice(0, 4)
 }
-
-const commandItems = [
-  { label: 'Prioritize My Day', icon: Sparkles, path: '/ai-prioritization', action: 'prioritize' },
-  { label: 'Creative Review', icon: Wand2, path: '/creative-director' },
-  { label: 'Break Down Tasks', icon: CheckSquare, path: '/ai-hub#breakdown' },
-  { label: 'Generate Daily Report', icon: FileText, action: 'report' },
-  { label: 'Analyze Team Risks', icon: Users, path: '/reports' },
-  { label: 'Review Tickets', icon: Ticket, path: '/tickets' },
-  { label: 'Ask AI', icon: MessageCircle, path: '/ai-assistant' },
-]
 
 // Particle Effect Component
 const ParticleEffect = ({ isActive, onComplete }) => {
@@ -400,23 +375,8 @@ const ParticleEffect = ({ isActive, onComplete }) => {
 }
 
 // Loading Skeleton Component
-const ShimmerSkeleton = ({ className }) => (
-  <div className={`relative overflow-hidden ${className}`}>
-    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
-    <style jsx>{`
-      @keyframes shimmer {
-        0% { transform: translateX(-100%); }
-        100% { transform: translateX(100%); }
-      }
-      .animate-shimmer {
-        animation: shimmer 2s infinite;
-      }
-    `}</style>
-  </div>
-)
-
 // Accessibility Menu Component
-const AccessibilityMenu = ({ onFontSizeChange, onContrastToggle, isHighContrast, onClose }) => {
+const AccessibilityMenu = ({ onFontSizeChange, onContrastToggle, isHighContrast }) => {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -478,7 +438,7 @@ const AccessibilityMenu = ({ onFontSizeChange, onContrastToggle, isHighContrast,
 }
 
 // Keyboard Shortcuts Guide Component
-const KeyboardShortcutsGuide = ({ onClose }) => {
+const KeyboardShortcutsGuide = () => {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -515,128 +475,35 @@ const KeyboardShortcutsGuide = ({ onClose }) => {
   )
 }
 
-// Data Visualization Component
 const DataVisualization = ({ data, type = 'bar' }) => {
-  const chartRef = useRef(null)
-
-  useEffect(() => {
-    if (!chartRef.current || !data || data.length === 0) return
-
-    const width = chartRef.current.clientWidth
-    const height = 200
-    const margin = { top: 20, right: 20, bottom: 30, left: 40 }
-
-    d3.select(chartRef.current).selectAll('*').remove()
-
-    const container = d3.select(chartRef.current)
-    const tooltip = container
-      .append('div')
-      .attr('class', 'pointer-events-none absolute z-20 hidden min-w-[10rem] max-w-[18rem] rounded-lg border border-gray-200 bg-white/95 p-3 text-xs shadow-xl backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/95')
-      .attr('role', 'status')
-      .attr('aria-live', 'polite')
-
-    const showTooltip = (event, point) => {
-      tooltip.selectAll('*').remove()
-      tooltip
-        .classed('hidden', false)
-        .append('p')
-        .attr('class', 'mb-2 border-b border-gray-100 pb-2 font-semibold text-gray-900 dark:border-gray-700 dark:text-gray-100')
-        .text(point.label)
-
-      Object.entries(point)
-        .filter(([key, value]) => key !== 'label' && value !== null && value !== undefined && ['string', 'number', 'boolean'].includes(typeof value))
-        .forEach(([key, value]) => {
-          const row = tooltip.append('div').attr('class', 'mt-1.5 flex items-center justify-between gap-5')
-          row.append('span').attr('class', 'capitalize text-gray-500 dark:text-gray-400').text(key.replace(/_/g, ' '))
-          row.append('span').attr('class', 'font-semibold tabular-nums text-gray-900 dark:text-gray-100').text(
-            typeof value === 'number' ? value.toLocaleString() : String(value)
-          )
-        })
-
-      const bounds = chartRef.current.getBoundingClientRect()
-      const tooltipNode = tooltip.node()
-      const left = Math.min(event.clientX - bounds.left + 14, bounds.width - tooltipNode.offsetWidth - 8)
-      const top = Math.max(8, Math.min(event.clientY - bounds.top + 14, bounds.height - tooltipNode.offsetHeight - 8))
-      tooltip.style('left', `${Math.max(8, left)}px`).style('top', `${top}px`)
-    }
-
-    const svg = container
-      .append('svg')
-      .attr('width', width)
-      .attr('height', height)
-      .append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`)
-
-    const x = d3.scaleBand()
-      .domain(data.map(d => d.label))
-      .range([0, width - margin.left - margin.right])
-      .padding(0.1)
-
-    const y = d3.scaleLinear()
-      .domain([0, d3.max(data, d => d.value) * 1.1])
-      .range([height - margin.top - margin.bottom, 0])
-
-    const bars = svg.selectAll('.bar')
-      .data(data)
-      .enter()
-      .append('rect')
-      .attr('class', 'bar')
-      .attr('x', d => x(d.label))
-      .attr('y', height - margin.top - margin.bottom)
-      .attr('height', 0)
-      .attr('width', x.bandwidth())
-      .attr('rx', 4)
-      .attr('fill', d => d.color || '#4285F4')
-
-    bars
-      .attr('tabindex', 0)
-      .attr('aria-label', d => `${d.label}: ${d.value}${d.priority ? `, ${d.priority} priority` : ''}`)
-      .on('pointerenter pointermove pointerdown', function (event, point) {
-        d3.select(this).attr('stroke', '#fff').attr('stroke-width', 2).style('filter', 'brightness(1.12)')
-        showTooltip(event, point)
-      })
-      .on('pointerleave blur', function () {
-        d3.select(this).attr('stroke', null).style('filter', null)
-        tooltip.classed('hidden', true)
-      })
-      .on('focus', function (event, point) {
-        const bounds = this.getBoundingClientRect()
-        showTooltip({ clientX: bounds.left + bounds.width / 2, clientY: bounds.top }, point)
-        d3.select(this).attr('stroke', '#fff').attr('stroke-width', 2)
-      })
-      .transition()
-      .duration(800)
-      .delay((_, i) => i * 100)
-      .attr('y', d => y(d.value))
-      .attr('height', d => height - margin.top - margin.bottom - y(d.value))
-
-    svg.selectAll('.label')
-      .data(data)
-      .enter()
-      .append('text')
-      .attr('class', 'label')
-      .attr('x', d => x(d.label) + x.bandwidth() / 2)
-      .attr('y', height - margin.top - margin.bottom - 5)
-      .attr('text-anchor', 'middle')
-      .style('font-size', '10px')
-      .style('fill', '#64748b')
-      .style('opacity', 0)
-      .text(d => d.value)
-      .transition()
-      .duration(800)
-      .delay((_, i) => i * 100 + 400)
-      .style('opacity', 1)
-      .attr('y', d => y(d.value) - 5)
-
-  }, [data, type])
+  const maxValue = Math.max(...data.map((item) => Number(item.value) || 0), 1)
 
   return (
-    <div 
-      ref={chartRef} 
-      className="relative w-full touch-manipulation rounded-lg bg-white/5 p-2 backdrop-blur-sm"
+    <div
+      className="grid min-h-[160px] grid-cols-[repeat(auto-fit,minmax(4rem,1fr))] items-end gap-3 rounded-lg bg-white/5 p-3"
       role="img"
       aria-label={`${type} chart showing ${data.length} data points`}
-    />
+    >
+      {data.map((item) => {
+        const height = Math.max(16, Math.round((Number(item.value) || 0) / maxValue * 112))
+        return (
+          <div key={item.label} className="flex min-w-0 flex-col items-center gap-2">
+            <div className="flex h-32 w-full items-end justify-center">
+              <div
+                className="w-full max-w-14 rounded-t-md transition-transform duration-150 hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{ height, backgroundColor: item.color || '#4285F4' }}
+                tabIndex={0}
+                aria-label={`${item.label}: ${item.value}${item.priority ? `, ${item.priority} priority` : ''}`}
+                title={`${item.label}: ${item.value}${item.priority ? `, ${item.priority} priority` : ''}`}
+              />
+            </div>
+            <div className="w-full truncate text-center text-[11px] font-medium text-slate-500 dark:text-slate-400" title={item.label}>
+              {item.label}
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -676,7 +543,10 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
 
   // Event handlers
   const handleSetState = useCallback((updates) => {
-    setState(prev => ({ ...prev, ...updates }))
+    setState(prev => ({
+      ...prev,
+      ...(typeof updates === 'function' ? updates(prev) : updates),
+    }))
   }, [])
 
   const closeBriefing = useCallback(() => {
@@ -693,6 +563,17 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
     }
   }, [handleSetState])
 
+
+  useEffect(() => {
+    window.addEventListener('syntask:toggle-ai-briefing-fullscreen', toggleFullscreen)
+    return () => window.removeEventListener('syntask:toggle-ai-briefing-fullscreen', toggleFullscreen)
+  }, [toggleFullscreen])
+
+  useEffect(() => {
+    const syncFullscreenState = () => handleSetState({ isFullscreen: Boolean(document.fullscreenElement) })
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState)
+  }, [handleSetState])
   const handleFontSizeChange = useCallback((size) => {
     handleSetState({ fontSize: size })
     document.documentElement.style.fontSize = FONT_SIZES[size]
@@ -751,21 +632,17 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
     }
   }, [state.touchStartX, state.isOpen, closeBriefing])
 
-  // Auto-show briefing
+  // Auto-show only urgent briefings. Daily auto-open was heavy and interrupted the dashboard.
   useEffect(() => {
     if (!user?.id && !user?.email) return
     const userKey = user?.id || user?.email
     const date = todayKey()
-    const dailyKey = `syntask-ai-briefing:${userKey}:${date}`
     const criticalKey = `syntask-ai-critical:${userKey}:${date}`
-
-    const shouldShowDaily = localStorage.getItem(dailyKey) !== 'shown'
     const shouldShowCritical = hasCriticalEvent && sessionStorage.getItem(criticalKey) !== 'shown'
 
-    if (shouldShowDaily || shouldShowCritical) {
-      handleSetState({ isOpen: true, showParticles: true })
-      localStorage.setItem(dailyKey, 'shown')
-      if (shouldShowCritical) sessionStorage.setItem(criticalKey, 'shown')
+    if (shouldShowCritical) {
+      handleSetState({ isOpen: true })
+      sessionStorage.setItem(criticalKey, 'shown')
     }
   }, [hasCriticalEvent, user?.email, user?.id, handleSetState])
 
@@ -807,7 +684,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
   }, [navigate, closeBriefing, handleSetState])
 
   // Animation variants
-  const containerVariants = {
+  const containerVariants = useMemo(() => ({
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
@@ -816,9 +693,9 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
         delayChildren: 0.2,
       },
     },
-  }
+  }), [])
 
-  const itemVariants = {
+  const itemVariants = useMemo(() => ({
     hidden: { opacity: 0, y: 20 },
     visible: {
       opacity: 1,
@@ -829,11 +706,11 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
         damping: 24,
       },
     },
-  }
+  }), [])
 
   // Render utility
   const renderMetrics = useCallback(() => (
-    briefing.metrics.map((metric, index) => (
+    briefing.metrics.map((metric) => (
       <motion.div
         key={metric.label}
         variants={itemVariants}
@@ -883,7 +760,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
   ), [suggestions, navigate])
 
   const renderCommandButtons = useCallback(() => (
-    COMMAND_ITEMS.map((item, index) => {
+    COMMAND_ITEMS.map((item) => {
       const Icon = item.icon
       return (
         <motion.button
@@ -943,7 +820,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
           <div className="absolute h-[2px] w-full bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent animate-[scan_3s_linear_infinite] top-0" />
         </div>
 
-        <style jsx>{`
+        <style>{`
           @keyframes scan {
             0% { top: 0; opacity: 1; }
             100% { top: 100%; opacity: 0; }
@@ -972,13 +849,6 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
               isHighContrast={state.isHighContrast}
             />
             <KeyboardShortcutsGuide />
-            <button
-              onClick={toggleFullscreen}
-              className="rounded-lg p-2 text-slate-600 transition-all hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              aria-label="Toggle fullscreen"
-            >
-              {state.isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-            </button>
             <button
               type="button"
               onClick={() => handleSetState({ isOpen: true })}
@@ -1075,8 +945,8 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
 
                 <div className="grid gap-6 p-6 lg:grid-cols-[0.95fr_1.05fr] sm:p-7">
                   <div className="space-y-5">
-                    <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                      {briefing.metrics.map((metric, index) => (
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                    {briefing.metrics.map((metric, index) => (
                         <motion.div
                           key={metric.label}
                           className="group/metric relative overflow-hidden rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-300 hover:shadow-md dark:border-cyan-500/20 dark:bg-slate-800/40 dark:backdrop-blur-sm dark:hover:border-cyan-400/40 dark:hover:bg-slate-800/60 dark:hover:shadow-[0_0_30px_rgba(6,182,212,0.05)]"

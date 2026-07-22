@@ -17,11 +17,12 @@ async def update_project(
     status_filter: Optional[str] = Form(None, alias="status"),
     lead_id: Optional[str] = Form(None),
     assigned_to: Optional[str] = Form(None),
+    assigned_user_ids: Optional[str] = Form(None),
     start_date: Optional[str] = Form(None),
     delivery_date: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_company_admin),
+    current_user: User = Depends(get_current_user),
 ):
-    """Update project (Company Admin only). Path project_id can be custom ID or MongoDB _id."""
+    """Update project. Admin full control; Manager only scoped projects."""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
     if not project:
         raise HTTPException(
@@ -30,6 +31,19 @@ async def update_project(
         )
 
     check_company_access(current_user, project.company_id)
+    if not await can_manage_project(project, current_user):
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to manage this project",
+        )
+    parsed_assignee_ids = None
+    if assigned_to is not None or assigned_user_ids is not None:
+        requested_assignees = []
+        for raw in [assigned_to, assigned_user_ids]:
+            if raw:
+                requested_assignees.extend([item.strip() for item in raw.split(",") if item.strip()])
+        assignees = await validate_project_assignees(current_user, current_user.company_id, requested_assignees)
+        parsed_assignee_ids = [str(user.id) for user in assignees]
     if status_filter:
         await advance_project(
             project=project,
@@ -43,7 +57,8 @@ async def update_project(
         description=description,
         status_filter=None,
         lead_id=lead_id,
-        assigned_to=assigned_to,
+        assigned_to=parsed_assignee_ids[0] if parsed_assignee_ids else None,
+        assigned_user_ids=parsed_assignee_ids,
         start_date=start_date,
         delivery_date=delivery_date,
     )

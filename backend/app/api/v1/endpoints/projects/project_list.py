@@ -1,6 +1,9 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.api.deps import Pagination50, PaginationParams
+from app.api.v1.endpoints.tasks import build_employee_project_visibility_query
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -8,11 +11,11 @@ router = APIRouter()
 @router.get("/")
 async def list_projects(
     status_filter: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
     """List projects for the company with role-based visibility"""
+    skip, limit = pagination.skip, pagination.limit
     cache_key = None
     if current_user.company_id:
         cache_key = f"{project_list_key(current_user.company_id)}:{current_user.role.value}:{current_user.id}:{status_filter or 'all'}:{skip}:{limit}"
@@ -31,42 +34,22 @@ async def list_projects(
             )
         query = {"company_id": current_user.company_id}
     
-    # Apply role-based filtering with hierarchical visibility
-    # Super Admin and Admin see all projects in their scope
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
-        # For Manager, Lead, Employee - show projects assigned to anyone in their hierarchy
-        if current_user.role == UserRole.MANAGER:
-            # Manager sees projects assigned to:
-            # 1. Themselves
-            # 2. Any of their subordinates (Managers, Leads, Employees under them)
-            subordinates = await current_user.get_all_subordinates()
-            subordinate_ids = [str(sub.id) for sub in subordinates]
-            subordinate_ids.append(str(current_user.id))  # Include self
-            query["assigned_to"] = {"$in": subordinate_ids}
-        elif current_user.role == UserRole.LEAD:
-            # Lead sees projects assigned to:
-            # 1. Themselves
-            # 2. Their manager(s) - upward hierarchy
-            # 3. Their employees - downward hierarchy
-            managers = await current_user.get_all_managers()
-            manager_ids = [str(mgr.id) for mgr in managers]
-            
-            subordinates = await current_user.get_all_subordinates()
-            subordinate_ids = [str(sub.id) for sub in subordinates]
-            
-            # Combine: self + managers + subordinates
-            visible_ids = [str(current_user.id)] + manager_ids + subordinate_ids
-            query["assigned_to"] = {"$in": visible_ids}
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
+        if current_user.role == UserRole.LEAD:
+            query["$or"] = [
+                {"assigned_to": str(current_user.id)},
+                {"assigned_user_ids": str(current_user.id)},
+                {"team_member_ids": str(current_user.id)},
+            ]
         elif current_user.role == UserRole.EMPLOYEE:
-            # Employee sees projects assigned to:
-            # 1. Themselves
-            # 2. Their manager(s) - upward hierarchy (Lead, Manager)
-            managers = await current_user.get_all_managers()
-            manager_ids = [str(mgr.id) for mgr in managers]
-            
-            # Combine: self + managers
-            visible_ids = [str(current_user.id)] + manager_ids
-            query["assigned_to"] = {"$in": visible_ids}
+            assigned_tasks = await Task.find({
+                "company_id": current_user.company_id,
+                "assigned_to": str(current_user.id),
+            }).to_list()
+            query.update(build_employee_project_visibility_query(
+                current_user,
+                [task.project_id for task in assigned_tasks if getattr(task, "project_id", None)],
+            ))
     
     if status_filter:
         try:
@@ -91,18 +74,18 @@ async def list_projects(
             "company_id": project.company_id
         }).count()
         
-        # Get assigned user info
-        assigned_to_name = None
-        if project.assigned_to:
-            assigned_user = await User.get(project.assigned_to)
+        assigned_ids = project_assignee_ids(project)
+        assigned_users = []
+        for user_id in assigned_ids:
+            assigned_user = await User.get(user_id)
             if assigned_user:
-                assigned_to_name = assigned_user.full_name()
+                assigned_users.append({"id": str(assigned_user.id), "name": assigned_user.full_name(), "role": assigned_user.role.value})
         
         # Calculate days until delivery
         days_until_delivery = None
         priority = "normal"
         if project.delivery_date:
-            delta = project.delivery_date - datetime.utcnow()
+            delta = project.delivery_date - utc_now()
             days_until_delivery = delta.days
             if days_until_delivery < 0:
                 priority = "overdue"
@@ -119,12 +102,14 @@ async def list_projects(
             "name": project.name,
             "key": project.key,
             "description": project.description,
-            "type": project.type.value,
-            "status": project.status.value,
+            "type": enum_or_string_value(project.type, ProjectType.SOFTWARE.value),
+            "status": enum_or_string_value(project.status),
             "client_id": project.client_id,
             "lead_id": project.lead_id,
             "assigned_to": project.assigned_to,
-            "assigned_to_name": assigned_to_name,
+            "assigned_user_ids": getattr(project, "assigned_user_ids", []) or ([project.assigned_to] if project.assigned_to else []),
+            "assigned_users": assigned_users,
+            "assigned_to_name": assigned_users[0]["name"] if assigned_users else None,
             "start_date": project.start_date,
             "delivery_date": project.delivery_date,
             "days_until_delivery": days_until_delivery,
@@ -151,4 +136,5 @@ async def list_projects(
     if cache_key:
         await cache_set(cache_key, data, ttl=180)
     return data
+
 

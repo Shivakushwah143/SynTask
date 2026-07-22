@@ -7,6 +7,8 @@ import { clientsAPI } from '../api/clients'
 import { Button, EmptyState, Skeleton } from '../components/ui'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../components/crm'
 import { CompanyTimeline } from './crm/companies/components'
+import { formatCurrency } from './crm/pipeline/utils'
+import { timeService } from '@/services/timeService'
 
 const TAB_KEY = 'tab'
 const TABS = [
@@ -20,22 +22,16 @@ const TABS = [
   { key: 'timeline', label: 'Timeline' },
 ]
 
-const currencyFormatter = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 2,
-})
-
 function formatDate(value) {
   if (!value) return 'N/A'
-  const parsed = new Date(value)
+  const parsed = timeService.instant(value)
   if (Number.isNaN(parsed.getTime())) return 'N/A'
   return format(parsed, 'MMM d, yyyy')
 }
 
 function formatDateTime(value) {
   if (!value) return 'N/A'
-  const parsed = new Date(value)
+  const parsed = timeService.instant(value)
   if (Number.isNaN(parsed.getTime())) return 'N/A'
   return format(parsed, 'MMM d, yyyy h:mm a')
 }
@@ -202,7 +198,7 @@ export default function ClientWorkspacePage() {
   const primaryEmail = client.email || 'No email on file'
   const primaryPhone = client.contact || 'No phone on file'
   const workspaceHealth = totalInvoices > 0
-    ? `${currencyFormatter.format(Number(outstandingAmount || 0))} outstanding`
+    ? `${formatCurrency(outstandingAmount || 0)} outstanding`
     : 'No billing activity yet'
 
   let tabBody
@@ -228,7 +224,7 @@ export default function ClientWorkspacePage() {
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{project.key || project.project_id || project.id}</p>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project.status || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project.budget ? currencyFormatter.format(Number(project.budget)) : 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{project.budget ? formatCurrency(project.budget) : 'N/A'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.start_date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(project.delivery_date)}</td>
                       <td className="px-4 py-3">
@@ -287,7 +283,7 @@ export default function ClientWorkspacePage() {
     )
   } else if (activeTab === 'leads') {
     tabBody = (
-      <CRMSection title="Leads" description="CRM leads associated with this client.">
+      <CRMSection title="Leads" description="Leads associated with this client.">
         {leads.length ? (
           <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="overflow-x-auto">
@@ -310,7 +306,7 @@ export default function ClientWorkspacePage() {
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.current_stage || 'N/A'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.status || 'N/A'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.assigned_to || 'Unassigned'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.won_amount ? currencyFormatter.format(Number(lead.won_amount)) : 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.won_amount ? formatCurrency(lead.won_amount) : 'N/A'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(lead.updated_at)}</td>
                     </tr>
                   ))}
@@ -374,8 +370,8 @@ export default function ClientWorkspacePage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{invoice.invoice_type || 'N/A'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{invoice.status || 'N/A'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{currencyFormatter.format(Number(invoice.total_amount || 0))}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{currencyFormatter.format(Number(invoice.outstanding_amount || 0))}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatCurrency(invoice.total_amount || 0)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatCurrency(invoice.outstanding_amount || 0)}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{formatDate(invoice.due_date)}</td>
                     </tr>
                   ))}
@@ -469,7 +465,7 @@ export default function ClientWorkspacePage() {
           <CRMStatCard icon={FolderKanban} label="Projects" value={String(totalProjects)} tone="blue" helper={projects[0]?.name || 'No linked project yet'} />
           <CRMStatCard icon={Activity} label="Tasks" value={String(totalTasks)} tone="emerald" helper={summary.tasks ? `${Object.keys(summary.tasks).length} task states` : 'Task activity will appear here'} />
           <CRMStatCard icon={Users} label="Leads" value={String(totalLeads)} tone="amber" helper={summary.leads ? `${summary.leads.active || 0} active` : 'No linked leads yet'} />
-          <CRMStatCard icon={DollarSign} label="Outstanding" value={currencyFormatter.format(Number(outstandingAmount || 0))} tone="slate" helper={`${totalInvoices} invoice(s)`} />
+          <CRMStatCard icon={DollarSign} label="Outstanding" value={formatCurrency(outstandingAmount || 0)} tone="slate" helper={`${totalInvoices} invoice(s)`} />
         </div>
       </div>
     )
@@ -540,7 +536,7 @@ export default function ClientWorkspacePage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <CRMStatCard icon={Building2} label="Client" value={client.name || '-'} tone="blue" helper={client.company_name || 'Client account'} />
         <CRMStatCard icon={FolderKanban} label="Projects" value={String(totalProjects)} tone="emerald" helper={projects[0]?.name || 'Linked projects'} />
-        <CRMStatCard icon={DollarSign} label="Invoices" value={String(totalInvoices)} tone="amber" helper={currencyFormatter.format(Number(outstandingAmount || 0))} />
+        <CRMStatCard icon={DollarSign} label="Invoices" value={String(totalInvoices)} tone="amber" helper={formatCurrency(outstandingAmount || 0)} />
         <CRMStatCard icon={Clock3} label="Updated" value={formatDate(client.updated_at)} tone="slate" helper="Workspace freshness" />
       </div>
 

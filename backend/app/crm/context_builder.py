@@ -10,16 +10,17 @@ from fastapi import HTTPException, status
 from app.crm.lead_files import CRMLeadFilesService
 from app.crm.lead_notes import CRMLeadNotesService
 from app.crm.lead_timeline import CRMLeadTimelineService
-from app.models.client import Client
+from app.crm.models import Client
 from app.models.crm_activity import CRMActivity, CRMActivityStatus, CRMActivityType
 from app.models.crm_company import CRMCompany
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal
 from app.models.meeting import Meeting
 from app.models.sales_contact import SalesContact
-from app.models.sales_prospect import SalesProspect
+from app.crm.models import SalesProspect
 from app.models.task import Task
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -30,7 +31,7 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return utc_now()
 
 
 def _normalize_depth(depth: str) -> str:
@@ -615,3 +616,4 @@ class CRMContextBuilder:
         stale_keys = [key for key in CRMContextBuilder._cache if key[1] == str(lead_id)]
         for key in stale_keys:
             CRMContextBuilder._cache.pop(key, None)
+

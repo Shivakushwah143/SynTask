@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from app.events.contracts import DomainEvent
+from app.core.clock import utc_now
 
 
 def _idempotency_key(company_id: str, aggregate_type: str, aggregate_id: str, event_name: str, payload: Dict[str, Any]) -> str:
@@ -35,11 +36,12 @@ def build_domain_event(
         project_id=project_id,
         campaign_id=campaign_id,
         actor_id=actor_id,
-        timestamp=datetime.utcnow(),
+        timestamp=utc_now(),
         payload=payload,
         metadata=metadata or {},
         idempotency_key=_idempotency_key(company_id, aggregate_type, aggregate_id, event_name, payload),
         correlation_id=correlation_id,
         causation_id=causation_id,
     )
+
 

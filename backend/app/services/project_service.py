@@ -9,6 +9,7 @@ from app.models.notification import Notification, NotificationType
 from app.models.project import Project, ProjectStatus
 from app.models.task import Task
 from app.models.user import Employee, Lead, User, UserRole, UserStatus
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +213,7 @@ class ProjectService:
         status_filter: Optional[str] = None,
         lead_id: Optional[str] = None,
         assigned_to: Optional[str] = None,
+        assigned_user_ids: Optional[list[str]] = None,
         start_date: Optional[str] = None,
         delivery_date: Optional[str] = None,
     ) -> Project:
@@ -257,7 +259,7 @@ class ProjectService:
 
                 project.assigned_to = assigned_to
                 project.assigned_by = str(current_user.id)
-                project.assigned_at = datetime.utcnow()
+                project.assigned_at = utc_now()
                 if assigned_user.role == UserRole.LEAD:
                     project.lead_id = assigned_to
                 if old_assigned_to != assigned_to:
@@ -266,6 +268,31 @@ class ProjectService:
                 project.assigned_to = None
                 project.assigned_by = None
                 project.assigned_at = None
+
+        if assigned_user_ids is not None:
+            old_ids = [str(item) for item in (getattr(project, "assigned_user_ids", None) or []) if item]
+            clean_ids = []
+            for user_id in assigned_user_ids:
+                user_id = str(user_id).strip()
+                if user_id and user_id not in clean_ids:
+                    await ProjectService._validate_assignee(user_id, current_user.company_id)
+                    clean_ids.append(user_id)
+            project.assigned_user_ids = clean_ids
+            project.assigned_to = clean_ids[0] if clean_ids else None
+            project.assigned_by = str(current_user.id) if clean_ids else None
+            project.assigned_at = utc_now() if clean_ids else None
+            if old_ids != clean_ids:
+                history = getattr(project, "assignment_history", None) or []
+                history.append({
+                    "assigned_by": str(current_user.id),
+                    "assigned_user_ids": clean_ids,
+                    "assigned_at": utc_now().isoformat(),
+                    "action": "updated",
+                })
+                project.assignment_history = history
+                for user_id in clean_ids:
+                    if user_id not in old_ids:
+                        await ProjectService._notify_project_assignment(project, user_id, current_user.company_id)
 
         parsed_start_date = await ProjectService._parse_date(start_date, "start date")
         parsed_delivery_date = await ProjectService._parse_date(delivery_date, "delivery date")
@@ -280,6 +307,224 @@ class ProjectService:
                 detail="Start date cannot be after delivery date",
             )
 
-        project.updated_at = datetime.utcnow()
+        project.updated_at = utc_now()
         await project.save()
         return project
+
+    @staticmethod
+    async def create_project_core(
+        *,
+        name: str,
+        key: str,
+        description: Optional[str] = None,
+        type: str = "software",
+        client_id: Optional[str] = None,
+        lead_id: Optional[str] = None,
+        assigned_to: Optional[str] = None,
+        assigned_user_ids: Optional[str] = None,
+        start_date: Optional[str] = None,
+        delivery_date: Optional[str] = None,
+        project_id: str,
+        current_user: User
+    ) -> dict:
+        from app.models.client import Client
+        from app.events import publish_event
+        from app.events.factories import build_domain_event
+        from app.api.v1.endpoints.projects.shared import (
+            can_create_project,
+            normalize_project_type,
+            validate_project_assignees,
+            project_list_key,
+        )
+        from app.core.cache import cache_delete, cache_delete_pattern
+        from datetime import datetime
+
+        if not await can_create_project(current_user):
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Only Admins and Managers can create projects",
+            )
+        if not current_user.company_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="User must belong to a company",
+            )
+        project_id = project_id.strip() if project_id else ""
+        if not project_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Project ID is required. Please enter a unique Project ID."
+            )
+        
+        existing_by_id = await Project.find_one(
+            Project.project_id == project_id,
+            Project.company_id == current_user.company_id
+        )
+        if existing_by_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=f"Project ID '{project_id}' already exists in your company. Please use a different ID."
+            )
+        
+        existing = await Project.find_one(
+            Project.key == key.upper(),
+            Project.company_id == current_user.company_id
+        )
+        if existing:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Project key already exists"
+            )
+        
+        final_project_id = project_id
+        project_type = normalize_project_type(type)
+        
+        if lead_id:
+            lead = await User.get(lead_id)
+            if not lead or lead.company_id != current_user.company_id:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid lead"
+                )
+
+        client = None
+        if client_id:
+            client = await Client.get(client_id)
+            if not client or client.company_id != current_user.company_id:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid client"
+                )
+        
+        requested_assignees = []
+        for raw in [assigned_to, assigned_user_ids]:
+            if isinstance(raw, str) and raw:
+                requested_assignees.extend([item.strip() for item in raw.split(",") if item.strip()])
+        assigned_users = await validate_project_assignees(current_user, current_user.company_id, requested_assignees) if requested_assignees else []
+        assigned_ids = [str(user.id) for user in assigned_users]
+        primary_assigned_to = assigned_ids[0] if assigned_ids else None
+        
+        start_date_obj = None
+        if start_date:
+            try:
+                start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            except:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid start date format"
+                )
+        
+        delivery_date_obj = None
+        if delivery_date:
+            try:
+                delivery_date_obj = datetime.fromisoformat(delivery_date.replace('Z', '+00:00'))
+            except:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid delivery date format"
+                )
+        
+        if start_date_obj and delivery_date_obj and start_date_obj > delivery_date_obj:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Start date cannot be after delivery date"
+            )
+        
+        project_data = {
+            "name": name,
+            "key": key.upper(),
+            "project_id": final_project_id,
+            "description": description,
+            "company_id": current_user.company_id,
+            "client_id": client_id,
+            "type": project_type,
+            "lead_id": lead_id,
+            "assigned_to": primary_assigned_to,
+            "assigned_user_ids": assigned_ids,
+            "assigned_by": str(current_user.id) if assigned_ids else None,
+            "assigned_at": utc_now() if assigned_ids else None,
+            "assignment_history": [{
+                "assigned_by": str(current_user.id),
+                "assigned_user_ids": assigned_ids,
+                "assigned_at": utc_now().isoformat(),
+                "action": "created",
+            }] if assigned_ids else [],
+            "start_date": start_date_obj,
+            "delivery_date": delivery_date_obj,
+            "created_by": str(current_user.id),
+        }
+        
+        project = Project(**project_data)
+        project.project_id = final_project_id
+        await project.insert()
+        await cache_delete(project_list_key(current_user.company_id))
+        await cache_delete_pattern(f"dashboard:stats:{current_user.company_id}:*")
+        
+        try:
+            from app.core.database import get_database
+            from bson import ObjectId
+            db = get_database()
+            project_oid = project.id if isinstance(project.id, ObjectId) else ObjectId(project.id)
+            await db["projects"].update_one(
+                {"_id": project_oid},
+                {"$set": {"project_id": final_project_id}}
+            )
+        except Exception:
+            pass
+        project.project_id = final_project_id
+        await project.save()
+
+        if client:
+            client_project_ids = [str(item) for item in (client.project_ids or [])]
+            if str(project.id) not in client_project_ids:
+                client.project_ids = client_project_ids + [str(project.id)]
+            client.updated_at = utc_now()
+            await client.save()
+        
+        # Send notification to assigned user
+        for assigned_user in assigned_users:
+            from app.models.notification import Notification, NotificationType
+            notification = Notification(
+                company_id=current_user.company_id,
+                user_id=str(assigned_user.id),
+                type=NotificationType.PROJECT_ASSIGNED,
+                title="New Project Assigned",
+                message=f"You have been assigned to project: {name}",
+                related_id=final_project_id,
+                related_type="project",
+            )
+            await notification.insert()
+
+        background_warnings = []
+        try:
+            await publish_event(
+                build_domain_event(
+                    event_name="ProjectCreated",
+                    aggregate_type="project",
+                    aggregate_id=str(project.id),
+                    company_id=str(current_user.company_id),
+                    actor_id=str(current_user.id),
+                    payload={
+                        "project_id": project.project_id,
+                        "name": project.name,
+                        "description": project.description,
+                        "status": project.status.value if getattr(project, "status", None) else None,
+                        "client_id": project.client_id,
+                        "updated_at": project.updated_at.isoformat() if getattr(project, "updated_at", None) else None,
+                    },
+                    project_id=str(project.project_id or project.id),
+                    metadata={"source": "project_create"},
+                )
+            )
+        except Exception as exc:
+            background_warnings.append("Project created, but background processing is degraded.")
+        
+        return {
+            "message": "Project created successfully",
+            "project_id": final_project_id,
+            "id": str(project.id),
+            "key": project.key,
+            "warnings": background_warnings
+        }
+
+

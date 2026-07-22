@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { CheckCircle, X, FileText } from 'lucide-react'
 import { msaAPI } from '../api/msa'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import SignatureCanvas from '../components/SignatureCanvas'
+import { timeService } from '@/services/timeService'
 
 const MSASign = () => {
   const { token } = useParams()
@@ -15,11 +16,7 @@ const MSASign = () => {
   const [clientName, setClientName] = useState('')
   const [signing, setSigning] = useState(false)
 
-  useEffect(() => {
-    loadMSA()
-  }, [token])
-
-  const loadMSA = async () => {
+  const loadMSA = useCallback(async () => {
     try {
       setLoading(true)
       const data = await msaAPI.getMSAByToken(token)
@@ -34,7 +31,11 @@ const MSASign = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [navigate, token])
+
+  useEffect(() => {
+    loadMSA()
+  }, [loadMSA])
 
   const handleSign = async (signatureImage) => {
     if (!msa || signing) return
@@ -142,7 +143,7 @@ const MSASign = () => {
               <div className="pt-4 border-t border-gray-200">
                 <p className="text-sm text-gray-600">
                   <span className="font-medium">Effective Date:</span>{' '}
-                  {format(new Date(msa.effective_date), 'MMMM dd, yyyy')}
+                  {format(timeService.instant(msa.effective_date), 'MMMM dd, yyyy')}
                 </p>
               </div>
             )}
@@ -179,7 +180,7 @@ const MSASign = () => {
                   </p>
                   <p className="text-xs text-gray-500">
                     {msa.staffing_company_signature.signed_at ? 
-                      format(new Date(msa.staffing_company_signature.signed_at), 'MMM d, yyyy h:mm a') : ''}
+                      format(timeService.instant(msa.staffing_company_signature.signed_at), 'MMM d, yyyy h:mm a') : ''}
                   </p>
                 </div>
               ) : (
@@ -202,7 +203,7 @@ const MSASign = () => {
                   </p>
                   <p className="text-xs text-gray-500">
                     {msa.client_signature.signed_at ? 
-                      format(new Date(msa.client_signature.signed_at), 'MMM d, yyyy h:mm a') : ''}
+                      format(timeService.instant(msa.client_signature.signed_at), 'MMM d, yyyy h:mm a') : ''}
                   </p>
                 </div>
               ) : (

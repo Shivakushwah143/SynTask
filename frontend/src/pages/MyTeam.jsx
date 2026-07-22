@@ -1,10 +1,15 @@
-import { useState, useEffect } from 'react'
-import { Users, CheckSquare, Ticket, Mail, Phone, Briefcase, Calendar, Plus, MoreVertical } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Users, CheckSquare, Ticket, Phone, Briefcase, Calendar, Plus, MoreVertical } from 'lucide-react'
 import { usersAPI } from '../api/users'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { ROLE, normalizeRole } from '../utils/roles'
+import { PasswordInput, PhoneInput } from '../components/ui'
+import { timeService } from '@/services/timeService'
+
+const allowedTeamRoles = [ROLE.LEAD, ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN]
 
 const MyTeam = () => {
   const { user } = useAuthStore()
@@ -15,18 +20,36 @@ const MyTeam = () => {
   const [submitting, setSubmitting] = useState(false)
   const [openMenuFor, setOpenMenuFor] = useState(null)
   const [editingMember, setEditingMember] = useState(null)
+  const normalizedRole = normalizeRole(user?.role)
 
-  useEffect(() => {
-    if (user?.role === 'lead') {
-      fetchTeam()
-    }
-  }, [user])
-
-  const fetchTeam = async () => {
+  const fetchTeam = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await usersAPI.getMyTeam()
-      setTeamData(data)
+      if (normalizedRole === ROLE.LEAD) {
+        const data = await usersAPI.getMyTeam()
+        setTeamData(data)
+        return
+      }
+
+      const data = await usersAPI.listUsers(null, null, 'active', 0, 500)
+      const users = Array.isArray(data?.users) ? data.users : []
+      const teamMembers = users.filter((member) => {
+        const memberRole = normalizeRole(member.role)
+        if (member.id === user?.id) return false
+        return [ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(memberRole)
+      })
+
+      setTeamData({
+        team_members: teamMembers.map((member) => ({
+          ...member,
+          task_count: member.task_count ?? 0,
+          ticket_count: member.ticket_count ?? 0,
+        })),
+        total: teamMembers.length,
+        lead_info: {
+          team_name: 'Team overview',
+        },
+      })
     } catch (error) {
       console.error('Error loading team:', error)
       toast.error('Failed to load team members')
@@ -34,7 +57,13 @@ const MyTeam = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [normalizedRole, user?.id])
+
+  useEffect(() => {
+    if (allowedTeamRoles.includes(normalizedRole)) {
+      fetchTeam()
+    }
+  }, [fetchTeam, normalizedRole])
 
   const handleAddOrUpdateMember = async (e) => {
     e.preventDefault()
@@ -104,11 +133,11 @@ const MyTeam = () => {
     }
   }
 
-  if (user?.role !== 'lead') {
+  if (!allowedTeamRoles.includes(normalizedRole)) {
     return (
       <div className="space-y-6">
         <div className="card text-center py-12">
-          <p className="text-gray-600">This page is only available for Leads.</p>
+          <p className="text-gray-600">This page is only available for Leads, Managers, and Admins.</p>
         </div>
       </div>
     )
@@ -300,7 +329,7 @@ const MyTeam = () => {
                   )}
                   <div className="flex items-center text-sm text-gray-600">
                     <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                    Joined {format(new Date(member.created_at), 'MMM d, yyyy')}
+                    Joined {format(timeService.instant(member.created_at), 'MMM d, yyyy')}
                   </div>
                 </div>
 
@@ -381,8 +410,7 @@ const MyTeam = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Password {editingMember ? '(leave blank to keep current)' : '*'}
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   name="password"
                   required={!editingMember}
                   minLength={8}
@@ -395,11 +423,10 @@ const MyTeam = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Phone
                 </label>
-                <input
-                  type="tel"
+                <PhoneInput
                   name="phone"
                   className="input"
-                  placeholder="+1 234 567 8900"
+                  placeholder="+919876543210"
                   defaultValue={editingMember?.phone || ''}
                 />
               </div>

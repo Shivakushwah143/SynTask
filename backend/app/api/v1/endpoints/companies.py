@@ -11,6 +11,9 @@ from app.models.company_subscription import CompanySubscription, CompanySubscrip
 from app.models.subscription_plan import SubscriptionPlan as SubscriptionPlanDoc
 from app.core.security import get_password_hash
 from app.api.dependencies import get_current_user, get_current_super_admin
+from app.api.deps import Pagination20, PaginationParams
+from app.core.clock import utc_now
+from app.schemas.admin_permissions import normalize_modules
 
 
 router = APIRouter()
@@ -43,7 +46,7 @@ async def register_company(
 
     """Register a new company (Public endpoint - requires Super Admin approval)"""
     # Check if company already exists
-    existing = await Company.find_one(Company.email == email)
+    existing = await Company.find_one({"email": email})
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -90,16 +93,16 @@ async def register_company(
 @router.get("/")
 async def list_companies(
     status_filter: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_super_admin)
 ):
     """List all companies (Super Admin only)"""
+    skip, limit = pagination.skip, pagination.limit
     query = {}
     if status_filter:
         query["status"] = status_filter
     
-    companies = await Company.find(query).skip(skip).limit(limit).to_list()
+    companies = await Company.find(query).sort("-created_at").skip(skip).limit(limit).to_list()
     total = await Company.find(query).count()
     
     return {
@@ -197,24 +200,15 @@ async def approve_company(
         )
     
     # Check if admin email already exists
-    existing_user = await User.find_one(User.email == admin_email)
+    existing_user = await User.find_one({"email": admin_email})
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin email already exists"
         )
     
-    allowed_modules = ["task", "sales"]
-    parsed_modules = []
-    if modules:
-        parsed_modules = [
-            m.strip()
-            for m in modules.split(",")
-            if m and m.strip() in allowed_modules
-        ]
-    if not parsed_modules:
-        parsed_modules = ["task"]
-    active_module = parsed_modules[0]
+    parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
+    active_module = parsed_modules[0] if parsed_modules else "task"
     
     plan_doc = None
     if plan_id and plan_id.strip():
@@ -224,10 +218,8 @@ async def approve_company(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Subscription plan not found"
             )
-        parsed_modules = list(plan_doc.enabled_modules) if getattr(plan_doc, "enabled_modules", None) else ["task"]
-        if not parsed_modules:
-            parsed_modules = ["task"]
-        active_module = parsed_modules[0]
+        parsed_modules = normalize_modules(list(plan_doc.enabled_modules) if getattr(plan_doc, "enabled_modules", None) else [], require_tasks_projects=False)
+        active_module = parsed_modules[0] if parsed_modules else "task"
     
     # Determine role
     try:
@@ -260,7 +252,7 @@ async def approve_company(
     # Update company
     company.status = CompanyStatus.ACTIVE
     company.admin_id = str(admin.id)
-    company.approved_at = datetime.utcnow()
+    company.approved_at = utc_now()
     company.approved_by = str(current_user.id)
     await company.save()
     
@@ -272,7 +264,7 @@ async def approve_company(
     
     if plan_doc:
         amount = plan_doc.price_monthly if billing_cycle_val == "monthly" else plan_doc.price_yearly
-        start_date = datetime.utcnow()
+        start_date = utc_now()
         sub = CompanySubscription(
             company_id=company_id,
             plan_id=str(plan_doc.id),
@@ -337,7 +329,7 @@ async def update_company_status(
         )
     
     company.status = new_status
-    company.updated_at = datetime.utcnow()
+    company.updated_at = utc_now()
     await company.save()
     
     return {"message": "Company status updated successfully"}
@@ -372,3 +364,4 @@ async def delete_company(
     await company.delete()
     
     return {"message": "Company permanently deleted"} 
+
