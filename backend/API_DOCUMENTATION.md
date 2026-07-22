@@ -247,7 +247,7 @@ First-login browser timezone detection can call `PUT /api/v1/time/settings` with
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/meetings/` | `list_meetings` | Lists meetings where the current user is host or participant; supports `status` and `upcoming` filters. `upcoming=true` returns future meetings ordered soonest first. |
+| GET | `/api/v1/meetings/` | `list_meetings` | Authenticated users can list meetings where they are host or participant; supports `status` and `upcoming` filters. `upcoming=true` returns future meetings ordered soonest first and is not hidden behind the `meetings_calendar` module gate. |
 | POST | `/api/v1/meetings/` | `create_meeting` | Admin, Manager, Lead, or Super Admin only; duration must be 1-60 minutes; participant IDs must be same-tenant junior users available to the creator role. |
 | PATCH | `/api/v1/meetings/{meeting_id}` | `update_meeting` | Host/Admin/Super Admin update or reschedule meeting details and participants. |
 | GET | `/api/v1/meetings/{meeting_id}` | `get_meeting` | Host or invited participant only; host start URL is returned only to host/Admin/Super Admin. |

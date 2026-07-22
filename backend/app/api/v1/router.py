@@ -127,8 +127,8 @@ api_router.include_router(invoices.router, prefix="/invoices", tags=["Invoices"]
 # Individual endpoints inside msa.py already use dependencies for authenticated actions.
 api_router.include_router(msa.router, prefix="/msa", tags=["MSA"])
 api_router.include_router(ledger.router, prefix="/ledger", tags=["Ledger"], dependencies=[Depends(require_module("invoicing_ledger"))])
-api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"], dependencies=[Depends(require_module("meetings_calendar"))])
-api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"], dependencies=[Depends(require_module("meetings_calendar"))])
+api_router.include_router(meetings.router, prefix="/meetings", tags=["Meetings"])
+api_router.include_router(calendar.router, prefix="/calendar", tags=["Calendar"])
 api_router.include_router(time.router, prefix="/time", tags=["Time"])
 api_router.include_router(content_calendar.router, prefix="/content-calendar", tags=["Content Calendar"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"])
