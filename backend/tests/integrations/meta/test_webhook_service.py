@@ -186,3 +186,128 @@ async def test_initial_enqueue_failure_does_not_save_the_stale_event_instance(mo
 
     assert persisted
     assert updates[0][0] == "507f1f77bcf86cd799439011"
+
+
+@pytest.mark.asyncio
+async def test_ingest_persists_page_messaging_event_without_lead_form(monkeypatch):
+    persisted = []
+    queries = []
+
+    async def find_one(query):
+        queries.append(query)
+        return SimpleNamespace(company_id="tenant-1")
+
+    async def insert(event):
+        persisted.append(event)
+        event.id = "event-1"
+
+    monkeypatch.setattr(
+        "app.integrations.meta.webhook_service.MetaIntegrationSettings.find_one", find_one
+    )
+    dispatched = []
+    service = _service(lambda event_id: dispatched.append(event_id), insert)
+
+    result = await service.ingest(
+        {
+            "object": "instagram",
+            "entry": [{
+                "id": "ig-professional-1",
+                "time": 1784700000,
+                "messaging": [{
+                    "sender": {"id": "ig-user-1"},
+                    "recipient": {"id": "ig-professional-1"},
+                    "timestamp": 1784700000123,
+                    "message": {"mid": "ig-mid-1", "text": "Need pricing"},
+                }],
+            }],
+        },
+        raw_body=b'{"object":"instagram"}',
+        correlation_id="corr-ig",
+    )
+
+    assert result.inserted == 1
+    assert dispatched == ["event-1"]
+    assert queries[0] == {
+        "instagram_business_account_id": "ig-professional-1",
+        "enabled": True,
+    }
+    assert persisted[0].event_type == "messages"
+    assert persisted[0].object_type == "instagram"
+    assert persisted[0].object_id == "ig-professional-1"
+    assert persisted[0].provider_event_id == "ig-mid-1"
+
+
+@pytest.mark.asyncio
+async def test_ingest_resolves_messenger_events_by_messenger_page_id(monkeypatch):
+    queries = []
+
+    async def find_one(query):
+        queries.append(query)
+        return SimpleNamespace(company_id="tenant-1")
+
+    async def insert(event):
+        event.id = "event-1"
+
+    monkeypatch.setattr(
+        "app.integrations.meta.webhook_service.MetaIntegrationSettings.find_one", find_one
+    )
+    service = _service(lambda _event_id: None, insert)
+
+    result = await service.ingest(
+        {
+            "object": "page",
+            "entry": [{
+                "id": "messenger-page-1",
+                "time": 1784700000,
+                "messaging": [{
+                    "sender": {"id": "psid-1"},
+                    "recipient": {"id": "messenger-page-1"},
+                    "timestamp": 1784700000456,
+                    "message": {"mid": "m-mid-1", "text": "Can you help?"},
+                }],
+            }],
+        },
+        raw_body=b'{"object":"page"}',
+        correlation_id="corr-msgr",
+    )
+
+    assert result.inserted == 1
+    assert queries[0] == {
+        "$or": [
+            {"page_id": "messenger-page-1", "enabled": True},
+            {"messenger_page_id": "messenger-page-1", "enabled": True},
+        ]
+    }
+
+
+def test_extract_message_event_id_fallback_includes_sender_and_payload_hash():
+    events = list(
+        MetaWebhookService.extract_events(
+            {
+                "object": "page",
+                "entry": [{
+                    "id": "page-1",
+                    "time": 1784700000,
+                    "messaging": [
+                        {
+                            "sender": {"id": "psid-1"},
+                            "recipient": {"id": "page-1"},
+                            "timestamp": 1784700000456,
+                            "message": {"text": "First"},
+                        },
+                        {
+                            "sender": {"id": "psid-2"},
+                            "recipient": {"id": "page-1"},
+                            "timestamp": 1784700000456,
+                            "message": {"text": "Second"},
+                        },
+                    ],
+                }],
+            },
+            "payload-hash",
+        )
+    )
+
+    assert len(events) == 2
+    assert events[0].provider_event_id != events[1].provider_event_id
+    assert events[0].provider_event_id.startswith("page:page-1:psid-1:1784700000456:")

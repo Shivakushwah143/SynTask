@@ -42,6 +42,12 @@ class MetaIntegrationSettings(Document):
     system_user_token_encrypted: Optional[str] = None
     lead_form_id: Optional[str] = None
     whatsapp_business_id: Optional[str] = None
+    instagram_business_account_id: Optional[str] = None
+    messenger_page_id: Optional[str] = None
+    instagram_scoped_sender_ids: list[str] = Field(default_factory=list)
+    messenger_scoped_sender_ids: list[str] = Field(default_factory=list)
+    instagram_scopes: list[str] = Field(default_factory=list)
+    messenger_scopes: list[str] = Field(default_factory=list)
     default_lead_owner_id: Optional[str] = None
 
     last_connection_test_at: Optional[datetime] = None

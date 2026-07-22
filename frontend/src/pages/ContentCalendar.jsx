@@ -392,8 +392,8 @@ export default function ContentCalendar() {
           <div className="rounded-3xl border border-surface-border bg-surface p-4 dark:border-gray-800 dark:bg-black">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Platform</h3>
             <select className="input text-xs" value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)}>
-              <option value="">All Platforms</option>
-              {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Platforms</option>
+              {PLATFORMS.map((p) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={p} value={p}>{p}</option>)}
             </select>
           </div>
 
@@ -401,9 +401,9 @@ export default function ContentCalendar() {
           <div className="rounded-3xl border border-surface-border bg-surface p-4 dark:border-gray-800 dark:bg-black">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Workflow State</h3>
             <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">All Statuses</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Statuses</option>
               {['draft', 'planned', 'shoot_scheduled', 'shot', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published'].map((status) => (
-                <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status.replace(/_/g, ' ')}</option>
               ))}
             </select>
           </div>

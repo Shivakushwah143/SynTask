@@ -474,7 +474,7 @@ const Tasks = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-600 via-rose-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -590,9 +590,9 @@ const Tasks = () => {
                 onChange={(e) => setFilters({ ...filters, status: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All Statuses</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Statuses</option>
                 {statuses.map((status) => (
-                  <option key={status.id} value={status.id}>{status.label}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status.id} value={status.id}>{status.label}</option>
                 ))}
               </select>
             </div>
@@ -603,11 +603,11 @@ const Tasks = () => {
                 onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All Priorities</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Priorities</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="critical">Critical</option>
               </select>
             </div>
             <div>
@@ -617,9 +617,9 @@ const Tasks = () => {
                 onChange={(e) => setFilters({ ...filters, assigned_to: e.target.value })}
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All Users</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Users</option>
                 {assignableUsers.map((u) => (
-                  <option key={u.id} value={u.id}>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={u.id} value={u.id}>
                     {u.first_name} {u.last_name}
                   </option>
                 ))}
@@ -634,9 +634,9 @@ const Tasks = () => {
                   className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   disabled={loadingDepartments}
                 >
-                  <option value="">All Departments</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Departments</option>
                   {departments.map((department) => (
-                    <option key={department.id} value={department.id}>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={department.id} value={department.id}>
                       {department.name}
                     </option>
                   ))}

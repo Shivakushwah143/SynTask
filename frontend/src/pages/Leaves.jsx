@@ -245,7 +245,7 @@ export default function Leaves() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-lime-600 via-green-600 to-emerald-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -412,16 +412,16 @@ export default function Leaves() {
                   value={filters.status} 
                   onChange={(event) => setFilters({ ...filters, status: event.target.value })}
                 >
-                  <option value="">All status</option>
-                  {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All status</option>
+                  {STATUS_OPTIONS.map((status) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status}</option>)}
                 </select>
                 <select 
                   className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
                   value={filters.leave_type} 
                   onChange={(event) => setFilters({ ...filters, leave_type: event.target.value })}
                 >
-                  <option value="">All types</option>
-                  {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
+                  {LEAVE_TYPES.map(([value, label]) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={value} value={value}>{label}</option>)}
                 </select>
                 {canManage ? (
                   <select 
@@ -429,8 +429,8 @@ export default function Leaves() {
                     value={filters.employee_id} 
                     onChange={(event) => setFilters({ ...filters, employee_id: event.target.value })}
                   >
-                    <option value="">All employees</option>
-                    {users.map((item) => <option key={item.id} value={item.id}>{`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}</option>)}
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All employees</option>
+                    {users.map((item) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item.id} value={item.id}>{`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}</option>)}
                   </select>
                 ) : null}
                 <input 

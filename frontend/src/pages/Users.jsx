@@ -680,7 +680,7 @@ const Users = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -1214,13 +1214,13 @@ const Users = () => {
                     }}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   >
-                    <option value="">No department</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">No department</option>
                     {departments.map((department) => (
-                      <option key={department.id} value={department.id}>
+                      <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={department.id} value={department.id}>
                         {department.name}
                       </option>
                     ))}
-                    {isCompanyAdmin ? <option value="__create_department__">+ Create new department</option> : null}
+                    {isCompanyAdmin ? <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="__create_department__">+ Create new department</option> : null}
                   </select>
                   {isCompanyAdmin && (
                     <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-indigo-200/70 bg-indigo-50/80 px-3 py-2.5 text-xs text-indigo-800 shadow-sm dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">

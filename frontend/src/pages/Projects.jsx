@@ -388,7 +388,7 @@ export default function Projects() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -466,27 +466,27 @@ export default function Projects() {
               value={filters.status} 
               onChange={(event) => setFilters((state) => ({ ...state, status: event.target.value }))}
             >
-              <option value="">All statuses</option>
-              <option value="active">Active</option>
-              <option value="in_progress">In progress</option>
-              <option value="on_hold">On hold</option>
-              <option value="completed">Completed</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All statuses</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="active">Active</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="in_progress">In progress</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="on_hold">On hold</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="completed">Completed</option>
             </select>
             <select 
               className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
               value={filters.type} 
               onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}
             >
-              <option value="">All types</option>
-              {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
+              {projectTypeOptions.map((item) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <select 
               className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
               value={filters.owner} 
               onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}
             >
-              <option value="">All assigned</option>
-              {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All assigned</option>
+              {uniqueAssignableUsers.map((item) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
             </select>
           </div>
         </div>

@@ -535,7 +535,7 @@ const WorkflowAdmin = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-zinc-600 via-slate-600 to-blue-700 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -735,8 +735,8 @@ const WorkflowAdmin = () => {
           </FormField>
           <FormField label="Initial Status" required>
             <select className="input bg-gray-50 dark:bg-gray-900/50" required value={workflowForm.initial_status} onChange={(e) => setWorkflowForm({ ...workflowForm, initial_status: e.target.value })}>
-              <option value="">Select status</option>
-              {statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Select status</option>
+              {statusOptions.map((item) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </FormField>
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">

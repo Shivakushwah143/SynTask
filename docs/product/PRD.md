@@ -104,6 +104,8 @@ Repository search on 2026-07-18 found the following:
 
 Access is the intersection of authentication, active status, company, enabled module, role, hierarchy, ownership, membership, project authorization, mailbox/calendar consent where applicable, and capability. Backend enforcement is mandatory.
 
+For local acceptance testing, the `admin@demo.com` development fixture is assigned every canonical module by the idempotent demo-admin seed. This fixture convenience does not alter production entitlement rules or tenant/resource authorization; testers must obtain a fresh session after reseeding.
+
 ## 4. Product-wide requirements
 
 | ID | Requirement | Acceptance summary |

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useDefaultAvatar } from "../utils/avatar";
 import { Link, useLocation } from "react-router-dom";
 import {
   AlarmClockCheck,
@@ -494,6 +495,63 @@ const Sidebar = ({ isOpen, onClose }) => {
     },
   ];
 
+  const metaOmnichannelNavigation = [
+    {
+      name: "Meta Command Center",
+      href: "/crm/settings?meta=command-center",
+      icon: Gauge,
+    },
+    {
+      name: "WhatsApp Inbox",
+      href: "/crm/settings?meta=whatsapp",
+      icon: Headphones,
+    },
+    {
+      name: "Instagram DMs",
+      href: "/crm/settings?meta=instagram",
+      icon: Megaphone,
+    },
+    {
+      name: "Messenger Inbox",
+      href: "/crm/settings?meta=messenger",
+      icon: BellRing,
+    },
+    {
+      name: "AI Reply Drafts",
+      href: "/crm/settings?meta=ai-drafts",
+      icon: Bot,
+    },
+    {
+      name: "Human Approval Queue",
+      href: "/crm/settings?meta=approval-queue",
+      icon: ShieldCheck,
+      badge: "Soon",
+    },
+    {
+      name: "Identity Linking",
+      href: "/crm/settings?meta=identity",
+      icon: Network,
+    },
+    {
+      name: "Omnichannel Analytics",
+      href: "/crm/settings?meta=analytics",
+      icon: LineChart,
+      badge: "Soon",
+    },
+    {
+      name: "Partner Readiness",
+      href: "/crm/settings?meta=readiness",
+      icon: ClipboardCheck,
+      badge: "Soon",
+    },
+    {
+      name: "Customer Meta Connect",
+      href: "/crm/settings?meta=connect",
+      icon: Settings,
+      badge: "Soon",
+    },
+  ];
+
   const filteredCrmNavigation = crmNavigation
     .filter((item) => item && !['/crm/pipeline', '/crm/leads'].includes(item.href) && (item.roles ? item.roles.includes(userRole) : true) && hasCapability(item.capability) && hasDepartment(item.department));
 
@@ -524,6 +582,13 @@ const Sidebar = ({ isOpen, onClose }) => {
         .filter(Boolean),
     },
     {
+      key: "client-management",
+      label: "Client Management",
+      items: ["Clients"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
       key: "people",
       label: "People & Activity",
       items: ["My Team", "Users", "Departments", "Attendance", "Live Attendance", "Attendance Reports"]
@@ -541,6 +606,11 @@ const Sidebar = ({ isOpen, onClose }) => {
       key: "crm",
       label: "CRM Tools",
       items: filteredCrmNavigation,
+    },
+    {
+      key: "meta-omnichannel",
+      label: "Meta Omnichannel",
+      items: metaOmnichannelNavigation,
     },
     {
       key: "hr",
@@ -612,6 +682,16 @@ const Sidebar = ({ isOpen, onClose }) => {
       'CRM Calendar': 'text-fuchsia-400',
       'CRM Reports': 'text-lime-400',
       'CRM Configuration': 'text-gray-400',
+      'Meta Command Center': 'text-blue-400',
+      'WhatsApp Inbox': 'text-emerald-400',
+      'Instagram DMs': 'text-pink-400',
+      'Messenger Inbox': 'text-sky-400',
+      'AI Reply Drafts': 'text-purple-400',
+      'Human Approval Queue': 'text-amber-400',
+      'Identity Linking': 'text-cyan-400',
+      'Omnichannel Analytics': 'text-lime-400',
+      'Partner Readiness': 'text-orange-400',
+      'Customer Meta Connect': 'text-indigo-400',
       
       // AI & Marketing - Purple/Pink
       'AI Command Center': 'text-purple-400',
@@ -657,9 +737,11 @@ const Sidebar = ({ isOpen, onClose }) => {
     const groupColors = {
       'operations': 'text-cyan-400',
       'delivery': 'text-indigo-400',
+      'client-management': 'text-blue-400',
       'people': 'text-orange-400',
       'communication': 'text-pink-400',
       'crm': 'text-blue-400',
+      'meta-omnichannel': 'text-sky-400',
       'hr': 'text-emerald-400',
       'ai-marketing': 'text-purple-400',
       'finance': 'text-yellow-400',
@@ -846,11 +928,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                     src={getApiAssetUrl(user.avatar)}
                     alt={user?.first_name}
                     className="h-8 w-8 rounded-full object-cover border-2 border-primary-500/30"
-                    onError={(e) => {
-                      e.target.style.display = "none";
-                      const fallback = e.target.nextSibling;
-                      if (fallback) fallback.style.display = "flex";
-                    }}
+                    onError={useDefaultAvatar}
                   />
                 ) : null}
                 <div className={`flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-primary-500/20 ${user?.avatar ? "hidden" : ""}`}>
@@ -904,9 +982,11 @@ function SidebarNavGroup({
     const dotColors = {
       'operations': 'bg-cyan-400',
       'delivery': 'bg-indigo-400',
+      'client-management': 'bg-blue-400',
       'people': 'bg-orange-400',
       'communication': 'bg-pink-400',
       'crm': 'bg-blue-400',
+      'meta-omnichannel': 'bg-sky-400',
       'hr': 'bg-emerald-400',
       'ai-marketing': 'bg-purple-400',
       'finance': 'bg-yellow-400',
@@ -945,7 +1025,7 @@ function SidebarNavGroup({
             onClose={onClose}
             favorites={favorites}
             onToggleFavorite={onToggleFavorite}
-            showFavorite={group.key !== "crm"}
+            showFavorite={!["crm", "meta-omnichannel"].includes(group.key)}
             nested={!collapsed}
             iconColor={getIconColor ? getIconColor(item.name) : 'text-gray-400'}
             groupKey={group.key}
@@ -988,8 +1068,13 @@ function SidebarNavItem({
       >
         <item.icon className={`h-4 w-4 flex-shrink-0 transition-colors duration-200 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-primary-400" : iconColor} group-hover:scale-110`} />
         <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.name}</span>
+        {item.badge && !collapsed ? (
+          <span className="ml-2 shrink-0 whitespace-nowrap rounded-full border border-sky-400/30 bg-sky-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.04em] text-sky-300">
+            {item.badge}
+          </span>
+        ) : null}
         {isActive && !collapsed ? (
-          <span className="ml-auto flex items-center gap-1">
+          <span className={`${item.badge ? "ml-2" : "ml-auto"} flex items-center gap-1`}>
             <span className="h-1.5 w-1.5 rounded-full bg-primary-400 shadow-lg shadow-primary-400/50 animate-pulse"></span>
           </span>
         ) : null}

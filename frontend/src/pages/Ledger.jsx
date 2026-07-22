@@ -362,7 +362,7 @@ const Ledger = () => {
   if (loading && !ledgerData) {
     return (
       <div className="space-y-6 p-4 md:p-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 p-6 text-white shadow-xl md:p-8">
           <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
           <div className="relative z-10">
@@ -390,7 +390,7 @@ const Ledger = () => {
   if (loadError && !ledgerData) {
     return (
       <div className="space-y-6 p-4 md:p-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 p-6 text-white shadow-xl md:p-8">
           <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
           <div className="relative z-10">
@@ -426,7 +426,7 @@ const Ledger = () => {
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 p-6 text-white shadow-xl md:p-8">
         {/* Decorative blur circles */}
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
@@ -537,11 +537,11 @@ const Ledger = () => {
                 onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
               >
-                <option value="">All Status</option>
-                <option value="draft">Draft</option>
-                <option value="sent">Sent</option>
-                <option value="paid">Paid</option>
-                <option value="cancelled">Cancelled</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Status</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="draft">Draft</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="sent">Sent</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="paid">Paid</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="cancelled">Cancelled</option>
               </select>
             </div>
             <div className="flex items-end gap-2">
