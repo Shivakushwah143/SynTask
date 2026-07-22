@@ -582,6 +582,13 @@ const Sidebar = ({ isOpen, onClose }) => {
         .filter(Boolean),
     },
     {
+      key: "client-management",
+      label: "Client Management",
+      items: ["Clients"]
+        .map((name) => itemByName[name])
+        .filter(Boolean),
+    },
+    {
       key: "people",
       label: "People & Activity",
       items: ["My Team", "Users", "Departments", "Attendance", "Live Attendance", "Attendance Reports"]
@@ -730,6 +737,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     const groupColors = {
       'operations': 'text-cyan-400',
       'delivery': 'text-indigo-400',
+      'client-management': 'text-blue-400',
       'people': 'text-orange-400',
       'communication': 'text-pink-400',
       'crm': 'text-blue-400',
@@ -974,6 +982,7 @@ function SidebarNavGroup({
     const dotColors = {
       'operations': 'bg-cyan-400',
       'delivery': 'bg-indigo-400',
+      'client-management': 'bg-blue-400',
       'people': 'bg-orange-400',
       'communication': 'bg-pink-400',
       'crm': 'bg-blue-400',
