@@ -20,28 +20,9 @@ export const CRM_NAV_ITEMS = [
   { key: 'settings', label: 'Settings', path: '/crm/settings', status: 'planned', icon: Settings },
 ]
 
-export const CRM_ROUTE_LABELS = {
-  '/crm': 'CRM',
-  '/crm/pipeline': 'Pipeline',
-  '/crm/leads': 'Leads',
-  '/crm/companies': 'Companies',
-  '/crm/contacts': 'Contacts',
-  '/crm/activities': 'Activities',
-  '/crm/calendar': 'Calendar',
-  '/crm/reports': 'Reports',
-  '/crm/settings': 'Settings',
-}
+export const CRM_ROUTE_LABELS = {}
 
-export const CRM_ROUTE_DESCRIPTIONS = {
-  '/crm/pipeline': 'Production-ready CRM pipeline board powered by live sales data.',
-  '/crm/leads': 'Lead workspace for selected pipeline records.',
-  '/crm/companies': 'Company workspace for account management and related contacts.',
-  '/crm/contacts': 'Contact directory for CRM relationships.',
-  '/crm/activities': 'CRM activities hub for calls, meetings, tasks and follow-ups.',
-  '/crm/calendar': 'Calendar workspace placeholder for meetings and scheduling.',
-  '/crm/reports': 'Report workspace placeholder for later analytics.',
-  '/crm/settings': 'CRM settings placeholder for workspace configuration.',
-}
+export const CRM_ROUTE_DESCRIPTIONS = {}
 
 export const CRM_ROUTE_ICONS = {
   '/crm/pipeline': TrendingUp,

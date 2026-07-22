@@ -571,10 +571,10 @@ const Clients = () => {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="input"
         >
-          <option value="">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="archived">Archived</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Status</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="active">Active</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="inactive">Inactive</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="archived">Archived</option>
         </select>
       </div>
 

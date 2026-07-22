@@ -131,25 +131,25 @@ export default function SalesPipeline() {
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Stage</span>
           <select className={inputClassName} value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}>
-            <option value="">All stages</option>
-            {stageOptions.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All stages</option>
+            {stageOptions.map((stage) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={stage.id} value={stage.id}>{stage.name}</option>)}
           </select>
         </label>
         <label className="block">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Priority</span>
           <select className={inputClassName} value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
-            <option value="">All priorities</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All priorities</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
           </select>
         </label>
         <label className="block lg:col-span-2">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Owner</span>
           <select className={inputClassName} value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)}>
-            <option value="">All owners</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All owners</option>
             {users.map((user) => (
-              <option key={getId(user)} value={getId(user)}>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={getId(user)} value={getId(user)}>
                 {user.first_name} {user.last_name}
               </option>
             ))}

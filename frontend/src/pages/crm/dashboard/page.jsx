@@ -141,7 +141,7 @@ export default function CRMDashboardPage() {
 
   return (
     <CRMPage>
-      <section className="relative mb-8 overflow-hidden rounded-[28px] border border-primary-200/70 bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 p-6 text-white shadow-[0_18px_60px_rgba(15,23,42,0.06)] md:p-8">
+      <section className="relative mb-8 overflow-hidden rounded-[28px] border border-primary-200/70 bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 p-6 text-white shadow-[0_18px_60px_rgba(15,23,42,0.06)] md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
         <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

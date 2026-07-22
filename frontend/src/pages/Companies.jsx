@@ -509,10 +509,10 @@ const Companies = () => {
                 <div className="relative">
                   <CreditCard className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
                   <select name="subscription_plan" className={`${inputClassName} pl-11`}>
-                    <option value="free">Free</option>
-                    <option value="basic">Basic</option>
-                    <option value="professional">Professional</option>
-                    <option value="enterprise">Enterprise</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="free">Free</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="basic">Basic</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="professional">Professional</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="enterprise">Enterprise</option>
                   </select>
                 </div>
               </FormField>

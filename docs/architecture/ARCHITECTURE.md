@@ -68,7 +68,13 @@ sequenceDiagram
 Access tokens expire according to `ACCESS_TOKEN_EXPIRE_MINUTES`; refresh tokens use `REFRESH_TOKEN_EXPIRE_DAYS`. Logout blacklists the access token and an optional refresh token in Redis.
 
 ## Module Access Control
+<<<<<<< HEAD
 Users have a `modules: List[str]` field such as `["task"]` or `["task", "sales"]`. The `require_module("task")` dependency gates most task-management route groups in `backend/app/api/v1/router.py`. Chat route groups accept `chat`, `task`, or `tasks_projects` module access because chat is global workspace communication; endpoint logic still enforces same-company participants and group membership. Sales endpoints perform endpoint-level authorization.
+=======
+Users have a `modules: List[str]` field. Canonical module IDs are `tasks_projects`, `tickets`, `chat`, `meetings_calendar`, `invoicing_ledger`, `sales_crm`, `attendance_leaves`, `recruitment`, `reports`, and `ai_agents`. Backend `require_module(...)` dependencies gate protected route groups; the legacy `task` ID remains compatible with `tasks_projects`.
+
+The local `admin@demo.com` fixture receives every canonical module when `backend/create_demo_admin.py` creates or updates it. This is development-only fixture access and does not bypass role, tenant, hierarchy, ownership, or resource authorization. Existing sessions must sign in again after the fixture is updated so client auth state reflects the new module list.
+>>>>>>> 027439c7720c0fda09fadcd5e3d4230db711fd26
 
 ## Key Design Patterns
 ### Beanie ODM

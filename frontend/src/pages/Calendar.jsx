@@ -214,22 +214,22 @@ export default function Calendar() {
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Project</span>
             <CreatableSelectField value={projectId} onChange={setProjectId} className="input" createLabel="Create project" onCreate={() => setShowQuickProjectModal(true)}>
-              <option value="">All projects</option>
-              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All projects</option>
+              {projects.map((project) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={project.id} value={project.id}>{project.name}</option>)}
             </CreatableSelectField>
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Status</span>
             <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="">All statuses</option>
-              {['draft', 'planned', 'shoot_scheduled', 'shot', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published'].map((status) => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All statuses</option>
+              {['draft', 'planned', 'shoot_scheduled', 'shot', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published'].map((status) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
             </select>
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Type</span>
             <select className="input" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-              <option value="">All types</option>
-              {Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
+              {Object.entries(TYPE_LABELS).map(([value, label]) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={value} value={value}>{label}</option>)}
             </select>
           </label>
         </div>
