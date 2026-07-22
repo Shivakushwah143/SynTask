@@ -42,6 +42,7 @@ import {
   UserCheck,
   UserCog,
   UserRoundSearch,
+  Globe,
   X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
@@ -437,6 +438,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
       module: "task",
     },
+    {
+      name: "Google Workspace",
+      href: "/google-workspace",
+      icon: Globe,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      module: "task",
+    },
   ];
 
   const filteredNavigation = navigation.filter(
@@ -598,7 +606,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       key: "communication",
       label: "Communication",
-      items: ["Notifications", "Timeline", "Leaves", "Daily EOD"]
+      items: ["Notifications", "Timeline", "Leaves", "Daily EOD", "Google Workspace"]
         .map((name) => itemByName[name])
         .filter(Boolean),
     },
@@ -725,6 +733,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       'Company Directory': 'text-blue-400',
       'Audit Log': 'text-orange-400',
       'Settings': 'text-gray-400',
+      'Google Workspace': 'text-blue-400',
       
       // Default
       'default': 'text-gray-400'

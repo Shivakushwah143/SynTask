@@ -8,6 +8,7 @@ flowchart TD
   A --> C[/reports]
   A --> D[/activity]
   A --> E[/calendar]
+  A --> E1[/google-workspace]
   A --> F[/timesheet]
   A --> G[/time-tracking]
   A --> H[/msa]
@@ -75,6 +76,15 @@ flowchart TD
 - Timeline events created: none directly.
 - Notifications sent: none directly.
 - Related modules updated: Meetings, Tasks, CRM Activities.
+
+## Google Workspace
+- How the user reaches it: the new Google Workspace main navigation item or route `/google-workspace`.
+- What they can do: review the connected Google account, browse Gmail folders, send mail, save drafts, manage Calendar views and events, create Meet links, and inspect connection diagnostics.
+- What happens after every action: the active tab updates inside the native SynTask workspace and refetches the relevant Google Workspace data without a full page reload.
+- Backend APIs called: Google Workspace dashboard, Gmail, Calendar, Meet, settings, and diagnostics endpoints.
+- Timeline events created: task sync and event sync actions may create SynTask task or calendar records.
+- Notifications sent: email and meeting actions may trigger SynTask notifications or activity records.
+- Related modules updated: Tasks, Calendar, Meetings, Notifications.
 
 ## Timesheet and Time Tracking
 - How the user reaches it: main navigation or task flows.

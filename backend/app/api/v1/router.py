@@ -33,6 +33,7 @@ from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmi
 from app.api.dependencies import require_module
 from app.recruitment.routes import careers_router, router as recruitment_router
 from app.integrations.meta import api as meta_integration
+from app.integrations.google_workspace import router as google_workspace_router
 
 api_router = APIRouter()
 
@@ -141,6 +142,7 @@ api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"], depen
 api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"], dependencies=[Depends(require_module("recruitment"))])
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 api_router.include_router(meta_integration.router, prefix="/integrations/meta", tags=["Meta Integration"])
+api_router.include_router(google_workspace_router, prefix="/google-workspace", tags=["Google Workspace"])
 
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])

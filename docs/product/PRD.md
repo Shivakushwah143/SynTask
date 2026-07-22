@@ -139,6 +139,7 @@ Global time acceptance: browser timezone is detected on first login when no pref
 | Company-specific Email Draft Agent | Proposed | Authorized users generate drafts using approved company/project/client context; sending always requires approval. |
 | Transactional Email | Partially Existing / Proposed expansion | Account, verification and meeting lifecycle emails with idempotency, secure tokens and audit. |
 | Automated Notifications | Partially Existing / Proposed expansion | Event-driven, scheduled and reconciliation jobs for due dates, priorities and escalations. |
+| Google Workspace Module | Existing / Expanded | Native SynTask workspace for connected Gmail, Calendar, Meet, Drive-linked files, settings, and task/calendar syncing using the existing Google OAuth identity flow. |
 | Microsoft 365 Integration | Proposed | OAuth, Outlook send/read with consent, calendar sync, connection health, and later Teams/OneDrive/SharePoint. |
 
 Out of scope: autonomous email sending from AI generation alone, cross-tenant or unrelated-project agent access, broad Microsoft tenant or mailbox access without feature justification, hidden surveillance metrics, private-message analysis, autonomous HR outcomes, and automatic provider fallback for management analysis before evaluation.
@@ -184,6 +185,7 @@ Hierarchy: Company/Tenant -> Project -> Project Agent -> Task -> Task-Specific S
 - Ticket/chat/meeting visibility is participant, team and tenant scoped.
 - Meeting creation shows searchable selectable junior participants by creator role, stores participant IDs internally, rejects durations outside 1-60 minutes, and limits ordinary meeting visibility to hosts and invited participants.
 - Meeting records support host/admin update, reschedule, start, complete, cancel, and delete actions with meeting domain events.
+- Google Workspace pages reuse the authenticated Google account to show account state, Gmail activity, Calendar events, Meet links, Drive-linked files, and connection diagnostics without introducing a second login system.
 - Reminder engine creates company-scoped notifications for assigned task deadlines and assigned content due dates at 3 days, 2 days, tomorrow, today, and daily overdue intervals until completion/submission.
 - Authenticated workspace pages poll for due-tomorrow and due-today task/content reminders, perform duplicate-safe reminder catch-up, and show a sound-backed in-app popup with a cancel/dismiss control; overdue reminders remain in the notification panel.
 - Workspace Calendar and Content Calendar render backend-provided due tones: assigned blue, within 3 days yellow, tomorrow orange, today red, and overdue dark red.
