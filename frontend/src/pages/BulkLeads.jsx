@@ -374,10 +374,10 @@ export default function BulkLeads() {
                           onChange={(event) => setStrategy(event.target.value)} 
                           disabled={Boolean(departmentId)}
                         >
-                          <option value="round-robin">Round robin</option>
-                          <option value="evenly">Evenly</option>
-                          <option value="least-loaded">Least loaded</option>
-                          <option value="manual">Manual</option>
+                          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="round-robin">Round robin</option>
+                          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="evenly">Evenly</option>
+                          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="least-loaded">Least loaded</option>
+                          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="manual">Manual</option>
                         </select>
                       </FormField>
                       <FormField label="Department">
@@ -386,9 +386,9 @@ export default function BulkLeads() {
                           value={departmentId} 
                           onChange={(event) => setDepartmentId(event.target.value)}
                         >
-                          <option value="">All departments</option>
+                          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All departments</option>
                           {departments.map((department) => (
-                            <option key={getId(department)} value={getId(department)}>{department.name}</option>
+                            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={getId(department)} value={getId(department)}>{department.name}</option>
                           ))}
                         </select>
                       </FormField>

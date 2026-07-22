@@ -679,19 +679,19 @@ export default function ProjectBoard() {
           {showFilters ? (
             <div className="grid gap-3 md:grid-cols-3 lg:flex-1">
               <select className={inputClassName} value={filters.priority} onChange={(event) => setFilters((state) => ({ ...state, priority: event.target.value }))}>
-                <option value="">All priorities</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All priorities</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="critical">Critical</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
               </select>
               <select className={inputClassName} value={filters.assignee} onChange={(event) => setFilters((state) => ({ ...state, assignee: event.target.value }))}>
-                <option value="">All assignees</option>
-                {assignableUsers.map((userItem) => <option key={userItem.id} value={userItem.id}>{userItem.first_name} {userItem.last_name}</option>)}
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All assignees</option>
+                {assignableUsers.map((userItem) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={userItem.id} value={userItem.id}>{userItem.first_name} {userItem.last_name}</option>)}
               </select>
               <select className={inputClassName} value={filters.label} onChange={(event) => setFilters((state) => ({ ...state, label: event.target.value }))}>
-                <option value="">All labels</option>
-                {availableLabels.map((label) => <option key={label} value={label}>{label}</option>)}
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All labels</option>
+                {availableLabels.map((label) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={label} value={label}>{label}</option>)}
               </select>
             </div>
           ) : null}

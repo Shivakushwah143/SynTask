@@ -412,16 +412,16 @@ export default function Leaves() {
                   value={filters.status} 
                   onChange={(event) => setFilters({ ...filters, status: event.target.value })}
                 >
-                  <option value="">All status</option>
-                  {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All status</option>
+                  {STATUS_OPTIONS.map((status) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status}</option>)}
                 </select>
                 <select 
                   className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
                   value={filters.leave_type} 
                   onChange={(event) => setFilters({ ...filters, leave_type: event.target.value })}
                 >
-                  <option value="">All types</option>
-                  {LEAVE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
+                  {LEAVE_TYPES.map(([value, label]) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={value} value={value}>{label}</option>)}
                 </select>
                 {canManage ? (
                   <select 
@@ -429,8 +429,8 @@ export default function Leaves() {
                     value={filters.employee_id} 
                     onChange={(event) => setFilters({ ...filters, employee_id: event.target.value })}
                   >
-                    <option value="">All employees</option>
-                    {users.map((item) => <option key={item.id} value={item.id}>{`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}</option>)}
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All employees</option>
+                    {users.map((item) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item.id} value={item.id}>{`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}</option>)}
                   </select>
                 ) : null}
                 <input 

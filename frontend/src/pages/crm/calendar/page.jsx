@@ -366,8 +366,8 @@ export default function CRMCalendarPage() {
                 onChange={(event) => setActivityType(event.target.value)} 
                 aria-label="Filter by activity type"
               >
-                <option value="">All types</option>
-                {Object.entries(ACTIVITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
+                {Object.entries(ACTIVITY_LABELS).map(([value, label]) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={value} value={value}>{label}</option>)}
               </select>
             </label>
             <label className="block">
@@ -378,8 +378,8 @@ export default function CRMCalendarPage() {
                 onChange={(event) => setOwner(event.target.value)} 
                 aria-label="Filter by owner"
               >
-                <option value="">All owners</option>
-                {ownerOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All owners</option>
+                {ownerOptions.map((option) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             <div className="flex flex-wrap items-end gap-2">

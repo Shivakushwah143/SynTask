@@ -619,13 +619,13 @@ export default function AIHub() {
                 <FormField label="Insight Type">
                   <select className={inputClassName} value={taskPerformanceForm.insight_type} onChange={(event) => updateTaskPerformanceForm('insight_type', event.target.value)}>
                     {['team_summary', 'department_summary', 'project_summary', 'individual_summary', 'completion_trends', 'overdue_trends', 'workload_distribution', 'estimate_variance', 'data_quality'].map((item) => (
-                      <option key={item} value={item}>{item.replaceAll('_', ' ')}</option>
+                      <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item} value={item}>{item.replaceAll('_', ' ')}</option>
                     ))}
                   </select>
                 </FormField>
                 <FormField label="Detail Level">
                   <select className={inputClassName} value={taskPerformanceForm.detail_level} onChange={(event) => updateTaskPerformanceForm('detail_level', event.target.value)}>
-                    {['concise', 'standard', 'detailed'].map((item) => <option key={item} value={item}>{item}</option>)}
+                    {['concise', 'standard', 'detailed'].map((item) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item} value={item}>{item}</option>)}
                   </select>
                 </FormField>
                 <FormField label="Start Date">

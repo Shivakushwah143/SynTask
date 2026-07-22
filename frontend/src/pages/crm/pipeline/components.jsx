@@ -108,9 +108,9 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               onChange={(event) => onChange({ owner: event.target.value })}
               aria-label="Filter by owner"
             >
-              <option value="">Owner: All</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Owner: All</option>
               {ownerOptions.map((option) => (
-                <option key={option.value} value={option.value}>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
@@ -124,11 +124,11 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
               onChange={(event) => onChange({ priority: event.target.value })}
               aria-label="Filter by priority"
             >
-              <option value="">Priority: All</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Priority: All</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="critical">Critical</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
             </select>
           </label>
           <label className="block min-w-0">

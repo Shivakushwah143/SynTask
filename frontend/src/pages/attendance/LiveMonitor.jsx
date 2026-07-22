@@ -356,10 +356,10 @@ const LiveMonitor = () => {
                 onChange={e => setStatusFilter(e.target.value)}
                 disabled={loading}
               >
-                <option value="All">All Statuses</option>
-                <option value="Working">Working</option>
-                <option value="On Break">On Break</option>
-                <option value="Offline">Offline</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="All">All Statuses</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="Working">Working</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="On Break">On Break</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="Offline">Offline</option>
               </select>
             </div>
           </div>

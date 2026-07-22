@@ -1089,10 +1089,10 @@ const Tickets = () => {
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
                   <select name="type" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-                    <option value="support">Support</option>
-                    <option value="feature_request">Feature Request</option>
-                    <option value="query">Query</option>
-                    <option value="complaint">Complaint</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="support">Support</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="feature_request">Feature Request</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="query">Query</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="complaint">Complaint</option>
                   </select>
                 </div>
                 <div>

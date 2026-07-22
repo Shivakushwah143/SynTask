@@ -537,11 +537,11 @@ const Ledger = () => {
                 onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
               >
-                <option value="">All Status</option>
-                <option value="draft">Draft</option>
-                <option value="sent">Sent</option>
-                <option value="paid">Paid</option>
-                <option value="cancelled">Cancelled</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Status</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="draft">Draft</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="sent">Sent</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="paid">Paid</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="cancelled">Cancelled</option>
               </select>
             </div>
             <div className="flex items-end gap-2">

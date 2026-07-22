@@ -202,7 +202,7 @@ const Timeline = () => {
                   className="rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/50"
                 >
                   {teamMembers.map((member) => (
-                    <option key={member.id} value={member.id} className="text-gray-900">
+                    <option key={member.id} value={member.id} className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white">
                       {`${member.first_name || ''} ${member.last_name || ''}`.trim() || member.email}
                     </option>
                   ))}
@@ -281,16 +281,16 @@ const Timeline = () => {
               value={filters.event_type}
               onChange={(event) => setFilters((current) => ({ ...current, event_type: event.target.value }))}
             >
-              <option value="">All event types</option>
-              {EVENT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All event types</option>
+              {EVENT_OPTIONS.map(([value, label]) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={value} value={value}>{label}</option>)}
             </select>
             <select
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               value={filters.related_module}
               onChange={(event) => setFilters((current) => ({ ...current, related_module: event.target.value }))}
             >
-              <option value="">All modules</option>
-              {MODULE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All modules</option>
+              {MODULE_OPTIONS.map(([value, label]) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={value} value={value}>{label}</option>)}
             </select>
             <input
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"

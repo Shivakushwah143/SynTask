@@ -486,9 +486,9 @@ export default function CreativeDirector() {
                   onChange={(event) => setSelectedProjectId(event.target.value)} 
                   className={inputClassName}
                 >
-                  <option value="">Select a project</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Select a project</option>
                   {projects.map((project) => (
-                    <option key={project.id} value={project.id}>{project.name}</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={project.id} value={project.id}>{project.name}</option>
                   ))}
                 </select>
               </Field>
@@ -498,9 +498,9 @@ export default function CreativeDirector() {
                   onChange={(event) => setSelectedFileId(event.target.value)} 
                   className={inputClassName}
                 >
-                  <option value="">Select an asset</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Select an asset</option>
                   {files.map((file) => (
-                    <option key={file.id} value={file.id}>{file.name || file.original_name}</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={file.id} value={file.id}>{file.name || file.original_name}</option>
                   ))}
                 </select>
               </Field>

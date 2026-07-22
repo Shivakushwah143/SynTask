@@ -1074,7 +1074,7 @@ const TaskDetail = () => {
                   }`}
                 >
                   {Object.entries(statuses).map(([key, status]) => (
-                    <option key={key} value={key}>{status.label}</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={key} value={key}>{status.label}</option>
                   ))}
                 </select>
               </div>
