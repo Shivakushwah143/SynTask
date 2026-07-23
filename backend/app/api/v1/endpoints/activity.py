@@ -10,6 +10,7 @@ from app.models.task import Task, TaskComment
 from app.models.ticket import Ticket, TicketComment
 from app.api.dependencies import get_current_user, check_company_access
 from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ async def get_activity_timeline(
 ):
     """Get activity timeline for user's company"""
     skip, limit = pagination.skip, pagination.limit
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = utc_now() - timedelta(days=days)
     activities = []
     
     # Get task activities

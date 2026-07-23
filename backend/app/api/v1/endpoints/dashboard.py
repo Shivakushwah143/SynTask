@@ -16,6 +16,7 @@ from app.api.dependencies import get_current_user, get_current_super_admin
 from app.core.cache import cache_get, cache_set, dashboard_cache_key
 from app.services.crm_dashboard_service import build_sales_analytics_summary, build_sales_dashboard_summary
 from app.services.dashboard_service import build_manager_dashboard_metrics
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -128,7 +129,7 @@ async def _build_report_totals(base_query: dict, now: datetime) -> dict:
 
 
 async def _build_company_dashboard_metrics(current_user: User) -> dict:
-    now = datetime.now()
+    now = utc_now()
     base_query = {"company_id": current_user.company_id} if current_user.company_id else {}
     sales_summary = await build_sales_dashboard_summary(current_user)
     sales_analytics = await build_sales_analytics_summary(current_user)
@@ -259,7 +260,7 @@ async def get_dashboard_metrics(
         "qualified_leads": 0,
         "active_deals": await Ticket.find({**base_query, "assigned_to": str(current_user.id)}).count(),
         "projects": await Project.find(base_query).count() if base_query else 0,
-        "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": datetime.now()}}).count(),
+        "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": utc_now()}}).count(),
         "tasks_due_today": await Task.find({**base_query, "assigned_to": str(current_user.id)}).count(),
     }
     await cache_set(cache_key, data, ttl=120)

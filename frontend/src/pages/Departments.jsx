@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { Button, ConfirmDialog, EmptyState, FormField, Modal, Table, inputClassName } from '../components/ui'
 import { hasCompanyAdminAccess, getRoleLabel } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 import { notifyDepartmentsChanged } from '../api/departments'
 
 const emptyForm = {
@@ -288,7 +289,7 @@ const Departments = () => {
     {
       key: 'created_at',
       header: 'Created Date',
-      render: (row) => format(new Date(row.created_at), 'MMM d, yyyy'),
+      render: (row) => format(timeService.instant(row.created_at), 'MMM d, yyyy'),
     },
     {
       key: 'actions',
@@ -335,7 +336,7 @@ const Departments = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-600 via-indigo-600 to-blue-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">

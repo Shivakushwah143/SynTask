@@ -1,5 +1,6 @@
 import api from './axios'
 import { crmApi } from './crm'
+import { timeService } from '@/services/timeService'
 
 const toFormData = (data) => {
   const formData = new FormData()
@@ -12,7 +13,7 @@ const toFormData = (data) => {
 
 const toProspectFormData = (data) => {
   const formData = toFormData(data)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = timeService.toUtcISOString(timeService.now()).slice(0, 10)
   const defaults = {
     category_id: ' ',
     product_ids: ' ',

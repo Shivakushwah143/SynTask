@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { CalendarClock, Clock, Globe, FileText, X } from 'lucide-react'
 import { Modal } from './ui'
 import { Button } from './ui'
+import { timeService } from '@/services/timeService'
 
 const COMMON_TIMEZONES = [
   { value: 'UTC', label: 'UTC (Coordinated Universal Time)' },
@@ -20,26 +21,12 @@ const COMMON_TIMEZONES = [
 ]
 
 function getLocalTimezone() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone
-  } catch {
-    return 'UTC'
-  }
+  return timeService.getTimezone()
 }
 
 function toLocalDateTimeInput(tz) {
   try {
-    const now = new Date()
-    const parts = new Intl.DateTimeFormat('sv-SE', {
-      timeZone: tz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).formatToParts(now)
-    const get = (type) => parts.find((p) => p.type === type)?.value ?? ''
-    return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`
+    return timeService.toZonedDateTimeInput(timeService.now(), { ...timeService.settings(), timezone: tz })
   } catch {
     return ''
   }
@@ -91,27 +78,15 @@ export default function ScheduleDialog({
       return
     }
 
-    // Convert local datetime + timezone to UTC
     let runAt
     try {
-      // Parse the local datetime in the chosen timezone
-      const [datePart, timePart] = dateTimeValue.split('T')
-      const [year, month, day] = datePart.split('-').map(Number)
-      const [hour, minute] = (timePart || '00:00').split(':').map(Number)
-
-      // Use Intl to compute offset
-      const testDate = new Date(year, month - 1, day, hour, minute)
-      const tzDate = new Date(
-        testDate.toLocaleString('en-US', { timeZone: timezone })
-      )
-      const offset = testDate - tzDate
-      runAt = new Date(testDate.getTime() + offset)
+      runAt = timeService.parseZonedInput(dateTimeValue, { ...timeService.settings(), timezone })
     } catch {
       setError('Invalid date/time. Please check your selection.')
       return
     }
 
-    if (runAt <= new Date()) {
+    if (runAt <= timeService.now()) {
       setError('Execution time must be in the future.')
       return
     }

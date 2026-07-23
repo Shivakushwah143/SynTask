@@ -50,6 +50,7 @@ from app.recruitment.schemas import (ApplicationApplyRequest,
                                      JobUpdate,
                                      ResumeUploadResponse)
 from app.services.file_service import FileService
+from app.core.clock import utc_now
 
 
 TRANSITIONS = {
@@ -125,7 +126,7 @@ class RecruitmentService:
         if target not in TRANSITIONS.get(candidate.status, set()):
             raise HTTPException(status_code=409, detail=f"Invalid candidate transition: {candidate.status.value} -> {target.value}")
         old = candidate.status
-        candidate.status, candidate.updated_at = target, datetime.now()
+        candidate.status, candidate.updated_at = target, utc_now()
         await candidate.save()
         await record(candidate.company_id, "CandidateMoved", actor_id, candidate_id=str(candidate.id), payload={"from": old.value, "to": target.value})
         return candidate
@@ -145,7 +146,7 @@ class RecruitmentService:
         names = candidate.full_name.strip().split(maxsplit=1)
         employee = User(email=candidate.email, password_hash=get_password_hash(secrets.token_urlsafe(24)), first_name=names[0], last_name=names[1] if len(names) > 1 else "", role=UserRole.EMPLOYEE, status=UserStatus.PENDING, modules=["task"], company_id=candidate.company_id, department_id=payload.department_id, reports_to=payload.reports_to, created_by=actor_id)
         await employee.insert()
-        candidate.status, candidate.employee_id, candidate.updated_at = CandidateStatus.EMPLOYEE, str(employee.id), datetime.now()
+        candidate.status, candidate.employee_id, candidate.updated_at = CandidateStatus.EMPLOYEE, str(employee.id), utc_now()
         await candidate.save()
         await record(candidate.company_id, "CandidateConverted", actor_id, candidate_id=str(candidate.id), payload={"employee_id": str(employee.id), "designation": payload.designation})
         return employee
@@ -192,7 +193,7 @@ class JobService:
         for key, value in changes.items():
             setattr(job, key, value)
 
-        job.updated_at = datetime.now()
+        job.updated_at = utc_now()
         await job.save()
 
         # Publish domain event
@@ -262,7 +263,7 @@ class JobService:
         # Update status
         job.previous_status = current_status
         job.lifecycle_status = target_status
-        job.updated_at = datetime.now()
+        job.updated_at = utc_now()
         await job.save()
 
         # Map to legacy status for backward compatibility
@@ -307,7 +308,7 @@ class JobService:
         if job.lifecycle_status == JobLifecycleStatus.ARCHIVED:
             if job.status != JobStatus.ARCHIVED:
                 job.status = JobStatus.ARCHIVED
-                job.updated_at = datetime.now()
+                job.updated_at = utc_now()
                 await job.save()
             return job
         return await JobService.transition_job(job, JobLifecycleStatus.ARCHIVED, actor_id)
@@ -387,7 +388,7 @@ class TrackingCodeService:
     @staticmethod
     async def generate_tracking_code(company_id: str) -> str:
         """Generate immutable tracking code like APP-2026-000001."""
-        year = datetime.now().year
+        year = utc_now().year
         prefix = f"APP-{year}-"
         count = await Application.find({"company_id": company_id, "tracking_code": {"$regex": f"^{prefix}"}}).count()
         for offset in range(1, 100):
@@ -641,7 +642,7 @@ class JobDiscoveryService:
             "apply_available": (
                 job.lifecycle_status == JobLifecycleStatus.PUBLISHED
                 and job.deleted_at is None
-                and (job.application_deadline is None or job.application_deadline >= datetime.now())
+                and (job.application_deadline is None or job.application_deadline >= utc_now())
             ),
             "created_at": job.created_at,
         }
@@ -666,7 +667,7 @@ class JobDiscoveryService:
             errors.append("Job is not currently accepting applications")
 
         # Check deadline
-        if job.application_deadline and job.application_deadline < datetime.now():
+        if job.application_deadline and job.application_deadline < utc_now():
             errors.append("Application deadline has passed")
 
         # Check if archived
@@ -985,7 +986,7 @@ class RecruitmentInboxService:
         import_job.status = ImportStatus.PROCESSING
         import_job.attempts += 1
         import_job.error = None
-        import_job.updated_at = datetime.now()
+        import_job.updated_at = utc_now()
         await import_job.save()
 
         try:
@@ -1071,8 +1072,8 @@ class RecruitmentInboxService:
             import_job.rejected_count = rejected_count
             import_job.result = {**import_job.result, "items": result_items}
             import_job.status = ImportStatus.IMPORTED if imported_count else ImportStatus.DUPLICATE if duplicate_count else ImportStatus.FAILED
-            import_job.processed_at = datetime.now()
-            import_job.updated_at = datetime.now()
+            import_job.processed_at = utc_now()
+            import_job.updated_at = utc_now()
             await import_job.save()
             if import_job.status == ImportStatus.FAILED:
                 await record(company_id, "ImportFailed", None, job_id=str(job.id), payload={"import_id": import_id, "items": result_items})
@@ -1080,8 +1081,8 @@ class RecruitmentInboxService:
         except Exception as exc:
             import_job.status = ImportStatus.FAILED
             import_job.error = str(getattr(exc, "detail", exc))
-            import_job.updated_at = datetime.now()
-            import_job.processed_at = datetime.now()
+            import_job.updated_at = utc_now()
+            import_job.processed_at = utc_now()
             await import_job.save()
             await record(company_id, "ImportFailed", None, job_id=import_job.job_id, payload={"import_id": import_id, "error": import_job.error})
             return import_job
@@ -1092,7 +1093,7 @@ class RecruitmentInboxService:
         if import_job.status not in {ImportStatus.FAILED, ImportStatus.DUPLICATE, ImportStatus.PENDING}:
             raise HTTPException(status_code=409, detail="Only pending, duplicate or failed imports can be retried")
         import_job.status = ImportStatus.PENDING
-        import_job.updated_at = datetime.now()
+        import_job.updated_at = utc_now()
         await import_job.save()
         return await RecruitmentInboxService.process_import(company_id, import_id)
 
@@ -1100,9 +1101,9 @@ class RecruitmentInboxService:
     async def ignore_import(company_id: str, import_id: str, actor_id: str) -> RecruitmentImportJob:
         import_job = await RecruitmentInboxService.get_inbox_item(company_id, import_id)
         import_job.status = ImportStatus.IGNORED
-        import_job.ignored_at = datetime.now()
+        import_job.ignored_at = utc_now()
         import_job.ignored_by = actor_id
-        import_job.updated_at = datetime.now()
+        import_job.updated_at = utc_now()
         await import_job.save()
         return import_job
 
@@ -1115,7 +1116,7 @@ class RecruitmentInboxService:
         import_job.merged_into_candidate_id = candidate_id
         import_job.status = ImportStatus.DUPLICATE
         import_job.result = {**import_job.result, "merged_into_candidate_id": candidate_id}
-        import_job.updated_at = datetime.now()
+        import_job.updated_at = utc_now()
         await import_job.save()
         await record(company_id, "CandidateMatched", None, candidate_id=candidate_id, job_id=import_job.job_id, payload={"import_id": import_id, "merge": True})
         return import_job
@@ -1237,7 +1238,7 @@ class CandidateWorkspaceService:
         candidate = await CandidateWorkspaceService.get_candidate(company_id, candidate_id)
         for key, value in changes.items():
             setattr(candidate, key, value)
-        candidate.updated_at = datetime.now()
+        candidate.updated_at = utc_now()
         await candidate.save()
         await record(company_id, "CandidateUpdated", actor_id, candidate_id=candidate_id, payload=changes)
         return candidate
@@ -1245,9 +1246,9 @@ class CandidateWorkspaceService:
     @staticmethod
     async def archive_candidate(company_id: str, candidate_id: str, actor_id: str) -> Candidate:
         candidate = await CandidateWorkspaceService.get_candidate(company_id, candidate_id)
-        candidate.deleted_at = datetime.now()
+        candidate.deleted_at = utc_now()
         candidate.status = CandidateStatus.ARCHIVED
-        candidate.updated_at = datetime.now()
+        candidate.updated_at = utc_now()
         await candidate.save()
         await record(company_id, "CandidateArchived", actor_id, candidate_id=candidate_id)
         return candidate
@@ -1260,7 +1261,7 @@ class CandidateWorkspaceService:
         candidate.deleted_at = None
         if candidate.status == CandidateStatus.ARCHIVED:
             candidate.status = CandidateStatus.NEW
-        candidate.updated_at = datetime.now()
+        candidate.updated_at = utc_now()
         await candidate.save()
         await record(company_id, "CandidateRestored", actor_id, candidate_id=candidate_id)
         return candidate
@@ -1467,7 +1468,7 @@ class InterviewService:
             setattr(interview, key, value)
             if key == "schedule_at":
                 interview.scheduled_at = value
-        interview.updated_at = datetime.now()
+        interview.updated_at = utc_now()
         await interview.save()
         await record(company_id, "InterviewUpdated", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": interview_id, **changes})
         return interview
@@ -1485,7 +1486,7 @@ class InterviewService:
             interview.location = data.location
         interview.decision = InterviewDecision.RESCHEDULED
         interview.status = InterviewLifecycleStatus.SCHEDULED
-        interview.updated_at = datetime.now()
+        interview.updated_at = utc_now()
         await interview.save()
         await record(company_id, "InterviewRescheduled", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": interview_id, "reason": data.reason, "schedule_at": data.schedule_at.isoformat()})
         return interview
@@ -1495,7 +1496,7 @@ class InterviewService:
         interview = await InterviewService.get_interview(company_id, interview_id)
         interview.decision = InterviewDecision.CANCELLED
         interview.cancelled_reason = data.reason
-        interview.updated_at = datetime.now()
+        interview.updated_at = utc_now()
         await interview.save()
         await record(company_id, "InterviewCancelled", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": interview_id, "reason": data.reason})
         return interview
@@ -1506,7 +1507,7 @@ class InterviewService:
         if interview.status not in {InterviewLifecycleStatus.SCHEDULED, InterviewLifecycleStatus.CONFIRMED}:
             raise HTTPException(status_code=409, detail="Interview cannot be started from current status")
         interview.status = InterviewLifecycleStatus.IN_PROGRESS
-        interview.updated_at = datetime.now()
+        interview.updated_at = utc_now()
         await interview.save()
         await record(company_id, "InterviewStarted", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": interview_id})
         return interview
@@ -1515,7 +1516,7 @@ class InterviewService:
     async def complete(company_id: str, interview_id: str, actor_id: str) -> Interview:
         interview = await InterviewService.get_interview(company_id, interview_id)
         interview.status = InterviewLifecycleStatus.COMPLETED
-        interview.updated_at = datetime.now()
+        interview.updated_at = utc_now()
         await interview.save()
         await record(company_id, "InterviewCompleted", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": interview_id})
         return interview
@@ -1534,8 +1535,8 @@ class InterviewFeedbackService:
             existing.score = data.score
             existing.strengths = data.strengths
             existing.concerns = data.concerns
-            existing.submitted_at = datetime.now()
-            existing.updated_at = datetime.now()
+            existing.submitted_at = utc_now()
+            existing.updated_at = utc_now()
             await existing.save()
         else:
             feedback = InterviewFeedback(
@@ -1548,13 +1549,13 @@ class InterviewFeedbackService:
                 score=data.score,
                 strengths=data.strengths,
                 concerns=data.concerns,
-                submitted_at=datetime.now(),
+                submitted_at=utc_now(),
             )
             await feedback.insert()
         interview.feedback = data.feedback
         interview.result = data.result or (data.decision.value if data.decision else None)
         interview.feedback_status = InterviewFeedbackStatus.SUBMITTED
-        interview.updated_at = datetime.now()
+        interview.updated_at = utc_now()
         await interview.save()
         await record(company_id, "InterviewFeedbackSubmitted", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": interview_id, "decision": data.decision.value if data.decision else None, "score": data.score})
         return interview
@@ -1567,7 +1568,7 @@ class InterviewDecisionService:
         interview.decision = data.decision
         interview.notes = data.notes or interview.notes
         interview.status = InterviewLifecycleStatus.COMPLETED if data.decision in {InterviewDecision.PASSED, InterviewDecision.FAILED, InterviewDecision.HOLD} else interview.status
-        interview.updated_at = datetime.now()
+        interview.updated_at = utc_now()
         await interview.save()
         await record(company_id, "InterviewDecisionRecorded", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": interview_id, "decision": data.decision.value, "notes": data.notes})
         return interview

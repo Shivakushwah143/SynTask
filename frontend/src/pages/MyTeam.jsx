@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { ROLE, normalizeRole } from '../utils/roles'
 import { PasswordInput, PhoneInput } from '../components/ui'
+import { timeService } from '@/services/timeService'
 
 const allowedTeamRoles = [ROLE.LEAD, ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN]
 
@@ -328,7 +329,7 @@ const MyTeam = () => {
                   )}
                   <div className="flex items-center text-sm text-gray-600">
                     <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                    Joined {format(new Date(member.created_at), 'MMM d, yyyy')}
+                    Joined {format(timeService.instant(member.created_at), 'MMM d, yyyy')}
                   </div>
                 </div>
 

@@ -21,6 +21,7 @@ import { timelineAPI } from '../api/timeline'
 import { usersAPI } from '../api/users'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole, isManagerRole } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 const EVENT_OPTIONS = [
   ['task_assigned', 'Task Assigned'],
@@ -127,8 +128,8 @@ const Timeline = () => {
         limit: 25,
         ...(filters.event_type ? { event_type: filters.event_type } : {}),
         ...(filters.related_module ? { related_module: filters.related_module } : {}),
-        ...(filters.start_date ? { start_date: new Date(filters.start_date).toISOString() } : {}),
-        ...(filters.end_date ? { end_date: new Date(`${filters.end_date}T23:59:59`).toISOString() } : {}),
+        ...(filters.start_date ? { start_date: timeService.toUtcISOString(filters.start_date) } : {}),
+        ...(filters.end_date ? { end_date: timeService.zonedInputToUtcISOString(`${filters.end_date}T23:59:59`) } : {}),
       }
       const data = await timelineAPI.getEmployeeTimeline(selectedUserId, params)
       setEvents((current) => (append ? [...current, ...(data.events || [])] : data.events || []))
@@ -180,7 +181,7 @@ const Timeline = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -202,7 +203,7 @@ const Timeline = () => {
                   className="rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/50"
                 >
                   {teamMembers.map((member) => (
-                    <option key={member.id} value={member.id} className="text-gray-900">
+                    <option key={member.id} value={member.id} className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white">
                       {`${member.first_name || ''} ${member.last_name || ''}`.trim() || member.email}
                     </option>
                   ))}
@@ -281,16 +282,16 @@ const Timeline = () => {
               value={filters.event_type}
               onChange={(event) => setFilters((current) => ({ ...current, event_type: event.target.value }))}
             >
-              <option value="">All event types</option>
-              {EVENT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All event types</option>
+              {EVENT_OPTIONS.map(([value, label]) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={value} value={value}>{label}</option>)}
             </select>
             <select
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               value={filters.related_module}
               onChange={(event) => setFilters((current) => ({ ...current, related_module: event.target.value }))}
             >
-              <option value="">All modules</option>
-              {MODULE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All modules</option>
+              {MODULE_OPTIONS.map(([value, label]) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={value} value={value}>{label}</option>)}
             </select>
             <input
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
@@ -390,7 +391,7 @@ const Timeline = () => {
 const TimelineItem = ({ event }) => {
   const meta = EVENT_META[event.event_type] || { icon: Clock3, tone: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200' }
   const Icon = meta.icon
-  const timestamp = new Date(event.timestamp)
+  const timestamp = timeService.instant(event.timestamp)
 
   const getModuleColor = (module) => {
     const colors = {

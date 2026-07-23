@@ -11,6 +11,7 @@ from app.models.content_calendar import ContentCalendarItem, ContentItemStatus
 from app.models.notification import Notification, NotificationType
 from app.models.task import Task, TaskStatus
 from app.models.user import User, UserStatus
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +62,14 @@ def _as_date(value: datetime | date) -> date:
 
 
 def calculate_remaining_days(due_date: datetime | date, now: Optional[datetime] = None) -> int:
-    today = (now or datetime.utcnow()).date()
+    today = (now or utc_now()).date()
     return (_as_date(due_date) - today).days
 
 
 def calendar_due_tone(due_date: datetime | date | None, today: Optional[date] = None) -> dict[str, str]:
     if not due_date:
         return REMINDER_COLORS["assigned"]
-    remaining_days = (_as_date(due_date) - (today or datetime.utcnow().date())).days
+    remaining_days = (_as_date(due_date) - (today or utc_now().date())).days
     if remaining_days < 0:
         return REMINDER_COLORS["overdue"]
     if remaining_days == 0:
@@ -95,7 +96,7 @@ class ReminderService:
         *,
         notification_repository=Notification,
         notification_factory=None,
-        now: Callable[[], datetime] = datetime.utcnow,
+        now: Callable[[], datetime] = utc_now,
     ) -> None:
         self.notification_repository = notification_repository
         self.notification_factory = notification_factory or (Notification if notification_repository is Notification else self._plain_notification)

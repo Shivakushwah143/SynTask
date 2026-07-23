@@ -3,12 +3,11 @@ JWT token blacklist using Redis.
 Revoked tokens are stored with TTL matching their remaining expiry.
 """
 import logging
-from datetime import datetime, timezone
-
 from jose import JWTError, jwt
 
 from app.core.config import settings
 from app.core.redis_client import get_redis
+from app.core.clock import clock_service
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,7 @@ async def blacklist_token(token: str) -> bool:
         if not exp:
             return False
 
-        ttl = int(exp - datetime.now(timezone.utc).timestamp())
+        ttl = int(exp - clock_service.aware_utc_now().timestamp())
         if ttl <= 0:
             return True
 

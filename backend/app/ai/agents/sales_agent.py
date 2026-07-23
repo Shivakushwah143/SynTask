@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException, status
 
 from app.ai.tools import ToolContext, ToolRegistry
 from app.models.user import User
+from app.core.clock import utc_now
 from app.schemas.ai import (
     AILeadIntelligenceResponse,
     AISalesAgentCRM,
@@ -83,7 +84,7 @@ def _meeting_recommended(intelligence: AILeadIntelligenceResponse) -> AISalesAge
 def _follow_up(lead_context: dict[str, Any], intelligence: AILeadIntelligenceResponse) -> AISalesAgentFollowUp:
     lead = lead_context.get("lead") or {}
     current_stage = _safe_str((lead_context.get("assignment_information") or {}).get("current_stage"))
-    recommended_date = (datetime.now(timezone.utc) + timedelta(days=2 if intelligence.priority == "high" else 4)).date().isoformat()
+    recommended_date = (utc_now() + timedelta(days=2 if intelligence.priority == "high" else 4)).date().isoformat()
     summary = (
         f"Follow up on {lead.get('prospect_name') or lead.get('id')} after {intelligence.recommended_pipeline_stage.lower()} "
         f"with a focus on {intelligence.recommended_next_action.lower()}."
@@ -248,7 +249,7 @@ class SalesAgent:
                         "lead_id": lead_id,
                         "title": f"Discovery meeting - {lead_name or company_name or lead_id}",
                         "description": intelligence.recommended_next_action,
-                        "meeting_date": (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat(),
+                        "meeting_date": (utc_now() + timedelta(days=2)).date().isoformat(),
                         "meeting_time": "10:00",
                         "duration": meeting.duration_minutes,
                     },
@@ -355,7 +356,7 @@ class SalesAgent:
             source="tool_layer",
             provider="deterministic",
             model="sales-agent-v1",
-            generated_at=datetime.now(timezone.utc),
+            generated_at=utc_now(),
             execution_mode=request.execution_mode,
             execution_status="sent" if delivery["sent"] else "generated",
             delivery=delivery,

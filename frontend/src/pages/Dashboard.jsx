@@ -1,7 +1,59 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, addDays } from 'date-fns'
-import { ArrowRight, Building2, CalendarDays, CheckSquare, FolderKanban, Sparkles, TrendingUp } from 'lucide-react'
+import { 
+  ArrowRight, 
+  Building2, 
+  CalendarDays, 
+  CheckSquare, 
+  FolderKanban, 
+  Sparkles, 
+  TrendingUp,
+  LayoutDashboard,
+  Users,
+  DollarSign,
+  Clock,
+  Calendar,
+  Zap,
+  Award,
+  Target,
+  Activity,
+  BarChart3,
+  PieChart,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Clock as ClockIcon,
+  User,
+  Briefcase,
+  FileText,
+  Mail,
+  Phone,
+  MapPin,
+  Star,
+  Crown,
+  Gem,
+  Rocket,
+  Infinity,
+  Database,
+  Layers,
+  ChevronDown,
+  ChevronRight,
+  Settings,
+  HelpCircle,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Plus,
+  Minus,
+  Copy,
+  Download,
+  Printer,
+  Filter,
+  Search,
+  Menu,
+  X
+} from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -38,7 +90,78 @@ import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
 import DonutLegendChart from '../components/charts/DonutLegendChart'
 import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthData, buildTaskDuePriorityData } from './dashboardData'
 import { DashboardSectionVisibilityPanel } from './DashboardSectionVisibilityPanelView.jsx'
+import { timeService } from '@/services/timeService'
 
+// ============================================================
+// STAT CARD COMPONENT
+// ============================================================
+const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+    teal: 'from-teal-500 to-cyan-500',
+  }
+
+  return (
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    </div>
+  )
+}
+
+// ============================================================
+// SECTION HEADER COMPONENT
+// ============================================================
+const SectionHeader = ({ icon: Icon, title, description, action }) => (
+  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+          <Icon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        </div>
+        <div>
+          <h2 className="font-bold text-gray-900 dark:text-white">{title}</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+        </div>
+      </div>
+      {action}
+    </div>
+  </div>
+)
+
+// ============================================================
+// TASK HEALTH CARD
+// ============================================================
+const TaskHealthCard = ({ label, value, helper, tone = 'default' }) => {
+  const colors = {
+    default: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50',
+    danger: 'border-rose-200 bg-rose-50 dark:border-rose-900/60 dark:bg-rose-950/20',
+    warning: 'border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20',
+    success: 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/20',
+  }
+
+  return (
+    <div className={`rounded-xl border p-4 ${colors[tone]}`}>
+      <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {helper && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>}
+    </div>
+  )
+}
+
+// ============================================================
+// CONSTANTS
+// ============================================================
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const PROJECT_STATUS_COLORS = {
   created: '#94A3B8',
@@ -55,6 +178,9 @@ const PROJECT_STATUS_COLORS = {
 const DASHBOARD_SECTION_VISIBILITY_KEY = 'syntask-dashboard-section-visibility'
 const DASHBOARD_SECTION_ORDER_KEY = 'syntask-dashboard-section-order'
 
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
 const readStoredSectionVisibility = () => {
   if (typeof window === 'undefined') return {}
   try {
@@ -87,6 +213,16 @@ const normalizeSectionOrder = (sections, storedOrder) => {
   return [...validStoredIds, ...missingIds]
 }
 
+const formatDuration = (totalSeconds) => {
+  if (!totalSeconds) return '00:00'
+  const hrs = Math.floor(totalSeconds / 3600)
+  const mins = Math.floor((totalSeconds % 3600) / 60)
+  return `${hrs}h ${mins}m`
+}
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 const Dashboard = () => {
   const { user } = useAuthStore()
   const navigate = useNavigate()
@@ -203,16 +339,14 @@ const Dashboard = () => {
     const fetchCalendarData = async () => {
       setCalendarLoading(true);
       try {
-        const today = new Date();
+        const today = timeService.now();
         const startStr = format(today, 'yyyy-MM-dd');
         const endStr = format(addDays(today, 30), 'yyyy-MM-dd');
-        // Workspace calendar events
         const { data: workspaceResp } = await calendarApi.getEvents({
           start_date: startStr,
           end_date: endStr,
           view_type: 'my_calendar',
         });
-        // Content calendar events
         const { data: contentResp } = await contentCalendarApi.getCalendar({
           start_date: startStr,
           end_date: endStr,
@@ -227,21 +361,21 @@ const Dashboard = () => {
 
         const upcomingDead = workspaceEvents.filter((e) => {
           if (e.type !== 'task_due' || !e.start) return false;
-          const dueDate = new Date(e.start);
+          const dueDate = timeService.instant(e.start);
           return dueDate > today && dueDate <= addDays(today, 3) && e.status !== 'completed';
         });
         setUpcomingDeadlines(upcomingDead);
 
         const upcomingMeet = workspaceEvents.filter((e) => {
           if (e.type !== 'meeting' || !e.start) return false;
-          const meetDate = new Date(e.start);
+          const meetDate = timeService.instant(e.start);
           return meetDate >= today;
         });
         setUpcomingMeetingsList(upcomingMeet);
 
         const overdue = workspaceEvents.filter((e) => {
           if (e.type !== 'task_due' || !e.start) return false;
-          const dueDate = new Date(e.start);
+          const dueDate = timeService.instant(e.start);
           return dueDate < today && e.status !== 'completed';
         });
         setOverdueTasksList(overdue);
@@ -274,7 +408,7 @@ const Dashboard = () => {
     }
   }, [sectionOrder])
 
-  const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d').toUpperCase(), [])
+  const todayLabel = useMemo(() => format(timeService.now(), 'EEEE, MMM d').toUpperCase(), [])
 
   const handleExport = async () => {
     try {
@@ -290,8 +424,22 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <PageHeader title="Dashboard" description="Loading workspace overview..." />
+      <div className="space-y-6 p-4 md:p-6">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 p-6 text-white shadow-xl md:p-8">
+          <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+          <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+                <LayoutDashboard className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold md:text-3xl">Dashboard</h1>
+                <p className="mt-1 text-indigo-100">Loading workspace overview...</p>
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={3} />)}
         </div>
@@ -313,9 +461,7 @@ const Dashboard = () => {
   const revenueTimeline = Array.isArray(salesSummary?.closed_vs_target?.months) ? salesSummary.closed_vs_target.months : []
   const closedSeries = Array.isArray(salesSummary?.closed_vs_target?.closed) ? salesSummary.closed_vs_target.closed : []
   const targetSeries = Array.isArray(salesSummary?.closed_vs_target?.target) ? salesSummary.closed_vs_target.target : []
-  // ---- Chart datasets built from live dashboard payloads ----
-
-  // Pipeline funnel -> donut with legend + percentages, styled like "Top Expenses"
+  
   const funnelData = canSeeSalesWidgets
     ? (Array.isArray(salesSummary?.pipeline?.stage_breakdown) && salesSummary.pipeline.stage_breakdown.length
       ? salesSummary.pipeline.stage_breakdown.map((item) => ({
@@ -338,16 +484,13 @@ const Dashboard = () => {
         primary: revenueMode === 'Accrual' ? Number(closedSeries[index] || 0) : Number(targetSeries[index] || 0),
         secondary: revenueMode === 'Accrual' ? Number(targetSeries[index] || 0) : Number(closedSeries[index] || 0),
       }))
-    : MONTH_LABELS.slice(0, new Date().getMonth() + 1).map((label, index) => ({
+    : MONTH_LABELS.slice(0, timeService.now().getMonth() + 1).map((label, index) => ({
         label,
-        primary: index === new Date().getMonth() ? Number(metrics?.revenue || 0) : 0,
-        secondary: index === new Date().getMonth() ? Number(metrics?.won_deals || 0) : 0,
+        primary: index === timeService.now().getMonth() ? Number(metrics?.revenue || 0) : 0,
+        secondary: index === timeService.now().getMonth() ? Number(metrics?.won_deals || 0) : 0,
       }))
 
-  const revenueTrend = canSeeSalesWidgets
-    ? revenueTrendData
-    : []
-
+  const revenueTrend = canSeeSalesWidgets ? revenueTrendData : []
   const conversionData = canSeeSalesWidgets
     ? (Array.isArray(salesAnalytics?.kpis?.stage_conversion) && salesAnalytics.kpis.stage_conversion.length
         ? salesAnalytics.kpis.stage_conversion.map((item) => ({
@@ -370,7 +513,6 @@ const Dashboard = () => {
       }))
     : []
 
-  // Team attendance snapshot -> donut instead of a plain number strip
   const attendanceBreakdown = attendanceStats
     ? [
         { name: 'Working Now', value: attendanceStats.working_now ?? 0, route: '/live-monitor' },
@@ -383,10 +525,10 @@ const Dashboard = () => {
   const projectHealthChartData = metrics?.project_status_chart?.length ? metrics.project_status_chart : buildProjectHealthData(projects)
   const reportTotals = metrics?.report_totals || {}
   const reportMetricCards = [
-    { label: 'Total Tasks', value: reportTotals.tasks ?? recentTasks.length, route: '/tasks' },
-    { label: 'Projects', value: reportTotals.projects ?? projects.length, route: '/projects' },
-    { label: 'Meetings', value: reportTotals.meetings ?? upcomingMeetings.length, route: '/meetings' },
-    { label: role === ROLE.EMPLOYEE ? 'Requests' : 'Priority Items', value: role === ROLE.EMPLOYEE ? recentTickets.length : (reportTotals.high_priority ?? priorityTasks.length), route: role === ROLE.EMPLOYEE ? '/tickets' : '/tasks' },
+    { label: 'Total Tasks', value: reportTotals.tasks ?? recentTasks.length, route: '/tasks', color: 'indigo' },
+    { label: 'Projects', value: reportTotals.projects ?? projects.length, route: '/projects', color: 'blue' },
+    { label: 'Meetings', value: reportTotals.meetings ?? upcomingMeetings.length, route: '/meetings', color: 'emerald' },
+    { label: role === ROLE.EMPLOYEE ? 'Requests' : 'Priority Items', value: role === ROLE.EMPLOYEE ? recentTickets.length : (reportTotals.high_priority ?? priorityTasks.length), route: role === ROLE.EMPLOYEE ? '/tickets' : '/tasks', color: 'amber' },
   ]
   const reportGraphData = metrics?.report_graph?.length ? metrics.report_graph : [
     { name: 'Tasks', value: recentTasks.length, route: '/tasks' },
@@ -416,15 +558,8 @@ const Dashboard = () => {
     { key: 'name', header: 'Project' },
     { key: 'status', header: 'Status', render: (row) => <Badge label={row.status || 'active'} colorKey={row.status || 'active'} /> },
     { key: 'task_count', header: 'Tasks' },
-    { key: 'delivery_date', header: 'Delivery', render: (row) => row.delivery_date ? format(new Date(row.delivery_date), 'MMM d') : '—' },
+    { key: 'delivery_date', header: 'Delivery', render: (row) => row.delivery_date ? format(timeService.instant(row.delivery_date), 'MMM d') : '—' },
   ]
-
-  const formatDuration = (totalSeconds) => {
-    if (!totalSeconds) return '00:00'
-    const hrs = Math.floor(totalSeconds / 3600)
-    const mins = Math.floor((totalSeconds % 3600) / 60)
-    return `${hrs}h ${mins}m`
-  }
 
   const dashboardSections = [
     { id: 'workflow-guide', name: 'Workflow Guide' },
@@ -496,34 +631,68 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="relative flex flex-col gap-6 pb-24 xl:pb-0">
-      <PageHeader
-        title="Dashboard"
-        description="Command center for work, meetings, and AI briefings."
-        actions={(
-          <div className="flex flex-wrap items-center gap-2">
-            {role === ROLE.SUPER_ADMIN ? (
-              <Button size="sm" onClick={() => navigate('/companies')}>
-                <Building2 className="h-4 w-4" />
-                Create Company
-              </Button>
-            ) : null}
-            <Button variant="secondary" size="sm" onClick={() => navigate('/projects')}>
-              <FolderKanban className="h-4 w-4" />
-              Projects
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => navigate('/tasks')}>
-              <CheckSquare className="h-4 w-4" />
-              Tasks
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => navigate('/calendar')}>
-              <CalendarDays className="h-4 w-4" />
-              Calendar
-            </Button>
+    <div className="space-y-6 p-4 md:p-6 relative">
+      {/* ============================================================ */}
+      {/* HERO SECTION - Gradient with Glassmorphism */}
+      {/* ============================================================ */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 p-6 text-white shadow-xl md:p-8">
+        {/* Decorative blur circles */}
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
+        
+        <div className="relative z-10">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+                <LayoutDashboard className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold md:text-3xl">Dashboard</h1>
+                <p className="mt-1 text-indigo-100">
+                  Command center for work, meetings, and AI briefings.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {role === ROLE.SUPER_ADMIN && (
+                <button 
+                  onClick={() => navigate('/companies')}
+                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                >
+                  <Building2 className="h-4 w-4" />
+                  Create Company
+                </button>
+              )}
+              <button 
+                onClick={() => navigate('/projects')}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <FolderKanban className="h-4 w-4" />
+                Projects
+              </button>
+              <button 
+                onClick={() => navigate('/tasks')}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <CheckSquare className="h-4 w-4" />
+                Tasks
+              </button>
+              <button 
+                onClick={() => navigate('/calendar')}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <CalendarDays className="h-4 w-4" />
+                Calendar
+              </button>
+            </div>
           </div>
-        )}
-      />
+        </div>
+      </div>
 
+      {/* ============================================================ */}
+      {/* SECTION VISIBILITY PANEL */}
+      {/* ============================================================ */}
       <DashboardSectionVisibilityPanel
         sections={orderedDashboardSections}
         visibility={sectionVisibility}
@@ -540,573 +709,620 @@ const Dashboard = () => {
         onClearAll={() => setAllDashboardSections(false)}
       />
 
+      {/* ============================================================ */}
+      {/* WORKFLOW GUIDE */}
+      {/* ============================================================ */}
       {renderDashboardSection('workflow-guide', (
-      <WorkflowGuide
-        title={role === ROLE.MANAGER ? 'Review team load, then assign the next task' : role === ROLE.LEAD ? 'Clear today’s team work, then move the pipeline forward' : 'Focus on the highest-risk work first'}
-        description={role === ROLE.MANAGER
-          ? 'Use this screen to see workload balance, overdue work, and the next lead or task that should be assigned.'
-          : role === ROLE.LEAD
-            ? 'Use this screen to keep execution current so the team stays aligned on the next business action.'
-            : 'Use this screen to keep the workspace moving without hunting through disconnected views.'}
-        nextStep={role === ROLE.MANAGER
-          ? 'Open tasks or CRM pipeline to assign the next owner.'
-          : role === ROLE.LEAD
-            ? 'Review today’s work and clear blockers before they age.'
-            : 'Open the most urgent task, project, or meeting now.'}
-        primaryAction={role === ROLE.MANAGER
-          ? { label: 'Open Tasks', href: '/tasks' }
-          : role === ROLE.LEAD
-            ? { label: 'Open Team', href: '/my-team' }
-            : { label: 'Open Dashboard', href: '/dashboard' }}
-        secondaryAction={role === ROLE.MANAGER
-          ? { label: 'Open CRM Pipeline', href: '/crm/pipeline' }
-          : { label: 'Open Calendar', href: '/calendar' }}
-        bullets={[
-          { label: 'Where am I?', value: 'The main operational workspace.' },
-          { label: 'What next?', value: role === ROLE.MANAGER ? 'Assign or reassign the next item.' : 'Resolve the current blocker.' },
-          { label: 'After this?', value: 'Move into the relevant workspace with one click.' },
-        ]} 
-        className="mb-6"
-      />
+        <WorkflowGuide
+          title={role === ROLE.MANAGER ? 'Review team load, then assign the next task' : role === ROLE.LEAD ? 'Clear today\'s team work, then move the pipeline forward' : 'Focus on the highest-risk work first'}
+          description={role === ROLE.MANAGER
+            ? 'Use this screen to see workload balance, overdue work, and the next lead or task that should be assigned.'
+            : role === ROLE.LEAD
+              ? 'Use this screen to keep execution current so the team stays aligned on the next business action.'
+              : 'Use this screen to keep the workspace moving without hunting through disconnected views.'}
+          nextStep={role === ROLE.MANAGER
+            ? 'Open tasks or CRM pipeline to assign the next owner.'
+            : role === ROLE.LEAD
+              ? 'Review today\'s work and clear blockers before they age.'
+              : 'Open the most urgent task, project, or meeting now.'}
+          primaryAction={role === ROLE.MANAGER
+            ? { label: 'Open Tasks', href: '/tasks' }
+            : role === ROLE.LEAD
+              ? { label: 'Open Team', href: '/my-team' }
+              : { label: 'Open Dashboard', href: '/dashboard' }}
+          secondaryAction={role === ROLE.MANAGER
+            ? { label: 'Open CRM Pipeline', href: '/crm/pipeline' }
+            : { label: 'Open Calendar', href: '/calendar' }}
+          bullets={[
+            { label: 'Where am I?', value: 'The main operational workspace.' },
+            { label: 'What next?', value: role === ROLE.MANAGER ? 'Assign or reassign the next item.' : 'Resolve the current blocker.' },
+            { label: 'After this?', value: 'Move into the relevant workspace with one click.' },
+          ]} 
+          className="mb-6"
+        />
       ))}
 
+      {/* ============================================================ */}
+      {/* WORKFLOW JOURNEY */}
+      {/* ============================================================ */}
       {renderDashboardSection('workflow-journey', (
-      <WorkflowJourney
-        className="mb-6"
-        description="This is the complete operating path in SynTask, from sign-in through revenue, delivery, reporting, and renewal."
-      />
+        <WorkflowJourney
+          className="mb-6"
+          description="This is the complete operating path in SynTask, from sign-in through revenue, delivery, reporting, and renewal."
+        />
       ))}
 
+      {/* ============================================================ */}
+      {/* SNAPSHOT CARDS */}
+      {/* ============================================================ */}
       {renderDashboardSection('snapshot-cards', (
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="card p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">Today</p>
-          <p className="mt-3 text-2xl font-semibold text-text-primary dark:text-text-primary">{todayLabel}</p>
-          <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Quick access to work, meetings, and AI guidance.</p>
-        </div>
-        <div className="card p-5">
-          <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Today&apos;s Events</p>
-          {todayEvents.slice(0, 5).map((e) => (
-            <p key={e.id} className="text-xs truncate">{e.title} ({e.type})</p>
-          ))}
-        </div>
-        <div className="card p-5">
-          <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Upcoming Deadlines</p>
-          {upcomingDeadlines.slice(0, 5).map((e) => (
-            <p key={e.id} className="text-xs truncate">{e.title} - {e.start}</p>
-          ))}
-        </div>
-        <div className="card p-5">
-          <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Upcoming Meetings</p>
-          {upcomingMeetingsList.slice(0, 5).map((e) => (
-            <p key={e.id} className="text-xs truncate">{e.title} - {e.start}</p>
-          ))}
-        </div>
-        <div className="card p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">High-priority tasks</p>
-            <Sparkles className="h-4 w-4 text-primary-600" />
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Today</p>
+            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{todayLabel}</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Quick access to work, meetings, and AI guidance.</p>
           </div>
-          <p className="mt-3 text-3xl font-semibold text-text-primary dark:text-text-primary">{priorityTasks.length}</p>
-          <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Critical and high-priority work in progress.</p>
-        </div>
-        <div className="card p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Attendance focus</p>
-            <TrendingUp className="h-4 w-4 text-primary-600" />
-          </div>
-          <p className="mt-3 text-3xl font-semibold text-text-primary dark:text-text-primary">
-            {role === ROLE.EMPLOYEE ? (attendanceToday?.status || 'Pending') : (attendanceStats?.present_today ?? 0)}
-          </p>
-          <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">
-            {role === ROLE.EMPLOYEE ? 'Your latest attendance status.' : 'People present today.'}
-          </p>
-        </div>
-        {role === ROLE.EMPLOYEE ? (
-        <div className="card p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-text-secondary dark:text-text-secondary">Today&apos;s EOD</p>
-            <Badge label={eodStatusLabel} colorKey={eodToday?.status === 'submitted' ? 'submitted' : eodToday?.status === 'leave' ? 'pending' : 'draft'} />
-          </div>
-          <p className="mt-3 text-2xl font-semibold text-text-primary dark:text-text-primary">{eodStatusLabel}</p>
-          <Button className="mt-4" size="sm" variant={eodToday?.status === 'submitted' ? 'secondary' : 'primary'} onClick={() => navigate('/eod')}>
-            {eodToday?.status === 'submitted' ? "Edit Today's EOD" : "Submit Today's EOD"}
-          </Button>
-        </div>
-        ) : null}
-      </section>
-      ))}
-
-      {/* {canSeeSalesWidgets ? (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {dashboardCards.map((card) => (
-            <div key={card.label} className="card p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{card.label}</p>
-              <p className="mt-3 text-2xl font-semibold text-gray-900 dark:text-gray-100">{card.value}</p>
+          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Today's Events</p>
+            <div className="mt-2 space-y-1">
+              {todayEvents.slice(0, 3).map((e) => (
+                <p key={e.id} className="text-xs truncate text-gray-700 dark:text-gray-300">{e.title} ({e.type})</p>
+              ))}
+              {todayEvents.length === 0 && (
+                <p className="text-xs text-gray-400 dark:text-gray-500">No events today</p>
+              )}
             </div>
-          ))}
-        </section>
-      ) : null} */}
-
-      {renderDashboardSection('task-health', (
-      <section
-        role="button"
-        tabIndex={0}
-        aria-label="Open Task Health in Tasks"
-        onClick={() => navigate('/tasks')}
-        onKeyDown={(event) => handleCardKeyNavigation(event, '/tasks')}
-        className="card cursor-pointer p-5 transition hover:border-primary-300 hover:bg-primary-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/35 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
-      >
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Task Health</h2>
-            <p className="text-sm text-text-muted dark:text-text-secondary">
-              {role === ROLE.EMPLOYEE ? 'Your assigned task status and extension requests.' : 'Team deadline pressure and extension workflow.'}
+          </div>
+          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Upcoming Deadlines</p>
+            <div className="mt-2 space-y-1">
+              {upcomingDeadlines.slice(0, 3).map((e) => (
+                <p key={e.id} className="text-xs truncate text-gray-700 dark:text-gray-300">{e.title} - {e.start}</p>
+              ))}
+              {upcomingDeadlines.length === 0 && (
+                <p className="text-xs text-gray-400 dark:text-gray-500">No deadlines soon</p>
+              )}
+            </div>
+          </div>
+          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Upcoming Meetings</p>
+            <div className="mt-2 space-y-1">
+              {upcomingMeetingsList.slice(0, 3).map((e) => (
+                <p key={e.id} className="text-xs truncate text-gray-700 dark:text-gray-300">{e.title} - {e.start}</p>
+              ))}
+              {upcomingMeetingsList.length === 0 && (
+                <p className="text-xs text-gray-400 dark:text-gray-500">No meetings scheduled</p>
+              )}
+            </div>
+          </div>
+          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">High-Priority Tasks</p>
+              <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{priorityTasks.length}</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Critical and high-priority work in progress.</p>
+          </div>
+          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Attendance Focus</p>
+              <TrendingUp className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+              {role === ROLE.EMPLOYEE ? (attendanceToday?.status || 'Pending') : (attendanceStats?.present_today ?? 0)}
+            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {role === ROLE.EMPLOYEE ? 'Your latest attendance status.' : 'People present today.'}
             </p>
           </div>
-          <Button variant="secondary" size="sm" onClick={(event) => {
-            event.stopPropagation()
-            navigate('/tasks')
-          }}>
-            Open Tasks
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {role === ROLE.EMPLOYEE ? (
+          {role === ROLE.EMPLOYEE && (
+            <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Today's EOD</p>
+                <Badge label={eodStatusLabel} colorKey={eodToday?.status === 'submitted' ? 'active' : eodToday?.status === 'leave' ? 'pending' : 'draft'} />
+              </div>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{eodStatusLabel}</p>
+              <button 
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-700"
+                onClick={() => navigate('/eod')}
+              >
+                {eodToday?.status === 'submitted' ? "Edit Today's EOD" : "Submit Today's EOD"}
+              </button>
+            </div>
+          )}
+        </section>
+      ))}
+
+      {/* ============================================================ */}
+      {/* TASK HEALTH */}
+      {/* ============================================================ */}
+      {renderDashboardSection('task-health', (
+        <section
+          role="button"
+          tabIndex={0}
+          aria-label="Open Task Health in Tasks"
+          onClick={() => navigate('/tasks')}
+          onKeyDown={(event) => handleCardKeyNavigation(event, '/tasks')}
+          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 cursor-pointer dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700"
+        >
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">Task Health</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {role === ROLE.EMPLOYEE ? 'Your assigned task status and extension requests.' : 'Team deadline pressure and extension workflow.'}
+              </p>
+            </div>
+            <button 
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              onClick={(event) => {
+                event.stopPropagation()
+                navigate('/tasks')
+              }}
+            >
+              Open Tasks
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {role === ROLE.EMPLOYEE ? (
+              <>
+                <TaskHealthCard label="Assigned" value={healthSummary?.total_assigned_tasks ?? 0} />
+                <TaskHealthCard label="Completed" value={healthSummary?.completed_tasks ?? 0} tone="success" />
+                <TaskHealthCard label="Pending" value={healthSummary?.pending_tasks ?? 0} tone="warning" />
+                <TaskHealthCard label="Overdue" value={healthSummary?.overdue_tasks ?? 0} tone="danger" />
+                <TaskHealthCard label="Extension Requests" value={extensionSummary.pending ?? healthSummary?.extension_requests?.pending ?? 0} tone="warning" />
+              </>
+            ) : (
+              <>
+                <TaskHealthCard label="Team Overdue Tasks" value={healthSummary?.overdue ?? 0} tone="danger" />
+                <TaskHealthCard label="Pending Extension Requests" value={extensionSummary.pending ?? 0} tone="warning" />
+                <TaskHealthCard label="Tasks Due Today" value={healthSummary?.due_today ?? 0} tone="success" />
+                <TaskHealthCard label="Highest Pending Work" value={highestPendingEmployee?.pending_tasks ?? 0} helper={highestPendingEmployee?.employee_name || 'No employee load'} tone="warning" />
+                <TaskHealthCard label="Completed Tasks" value={(teamCompletion?.employees || []).reduce((sum, item) => sum + (item.completed_tasks || 0), 0)} tone="success" />
+              </>
+            )}
+          </div>
+        </section>
+      ))}
+
+      {/* ============================================================ */}
+      {/* REVENUE & PIPELINE */}
+      {/* ============================================================ */}
+      {renderDashboardSection('sales-pipeline', (
+        canSeeSalesWidgets ? (
+          <section className="grid gap-6 xl:grid-cols-2">
+            <IncomeExpenseBarChart
+              title="Revenue and Deals"
+              data={revenueTrend}
+              primaryLabel="Closed Revenue"
+              secondaryLabel="Pipeline Value"
+              primaryTotal={`₹${(metrics?.revenue ?? 0).toLocaleString('en-IN')}`}
+              secondaryTotal={`₹${revenueTrend.reduce((sum, item) => sum + (Number(item.secondary) || 0), 0).toLocaleString('en-IN')}`}
+              toggleOptions={['Accrual', 'Cash']}
+              activeToggle={revenueMode}
+              onToggle={setRevenueMode}
+              footnote="Closed revenue and pipeline value use CRM lead/deal records for the last 12 months."
+              onBarClick={() => navigate('/crm/pipeline')}
+            />
+            <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.route || (item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline') }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
+          </section>
+        ) : (
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">Role-based view</h2>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Sales charts are hidden for this role. Operational widgets remain available below.</p>
+          </div>
+        )
+      ))}
+
+      {/* ============================================================ */}
+      {/* SALES PERFORMANCE */}
+      {/* ============================================================ */}
+      {renderDashboardSection('sales-performance', (
+        <section className="grid gap-6 xl:grid-cols-2">
+          {canSeeSalesWidgets ? (
             <>
-              <TaskHealthCard label="Assigned" value={healthSummary?.total_assigned_tasks ?? 0} />
-              <TaskHealthCard label="Completed" value={healthSummary?.completed_tasks ?? 0} />
-              <TaskHealthCard label="Pending" value={healthSummary?.pending_tasks ?? 0} />
-              <TaskHealthCard label="Overdue" value={healthSummary?.overdue_tasks ?? 0} tone="danger" />
-              <TaskHealthCard label="Extension Requests" value={extensionSummary.pending ?? healthSummary?.extension_requests?.pending ?? 0} />
+              <ChartCard title="Stage Conversion">
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={conversionData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/crm/pipeline')}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={(value) => `${value}%`} />
+                      <ChartTooltip valueFormatter={(value) => `${value}%`} />
+                      <Line type="monotone" dataKey="value" name="Conversion" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 5, fill: '#FF8A4C', cursor: 'pointer' }} activeDot={{ r: 7, onClick: (_, item) => navigateFromChart(item, '/crm/pipeline') }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </ChartCard>
+              <ChartCard title="Monthly Performance">
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={monthlyPerformance} barCategoryGap="35%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                      <ChartTooltip valueFormatter={(value, key, item) => key === 'value' && item?.payload?.total !== undefined ? `${value} current / ${item.payload.total} total` : value} />
+                      <Bar dataKey="value" name="Current" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} className="cursor-pointer" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </ChartCard>
             </>
           ) : (
-            <>
-              <TaskHealthCard label="Team Overdue Tasks" value={healthSummary?.overdue ?? 0} tone="danger" />
-              <TaskHealthCard label="Pending Extension Requests" value={extensionSummary.pending ?? 0} />
-              <TaskHealthCard label="Tasks Due Today" value={healthSummary?.due_today ?? 0} />
-              <TaskHealthCard label="Highest Pending Work" value={highestPendingEmployee?.pending_tasks ?? 0} helper={highestPendingEmployee?.employee_name || 'No employee load'} />
-              <TaskHealthCard label="Completed Tasks" value={(teamCompletion?.employees || []).reduce((sum, item) => sum + (item.completed_tasks || 0), 0)} />
-            </>
+            <ChartCard title="Monthly Performance">
+              <div className="flex h-72 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                This chart is available to sales-oriented roles only.
+              </div>
+            </ChartCard>
           )}
-        </div>
-      </section>
+        </section>
       ))}
 
-      {renderDashboardSection('sales-pipeline', (
-      canSeeSalesWidgets ? (
-        <section className="grid gap-6 xl:grid-cols-2">
-          <IncomeExpenseBarChart
-            title="Revenue and Deals"
-            data={revenueTrend}
-            primaryLabel="Closed Revenue"
-            secondaryLabel="Pipeline Value"
-            primaryTotal={`₹${(metrics?.revenue ?? 0).toLocaleString('en-IN')}`}
-            secondaryTotal={`₹${revenueTrend.reduce((sum, item) => sum + (Number(item.secondary) || 0), 0).toLocaleString('en-IN')}`}
-            toggleOptions={['Accrual', 'Cash']}
-            activeToggle={revenueMode}
-            onToggle={setRevenueMode}
-            footnote="Closed revenue and pipeline value use CRM lead/deal records for the last 12 months."
-            onBarClick={() => navigate('/crm/pipeline')}
-          />
-          <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.route || (item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline') }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
-        </section>
-      ) : (
-        <section className="card p-5">
-          <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Role-based view</h2>
-          <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Sales charts are hidden for this role. Operational widgets remain available below.</p>
-        </section>
-      )
-      ))}
-
-      {renderDashboardSection('sales-performance', (
-      <section className="grid gap-6 xl:grid-cols-2">
-        {canSeeSalesWidgets ? (
-          <>
-            <ChartCard title="Stage Conversion">
+      {/* ============================================================ */}
+      {/* REPORTS */}
+      {/* ============================================================ */}
+      {renderDashboardSection('reports', (
+        <section className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {reportMetricCards.map((metric) => (
+              <button
+                key={metric.label}
+                type="button"
+                onClick={() => navigate(metric.route)}
+                className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700"
+                aria-label={`Open ${metric.label} report`}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{metric.label}</p>
+                  <div className={`rounded-lg bg-gradient-to-r ${metric.color === 'indigo' ? 'from-indigo-500 to-purple-500' : metric.color === 'blue' ? 'from-blue-500 to-cyan-500' : metric.color === 'emerald' ? 'from-emerald-500 to-teal-500' : 'from-amber-500 to-orange-500'} p-1.5 text-white shadow-lg`}>
+                    <ArrowRight className="h-3 w-3" />
+                  </div>
+                </div>
+                <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{metric.value}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Open detailed report</p>
+              </button>
+            ))}
+          </div>
+          <section className="grid gap-6 xl:grid-cols-2">
+            <ChartCard title="Report Metrics" period="Current View">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={conversionData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/crm/pipeline')}>
+                  <BarChart data={reportGraphData} barCategoryGap="32%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/reports')}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
                     <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={(value) => `${value}%`} />
-                    <ChartTooltip valueFormatter={(value) => `${value}%`} />
-                    <Line type="monotone" dataKey="value" name="Conversion" stroke="#FF8A4C" strokeWidth={3} dot={{ r: 5, fill: '#FF8A4C', cursor: 'pointer' }} activeDot={{ r: 7, onClick: (_, item) => navigateFromChart(item, '/crm/pipeline') }} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <ChartTooltip />
+                    <Bar dataKey="value" name="Items" fill="#FF8A4C" radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+            <ChartCard title="Report Trend" period="Current View">
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={reportGraphData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/reports')}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <ChartTooltip />
+                    <Line type="monotone" dataKey="value" name="Items" stroke="#2FB47C" strokeWidth={3} dot={{ r: 5, fill: '#2FB47C', cursor: 'pointer' }} activeDot={{ r: 7 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </ChartCard>
-            <ChartCard title="Monthly Performance">
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyPerformance} barCategoryGap="35%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                    <ChartTooltip valueFormatter={(value, key, item) => key === 'value' && item?.payload?.total !== undefined ? `${value} current / ${item.payload.total} total` : value} />
-                    <Bar dataKey="value" name="Current" fill="#2FB47C" radius={[6, 6, 0, 0]} maxBarSize={40} className="cursor-pointer" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </ChartCard>
-          </>
-        ) : (
-          <ChartCard title="Monthly Performance">
-            <p className="text-sm text-text-secondary dark:text-text-secondary">This chart is available to sales-oriented roles only.</p>
-          </ChartCard>
-        )}
-      </section>
-      ))}
-
-      {renderDashboardSection('reports', (
-      <section className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {reportMetricCards.map((metric) => (
-            <button
-              key={metric.label}
-              type="button"
-              onClick={() => navigate(metric.route)}
-              className="card p-5 text-left transition hover:border-primary-300 hover:bg-primary-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/35 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
-              aria-label={`Open ${metric.label} report`}
-            >
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">{metric.label}</p>
-              <p className="mt-3 text-3xl font-semibold text-text-primary dark:text-text-primary">{metric.value}</p>
-              <p className="mt-2 text-sm text-text-secondary dark:text-text-secondary">Open detailed report</p>
-            </button>
-          ))}
-        </div>
-        <section className="grid gap-6 xl:grid-cols-2">
-          <ChartCard title="Report Metrics" period="Current View">
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={reportGraphData} barCategoryGap="32%" onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/reports')}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <ChartTooltip />
-                  <Bar dataKey="value" name="Items" fill="#FF8A4C" radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </ChartCard>
-          <ChartCard title="Report Trend" period="Current View">
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={reportGraphData} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/reports')}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <ChartTooltip />
-                  <Line type="monotone" dataKey="value" name="Items" stroke="#2FB47C" strokeWidth={3} dot={{ r: 5, fill: '#2FB47C', cursor: 'pointer' }} activeDot={{ r: 7 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </ChartCard>
+          </section>
         </section>
-      </section>
       ))}
 
-      {/* Employee Attendance Widget */}
+      {/* ============================================================ */}
+      {/* EMPLOYEE ATTENDANCE */}
+      {/* ============================================================ */}
       {renderDashboardSection('employee-attendance', (
-      role === ROLE.EMPLOYEE && attendanceToday ? (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 bg-emerald-50/20 dark:bg-emerald-950/10 p-4 rounded-2xl border border-emerald-500/20">
-          <div className="card p-4 bg-surface dark:bg-black/85 border border-border shadow-sm">
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Attendance Status</p>
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-base font-bold text-text-primary dark:text-text-primary">{attendanceToday.status}</span>
-              <Badge label={attendanceToday.status} colorKey={attendanceToday.status} />
+        role === ROLE.EMPLOYEE && attendanceToday ? (
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Attendance Status</p>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-base font-bold text-gray-900 dark:text-white">{attendanceToday.status}</span>
+                <Badge label={attendanceToday.status} colorKey={attendanceToday.status} />
+              </div>
             </div>
-          </div>
-          <div className="card p-4 bg-surface dark:bg-black/85 border border-border shadow-sm">
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Working Hours Today</p>
-            <p className="mt-2 text-2xl font-bold font-mono text-text-primary dark:text-text-primary">
-              {formatDuration(attendanceToday.total_working_hours)}
-            </p>
-          </div>
-          <div className="card p-4 bg-surface dark:bg-black/85 border border-border shadow-sm">
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Camera Status</p>
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-text-secondary dark:text-text-secondary">Permission</span>
-              <Badge
-                label={attendanceToday.camera_permission_status || 'Denied'}
-                colorKey={attendanceToday.camera_permission_status === 'Connected' || attendanceToday.camera_permission_status === 'Granted' ? 'completed' : 'rejected'}
-              />
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Working Hours Today</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white font-mono">
+                {formatDuration(attendanceToday.total_working_hours)}
+              </p>
             </div>
-          </div>
-          <div className="card p-4 bg-surface dark:bg-black/85 border border-border shadow-sm">
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Screen Share</p>
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-text-secondary dark:text-text-secondary">Status</span>
-              <Badge
-                label={attendanceToday.screen_sharing_status || 'Denied'}
-                colorKey={attendanceToday.screen_sharing_status === 'Sharing' || attendanceToday.screen_sharing_status === 'Granted' ? 'completed' : 'rejected'}
-              />
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Camera Status</p>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Permission</span>
+                <Badge
+                  label={attendanceToday.camera_permission_status || 'Denied'}
+                  colorKey={attendanceToday.camera_permission_status === 'Connected' || attendanceToday.camera_permission_status === 'Granted' ? 'active' : 'rejected'}
+                />
+              </div>
             </div>
-          </div>
-        </section>
-      ) : null
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Screen Share</p>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</span>
+                <Badge
+                  label={attendanceToday.screen_sharing_status || 'Denied'}
+                  colorKey={attendanceToday.screen_sharing_status === 'Sharing' || attendanceToday.screen_sharing_status === 'Granted' ? 'active' : 'rejected'}
+                />
+              </div>
+            </div>
+          </section>
+        ) : null
       ))}
 
-      {/* Managers Attendance Dashboard */}
+      {/* ============================================================ */}
+      {/* WORKPLACE ATTENDANCE */}
+      {/* ============================================================ */}
       {renderDashboardSection('workplace-attendance', (
-      role !== ROLE.EMPLOYEE && attendanceStats ? (
-        <section className="bg-primary-50/20 dark:bg-primary-950/10 p-5 rounded-2xl border border-primary-500/20 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-primary-800 dark:text-primary-300 uppercase tracking-wider flex items-center">
-              <span className="relative flex h-2 w-2 mr-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-450 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary-500"></span>
-              </span>
-              Workplace Attendance & Monitoring
-            </h3>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/live-monitor')} className="text-primary-700 dark:text-primary-300">
-              Live Monitor Board <ArrowRight className="h-4 w-4 ml-1 inline" />
-            </Button>
-          </div>
-          <div className="grid gap-6 xl:grid-cols-[1fr_1.4fr]">
-            <DonutLegendChart title="Live Status Breakdown" data={attendanceBreakdown} emptyLabel="No activity yet today" onItemClick={(item) => navigateFromChart(item, '/live-monitor')} />
-            <ChartCard title="Attendance Signal" period="Today">
-              <div className="grid h-full min-h-72 content-center gap-3 sm:grid-cols-3">
-                {[
-                  ['Present', attendanceStats.present_today ?? 0],
-                  ['Working', attendanceStats.working_now ?? 0],
-                  ['On break', attendanceStats.on_break ?? 0],
-                ].map(([label, value]) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => navigate('/live-monitor')}
-                    title={`${label}: ${value}`}
-                    aria-label={`${label}: ${value}`}
-                    className="rounded-xl border border-border bg-surface-muted p-4 text-left transition hover:border-primary-300 hover:bg-primary-50/50 dark:border-border dark:bg-black/80 dark:hover:border-primary-700 dark:hover:bg-primary-950/30"
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">{label}</p>
-                    <p className="mt-3 text-3xl font-semibold text-text-primary dark:text-text-primary">{value}</p>
-                  </button>
+        role !== ROLE.EMPLOYEE && attendanceStats ? (
+          <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 shadow-sm dark:border-indigo-900/60 dark:bg-indigo-950/20 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="flex items-center text-sm font-bold uppercase tracking-wider text-indigo-800 dark:text-indigo-300">
+                <span className="relative mr-2 flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-500"></span>
+                </span>
+                Workplace Attendance & Monitoring
+              </h3>
+              <button 
+                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 transition hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+                onClick={() => navigate('/live-monitor')}
+              >
+                Live Monitor Board
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="grid gap-6 xl:grid-cols-[1fr_1.4fr]">
+              <DonutLegendChart title="Live Status Breakdown" data={attendanceBreakdown} emptyLabel="No activity yet today" onItemClick={(item) => navigateFromChart(item, '/live-monitor')} />
+              <ChartCard title="Attendance Signal" period="Today">
+                <div className="grid h-full min-h-72 content-center gap-3 sm:grid-cols-3">
+                  {[
+                    ['Present', attendanceStats.present_today ?? 0],
+                    ['Working', attendanceStats.working_now ?? 0],
+                    ['On break', attendanceStats.on_break ?? 0],
+                  ].map(([label, value]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => navigate('/live-monitor')}
+                      title={`${label}: ${value}`}
+                      aria-label={`${label}: ${value}`}
+                      className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700"
+                    >
+                      <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+                      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+                    </button>
+                  ))}
+                </div>
+              </ChartCard>
+            </div>
+          </section>
+        ) : null
+      ))}
+
+      {/* ============================================================ */}
+      {/* AI BRIEFING CENTER */}
+      {/* ============================================================ */}
+      {renderDashboardSection('ai-briefing', (
+        <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
+      ))}
+
+      {/* ============================================================ */}
+      {/* WORK & MEETINGS */}
+      {/* ============================================================ */}
+      {renderDashboardSection('work-meetings', (
+        <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
+          <div className="space-y-6">
+            <ChartCard title="Task Due Dates by Priority" period="Next 7 Days">
+              {taskDuePriorityData.length ? (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={taskDuePriorityData} barCategoryGap="24%" margin={{ top: 10, right: 12, left: 0, bottom: 18 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/tasks')}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                      <XAxis
+                        dataKey={taskDuePriorityData?.[0]?.count !== undefined ? 'name' : 'shortName'}
+                        interval={0}
+                        tickLine={false}
+                        axisLine={false}
+                        minTickGap={6}
+                        tick={{ fontSize: 11, fill: '#9ca3af' }}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 11, fill: '#9ca3af' }}
+                        label={{ value: taskDuePriorityData?.[0]?.count !== undefined ? 'Tasks' : 'Days remaining', angle: -90, position: 'insideLeft', style: { fill: '#9ca3af', fontSize: 11 } }}
+                      />
+                      <ChartTooltip labelFormatter={(_, point) => point.name} valueFormatter={(value, key) => key === 'daysRemaining' ? `${value} day${value === 1 ? '' : 's'}` : value} />
+                      <Bar dataKey={taskDuePriorityData?.[0]?.count !== undefined ? 'count' : 'daysRemaining'} name={taskDuePriorityData?.[0]?.count !== undefined ? 'Tasks' : 'Days Remaining'} radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer">
+                        {taskDuePriorityData.map((entry) => (
+                          <Cell key={entry.id || entry.name} fill={entry.fill || TASK_PRIORITY_COLORS[entry.priorityKey] || '#2FB47C'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex h-72 items-center justify-center text-sm text-gray-500 dark:text-gray-400">No dated tasks in the next week</div>
+              )}
+              <div className="mt-4 flex flex-wrap gap-3 border-t border-gray-200 pt-4 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                {Object.entries(TASK_PRIORITY_COLORS).map(([priority, color]) => (
+                  <span key={priority} className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                    {priority.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                  </span>
                 ))}
               </div>
             </ChartCard>
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-gray-900 dark:text-white">Today's Work</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">High-signal items that need attention now.</p>
+                </div>
+                <button 
+                  className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 transition hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                  onClick={() => navigate(role === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}
+                >
+                  View all
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="space-y-2">
+                {taskSource.length ? taskSource.slice(0, 6).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => navigate(role === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}
+                    className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-indigo-200 hover:bg-indigo-50/50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/20"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{item.title}</p>
+                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                        {role === ROLE.EMPLOYEE ? `Created ${item.created_at ? format(new Date(item.created_at), 'MMM d') : 'recently'}` : item.due_date ? `Due ${format(new Date(item.due_date), 'MMM d')}` : 'No due date'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Badge label={item.status?.replace(/_/g, ' ') || 'open'} colorKey={item.status || 'open'} />
+                      {item.priority && <Badge label={item.priority} colorKey={item.priority} />}
+                    </div>
+                  </button>
+                )) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <CheckSquare className="h-10 w-10 text-gray-300 dark:text-gray-600" />
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">No work in view</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">No tasks or requests need your attention right now.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">Upcoming Meetings</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Scheduled coordination and client calls.</p>
+              </div>
+              <button 
+                className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 transition hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                onClick={() => navigate('/meetings')}
+              >
+                Open
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {upcomingMeetings.length ? upcomingMeetings.map((meeting) => (
+                <div key={meeting.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{meeting.title}</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {meeting.meeting_date ? format(new Date(meeting.meeting_date), 'MMM d, h:mm a') : 'Date not set'}
+                  </p>
+                  {meeting.status && <div className="mt-2"><Badge label={meeting.status} colorKey={meeting.status} /></div>}
+                </div>
+              )) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <Calendar className="h-10 w-10 text-gray-300 dark:text-gray-600" />
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">No meetings</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Create the next meeting from the meetings workspace.</p>
+                </div>
+              )}
+            </div>
           </div>
         </section>
-      ) : null
       ))}
 
-      {renderDashboardSection('ai-briefing', (
-      <AIBriefingCenter user={user} stats={stats} recentTasks={recentTasks} recentTickets={recentTickets} />
-      ))}
-
-      {renderDashboardSection('work-meetings', (
-      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-        <div className="space-y-6">
-          <ChartCard title="Task Due Dates by Priority" period="Next 7 Days">
-            {taskDuePriorityData.length ? (
-              <div className="h-80">
+      {/* ============================================================ */}
+      {/* PROJECT HEALTH */}
+      {/* ============================================================ */}
+      {renderDashboardSection('project-health', (
+        <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">Project Health</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Current projects in the workspace.</p>
+              </div>
+              {hasCompanyAdminAccess(role) && (
+                <button 
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                  onClick={handleExport} 
+                  disabled={exporting}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {exporting ? 'Exporting...' : 'Export'}
+                </button>
+              )}
+            </div>
+            {projects.length ? <Table columns={healthColumns} data={projects} /> : 
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <FolderKanban className="h-10 w-10 text-gray-300 dark:text-gray-600" />
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">No projects</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Projects will appear here once they are created.</p>
+              </div>
+            }
+          </div>
+          <ChartCard title="Project Health Graph" period="Current Projects">
+            {projectHealthChartData.length ? (
+              <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={taskDuePriorityData} barCategoryGap="24%" margin={{ top: 10, right: 12, left: 0, bottom: 18 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/tasks')}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.15} />
-                    <XAxis
-                      dataKey={taskDuePriorityData?.[0]?.count !== undefined ? 'name' : 'shortName'}
-                      interval={0}
-                      tickLine={false}
-                      axisLine={false}
-                      minTickGap={6}
-                      tick={{ fontSize: 11, fill: '#9ca3af' }}
-                    />
-                    <YAxis
-                      allowDecimals={false}
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fontSize: 11, fill: '#9ca3af' }}
-                      label={{ value: taskDuePriorityData?.[0]?.count !== undefined ? 'Tasks' : 'Days remaining', angle: -90, position: 'insideLeft', style: { fill: '#9ca3af', fontSize: 11 } }}
-                    />
-                    <ChartTooltip labelFormatter={(_, point) => point.name} valueFormatter={(value, key) => key === 'daysRemaining' ? `${value} day${value === 1 ? '' : 's'}` : value} />
-                    <Bar dataKey={taskDuePriorityData?.[0]?.count !== undefined ? 'count' : 'daysRemaining'} name={taskDuePriorityData?.[0]?.count !== undefined ? 'Tasks' : 'Days Remaining'} radius={[6, 6, 0, 0]} maxBarSize={44} className="cursor-pointer">
-                      {taskDuePriorityData.map((entry) => (
-                        <Cell key={entry.id || entry.name} fill={entry.fill || TASK_PRIORITY_COLORS[entry.priorityKey] || '#2FB47C'} />
-                      ))}
-                    </Bar>
+                  <BarChart data={projectHealthChartData} layout="vertical" margin={{ left: 10, right: 20 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
+                    <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.15} />
+                    <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <YAxis type="category" dataKey="name" width={96} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <ChartTooltip />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                    {DASHBOARD_PROJECT_STATUSES.map((status) => (
+                      <Bar key={status} dataKey={status} name={status.replace(/_/g, ' ')} stackId="status" fill={PROJECT_STATUS_COLORS[status]} radius={[0, 5, 5, 0]} className="cursor-pointer" />
+                    ))}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             ) : (
-            <div className="flex h-72 items-center justify-center text-sm text-text-muted">No dated tasks in the next week</div>
-          )}
-            <div className="mt-4 flex flex-wrap gap-3 border-t border-border pt-4 text-xs text-text-muted dark:border-border dark:text-text-secondary">
-              {Object.entries(TASK_PRIORITY_COLORS).map(([priority, color]) => (
-                <span key={priority} className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
-                  {priority.replace(/\b\w/g, (letter) => letter.toUpperCase())}
-                </span>
-              ))}
-            </div>
+              <div className="flex h-72 items-center justify-center text-sm text-gray-500 dark:text-gray-400">No projects to chart yet</div>
+            )}
           </ChartCard>
-          <div className="card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Today&apos;s work</h2>
-              <p className="text-sm text-text-muted dark:text-text-secondary">High-signal items that need attention now.</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate(role === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}>
-              View all
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {taskSource.length ? taskSource.slice(0, 6).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => navigate(role === ROLE.EMPLOYEE ? '/tickets' : '/tasks')}
-                className="flex w-full items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:bg-surface-muted dark:border-border dark:bg-black/80 dark:hover:bg-white/5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-text-primary dark:text-text-primary">{item.title}</p>
-                  <p className="truncate text-xs text-text-muted dark:text-text-secondary">
-                    {role === ROLE.EMPLOYEE ? `Created ${item.created_at ? format(new Date(item.created_at), 'MMM d') : 'recently'}` : item.due_date ? `Due ${format(new Date(item.due_date), 'MMM d')}` : 'No due date'}
+        </section>
+      ))}
+
+      {/* ============================================================ */}
+      {/* RECENT ACTIVITY */}
+      {/* ============================================================ */}
+      {renderDashboardSection('recent-activity', (
+        <section className="grid gap-6 xl:grid-cols-1">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">Recent Activity</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Latest changes across your workspace.</p>
+            <div className="mt-4 space-y-3">
+              {(role === ROLE.EMPLOYEE ? recentTickets : recentTasks).slice(0, 5).map((item) => (
+                <div key={item.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{item.title}</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {item.updated_at ? format(new Date(item.updated_at), 'MMM d, h:mm a') : item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge label={item.status?.replace(/_/g, ' ') || 'open'} colorKey={item.status || 'open'} />
-                  {item.priority ? <Badge label={item.priority} colorKey={item.priority} /> : null}
+              ))}
+              {((role === ROLE.EMPLOYEE ? recentTickets : recentTasks).length === 0) && (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <Activity className="h-10 w-10 text-gray-300 dark:text-gray-600" />
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">No recent activity</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Activity will appear here as work changes.</p>
                 </div>
-              </button>
-            )) : (
-              <EmptyState title="No work in view" description="No tasks or requests need your attention right now." />
-            )}
-          </div>
-          </div>
-        </div>
-
-        <div className="card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Upcoming meetings</h2>
-              <p className="text-sm text-text-muted dark:text-text-secondary">Scheduled coordination and client calls.</p>
+              )}
             </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/meetings')}>
-              Open
-              <ArrowRight className="h-4 w-4" />
-            </Button>
           </div>
-          <div className="space-y-2">
-            {upcomingMeetings.length ? upcomingMeetings.map((meeting) => (
-              <div key={meeting.id} className="rounded-xl border border-border bg-surface px-4 py-3 dark:border-border dark:bg-black/80">
-                <p className="text-sm font-medium text-text-primary dark:text-text-primary">{meeting.title}</p>
-                <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">
-                  {meeting.meeting_date ? format(new Date(meeting.meeting_date), 'MMM d, h:mm a') : 'Date not set'}
-                </p>
-                {meeting.status ? <div className="mt-2"><Badge label={meeting.status} colorKey={meeting.status} /></div> : null}
-              </div>
-            )) : <EmptyState title="No meetings" description="Create the next meeting from the meetings workspace." />}
-          </div>
-        </div>
-      </section>
+        </section>
       ))}
-
-      {renderDashboardSection('project-health', (
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Project health</h2>
-              <p className="text-sm text-text-muted dark:text-text-secondary">Current projects in the workspace.</p>
-            </div>
-            {hasCompanyAdminAccess(role) ? (
-              <Button variant="secondary" size="sm" onClick={handleExport} loading={exporting}>
-                Export
-              </Button>
-            ) : null}
-          </div>
-          {projects.length ? <Table columns={healthColumns} data={projects} /> : <EmptyState title="No projects" description="Projects will appear here once they are created." />}
-        </div>
-        <ChartCard title="Project Health Graph" period="Current Projects">
-          {projectHealthChartData.length ? (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={projectHealthChartData} layout="vertical" margin={{ left: 10, right: 20 }} onClick={(state) => navigateFromChart(state?.activePayload?.[0], '/projects')}>
-                  <CartesianGrid horizontal={false} strokeDasharray="3 3" strokeOpacity={0.15} />
-                  <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <YAxis type="category" dataKey="name" width={96} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                  <ChartTooltip />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                  {DASHBOARD_PROJECT_STATUSES.map((status) => (
-                    <Bar key={status} dataKey={status} name={status.replace(/_/g, ' ')} stackId="status" fill={PROJECT_STATUS_COLORS[status]} radius={[0, 5, 5, 0]} className="cursor-pointer" />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="flex h-72 items-center justify-center text-sm text-text-muted">No projects to chart yet</div>
-          )}
-        </ChartCard>
-      </section>
-      ))}
-
-      {renderDashboardSection('recent-activity', (
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="card p-5">
-          <h2 className="text-base font-semibold text-text-primary dark:text-text-primary">Recent activity</h2>
-          <p className="mt-1 text-sm text-text-muted dark:text-text-secondary">Latest changes across your workspace.</p>
-          <div className="mt-4 space-y-3">
-            {(role === ROLE.EMPLOYEE ? recentTickets : recentTasks).slice(0, 5).map((item) => (
-              <div key={item.id} className="rounded-xl border border-border bg-surface px-4 py-3 dark:border-border dark:bg-black/80">
-                <p className="text-sm font-medium text-text-primary dark:text-text-primary">{item.title}</p>
-                <p className="mt-1 text-xs text-text-muted dark:text-text-secondary">
-                  {item.updated_at ? format(new Date(item.updated_at), 'MMM d, h:mm a') : item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-      ))}
-
-      {/* <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <div className="card p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Operating Signals Before You Ask</h2>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Recent project movement and active notifications in one scan.</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/projects')}>
-              Projects
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="mt-4 space-y-3">
-            {(recent?.projects || []).slice(0, 4).map((item) => (
-              <button key={item.id} type="button" onClick={() => navigate(item.id ? `/projects/${item.id}/board` : '/projects')} className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.name}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}</p>
-              </button>
-            ))}
-            {!(recent?.projects || []).length ? <EmptyState title="No operating signals" description="Project movement will appear here as work changes." /> : null}
-          </div>
-        </div>
-        <div className="card p-5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notifications</h2>
-          <div className="mt-4 space-y-3">
-            {activity.slice(0, 4).map((item) => (
-              <div key={item.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.title}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.message}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section> */}
     </div>
-  )
-}
-
-function TaskHealthCard({ label, value, helper, tone = 'default' }) {
-  return (
-    <article className={`rounded-2xl border p-4 ${tone === 'danger' ? 'border-red-200 bg-red-50/70 dark:border-red-900/60 dark:bg-red-950/20' : 'border-border bg-surface dark:border-border dark:bg-black/70'}`}>
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted dark:text-text-secondary">{label}</p>
-      <p className="mt-3 text-2xl font-semibold text-text-primary dark:text-text-primary">{value}</p>
-      {helper ? <p className="mt-2 text-xs text-text-muted dark:text-text-secondary">{helper}</p> : null}
-    </article>
   )
 }
 

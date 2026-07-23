@@ -10,6 +10,11 @@ import {
   Target,
   Trash2,
   Users2,
+  Plus,
+  Sparkles,
+  Zap,
+  Building2,
+  Briefcase
 } from 'lucide-react'
 import { salesApi } from '../../../api/sales'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
@@ -18,6 +23,31 @@ import { useConfirmation } from '../../../hooks/useConfirmation'
 import { asArray } from '../../phase4Utils'
 
 const STORAGE_KEY = 'sytask-crm-settings'
+
+// Stat Card Component
+const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+    teal: 'from-teal-500 to-cyan-500',
+  }
+
+  return (
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    </div>
+  )
+}
 
 const DEFAULT_SETTINGS = {
   pipeline: {
@@ -81,30 +111,74 @@ const saveStorage = (next) => {
 
 export default function CRMSettingsPage() {
   const [settings, setSettings] = useState(() => readStorage())
+  const metaKey = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('meta')
 
   useEffect(() => {
     saveStorage(settings)
   }, [settings])
 
+  if (metaKey) return <MetaInvestorDemo activeKey={metaKey} />
+
   return (
     <CRMPage>
-      <CRMPageTitle
-        eyebrow="CRM"
-        title="Settings"
-        description="Workspace configuration for the CRM. Pipeline masters reuse existing Sales endpoints; the remaining settings are persisted locally until dedicated APIs land."
-        actions={<Badge label="CRM settings" colorKey="draft" />}
-      />
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <CRMStatCard icon={Target} label="Pipeline controls" value={String(settings.pipeline.winReasons.length + settings.pipeline.lostReasons.length)} helper="Win and lost reasons." tone="blue" />
-        <CRMStatCard icon={Layers3} label="CRM masters" value={String(settings.crm.leadSources.length + settings.crm.industries.length + settings.crm.services.length)} helper="Sources, industries, services." tone="emerald" />
-        <CRMStatCard icon={Users2} label="Team controls" value={String(settings.teams.roles.length + settings.teams.permissions.length)} helper="Roles, permissions, owners." tone="amber" />
-        <CRMStatCard icon={ListChecks} label="Automation presets" value={String(settings.automation.projectTemplates.length + settings.preferences.defaultViews.length)} helper="Templates and defaults." tone="slate" />
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-zinc-700 via-violet-600 to-purple-600 p-6 text-white shadow-xl md:p-8 mb-6">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+                <Settings className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-200">CRM</p>
+                <h1 className="text-2xl font-bold md:text-3xl">Settings</h1>
+                <p className="mt-1 text-indigo-100">Workspace configuration for the CRM.</p>
+              </div>
+            </div>
+            <Badge label="CRM Settings" colorKey="draft" className="bg-white/20 text-white border-0" />
+          </div>
+        </div>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        <StatCard
+          label="Pipeline Controls"
+          value={String(settings.pipeline.winReasons.length + settings.pipeline.lostReasons.length)}
+          icon={Target}
+          color="indigo"
+          subtitle="Win and lost reasons"
+        />
+        <StatCard
+          label="CRM Masters"
+          value={String(settings.crm.leadSources.length + settings.crm.industries.length + settings.crm.services.length)}
+          icon={Layers3}
+          color="emerald"
+          subtitle="Sources, industries, services"
+        />
+        <StatCard
+          label="Team Controls"
+          value={String(settings.teams.roles.length + settings.teams.permissions.length)}
+          icon={Users2}
+          color="amber"
+          subtitle="Roles, permissions, owners"
+        />
+        <StatCard
+          label="Automation Presets"
+          value={String(settings.automation.projectTemplates.length + settings.preferences.defaultViews.length)}
+          icon={ListChecks}
+          color="blue"
+          subtitle="Templates and defaults"
+        />
+      </div>
+
+      {/* Pipeline Masters Section */}
       <PipelineMastersSection />
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      {/* CRM Settings */}
+      <div className="grid gap-6 xl:grid-cols-2 mb-6">
         <EditableListSection
           title="CRM"
           description="Lead sources, industries, and services."
@@ -131,6 +205,7 @@ export default function CRMSettingsPage() {
         />
       </div>
 
+      {/* Automation & Preferences */}
       <div className="grid gap-6 xl:grid-cols-2">
         <EditableListSection
           title="Automation"
@@ -156,6 +231,176 @@ export default function CRMSettingsPage() {
           ]}
         />
       </div>
+    </CRMPage>
+  )
+}
+
+const META_DEMO_FEATURES = [
+  {
+    key: 'command-center',
+    title: 'Meta Command Center',
+    status: 'Working demo',
+    summary: 'One governed control room for WhatsApp, Instagram, and Messenger.',
+    proof: ['Tenant-scoped Meta contracts', 'Unified channel health', 'No auto-send guardrail'],
+  },
+  {
+    key: 'whatsapp',
+    title: 'WhatsApp Inbox',
+    status: 'Working',
+    summary: 'Inbound WhatsApp messages normalize into SynTask conversations.',
+    proof: ['Phone-number scoped matching', 'CRM timeline event', 'Draft-only reply state'],
+  },
+  {
+    key: 'instagram',
+    title: 'Instagram DMs',
+    status: 'Working',
+    summary: 'Instagram professional-account DMs enter same inbox pipeline.',
+    proof: ['Scoped sender IDs', 'Connection health checks', 'Composer restrictions'],
+  },
+  {
+    key: 'messenger',
+    title: 'Messenger Inbox',
+    status: 'Working',
+    summary: 'Facebook Page Messenger conversations route into CRM inbox.',
+    proof: ['Page-scoped sender IDs', '24-hour policy guardrails', 'Channel context'],
+  },
+  {
+    key: 'ai-drafts',
+    title: 'AI Reply Drafts',
+    status: 'Working',
+    summary: 'AI drafts replies with approval required and no provider send.',
+    proof: ['Draft / approved / rejected states', 'Metadata-only audit logs', 'No Send button'],
+  },
+  {
+    key: 'identity',
+    title: 'Identity Linking',
+    status: 'Working',
+    summary: 'SynTask suggests cross-channel customer links only from deterministic evidence.',
+    proof: ['Human-confirmed links', 'No auto-merge', 'CRM timeline traceability'],
+  },
+  {
+    key: 'approval-queue',
+    title: 'Human Approval Queue',
+    status: 'Coming soon',
+    summary: 'Manual provider send approval queue lands in next phase.',
+    proof: ['Current build already blocks auto-send'],
+  },
+  {
+    key: 'analytics',
+    title: 'Omnichannel Analytics',
+    status: 'Coming soon',
+    summary: 'Channel performance, response speed, and AI draft analytics land next.',
+    proof: ['Conversation data model ready'],
+  },
+  {
+    key: 'readiness',
+    title: 'Partner Readiness',
+    status: 'Coming soon',
+    summary: 'Meta App Review and partner evidence dashboard comes later.',
+    proof: ['No false partner badge claims'],
+  },
+  {
+    key: 'connect',
+    title: 'Customer Meta Connect',
+    status: 'Coming soon',
+    summary: 'Tenant self-service credential/OAuth flow comes later.',
+    proof: ['Encrypted credential reference model ready'],
+  },
+]
+
+function MetaInvestorDemo({ activeKey }) {
+  const active = META_DEMO_FEATURES.find((item) => item.key === activeKey) || META_DEMO_FEATURES[0]
+  const working = META_DEMO_FEATURES.filter((item) => item.status !== 'Coming soon')
+  const pending = META_DEMO_FEATURES.filter((item) => item.status === 'Coming soon')
+
+  return (
+    <CRMPage>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-zinc-700 via-violet-600 to-purple-600 p-6 text-white shadow-xl md:p-8 mb-6">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+                <Sparkles className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-200">Meta Omnichannel</p>
+                <h1 className="text-2xl font-bold md:text-3xl">{active.title}</h1>
+                <p className="mt-1 text-indigo-100">{active.summary}</p>
+              </div>
+            </div>
+            <Badge label={active.status} colorKey={active.status === 'Coming soon' ? 'draft' : 'active'} className="bg-white/20 text-white border-0" />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3 mb-6">
+        <CRMStatCard icon={Target} label="Working features" value={String(working.length)} helper="Ready to show investors." tone="emerald" />
+        <CRMStatCard icon={ListChecks} label="Guardrails" value="4" helper="Tenant, audit, no auto-send, no auto-merge." tone="blue" />
+        <CRMStatCard icon={Settings} label="Pending phases" value={String(pending.length)} helper="Outbound, analytics, readiness, connect." tone="amber" />
+      </div>
+
+      <CRMSection title="Investor Demo Proof" description="What is built now, visible in SynTask, and backed by tested contracts.">
+        <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/30">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{active.title}</h3>
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{active.summary}</p>
+              </div>
+              <Badge label={active.status} colorKey={active.status === 'Coming soon' ? 'draft' : 'active'} />
+            </div>
+            <ul className="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-200">
+              {active.proof.map((item) => (
+                <li key={item} className="flex gap-2">
+                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Demo Script</h3>
+            <ol className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+              <li>1. Open Meta Omnichannel.</li>
+              <li>2. Show WhatsApp, Instagram, Messenger inbox routes.</li>
+              <li>3. Show identity linking: human confirmed, no auto-merge.</li>
+              <li>4. Show AI draft: approve/reject only, no send.</li>
+              <li>5. Say outbound send, analytics, partner readiness come next.</li>
+            </ol>
+          </div>
+        </div>
+      </CRMSection>
+
+      <CRMSection title="Built Now" description="No Coming Soon labels here. These are investor-showable capabilities.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {working.map((item) => (
+            <div key={item.key} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{item.title}</h3>
+                <Badge label="Working" colorKey="active" />
+              </div>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.summary}</p>
+            </div>
+          ))}
+        </div>
+      </CRMSection>
+
+      <CRMSection title="Next Phases" description="Kept honest. These stay marked Coming Soon.">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {pending.map((item) => (
+            <div key={item.key} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.title}</h3>
+                <Badge label="Coming soon" colorKey="draft" />
+              </div>
+              <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">{item.summary}</p>
+            </div>
+          ))}
+        </div>
+      </CRMSection>
     </CRMPage>
   )
 }
@@ -235,69 +480,81 @@ function PipelineMastersSection() {
   }
 
   return (
-    <CRMSection
-      title="Pipeline"
-      description="Manage stages, win reasons, and lost reasons using the existing Sales configuration APIs."
-      actions={(
-        <div className="flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1">
-          {PIPELINE_RESOURCES.map((resource) => (
-            <Button
-              key={resource.key}
-              variant={resource.key === activeResource.key ? 'primary' : 'secondary'}
-              size="sm"
-              className="shrink-0 whitespace-nowrap"
-              onClick={() => setActiveResource(resource)}
-              title={resource.title}
-            >
-              {resource.label}
-            </Button>
-          ))}
-          <Button variant="secondary" size="sm" className="shrink-0 whitespace-nowrap" onClick={() => setOpen(true)}>
-            Add {activeResource.label}
-          </Button>
-        </div>
-      )}
-    >
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {(isLoading ? Array.from({ length: 3 }, (_, index) => ({ id: `s-${index}` })) : rows).map((row, index) => (
-          <article key={row.id || row.name || row.label} className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{row.name || row.label || row.title || row.category_name || row.product_name || 'Item'}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{row.status || (row.is_active === false ? 'Inactive' : 'Active')}</p>
-              </div>
-              {activeResource.key === 'stages' && !isLoading ? (
-                <Badge label={`#${index + 1}`} colorKey="draft" />
-              ) : null}
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 mb-6">
+      <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+              <Target className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             </div>
-            {activeResource.key === 'stages' && !isLoading ? (
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button variant="secondary" size="sm" onClick={() => moveStage(index, -1)} disabled={index === 0}>
-                  <ArrowUp className="mr-1 h-4 w-4" />
-                  Up
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => moveStage(index, 1)} disabled={index === rows.length - 1}>
-                  <ArrowDown className="mr-1 h-4 w-4" />
-                  Down
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => deleteStage(row)}>
-                  <Trash2 className="mr-1 h-4 w-4" />
-                  Delete
-                </Button>
-              </div>
-            ) : null}
-          </article>
-        ))}
-      </div>
-      {!rows.length ? (
-        <div className="mt-4">
-          <CRMEmptyState
-            icon={Settings}
-            title={`No ${activeResource.title.toLowerCase()}`}
-            description={`Add your first ${activeResource.title.toLowerCase()} to configure the CRM.`}
-          />
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-white">Pipeline</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Manage stages, win reasons, and lost reasons</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {PIPELINE_RESOURCES.map((resource) => (
+              <Button
+                key={resource.key}
+                variant={resource.key === activeResource.key ? 'primary' : 'secondary'}
+                size="sm"
+                className="shrink-0"
+                onClick={() => setActiveResource(resource)}
+                title={resource.title}
+              >
+                {resource.label}
+              </Button>
+            ))}
+            <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add {activeResource.label}
+            </Button>
+          </div>
         </div>
-      ) : null}
+      </div>
+
+      <div className="p-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {(isLoading ? Array.from({ length: 3 }, (_, index) => ({ id: `s-${index}` })) : rows).map((row, index) => (
+            <div key={row.id || row.name || row.label} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{row.name || row.label || row.title || row.category_name || row.product_name || 'Item'}</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{row.status || (row.is_active === false ? 'Inactive' : 'Active')}</p>
+                </div>
+                {activeResource.key === 'stages' && !isLoading && (
+                  <Badge label={`#${index + 1}`} colorKey="draft" />
+                )}
+              </div>
+              {activeResource.key === 'stages' && !isLoading && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => moveStage(index, -1)} disabled={index === 0} className="gap-1">
+                    <ArrowUp className="h-3.5 w-3.5" />
+                    Up
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => moveStage(index, 1)} disabled={index === rows.length - 1} className="gap-1">
+                    <ArrowDown className="h-3.5 w-3.5" />
+                    Down
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => deleteStage(row)} className="gap-1 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300">
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {!rows.length && (
+          <div className="mt-4">
+            <CRMEmptyState
+              icon={Settings}
+              title={`No ${activeResource.title.toLowerCase()}`}
+              description={`Add your first ${activeResource.title.toLowerCase()} to configure the CRM.`}
+            />
+          </div>
+        )}
+      </div>
 
       <Modal isOpen={open} onClose={() => setOpen(false)} title={`Add ${activeResource.title}`}>
         <div className="space-y-4">
@@ -324,19 +581,48 @@ function PipelineMastersSection() {
           <Button loading={mutation.isLoading} onClick={() => mutation.mutate(form)}>Save</Button>
         </div>
       </Modal>
-    </CRMSection>
+    </div>
   )
 }
 
 function EditableListSection({ title, description, settings, onChange, sectionKey, groups }) {
+  const colors = {
+    crm: 'from-blue-500 to-cyan-500',
+    teams: 'from-emerald-500 to-teal-500',
+    automation: 'from-purple-500 to-pink-500',
+    preferences: 'from-amber-500 to-orange-500',
+  }
+
+  const iconMap = {
+    crm: Building2,
+    teams: Users2,
+    automation: Zap,
+    preferences: Settings,
+  }
+
+  const Icon = iconMap[sectionKey] || Settings
+  const gradient = colors[sectionKey] || 'from-gray-500 to-gray-600'
+
   return (
-    <CRMSection title={title} description={description}>
-      <div className="grid gap-4">
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className={`border-b border-gray-200 bg-gradient-to-r from-${gradient.split(' ')[0]}-50/50 to-white p-4 dark:border-gray-700 dark:from-${gradient.split(' ')[0]}-950/20 dark:to-gray-800`}>
+        <div className="flex items-center gap-3">
+          <div className={`rounded-lg bg-${gradient.split(' ')[0]}-100 p-2 dark:bg-${gradient.split(' ')[0]}-900/30`}>
+            <Icon className={`h-5 w-5 text-${gradient.split(' ')[0]}-600 dark:text-${gradient.split(' ')[0]}-400`} />
+          </div>
+          <div>
+            <h2 className="font-bold text-gray-900 dark:text-white">{title}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
         {groups.map((group) => (
           <EditableList key={group.key} label={group.label} values={settings[group.key] || []} onChange={(values) => onChange(sectionKey, { ...settings, [group.key]: values })} />
         ))}
       </div>
-    </CRMSection>
+    </div>
   )
 }
 
@@ -355,19 +641,28 @@ function EditableList({ label, values, onChange }) {
   }
 
   return (
-    <section className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-900/30">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</h3>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{label}</h3>
         <Badge label={`${values.length} items`} colorKey="draft" />
       </div>
       <div className="mt-3 flex gap-2">
         <input
-          className={inputClassName}
+          className={`${inputClassName} bg-white dark:bg-gray-800`}
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder={`Add ${label.toLowerCase()}`}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              addValue()
+            }
+          }}
         />
-        <Button variant="secondary" onClick={addValue}>Add</Button>
+        <Button variant="secondary" onClick={addValue} className="gap-1">
+          <Plus className="h-4 w-4" />
+          Add
+        </Button>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {values.length ? values.map((value, index) => (
@@ -375,16 +670,16 @@ function EditableList({ label, values, onChange }) {
             key={`${label}-${value}-${index}`}
             type="button"
             onClick={() => removeValue(index)}
-            className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            className="group inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-rose-800 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
             aria-label={`Remove ${value}`}
           >
             {value}
-            <span aria-hidden="true">×</span>
+            <span className="text-gray-400 transition-colors group-hover:text-rose-500 dark:text-gray-500 dark:group-hover:text-rose-400">×</span>
           </button>
         )) : (
           <span className="text-sm text-gray-500 dark:text-gray-400">No items yet.</span>
         )}
       </div>
-    </section>
+    </div>
   )
 }

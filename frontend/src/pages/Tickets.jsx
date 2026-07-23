@@ -34,6 +34,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ROLE, normalizeRole } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 // Sortable Ticket Card Component
 const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
@@ -99,6 +100,12 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${priorityColors[ticket.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
             {priorities[ticket.priority]?.label || ticket.priority}
           </span>
+          {ticket.created_at ? (
+            <div className="flex items-center text-xs text-text-secondary dark:text-gray-400">
+              <Calendar className="mr-1 h-3.5 w-3.5" />
+              {format(timeService.instant(ticket.created_at), 'MMM d')}
+            </div>
+          ) : null}
           {ticket.assigned_to ? (
             <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
               <User className="h-3 w-3" />
@@ -303,7 +310,7 @@ const SignalTile = ({ label, value, helper, icon: Icon, tone = 'amber', trend, t
 }
 
 // Quick Action Card
-const QuickActionCard = ({ icon: Icon, label, description, href, color = 'indigo' }) => {
+const QuickActionCard = ({ icon: Icon, label, description, href, onClick, color = 'indigo' }) => {
   const colors = {
     indigo: 'from-indigo-500 to-purple-500',
     emerald: 'from-emerald-500 to-teal-500',
@@ -312,11 +319,14 @@ const QuickActionCard = ({ icon: Icon, label, description, href, color = 'indigo
     blue: 'from-blue-500 to-cyan-500',
   }
 
+  const Element = href ? Link : 'button'
+  const props = {
+    className: "group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-lg hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800",
+    ...(href ? { to: href } : { type: 'button', onClick }),
+  }
+
   return (
-    <Link
-      to={href}
-      className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-lg hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800"
-    >
+    <Element {...props}>
       <div className={`absolute right-0 top-0 -mr-8 -mt-8 h-20 w-20 rounded-full bg-gradient-to-r ${colors[color]} opacity-10 blur-2xl`}></div>
       <div className="relative flex items-center gap-3">
         <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2.5 text-white shadow-lg`}>
@@ -328,7 +338,7 @@ const QuickActionCard = ({ icon: Icon, label, description, href, color = 'indigo
         </div>
         <ArrowRight className="ml-auto h-4 w-4 text-gray-400 transition group-hover:translate-x-1 group-hover:text-indigo-600" />
       </div>
-    </Link>
+    </Element>
   )
 }
 
@@ -622,6 +632,43 @@ const Tickets = () => {
     }
   }
 
+  const handleQuickActionAssign = () => {
+    // Filter to show only unassigned tickets
+    const unassignedTickets = tickets.filter(t => !t.assigned_to)
+    if (unassignedTickets.length === 0) {
+      toast.info('No unassigned tickets found')
+      return
+    }
+    // Show the first unassigned ticket in the modal
+    handleTicketClick(unassignedTickets[0])
+  }
+
+  const handleQuickActionUrgent = () => {
+    // Set filter to show urgent tickets
+    setFilters(prev => ({ ...prev, priority: 'urgent' }))
+    toast.success('Filtered to urgent tickets')
+  }
+
+  const handleQuickActionMatrix = () => {
+    // Scroll to priority distribution chart
+    const chartsSection = document.querySelector('[data-section="priority-charts"]')
+    if (chartsSection) {
+      chartsSection.scrollIntoView({ behavior: 'smooth' })
+    } else {
+      toast.info('Priority distribution chart is below')
+    }
+  }
+
+  const handleQuickActionPerformance = () => {
+    // Scroll to quick stats section
+    const statsSection = document.querySelector('[data-section="quick-stats"]')
+    if (statsSection) {
+      statsSection.scrollIntoView({ behavior: 'smooth' })
+    } else {
+      toast.info('Performance metrics are below')
+    }
+  }
+
   const handleEditColumn = (column) => {
     setEditingColumn(column)
     setColumnForm({ label: column.label, color: column.color })
@@ -698,7 +745,7 @@ const Tickets = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -813,28 +860,28 @@ const Tickets = () => {
           icon={Users}
           label="Assign Tickets"
           description="Assign unassigned tickets"
-          href="#"
+          onClick={handleQuickActionAssign}
           color="indigo"
         />
         <QuickActionCard
           icon={Clock}
           label="Review Urgent"
           description="Check urgent tickets"
-          href="#"
+          onClick={handleQuickActionUrgent}
           color="rose"
         />
         <QuickActionCard
           icon={Target}
           label="Priority Matrix"
           description="View priority distribution"
-          href="#"
+          onClick={handleQuickActionMatrix}
           color="amber"
         />
         <QuickActionCard
           icon={Award}
           label="Performance"
           description="Team resolution metrics"
-          href="#"
+          onClick={handleQuickActionPerformance}
           color="emerald"
         />
       </div>
@@ -865,9 +912,9 @@ const Tickets = () => {
                 onChange={(e) => setFilters({ ...filters, status: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All statuses</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All statuses</option>
                 {sortedStatuses.map(status => (
-                  <option key={status.id} value={status.id}>{status.label}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status.id} value={status.id}>{status.label}</option>
                 ))}
               </select>
             </div>
@@ -878,9 +925,9 @@ const Tickets = () => {
                 onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All priorities</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All priorities</option>
                 {Object.keys(priorities).map(priority => (
-                  <option key={priority} value={priority}>{priorities[priority].label}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={priority} value={priority}>{priorities[priority].label}</option>
                 ))}
               </select>
             </div>
@@ -891,22 +938,24 @@ const Tickets = () => {
                 onChange={(e) => setFilters({ ...filters, type: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All types</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
                 {Object.keys(types).map(type => (
-                  <option key={type} value={type}>{types[type]}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={type} value={type}>{types[type]}</option>
                 ))}
               </select>
             </div>
           </div>
         </div>
 
-        <TicketBarChart
-          title="Priority Distribution"
-          description="Requests by urgency level"
-          data={priorityChartData}
-          icon={BarChart3}
-          color="amber"
-        />
+        <div data-section="priority-charts">
+          <TicketBarChart
+            title="Priority Distribution"
+            description="Requests by urgency level"
+            data={priorityChartData}
+            icon={BarChart3}
+            color="amber"
+          />
+        </div>
       </div>
 
       {/* Charts Row */}
@@ -919,7 +968,7 @@ const Tickets = () => {
           color="indigo"
         />
         
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800" data-section="quick-stats">
           <div className="mb-4">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Quick Stats</h3>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Ticket metrics at a glance</p>
@@ -1047,10 +1096,10 @@ const Tickets = () => {
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
                   <select name="type" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
-                    <option value="support">Support</option>
-                    <option value="feature_request">Feature Request</option>
-                    <option value="query">Query</option>
-                    <option value="complaint">Complaint</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="support">Support</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="feature_request">Feature Request</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="query">Query</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="complaint">Complaint</option>
                   </select>
                 </div>
                 <div>

@@ -17,6 +17,7 @@ import { versionsApi } from '../api/versions'
 import { canCreateProject, canManageProject, normalizeRole } from '../utils/roles'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
+import { timeService } from '@/services/timeService'
 import {
   buildProjectGraphRows,
   buildProjectGraphSummary,
@@ -298,7 +299,7 @@ export default function Projects() {
     const nextErrors = {}
     if (!formData.name.trim()) nextErrors.name = 'Project name is required.'
     if (!formData.key.trim()) nextErrors.key = 'Project key is required.'
-    if (formData.start_date && formData.delivery_date && new Date(formData.delivery_date) < new Date(formData.start_date)) {
+    if (formData.start_date && formData.delivery_date && timeService.instant(formData.delivery_date) < timeService.instant(formData.start_date)) {
       nextErrors.delivery_date = 'Delivery date must be after the start date.'
     }
     setFormErrors(nextErrors)
@@ -312,23 +313,23 @@ export default function Projects() {
       setSubmitting(true)
       const payload = { ...formData }
       payload.project_id = payload.project_id.trim() || payload.key.trim()
-      if (payload.start_date) payload.start_date = new Date(payload.start_date).toISOString()
-      if (payload.delivery_date) payload.delivery_date = new Date(payload.delivery_date).toISOString()
+      if (payload.start_date) payload.start_date = timeService.toUtcISOString(payload.start_date)
+      if (payload.delivery_date) payload.delivery_date = timeService.toUtcISOString(payload.delivery_date)
       
       if (createMode === 'schedule') {
         if (!scheduleRunAt) {
           toast.error('Schedule time is required')
           return
         }
-        const runAt = new Date(scheduleRunAt)
-        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+        const runAt = timeService.instant(scheduleRunAt)
+        if (Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
           toast.error('Schedule time must be in the future')
           return
         }
         await scheduledJobsAPI.scheduleJob({
           action_type: 'CREATE_PROJECT',
           payload,
-          run_at: runAt.toISOString(),
+          run_at: timeService.toUtcISOString(runAt),
         })
         toast.success('Project scheduled successfully')
         setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
@@ -388,7 +389,7 @@ export default function Projects() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -466,27 +467,27 @@ export default function Projects() {
               value={filters.status} 
               onChange={(event) => setFilters((state) => ({ ...state, status: event.target.value }))}
             >
-              <option value="">All statuses</option>
-              <option value="active">Active</option>
-              <option value="in_progress">In progress</option>
-              <option value="on_hold">On hold</option>
-              <option value="completed">Completed</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All statuses</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="active">Active</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="in_progress">In progress</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="on_hold">On hold</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="completed">Completed</option>
             </select>
             <select 
               className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
               value={filters.type} 
               onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}
             >
-              <option value="">All types</option>
-              {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
+              {projectTypeOptions.map((item) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <select 
               className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`} 
               value={filters.owner} 
               onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}
             >
-              <option value="">All assigned</option>
-              {uniqueAssignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All assigned</option>
+              {uniqueAssignableUsers.map((item) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
             </select>
           </div>
         </div>

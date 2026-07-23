@@ -92,6 +92,11 @@ from app.integrations.meta.models import (
     MetaSyncRun,
     MetaWebhookEvent,
 )
+from app.integrations.google_workspace.models import (
+    GoogleWorkspaceConnection,
+    GoogleWorkspaceMail,
+    GoogleWorkspaceCalendarEvent,
+)
 from app.recruitment.models import (
     Application, Candidate, CandidateNote, CandidateTimeline, Interview,
     InterviewFeedback, Offer, RecruitmentAttachment, RecruitmentAudit,
@@ -258,6 +263,9 @@ async def init_db():
                 MetaWebhookEvent,
                 MetaSyncRun,
                 MetaMarketingInsight,
+                GoogleWorkspaceConnection,
+                GoogleWorkspaceMail,
+                GoogleWorkspaceCalendarEvent,
                 RecruitmentJob,
                 Candidate,
                 Application,

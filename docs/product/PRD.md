@@ -104,6 +104,8 @@ Repository search on 2026-07-18 found the following:
 
 Access is the intersection of authentication, active status, company, enabled module, role, hierarchy, ownership, membership, project authorization, mailbox/calendar consent where applicable, and capability. Backend enforcement is mandatory.
 
+For local acceptance testing, the `admin@demo.com` development fixture is assigned every canonical module by the idempotent demo-admin seed. This fixture convenience does not alter production entitlement rules or tenant/resource authorization; testers must obtain a fresh session after reseeding.
+
 ## 4. Product-wide requirements
 
 | ID | Requirement | Acceptance summary |
@@ -121,8 +123,11 @@ Access is the intersection of authentication, active status, company, enabled mo
 | CORE-011 | AI human approval | AI output that changes records or sends communication remains draft/recommendation until approved |
 | CORE-012 | Provider abstraction | AI business logic depends on provider contracts, not provider-specific SDK behavior |
 | CORE-013 | Job idempotency | Background and event jobs are deduplicated and retryable |
+| CORE-014 | Global time consistency | Timestamps are stored in UTC and displayed through saved user timezone and format settings |
 
-Existing module requirements from Phase 1 remain valid: identity, tenant administration, projects, tasks, CRM, clients, finance, attendance, leave, EOD, timesheets, recruitment, support, chat, meetings, notifications, AI and creative assistance continue to require tenant isolation, backend authorization, lifecycle validation, auditability and safe provider failure behavior.
+Existing module requirements from Phase 1 remain valid: identity, tenant administration, projects, tasks, CRM, clients, finance, attendance, leave, EOD, timesheets, recruitment, support, chat, meetings, notifications, AI and creative assistance continue to require tenant isolation, backend authorization, lifecycle validation, auditability and safe provider failure behavior. Chat is treated as global task-workspace communication: users with `chat`, `task`, or `tasks_projects` module access may use same-tenant chat and group APIs, while user search and group membership remain company-scoped.
+
+Global time acceptance: browser timezone is detected on first login when no preference exists; navbar clock exposes timezone, automatic/manual time, 12/24-hour format, and seconds display; Admin and Super Admin can edit these settings; non-admin users are read-only; backend business time uses `ClockService`; frontend display and UTC serialization use `timeService`; settings mutate only the authenticated user.
 
 ## 5. AI-enabled Phase 2 scope
 
@@ -134,6 +139,7 @@ Existing module requirements from Phase 1 remain valid: identity, tenant adminis
 | Company-specific Email Draft Agent | Proposed | Authorized users generate drafts using approved company/project/client context; sending always requires approval. |
 | Transactional Email | Partially Existing / Proposed expansion | Account, verification and meeting lifecycle emails with idempotency, secure tokens and audit. |
 | Automated Notifications | Partially Existing / Proposed expansion | Event-driven, scheduled and reconciliation jobs for due dates, priorities and escalations. |
+| Google Workspace Module | Existing / Expanded | Native SynTask workspace for connected Gmail, Calendar, Meet, Drive-linked files, settings, and task/calendar syncing using the existing Google OAuth identity flow. |
 | Microsoft 365 Integration | Proposed | OAuth, Outlook send/read with consent, calendar sync, connection health, and later Teams/OneDrive/SharePoint. |
 
 Out of scope: autonomous email sending from AI generation alone, cross-tenant or unrelated-project agent access, broad Microsoft tenant or mailbox access without feature justification, hidden surveillance metrics, private-message analysis, autonomous HR outcomes, and automatic provider fallback for management analysis before evaluation.
@@ -179,6 +185,7 @@ Hierarchy: Company/Tenant -> Project -> Project Agent -> Task -> Task-Specific S
 - Ticket/chat/meeting visibility is participant, team and tenant scoped.
 - Meeting creation shows searchable selectable junior participants by creator role, stores participant IDs internally, rejects durations outside 1-60 minutes, and limits ordinary meeting visibility to hosts and invited participants.
 - Meeting records support host/admin update, reschedule, start, complete, cancel, and delete actions with meeting domain events.
+- Google Workspace pages reuse the authenticated Google account to show account state, Gmail activity, Calendar events, Meet links, Drive-linked files, and connection diagnostics without introducing a second login system.
 - Reminder engine creates company-scoped notifications for assigned task deadlines and assigned content due dates at 3 days, 2 days, tomorrow, today, and daily overdue intervals until completion/submission.
 - Authenticated workspace pages poll for due-tomorrow and due-today task/content reminders, perform duplicate-safe reminder catch-up, and show a sound-backed in-app popup with a cancel/dismiss control; overdue reminders remain in the notification panel.
 - Workspace Calendar and Content Calendar render backend-provided due tones: assigned blue, within 3 days yellow, tomorrow orange, today red, and overdue dark red.

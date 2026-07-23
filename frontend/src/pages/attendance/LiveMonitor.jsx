@@ -10,6 +10,7 @@ import { attendanceAPI } from '../../api/attendance'
 import { useAuthStore } from '../../store/authStore'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
+import { closeOpenWebSocket } from '../../utils/webSocket'
 
 const formatTime = (totalSeconds) => {
   if (!totalSeconds || totalSeconds < 0) return '00:00:00'
@@ -224,10 +225,8 @@ const LiveMonitor = () => {
 
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-      if (socketRef.current) {
-        socketRef.current.close()
-        socketRef.current = null
-      }
+      closeOpenWebSocket(socketRef.current)
+      socketRef.current = null
     }
   }, [token, connectSocket, loadEmployees])
 
@@ -269,7 +268,7 @@ const LiveMonitor = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -357,10 +356,10 @@ const LiveMonitor = () => {
                 onChange={e => setStatusFilter(e.target.value)}
                 disabled={loading}
               >
-                <option value="All">All Statuses</option>
-                <option value="Working">Working</option>
-                <option value="On Break">On Break</option>
-                <option value="Offline">Offline</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="All">All Statuses</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="Working">Working</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="On Break">On Break</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="Offline">Offline</option>
               </select>
             </div>
           </div>

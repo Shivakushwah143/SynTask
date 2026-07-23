@@ -15,6 +15,7 @@ from app.models.ownership_transfer import OwnershipTransfer
 from app.crm.models import SalesProspect
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.user import User, UserRole, UserStatus
+from app.core.clock import utc_now
 
 
 _PROJECT_TEMPLATE_DEFS: Dict[str, Dict[str, Any]] = {
@@ -251,11 +252,11 @@ async def _resolve_client(current_user: User, lead: SalesProspect, deal: Optiona
             existing_client.company_name = company_name
         if getattr(lead, "assigned_to", None) and not existing_client.assigned_to:
             existing_client.assigned_to = str(getattr(lead, "assigned_to", ""))
-        existing_client.updated_at = datetime.now()
+        existing_client.updated_at = utc_now()
         await existing_client.save()
         return existing_client
 
-    now = datetime.now()
+    now = utc_now()
     client = Client(
         name=company_name,
         company_id=company_id,
@@ -311,11 +312,11 @@ async def _resolve_project(current_user: User, lead: SalesProspect, client: Clie
             existing.assigned_to = owner_id
         if owner_id and not existing.lead_id:
             existing.lead_id = owner_id
-        existing.updated_at = datetime.now()
+        existing.updated_at = utc_now()
         await existing.save()
         return existing
 
-    now = datetime.now()
+    now = utc_now()
     base_name = template["name"]
     project_name = f"{client.name} - {base_name}"
     project_key = f"{base_name[:3].upper()}-{str(lead.id)[-4:].upper()}"
@@ -352,7 +353,7 @@ async def _resolve_project(current_user: User, lead: SalesProspect, client: Clie
 
 async def _generate_project_structure(current_user: User, project: Project, client: Client, lead: SalesProspect, deal: Optional[CRMDeal]) -> Dict[str, Any]:
     template = _template_for_lead(lead)
-    now = datetime.now()
+    now = utc_now()
 
     created_tasks: List[str] = []
     for index, task_title in enumerate(template["tasks"]):
@@ -400,7 +401,7 @@ async def _generate_project_structure(current_user: User, project: Project, clie
 
 
 async def _create_kickoff_meeting(current_user: User, lead: SalesProspect, client: Client, project: Project) -> Meeting:
-    now = datetime.now()
+    now = utc_now()
     existing_meeting = await Meeting.find_one(
         {
             "company_id": str(lead.company_id),
@@ -430,7 +431,7 @@ async def _create_kickoff_meeting(current_user: User, lead: SalesProspect, clien
 
 
 async def handle_won_deal_automation(current_user: User, lead: SalesProspect, deal: Optional[CRMDeal]) -> Dict[str, Any]:
-    now = datetime.now()
+    now = utc_now()
     client = await _resolve_client(current_user, lead, deal)
     account_manager = await _resolve_account_manager(current_user, lead, client)
     if account_manager:

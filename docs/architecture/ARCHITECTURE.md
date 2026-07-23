@@ -11,7 +11,11 @@ flowchart LR
     API --> Uploads[(Local uploads/)]
     API --> Email[SMTP]
     API --> Zoom[Zoom API]
+    API --> Google[Google Workspace]
     API --> Payments[Stripe / Razorpay]
+    Meta[Meta Cloud] --> MetaBoundary[Meta Integration - disabled by default]
+    MetaBoundary --> Mongo
+    MetaBoundary --> Redis
     Meta[Meta Cloud] --> MetaBoundary[Meta Integration - disabled by default]
     MetaBoundary --> Mongo
     MetaBoundary --> Redis
@@ -45,6 +49,8 @@ flowchart TD
 
 Project/task delivery access is company-scoped before role rules apply. Company Admin and Super Admin can list and manage all company tasks. Managers can list all company projects and tasks, but task detail edits and assignment changes are limited to tasks whose `department_id` matches the manager's `department_id`; negative tests cover cross-department edit denial. Employees list tasks assigned to them and can see projects that contain those assigned tasks, but task/project detail editing is disabled except for allowed task progress/status, comments, and attachments.
 
+Project/task delivery access is company-scoped before role rules apply. Company Admin and Super Admin can list and manage all company tasks. Managers can list all company projects and tasks, but task detail edits and assignment changes are limited to tasks whose `department_id` matches the manager's `department_id`; negative tests cover cross-department edit denial. Employees list tasks assigned to them and can see projects that contain those assigned tasks, but task/project detail editing is disabled except for allowed task progress/status, comments, and attachments.
+
 ## Authentication Flow
 ```mermaid
 sequenceDiagram
@@ -68,7 +74,9 @@ sequenceDiagram
 Access tokens expire according to `ACCESS_TOKEN_EXPIRE_MINUTES`; refresh tokens use `REFRESH_TOKEN_EXPIRE_DAYS`. Logout blacklists the access token and an optional refresh token in Redis.
 
 ## Module Access Control
-Users have a `modules: List[str]` field such as `["task"]` or `["task", "sales"]`. The `require_module("task")` dependency gates most task-management route groups in `backend/app/api/v1/router.py`. Sales endpoints perform endpoint-level authorization.
+Users have a `modules: List[str]` field. Canonical module IDs are `tasks_projects`, `tickets`, `chat`, `meetings_calendar`, `invoicing_ledger`, `sales_crm`, `attendance_leaves`, `recruitment`, `reports`, and `ai_agents`. Backend `require_module(...)` dependencies gate protected route groups; the legacy `task` ID remains compatible with `tasks_projects`. Chat route groups accept `chat`, `task`, or `tasks_projects` module access because chat is global workspace communication; endpoint logic still enforces same-company participants and group membership. Sales endpoints perform endpoint-level authorization.
+
+The local `admin@demo.com` fixture receives every canonical module when `backend/create_demo_admin.py` creates or updates it. This is development-only fixture access and does not bypass role, tenant, hierarchy, ownership, or resource authorization. Existing sessions must sign in again after the fixture is updated so client auth state reflects the new module list.
 
 ## Key Design Patterns
 ### Beanie ODM
@@ -83,9 +91,13 @@ Authentication, role gates, module gates, and company access checks are implemen
 ### Meta Integration Foundation
 Meta support lives under `backend/app/integrations/meta` rather than CRM controllers. Phase 1 adds tenant-scoped settings, durable webhook inbox, sync-run, and marketing-insight documents. Deployment-wide Meta credentials come from environment variables; tenant tokens are encrypted with the existing Fernet helper before database storage. `META_INTEGRATION_ENABLED` defaults to `False`, and tenant settings default disabled, so deploying the foundation changes no CRM behavior.
 
+### Google Workspace Foundation
+Google Workspace support lives under `backend/app/integrations/google_workspace` rather than the auth controller. The module reuses the existing Google OAuth identity flow and stores connected-account state in company-scoped integration documents so the workspace can surface Gmail, Calendar, Meet, and diagnostics without creating a second login system. Tenant data remains scoped through `company_id` and `user_id`, and token refresh/error handling is centralized in the workspace service layer.
+
 Tenant mapping is anchored by unique `company_id` and Page/Form indexes. Super-admin configuration requires explicit tenant selection; company admins cannot select another tenant. Existing outbound `Webhook` and `WebhookDelivery` models remain unchanged because inbound Meta events have different signature, idempotency, retry, and processing lifecycles.
 
 ### Background Tasks
+Startup launches the deadline checker from `app.core.deadline_checker`, the centralized reminder scheduler from `app.services.reminder_service`, and the one-minute scheduled-job runner from `app.services.scheduling_service`. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. The scheduled-job runner locks due `scheduled_jobs` records atomically before invoking the existing project/task creation services, then records notifications and timeline events. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
 Startup launches the deadline checker from `app.core.deadline_checker`, the centralized reminder scheduler from `app.services.reminder_service`, and the one-minute scheduled-job runner from `app.services.scheduling_service`. The reminder scheduler runs hourly in-process, scans incomplete assigned tasks and unpublished assigned content with due dates up to three days ahead plus overdue records, and writes company-scoped notifications with duplicate keys in notification metadata. The scheduled-job runner locks due `scheduled_jobs` records atomically before invoking the existing project/task creation services, then records notifications and timeline events. Celery and Redis dependencies are present, but Celery workers are not yet wired as the primary background execution path.
 
 ## Current Architecture Limitations

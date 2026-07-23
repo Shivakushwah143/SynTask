@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { Button, ConfirmDialog, EmptyState, FormField, inputClassName, Modal, PhoneInput, SkeletonTable, Table, phoneValidationMessage } from '../../../components/ui'
 import { CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
+import { timeService } from '@/services/timeService'
 
 const COMPANY_TEMPLATE = {
   name: '',
@@ -227,7 +228,7 @@ export default function CRMCompaniesPage() {
 
   return (
     <CRMPage>
-      <section className="mb-6 overflow-hidden rounded-[28px] border border-primary-200/70 bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 p-6 text-white shadow-[0_18px_60px_rgba(15,23,42,0.06)] md:p-8">
+      <section className="mb-6 overflow-hidden rounded-[28px] border border-primary-200/70 bg-gradient-to-br from-slate-700 via-violet-600 to-purple-500 p-6 text-white shadow-[0_18px_60px_rgba(15,23,42,0.06)] md:p-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-white/20 p-2.5 backdrop-blur-sm">

@@ -5,7 +5,7 @@ import logging
 import inspect
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from hashlib import sha256
 from typing import Any, Optional
 from urllib import error as urllib_error
@@ -16,12 +16,13 @@ from app.timeline.publisher import publish_crm_timeline_event
 from app.models.ai_log import AIInteractionLog
 from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivityStatus, CRMActivityType
 from app.models.notification import Notification, NotificationType
+from app.core.clock import clock_service
 
 logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return clock_service.aware_utc_now()
 
 
 def _safe_str(value: Any) -> str:

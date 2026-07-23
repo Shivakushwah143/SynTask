@@ -27,12 +27,13 @@ import {
   AlertTriangle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { format, formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { useAuthStore } from '../store/authStore'
 import { normalizeRole, ROLE } from '../utils/roles'
 import { PageHeader, EmptyState, Badge, Button, Modal, FormField } from '../components/ui'
 import { inputClassName } from '../components/ui'
+import { timeService } from '../services/timeService'
 
 /* ─── Constants ──────────────────────────────────────────────── */
 const STATUS_TABS = [
@@ -82,8 +83,13 @@ function payloadSummary(job) {
 function formatRunAt(runAt) {
   if (!runAt) return '—'
   try {
-    const d = new Date(runAt)
-    return format(d, 'MMM d, yyyy · HH:mm')
+    return timeService.format(runAt, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
   } catch {
     return runAt
   }
@@ -92,7 +98,31 @@ function formatRunAt(runAt) {
 function relativeTo(runAt) {
   if (!runAt) return ''
   try {
-    return formatDistanceToNow(new Date(runAt), { addSuffix: true })
+    return formatDistanceToNow(timeService.instant(runAt), { addSuffix: true })
+  } catch {
+    return ''
+  }
+}
+
+function formatScheduledTime(value) {
+  if (!value) return 'â€”'
+  try {
+    return timeService.format(value, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  } catch {
+    return value
+  }
+}
+
+function relativeScheduledTime(value) {
+  if (!value) return ''
+  try {
+    return formatDistanceToNow(timeService.instant(value), { addSuffix: true })
   } catch {
     return ''
   }
@@ -252,8 +282,7 @@ function EditScheduleModal({ job, onClose, onSaved }) {
   const [value, setValue] = useState(() => {
     if (!job?.run_at) return ''
     try {
-      const d = new Date(job.run_at)
-      return d.toISOString().slice(0, 16)
+      return timeService.toZonedDateTimeInput(job.run_at)
     } catch {
       return ''
     }
@@ -264,12 +293,12 @@ function EditScheduleModal({ job, onClose, onSaved }) {
   const handleSave = async () => {
     setError('')
     if (!value) { setError('Select a new execution time.'); return }
-    const runAt = new Date(value)
-    if (isNaN(runAt)) { setError('Invalid date.'); return }
-    if (runAt <= new Date()) { setError('Must be in the future.'); return }
+    const runAt = timeService.parseZonedInput(value)
+    if (!runAt || Number.isNaN(runAt.getTime())) { setError('Invalid date.'); return }
+    if (runAt <= timeService.now()) { setError('Must be in the future.'); return }
     try {
       setSaving(true)
-      await scheduledJobsAPI.updateSchedule(job.id, { run_at: runAt.toISOString() })
+      await scheduledJobsAPI.updateSchedule(job.id, { run_at: timeService.toUtcISOString(runAt) })
       toast.success('Schedule updated')
       onSaved()
       onClose()
@@ -451,7 +480,7 @@ export default function ScheduledJobs() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-700 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
@@ -650,8 +679,8 @@ export default function ScheduledJobs() {
                       )}
                     </td>
                     <td className="px-4 py-3.5 text-gray-700 dark:text-gray-300">
-                      <span>{formatRunAt(job.run_at)}</span>
-                      <span className="block text-xs text-gray-400">{relativeTo(job.run_at)}</span>
+                      <span>{formatScheduledTime(job.run_at)}</span>
+                      <span className="block text-xs text-gray-400">{relativeScheduledTime(job.run_at)}</span>
                     </td>
                     <td className="px-4 py-3.5 text-gray-600 dark:text-gray-400">
                       {job.created_by_name || '—'}

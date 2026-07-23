@@ -6,6 +6,7 @@ import logging
 
 from app.events.contracts import DomainEvent
 from app.events.registry import event_registry
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class EventDispatcher:
     async def dispatch(self, event: DomainEvent) -> None:
         handlers = event_registry.get_handlers(event.event_name)
         for handler in handlers:
-            started = datetime.now()
+            started = utc_now()
             handler_name = getattr(handler, "__name__", handler.__class__.__name__)
             stats = self._stats[handler_name]
             stats["attempts"] += 1
@@ -47,7 +48,7 @@ class EventDispatcher:
                     },
                 )
             finally:
-                elapsed_ms = (datetime.now() - started).total_seconds() * 1000
+                elapsed_ms = (utc_now() - started).total_seconds() * 1000
                 stats["last_duration_ms"] = round(elapsed_ms, 3)
 
 

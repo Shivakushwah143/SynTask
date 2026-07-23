@@ -219,7 +219,7 @@ const AdminPermissions = () => {
                 }}
               >
                 {overview?.departments?.map((dept) => (
-                  <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={dept.id} value={dept.id}>{dept.name}</option>
                 ))}
               </select>
             </label>

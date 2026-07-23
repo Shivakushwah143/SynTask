@@ -5,6 +5,7 @@ from typing import Optional, TypeVar
 from beanie import Document
 from pymongo import ASCENDING, DESCENDING
 
+from app.core.clock import utc_now
 from app.recruitment.models import (Application, Candidate, CandidateNote,
                                     CandidateTimeline, ImportStatus, Interview,
                                     InterviewFeedback,
@@ -160,7 +161,7 @@ class JobRepository(TenantRepository):
 
         current_value = getattr(job.analytics_counters, counter_field, 0)
         setattr(job.analytics_counters, counter_field, current_value + delta)
-        job.updated_at = datetime.now()
+        job.updated_at = utc_now()
         await job.save()
         return job
 
@@ -427,4 +428,3 @@ class RecruitmentReportRepository:
             "time_to_hire": time_to_hire[0] if time_to_hire else {"average_days": 0, "count": 0},
             "time_to_fill": time_to_fill[0] if time_to_fill else {"average_days": 0, "count": 0},
         }
-

@@ -10,6 +10,7 @@ from app.models.company_subscription import CompanySubscription, CompanySubscrip
 from app.models.company import Company
 from app.models.user import User
 from app.api.dependencies import get_current_user
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -148,7 +149,7 @@ async def create_payment_intent(
             "amount": amount_paise,
             "currency": plan.currency or "INR",
             # Razorpay receipt max 40 chars
-            "receipt": f"sub_{str(cid)[:12]}_{int(datetime.now().timestamp())}"[:40],
+            "receipt": f"sub_{str(cid)[:12]}_{int(utc_now().timestamp())}"[:40],
             "notes": {
                 "plan_id": str(plan_id),
                 "billing_cycle": billing_cycle,
@@ -165,7 +166,7 @@ async def create_payment_intent(
         }
     except ImportError:
         return {
-            "order_id": f"order_mock_{datetime.now().timestamp()}",
+            "order_id": f"order_mock_{utc_now().timestamp()}",
             "amount": amount,
             "currency": plan.currency or "INR",
             "key_id": "rzp_test_mock",
@@ -234,7 +235,7 @@ async def confirm_payment(
 
     amount = plan.price_yearly if billing_cycle == "annual" else plan.price_monthly
     amount = amount if amount is not None else 0.0
-    start_date = datetime.now()
+    start_date = utc_now()
     if billing_cycle == "annual":
         end_date = start_date + timedelta(days=365)
     else:
@@ -260,7 +261,7 @@ async def confirm_payment(
         existing.last_payment_amount = amount
         existing.last_payment_status = "paid"
         existing.razorpay_subscription_id = payment_id
-        existing.updated_at = datetime.now()
+        existing.updated_at = utc_now()
         await existing.save()
     else:
         new_sub = CompanySubscription(

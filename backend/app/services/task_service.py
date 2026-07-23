@@ -4,6 +4,7 @@ from typing import Any, Optional
 
 from bson import ObjectId
 from fastapi import HTTPException, status
+from app.core.clock import parse_to_utc, utc_now
 from app.models.user import User
 
 from app.models.project import Project
@@ -36,10 +37,10 @@ class TaskService:
         task.status = new_status
         status_value = new_status.value if hasattr(new_status, "value") else str(new_status)
         if status_value.lower() in {"completed", "complete", "done"}:
-            task.completed_at = datetime.now()
+            task.completed_at = utc_now()
         else:
             task.completed_at = None
-        task.updated_at = datetime.now()
+        task.updated_at = utc_now()
         await task.save()
         from app.services.task_health_service import sync_task_health
         await sync_task_health(task)
@@ -81,11 +82,11 @@ class TaskService:
             entry = {
                 "hours": hours,
                 "note": payload.get("time_log_note"),
-                "logged_at": datetime.now(),
+                "logged_at": utc_now(),
             }
             task.time_logs = list(task.time_logs or []) + [entry]
             task.actual_hours = float(task.actual_hours or 0) + hours
-        task.updated_at = datetime.now()
+        task.updated_at = utc_now()
         await task.save()
         return task
 
@@ -103,7 +104,7 @@ class TaskService:
             by_priority[priority_key] = by_priority.get(priority_key, 0) + 1
             if task.assigned_to:
                 assigned[str(task.assigned_to)] = assigned.get(str(task.assigned_to), 0) + 1
-            if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < datetime.now():
+            if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < utc_now():
                 overdue += 1
         return {
             "total": total,
@@ -167,7 +168,7 @@ class TaskService:
         parsed_due_date = None
         if due_date:
             try:
-                parsed_due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+                parsed_due_date = parse_to_utc(due_date)
             except:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
