@@ -8,6 +8,7 @@ import { Button } from '../ui'
 import { useAuthStore } from '../../store/authStore'
 import { ROLE, hasCompanyAdminAccess, isManagerRole, isSuperAdminRole, normalizeRole } from '../../utils/roles'
 import { SynzinAvatar } from '../ai/SynzinAvatar'
+import { getAvatarUrl } from '../../utils/avatarUrl'
 
 const GLOBAL_COMMUNICATION_LINKS = [
   {
@@ -49,6 +50,7 @@ export function TopNavigation({
     (item) => item.roles.includes(userRole) && hasModule(item.module),
   )
   const canUseAssistant = hasCompanyAdminAccess(userRole) || isManagerRole(userRole)
+  const avatarUrl = getAvatarUrl(user?.avatar, user?.avatar_version)
   const searchShortcut = useMemo(() => getSearchShortcutLabel(), [])
   const [highlightSearch, setHighlightSearch] = useState(false)
 
@@ -196,6 +198,14 @@ export function TopNavigation({
           {/* Notification Bell */}
           <NotificationBell />
 
+          <div className="hidden h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-xs font-semibold text-white shadow-sm dark:border-gray-700 sm:flex" aria-label="Current user profile photo">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={user?.first_name || 'Profile'} className="h-full w-full object-cover" />
+            ) : (
+              <span>{user?.first_name?.[0]}{user?.last_name?.[0]}</span>
+            )}
+          </div>
+
           {/* Logout Button */}
           <Button
             variant="ghost"
@@ -218,4 +228,5 @@ function getSearchShortcutLabel() {
   const platform = window.navigator?.platform || ''
   return /Mac|iPhone|iPad|iPod/i.test(platform) ? '⌘ K' : 'Ctrl K'
 }
+
 
