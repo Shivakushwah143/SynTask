@@ -1,7 +1,7 @@
 # SynTask AI Platform — Milestone 10: Essential Department Specialist Packs
 
 **Version:** 1.0  
-**Status:** Ready for repository inspection and implementation  
+**Status:** Milestone 10 — In Progress  
 **Target repository path:** `docs/milestones/MILESTONE_10_ESSENTIAL_DEPARTMENT_SPECIALIST_PACKS.md`  
 **Date:** 2026-07-21
 
@@ -1023,3 +1023,105 @@ Do not implement:
 - Commits or pushes unless explicitly requested.
 
 If repository reality conflicts with this specification, preserve the established security and authority boundaries, document the conflict, and request direction before making a materially different architectural change.
+
+---
+
+## 20. Implementation Progress
+
+- [x] Repository and canonical-document inspection completed.
+- [x] Seven initial department packs defined.
+- [x] Fourteen governed department task-specialist profiles implemented with existing `SpecialistDefinition`.
+- [x] Exactly two Milestone 10 specialists assigned to each pack.
+- [x] Strict additive Project Agent request fields added for optional `task_id` and requested focus.
+- [x] Department specialist output schema implemented.
+- [x] Deterministic server-side department specialist selector implemented.
+- [x] Generic Milestone 7 specialist fallback preserved.
+- [x] Existing Project Agent API reused; no direct specialist endpoint added.
+- [x] Server-resolved routing metadata added to Project Agent run input/context.
+- [x] Existing Project Agent UI modal updated to render selected pack/specialist metadata and proposal-only specialist output.
+- [x] Versioned evaluation dataset added with 112 synthetic cases.
+- [x] Focused contract, dataset, compile, and frontend build checks run.
+- [ ] Existing Project Agent API boundary tests passing.
+- [ ] Milestone 6, 7, 8, and 9 regression tests passing.
+- [ ] Real MongoDB, Redis, and Qdrant gates passing for Milestone 10.
+- [ ] Full backend and relevant frontend suites passing or unrelated failures classified.
+- [ ] Human-review relevance, cost, and latency release gates completed.
+- [ ] Milestone status changed to Completed.
+
+---
+
+## 21. Completion Evidence
+
+Status: Blocked from completion.
+
+Implemented on 2026-07-23:
+
+- Added fourteen Milestone 10 department specialist profiles in `backend/app/agents/project_agent.py`.
+- Added seven pack IDs: `digital_marketing`, `software_technology`, `sales`, `human_resources`, `operations`, `finance`, `support`.
+- Added two specialist IDs per pack:
+  - `digital_marketing`: `content_seo_task_specialist`, `campaign_execution_analytics_specialist`
+  - `software_technology`: `software_implementation_specialist`, `qa_release_specialist`
+  - `sales`: `lead_research_qualification_task_specialist`, `proposal_follow_up_task_specialist`
+  - `human_resources`: `recruitment_interview_task_specialist`, `onboarding_workflow_task_specialist`
+  - `operations`: `process_dependency_task_specialist`, `capacity_resource_task_specialist`
+  - `finance`: `budget_cost_review_task_specialist`, `billing_invoice_review_task_specialist`
+  - `support`: `ticket_triage_resolution_task_specialist`, `escalation_knowledge_task_specialist`
+- Added deterministic selection contract using server-resolved `department_type`, `project_type`, and task category from task tags.
+- Selection precedence: exact department/category match first; software project-type fallback only when no department is resolved; generic Milestone 7 fallback when no safe department specialist is available.
+- Added `DepartmentSpecialistOutput` and `DepartmentSpecialistSelection` schemas.
+- Added Project Agent API server-resolved routing metadata without allowing client specialist, department, project-type, task-category, permission, provider, or tool overrides.
+- Added Project Agent provider context key `project_agent_routing`.
+- Added UI rendering in existing Project Agent modal. No direct specialist screen or Run Specialist control was added.
+- Added evaluation dataset at `backend/tests/agents/evaluation/department_specialist_eval_cases.json`.
+
+Security and boundary evidence:
+
+- Every Milestone 10 specialist has `supported_agent_ids = ["project_agent"]`.
+- Every Milestone 10 specialist has `allowed_tools = []`.
+- Every Milestone 10 specialist has `maximum_fan_out = 1`.
+- Forbidden actions include task/project mutation, connector sending, campaign launch, ad-spend change, CRM stage change, candidate ranking/rejection, account access grants, reassignment, deadline change, budget/invoice/payment mutation, ticket closure, code deployment, and command execution.
+- No public direct-specialist endpoint was added.
+- No connector, scheduling, approval execution, or business mutation path was added.
+- Output proposals remain `proposal_only` and require approval.
+
+Files modified:
+
+- `backend/app/agents/project_agent.py`
+- `backend/app/agents/orchestrator.py`
+- `backend/app/api/v1/endpoints/agents.py`
+- `backend/tests/agents/test_project_agent_contract.py`
+- `frontend/src/pages/ProjectBoard.jsx`
+- `docs/milestones/MILESTONE_10_ESSENTIAL_DEPARTMENT_SPECIALIST_PACKS.md`
+
+Files created:
+
+- `backend/tests/agents/evaluation/department_specialist_eval_cases.json`
+- `backend/tests/agents/test_department_specialist_evaluation_dataset.py`
+
+Tests and checks:
+
+- `python -m pytest backend\tests\agents\test_project_agent_contract.py backend\tests\agents\test_department_specialist_evaluation_dataset.py -q` - 11 passed in 2.23s.
+- `python -m compileall backend\app\agents\project_agent.py backend\app\agents\orchestrator.py backend\app\api\v1\endpoints\agents.py backend\tests\agents\test_project_agent_contract.py backend\tests\agents\test_department_specialist_evaluation_dataset.py` - passed.
+- `npm.cmd -C frontend run build` - passed in 12.09s.
+- `python -m pytest backend\tests\agents\test_project_agent_contract.py backend\tests\agents\test_agent_api_boundaries.py backend\tests\agents\test_department_specialist_evaluation_dataset.py -q` - 13 passed, 7 failed, 4 warnings in 18.73s.
+
+Failure classification:
+
+- `backend/tests/agents/test_agent_api_boundaries.py` currently returns `403` before route-specific assertions for Agent Platform, Project Agent, and Email Draft endpoints.
+- The failures occur before Milestone 10 route logic is reached, affecting pre-existing Agent Platform and Milestone 8 endpoint tests as well as Project Agent tests.
+- Because API boundary tests are part of Milestone 10 acceptance, completion is blocked until this test-harness/auth override failure is fixed or classified as pre-existing with accepted evidence.
+
+Uncompleted release gates:
+
+- Existing Project Agent API boundary tests passing.
+- Milestone 6, 7, 8, and 9 regression tests passing.
+- Real MongoDB, Redis, and Qdrant gates for Milestone 10.
+- Full backend and relevant frontend suites.
+- Human-review relevance, cost, and latency release gates.
+
+Git and deployment:
+
+- No commit was created.
+- No push was performed.
+- No pull request was opened.
+- No deployment was performed.

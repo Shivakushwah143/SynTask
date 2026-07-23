@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from app.agents.email_draft import EMAIL_DRAFT_OUTPUT_SCHEMA_VERSION, EmailDraftAgentOutput, detect_sensitive_terms
+from app.agents.project_agent import PROJECT_AGENT_OUTPUT_SCHEMA_VERSION, ProjectAgentOutput
 from app.agents.task_performance import TASK_PERFORMANCE_OUTPUT_SCHEMA_VERSION, TaskPerformanceAgentOutput
 from app.agents.budget import AgentBudgetController, BudgetExceeded
 from app.agents.registry import AgentRegistry
@@ -293,6 +294,8 @@ class AgentOrchestrator:
     def _output_schema(self, definition):
         if definition.output_schema_version == EMAIL_DRAFT_OUTPUT_SCHEMA_VERSION:
             return EmailDraftAgentOutput
+        if definition.output_schema_version == PROJECT_AGENT_OUTPUT_SCHEMA_VERSION:
+            return ProjectAgentOutput
         if definition.output_schema_version == TASK_PERFORMANCE_OUTPUT_SCHEMA_VERSION:
             return TaskPerformanceAgentOutput
         return GenericAgentOutput
@@ -321,6 +324,9 @@ class AgentOrchestrator:
         return {**context, "task_performance": immutable}
 
     async def _provider_context_for_run(self, *, definition, context: dict[str, Any], payload: AgentRunCreateRequest, current_user: User) -> dict[str, Any]:
+        if definition.output_schema_version == PROJECT_AGENT_OUTPUT_SCHEMA_VERSION:
+            routing = (payload.input_payload or {}).get("server_resolved_routing") or {}
+            return {**context, "project_agent_routing": routing}
         if definition.output_schema_version != TASK_PERFORMANCE_OUTPUT_SCHEMA_VERSION:
             return context
         records = await self._task_performance_records(payload=payload, current_user=current_user)
