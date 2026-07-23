@@ -21,6 +21,7 @@ import ThemeToggle from '../components/ThemeToggle'
 import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
 import { SynzinAvatar } from '../components/ai/SynzinAvatar'
 import { SynzinHelpPrompt } from '../components/ai/SynzinHelpPrompt'
+import { getAvatarUrl } from '../utils/avatarUrl'
 
 const SuperAdminLayout = () => {
   const location = useLocation()
@@ -29,6 +30,7 @@ const SuperAdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [synzinPromptOpen, setSynzinPromptOpen] = useState(true)
+  const avatarUrl = getAvatarUrl(user?.avatar, user?.avatar_version)
 
   const handleLogout = async () => {
     if (isLoggingOut) return
@@ -199,6 +201,13 @@ const SuperAdminLayout = () => {
               Synzin
             </button>
             <ThemeToggle />
+            <div className="h-9 w-9 overflow-hidden rounded-full border border-surface-border bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-xs font-semibold text-white dark:border-gray-800">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={user?.first_name || 'Profile'} className="h-full w-full object-cover" />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center">{user?.first_name?.[0]}{user?.last_name?.[0]}</span>
+              )}
+            </div>
             <span className="text-sm text-text-secondary dark:text-gray-300">
               Welcome back, <span className="font-medium text-text-primary dark:text-gray-100">{user?.first_name}</span>
             </span>

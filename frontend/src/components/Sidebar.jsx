@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDefaultAvatar } from "../utils/avatar";
+import { getAvatarUrl } from "../utils/avatarUrl";
 import { Link, useLocation } from "react-router-dom";
 import {
   AlarmClockCheck,
@@ -55,16 +56,6 @@ const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
 const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
 const WIDTH_KEY = "syntask-sidebar-width";
 const WIDTH_OPTIONS = [240, 280, 320];
-
-const getApiAssetUrl = (path) => {
-  if (!path) return null;
-  if (path.startsWith("http")) return path;
-  const apiOrigin = import.meta.env.VITE_API_URL?.replace("/api/v1", "") || "";
-  if (path.startsWith("/uploads/avatars/")) {
-    return `${apiOrigin}/api/v1${path}`;
-  }
-  return `${apiOrigin}${path}`;
-};
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
@@ -934,7 +925,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               <div className="flex-shrink-0">
                 {user?.avatar ? (
                   <img
-                    src={getApiAssetUrl(user.avatar)}
+                    src={getAvatarUrl(user.avatar, user.avatar_version)}
                     alt={user?.first_name}
                     className="h-8 w-8 rounded-full object-cover border-2 border-primary-500/30"
                     onError={useDefaultAvatar}
