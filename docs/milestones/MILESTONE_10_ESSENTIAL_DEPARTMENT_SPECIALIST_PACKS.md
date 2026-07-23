@@ -145,6 +145,7 @@ The Milestone 10 profiles are narrow task specialists. They must not become hidd
 - Content Writer Agent.
 - Campaign Planner Agent.
 - SEO Strategy Agent.
+
 - Lead Qualification Agent.
 - Sales Outreach Agent.
 - Recruitment Agent.
