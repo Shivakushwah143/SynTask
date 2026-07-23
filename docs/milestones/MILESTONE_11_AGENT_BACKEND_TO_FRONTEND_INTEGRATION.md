@@ -267,3 +267,55 @@ At completion, provide:
 11. Acceptance criteria PASS/PARTIAL/FAIL matrix.
 
 Stop after Milestone 11. Do not begin a subsequent milestone.
+
+---
+
+## 14. Implementation Progress
+
+- [x] Repository-grounded AI endpoint inventory completed.
+- [x] Existing legacy `/ai/*` frontend wiring verified.
+- [x] Existing Agent Platform `/agents/*` frontend wiring completed.
+- [x] AI Hub Project Agent workspace wired to `POST /agents/project/runs`.
+- [x] AI Hub Email Draft workspace preserved as draft-only with no Send action.
+- [x] AI Hub Task Performance workspace renders immutable verified metrics, employee-reported EOD context, missing/conflicting data, hypotheses, and proposal-only recommendations.
+- [x] Existing Project Board Project Agent helper corrected to consume real response data.
+- [x] Focused backend and frontend verification passed.
+- [ ] Full backend suite clean or unrelated failures accepted.
+- [ ] Full frontend lint/test suite clean or unrelated failures accepted.
+
+## 15. Completion Evidence
+
+Status: Partial. User approved starting Milestone 11 while Milestone 10 remained unclean.
+
+Endpoint inventory:
+
+- Legacy AI endpoints implemented in `backend/app/api/v1/endpoints/ai.py` and already wired in `frontend/src/api/ai.js`: `POST /ai/task-prioritization`, `POST /ai/task-breakdown`, `POST /ai/breakdown`, `POST /ai/daily-report`, `POST /ai/chat`, `POST /ai/marketing-chat`, `POST /ai/sales-agent`, `GET /ai/logs`.
+- Agent Platform endpoints implemented in `backend/app/api/v1/endpoints/agents.py` and now fully mapped in `frontend/src/api/agents.js`: `GET /agents/definitions`, `GET /agents/definitions/{agent_id}/versions`, `POST /agents/runs`, `POST /agents/project/runs`, `POST /agents/email-draft/runs`, `POST /agents/task-performance/runs`, `GET /agents/runs/{run_id}`, `POST /agents/runs/{run_id}/cancel`, `GET /agents/runs/{run_id}/events`, `GET /agents/runs/{run_id}/proposals`.
+
+Changed files:
+
+- `frontend/src/api/agents.js`
+- `frontend/src/api/agents.test.js`
+- `frontend/src/api/projects.js`
+- `frontend/src/pages/AIHub.jsx`
+- `frontend/src/pages/AIHub.test.jsx`
+- `docs/milestones/MILESTONE_11_AGENT_BACKEND_TO_FRONTEND_INTEGRATION.md`
+
+Safety evidence:
+
+- Department specialists remain internal to Project Agent; no direct specialist endpoint, screen, or selector was added.
+- Project Agent UI sends project/task/operation/request fields only; it does not send tenant ID, user ID, role, or specialist ID.
+- Email Draft UI has Generate, Copy Draft, and Regenerate only; no Send, Schedule, connector, SMTP, Gmail, or Microsoft 365 action exists.
+- Task Performance UI displays metric values as immutable verified metrics and separates EOD, missing/conflicting data, hypotheses, and proposal-only recommendations.
+
+Verification:
+
+- `npm.cmd -C frontend run test -- src/api/agents.test.js src/pages/AIHub.test.jsx`: 2 files passed, 6 tests passed.
+- `npm.cmd -C frontend run build`: passed.
+- `python -m pytest backend\tests\agents\test_agent_api_boundaries.py backend\tests\agents\test_project_agent_contract.py backend\tests\agents\test_email_draft_contract.py backend\tests\agents\test_task_performance_api_boundaries.py backend\tests\agents\test_task_performance_contract.py -q`: 43 passed, 7 warnings.
+
+Known blockers from prior verification:
+
+- Full backend suite remains unclean: 418 passed, 21 failed, 12 skipped.
+- Frontend lint remains unclean: 609 errors, 25 warnings.
+- Full frontend test suite did not complete cleanly in prior run; two failures were visible before interruption/timeout.

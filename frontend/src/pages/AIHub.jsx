@@ -77,6 +77,14 @@ const EMPLOYEES = [
     icon: MessageSquareText,
   },
   {
+    id: 'project-agent',
+    title: 'Project Agent',
+    description: 'Read-only project guidance with server-selected specialists.',
+    status: 'read-only',
+    path: null,
+    icon: LayoutDashboard,
+  },
+  {
     id: 'email-draft-agent',
     title: 'Email Draft Agent',
     description: 'Creates editable internal or external drafts. Sending is unavailable.',
@@ -117,6 +125,39 @@ const TASK_PERFORMANCE_METRICS = [
   ['workload_effort_story_points', 'Workload story points'],
   ['task_eod_consistency', 'Task/EOD consistency'],
 ]
+
+const PROJECT_AGENT_OPERATIONS = [
+  ['project_summary', 'Project summary'],
+  ['decompose_scope', 'Decompose scope'],
+  ['identify_risks', 'Identify risks'],
+  ['execution_guidance', 'Execution guidance'],
+  ['review_plan', 'Review plan'],
+  ['estimate_work', 'Estimate work'],
+  ['comprehensive_project_review', 'Comprehensive review'],
+]
+
+const valueOrDash = (value) => {
+  if (value === null || value === undefined || value === '') return '-'
+  return String(value)
+}
+
+const safeList = (value) => (Array.isArray(value) ? value : [])
+
+const ResultList = ({ title, items, renderItem }) => {
+  if (!items?.length) return null
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{title}</h4>
+      <div className="mt-2 space-y-2">
+        {items.map((item, index) => (
+          <div key={item.id || item.key || item.title || index} className="text-sm text-gray-700 dark:text-gray-300">
+            {renderItem ? renderItem(item, index) : valueOrDash(item)}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // ============================================================
 // STAT CARD COMPONENT
@@ -272,6 +313,16 @@ export default function AIHub() {
   const navigate = useNavigate()
   const [logs, setLogs] = useState([])
   const [refreshing, setRefreshing] = useState(false)
+  const [projectAgentSubmitting, setProjectAgentSubmitting] = useState(false)
+  const [projectAgentRun, setProjectAgentRun] = useState(null)
+  const [projectAgentForm, setProjectAgentForm] = useState({
+    project_id: '',
+    task_id: '',
+    operation: 'project_summary',
+    user_request: '',
+    selected_task_ids: '',
+    selected_milestone_ids: '',
+  })
   const [emailDraftSubmitting, setEmailDraftSubmitting] = useState(false)
   const [emailDraftForm, setEmailDraftForm] = useState({
     draft_type: 'general',
@@ -331,6 +382,10 @@ export default function AIHub() {
     setEmailDraftForm((state) => ({ ...state, [field]: value }))
   }
 
+  const updateProjectAgentForm = (field, value) => {
+    setProjectAgentForm((state) => ({ ...state, [field]: value }))
+  }
+
   const updateTaskPerformanceForm = (field, value) => {
     setTaskPerformanceForm((state) => ({ ...state, [field]: value }))
   }
@@ -344,13 +399,42 @@ export default function AIHub() {
     })
   }
 
-  const buildLocalDraftFallback = () => {
-    const recipient = emailDraftForm.recipient_name || '[recipient]'
-    const cta = emailDraftForm.call_to_action ? `\n\n${emailDraftForm.call_to_action}` : ''
-    const detail = emailDraftForm.detail_level === 'short' ? '' : '\n\nI wanted to share this update and confirm the next step.'
-    return {
-      subject: emailDraftForm.purpose.slice(0, 90) || 'Draft email',
-      body: `Hi ${recipient},\n\n${emailDraftForm.purpose}${detail}${cta}\n\nBest,`,
+  const splitCsv = (value) => value.split(',').map((item) => item.trim()).filter(Boolean)
+
+  const handleRunProjectAgent = async (event) => {
+    event.preventDefault()
+    if (!projectAgentForm.project_id.trim() || !projectAgentForm.user_request.trim()) {
+      toast.error('Project ID and request are required')
+      return
+    }
+    try {
+      setProjectAgentSubmitting(true)
+      const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `project-agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const response = await agentsAPI.createProjectRun({
+        schema_version: '1.0',
+        project_id: projectAgentForm.project_id,
+        task_id: projectAgentForm.task_id || null,
+        operation: projectAgentForm.operation,
+        user_request: projectAgentForm.user_request,
+        selected_record_ids: {
+          task_ids: splitCsv(projectAgentForm.selected_task_ids),
+          milestone_ids: splitCsv(projectAgentForm.selected_milestone_ids),
+          dependency_ids: [],
+          document_ids: [],
+        },
+        requested_focus: null,
+        idempotency_key: idempotencyKey,
+        session_id: `project-agent:${projectAgentForm.project_id}`,
+        conversation_id: idempotencyKey,
+      })
+      setProjectAgentRun(response)
+      toast.success('Project Agent request started')
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Project Agent unavailable')
+    } finally {
+      setProjectAgentSubmitting(false)
     }
   }
 
@@ -383,10 +467,9 @@ export default function AIHub() {
         attachment_names: emailDraftForm.attachment_names.split(',').map((item) => item.trim()).filter(Boolean),
         idempotency_key: idempotencyKey,
       })
-      const fallback = buildLocalDraftFallback()
       setEmailDraftRun(response)
-      setDraftSubject(response?.sanitized_result?.subject || fallback.subject)
-      setDraftBody(response?.sanitized_result?.body || fallback.body)
+      setDraftSubject(response?.sanitized_result?.subject || '')
+      setDraftBody(response?.sanitized_result?.body || '')
       toast.success('Draft generated successfully! ✨')
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Email Draft Agent unavailable')
@@ -598,6 +681,109 @@ export default function AIHub() {
       </div>
 
       {/* ============================================================ */}
+      {/* PROJECT AGENT */}
+      {/* ============================================================ */}
+      <div id="project-agent" className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <SectionHeader
+          icon={LayoutDashboard}
+          title="Project Agent"
+          description="Read-only project guidance. Specialist routing is server-selected."
+          action={<Badge label="Read only" colorKey="scheduled" />}
+        />
+        <div className="p-4">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+            <AlertCircle className="mr-2 inline h-4 w-4" />
+            Backend authentication resolves tenant and authorization. This form cannot choose a department specialist or mutate project records.
+          </div>
+          <form onSubmit={handleRunProjectAgent} className="mt-4 grid gap-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <section className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField label="Project ID" required>
+                  <input className={inputClassName} value={projectAgentForm.project_id} onChange={(event) => updateProjectAgentForm('project_id', event.target.value)} placeholder="Authorized project ID" />
+                </FormField>
+                <FormField label="Task ID">
+                  <input className={inputClassName} value={projectAgentForm.task_id} onChange={(event) => updateProjectAgentForm('task_id', event.target.value)} placeholder="Optional authorized task ID" />
+                </FormField>
+                <FormField label="Operation">
+                  <select className={inputClassName} value={projectAgentForm.operation} onChange={(event) => updateProjectAgentForm('operation', event.target.value)}>
+                    {PROJECT_AGENT_OPERATIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Selected Task IDs">
+                  <input className={inputClassName} value={projectAgentForm.selected_task_ids} onChange={(event) => updateProjectAgentForm('selected_task_ids', event.target.value)} placeholder="Optional comma-separated IDs" />
+                </FormField>
+                <FormField label="Selected Milestone IDs">
+                  <input className={inputClassName} value={projectAgentForm.selected_milestone_ids} onChange={(event) => updateProjectAgentForm('selected_milestone_ids', event.target.value)} placeholder="Optional comma-separated IDs" />
+                </FormField>
+              </div>
+              <FormField label="Request" required>
+                <textarea rows={4} className={`${inputClassName} min-h-24`} value={projectAgentForm.user_request} onChange={(event) => updateProjectAgentForm('user_request', event.target.value)} placeholder="Ask for project summary, risk review, scope breakdown, or execution guidance..." />
+              </FormField>
+              <button
+                type="submit"
+                disabled={projectAgentSubmitting}
+                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
+              >
+                {projectAgentSubmitting ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <LayoutDashboard className="h-4 w-4" />
+                    Run Project Agent
+                  </>
+                )}
+              </button>
+            </section>
+
+            <section className="space-y-4">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Result</h3>
+                  {projectAgentRun ? <Badge label={projectAgentRun.state || 'created'} colorKey={projectAgentRun.state || 'scheduled'} /> : <Badge label="Not run" colorKey="scheduled" />}
+                </div>
+                {projectAgentRun?.sanitized_result ? (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Summary</div>
+                      <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{projectAgentRun.sanitized_result.summary}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Badge label={projectAgentRun.sanitized_result.read_only ? 'Read only' : 'Review required'} colorKey="scheduled" />
+                        <Badge label={projectAgentRun.sanitized_result.approval_required ? 'Approval required' : 'Proposal only'} colorKey="scheduled" />
+                        <Badge label={`confidence ${valueOrDash(projectAgentRun.sanitized_result.overall_confidence)}`} colorKey="scheduled" />
+                      </div>
+                    </div>
+                    {projectAgentRun.sanitized_result.department_specialist ? (
+                      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200">
+                        <div className="font-semibold">Server-selected specialist</div>
+                        <div className="mt-1">Pack: {valueOrDash(projectAgentRun.sanitized_result.department_specialist.pack_id)}</div>
+                        <div>Specialist: {valueOrDash(projectAgentRun.sanitized_result.department_specialist.specialist_id)} @{valueOrDash(projectAgentRun.sanitized_result.department_specialist.specialist_version)}</div>
+                        <div>Reason: {valueOrDash(projectAgentRun.sanitized_result.department_specialist.selection_reason)}</div>
+                        {projectAgentRun.sanitized_result.department_specialist.fallback_reason ? <div>Fallback: {projectAgentRun.sanitized_result.department_specialist.fallback_reason}</div> : null}
+                      </div>
+                    ) : null}
+                    <ResultList title="Recommendations" items={safeList(projectAgentRun.sanitized_result.recommendations)} renderItem={(item) => <><span className="font-medium">{valueOrDash(item.title)}</span><p className="text-xs text-gray-500 dark:text-gray-400">{valueOrDash(item.rationale || item.description)}</p></>} />
+                    <ResultList title="Risks" items={safeList(projectAgentRun.sanitized_result.risks)} renderItem={(item) => <><span className="font-medium">{valueOrDash(item.title)}</span><p className="text-xs text-gray-500 dark:text-gray-400">{valueOrDash(item.description)}</p></>} />
+                    <ResultList title="Missing Information" items={safeList(projectAgentRun.sanitized_result.missing_data)} renderItem={(item) => `${valueOrDash(item.field)}: ${valueOrDash(item.reason)}`} />
+                  </div>
+                ) : (
+                  <p className="rounded-lg bg-white p-3 text-sm text-gray-600 dark:bg-gray-900 dark:text-gray-400">
+                    Run metadata will appear here. Completed output appears after backend returns validated result.
+                  </p>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                <AlertCircle className="mr-1 inline h-3 w-3" />
+                No task creation, assignment, status move, deadline update, approval execution, or direct specialist invocation is available.
+              </p>
+            </section>
+          </form>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
       {/* TASK PERFORMANCE INSIGHTS */}
       {/* ============================================================ */}
       <div id="task-performance-agent" className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -692,9 +878,44 @@ export default function AIHub() {
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Result</h3>
                   {taskPerformanceRun ? <Badge label={taskPerformanceRun.state || 'created'} colorKey={taskPerformanceRun.state || 'scheduled'} /> : <Badge label="Not run" colorKey="scheduled" />}
                 </div>
-                <pre className="max-h-80 overflow-auto rounded-lg bg-white p-3 text-xs text-gray-600 dark:bg-gray-900 dark:text-gray-400">
-                  {taskPerformanceRun ? JSON.stringify(taskPerformanceRun.sanitized_result || taskPerformanceRun, null, 2) : 'Metrics will appear after an authorized run.'}
-                </pre>
+                {taskPerformanceRun?.sanitized_result ? (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">AI explanation</div>
+                      <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{taskPerformanceRun.sanitized_result.summary}</p>
+                    </div>
+                    <ResultList
+                      title="Immutable verified metrics"
+                      items={safeList(taskPerformanceRun.sanitized_result.metrics)}
+                      renderItem={(metric) => (
+                        <div className="rounded-lg bg-gray-50 p-2 dark:bg-gray-800">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-medium">{metric.key} @{metric.version}</span>
+                            <Badge label={metric.status} colorKey={metric.status === 'available' ? 'completed' : 'scheduled'} />
+                          </div>
+                          <div className="mt-1 grid gap-1 text-xs text-gray-500 dark:text-gray-400 sm:grid-cols-2">
+                            <span>Value: {valueOrDash(metric.value)} {valueOrDash(metric.unit)}</span>
+                            <span>Formula: {valueOrDash(metric.formula)}</span>
+                            <span>Numerator: {valueOrDash(metric.numerator)}</span>
+                            <span>Denominator: {valueOrDash(metric.denominator)}</span>
+                            <span>Sample size: {valueOrDash(metric.sample_size)}</span>
+                            <span>Confidence: {valueOrDash(metric.confidence)}</span>
+                            <span>Timezone: {valueOrDash(metric.timezone)}</span>
+                            <span>Missing fields: {safeList(metric.missing_fields).join(', ') || '-'}</span>
+                          </div>
+                        </div>
+                      )}
+                    />
+                    <ResultList title="Employee-reported EOD context" items={safeList(taskPerformanceRun.sanitized_result.employee_reported_context)} />
+                    <ResultList title="Missing and conflicting data" items={[...safeList(taskPerformanceRun.sanitized_result.data_quality?.missing_data), ...safeList(taskPerformanceRun.sanitized_result.data_quality?.conflicts)]} />
+                    <ResultList title="Hypotheses" items={safeList(taskPerformanceRun.sanitized_result.insights).filter((item) => item.fact_or_hypothesis === 'hypothesis')} renderItem={(item) => <><span className="font-medium">{item.title}</span><p className="text-xs text-gray-500 dark:text-gray-400">{item.description}</p></>} />
+                    <ResultList title="Proposal-only recommendations" items={safeList(taskPerformanceRun.sanitized_result.recommendations)} renderItem={(item) => <><span className="font-medium">{item.title}</span><p className="text-xs text-gray-500 dark:text-gray-400">{item.description}</p><Badge label={item.mutation_status || 'proposal_only'} colorKey="scheduled" /></>} />
+                  </div>
+                ) : (
+                  <p className="rounded-lg bg-white p-3 text-sm text-gray-600 dark:bg-gray-900 dark:text-gray-400">
+                    Metrics will appear after an authorized run.
+                  </p>
+                )}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 <AlertCircle className="mr-1 inline h-3 w-3" />
@@ -832,7 +1053,7 @@ export default function AIHub() {
                   <RefreshCw className="h-4 w-4" />
                   Regenerate
                 </button>
-                {emailDraftRun ? <Badge label={emailDraftRun.state || 'draft'} colorKey={emailDraftRun.state || 'scheduled'} /> : null}
+                {emailDraftRun ? <Badge label={emailDraftRun.sanitized_result?.draft_status || emailDraftRun.state || 'DRAFT'} colorKey={emailDraftRun.state || 'scheduled'} /> : null}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 <AlertCircle className="mr-1 inline h-3 w-3" />
