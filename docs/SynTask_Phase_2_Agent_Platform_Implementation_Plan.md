@@ -3,6 +3,8 @@
 Status: focused planning draft; do not implement agents yet
 Date: 2026-07-20
 
+Milestone 10 status note, 2026-07-23: Essential Department Specialist Packs are implemented as governed `SpecialistDefinition` profiles under the existing Project Agent and remain blocked from completion until API boundary, Milestone 6-9 regression, real-service, full-suite, human-review, cost, and latency gates pass. No autonomous subagents, direct specialist endpoints, connectors, scheduling, approval execution, or business mutations were added.
+
 ## Contract Lock Addendum For Milestone 6
 
 Milestone 6 is approved for Shared Agent Platform Foundation only. It must implement versioned definitions, run persistence, state machine, orchestrator, code-controlled tool registry, ContextPackage integration, ProviderRouter integration, output-schema validation, one controlled repair attempt, proposed action contracts, approval proposal boundary, audit events, idempotency, concurrency protection, budgets, evaluation hooks and minimal secured API boundaries.

@@ -4,7 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.agents.email_draft import EMAIL_DRAFT_AGENT_ID, EMAIL_DRAFT_AGENT_VERSION, EmailDraftAgentRequest
 from app.agents.orchestrator import AgentOrchestrator
-from app.agents.project_agent import PROJECT_AGENT_ID, PROJECT_AGENT_VERSION, ProjectAgentRequest
+from app.agents.project_agent import (
+    PROJECT_AGENT_ID,
+    PROJECT_AGENT_VERSION,
+    DepartmentSpecialistSelector,
+    ProjectAgentOperation,
+    ProjectAgentRequest,
+    department_specialist_definitions,
+    project_specialist_definitions,
+)
 from app.agents.registry import AgentRegistry
 from app.agents.schemas import AgentRunCreateRequest, AgentRunResponse
 from app.agents.task_performance import TASK_PERFORMANCE_AGENT_ID, TASK_PERFORMANCE_AGENT_VERSION, TaskPerformanceAgentRequest
@@ -71,7 +79,9 @@ async def create_project_agent_run(payload: ProjectAgentRequest, current_user: U
     _require_project_agent_enabled()
     scope = await resolve_rag_scope(current_user=current_user, project_id=payload.project_id)
     project_id = scope.project_id or payload.project_id
-    await _validate_project_agent_record_scope(current_user=current_user, project_id=project_id, payload=payload)
+    routing_context = await _validate_project_agent_record_scope(current_user=current_user, project_id=project_id, payload=payload)
+    input_payload = payload.model_dump(mode="json")
+    input_payload["server_resolved_routing"] = routing_context
     return await orchestrator.create_run(
         current_user=current_user,
         payload=AgentRunCreateRequest(
@@ -84,7 +94,7 @@ async def create_project_agent_run(payload: ProjectAgentRequest, current_user: U
             session_id=payload.session_id or f"project-agent:{project_id}",
             conversation_id=payload.conversation_id or payload.idempotency_key,
             query=payload.user_request,
-            input_payload=payload.model_dump(mode="json"),
+            input_payload=input_payload,
         ),
     )
 
@@ -165,11 +175,12 @@ async def list_agent_run_proposals(run_id: str, current_user: User = Depends(get
     return {"proposals": await orchestrator.proposals(current_user=current_user, run_id=run_id)}
 
 
-async def _validate_project_agent_record_scope(*, current_user: User, project_id: str, payload: ProjectAgentRequest) -> None:
+async def _validate_project_agent_record_scope(*, current_user: User, project_id: str, payload: ProjectAgentRequest) -> dict:
     project, canonical_project_id = await get_project_by_id(project_id, getattr(current_user, "company_id", None))
     if not project:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project scope denied")
     project_id = canonical_project_id or project_id
+    task = None
 
     milestone_ids = set(payload.selected_record_ids.milestone_ids)
     if milestone_ids:
@@ -177,12 +188,40 @@ async def _validate_project_agent_record_scope(*, current_user: User, project_id
         if not milestone_ids.issubset(available_milestone_ids):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Selected record scope denied")
 
-    for task_id in payload.selected_record_ids.task_ids:
+    selected_task_ids = set(payload.selected_record_ids.task_ids)
+    if payload.task_id:
+        selected_task_ids.add(payload.task_id)
+    for task_id in selected_task_ids:
         task = await Task.get(task_id)
         if not task:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Selected record scope denied")
         if task.company_id != current_user.company_id or task.project_id != project_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Selected record scope denied")
+    department_type = None
+    if task and task.department_id:
+        department = await Department.get(task.department_id)
+        if department and department.company_id == current_user.company_id and department.deleted_at is None:
+            department_type = department.department_type.value if hasattr(department.department_type, "value") else str(department.department_type)
+    task_category = None
+    if task:
+        tags = [str(item).strip().lower().replace(" ", "_").replace("-", "_") for item in (task.tags or []) if str(item).strip()]
+        task_category = tags[0] if tags else None
+    selection = DepartmentSpecialistSelector().select(
+        department_type=department_type,
+        project_type=project.type.value if hasattr(project.type, "value") else str(project.type),
+        task_category=task_category,
+        specialists=[item.model_copy(update={"enabled": True, "evaluated": True, "published": True}) for item in department_specialist_definitions()],
+        generic_specialists=[item.model_copy(update={"enabled": True, "evaluated": True, "published": True}) for item in project_specialist_definitions()],
+        operation=payload.operation if isinstance(payload.operation, ProjectAgentOperation) else ProjectAgentOperation(payload.operation),
+    )
+    return {
+        "project_id": project_id,
+        "task_id": payload.task_id,
+        "department_type": department_type,
+        "project_type": project.type.value if hasattr(project.type, "value") else str(project.type),
+        "task_category": task_category,
+        "selection": selection.model_dump(mode="json"),
+    }
 
 
 async def _validate_email_draft_context(*, current_user: User, payload: EmailDraftAgentRequest) -> None:
