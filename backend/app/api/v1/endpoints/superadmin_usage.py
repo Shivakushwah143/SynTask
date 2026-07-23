@@ -30,20 +30,26 @@ def _to_jsonable(obj):
     """Convert Beanie/Pydantic model to JSON-serializable dict."""
     if obj is None:
         return None
-    d = obj.model_dump() if hasattr(obj, "model_dump") else obj.dict()
-    if hasattr(obj, "id") and obj.id is not None:
-        d["id"] = str(obj.id)
-    for k in list(d.keys()):
-        v = d[k]
-        if v is None:
-            continue
-        if hasattr(v, "isoformat"):
-            d[k] = v.isoformat()
-        elif hasattr(v, "value") and not isinstance(v, (list, dict)):
-            d[k] = v.value
-        elif ObjectId is not type(None) and isinstance(v, ObjectId):
-            d[k] = str(v)
-    return d
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    if hasattr(obj, "value"):
+        return obj.value
+    if ObjectId is not type(None) and isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, list):
+        return [_to_jsonable(item) for item in obj]
+    if isinstance(obj, tuple):
+        return [_to_jsonable(item) for item in obj]
+    if isinstance(obj, dict):
+        return {str(key): _to_jsonable(value) for key, value in obj.items()}
+    if hasattr(obj, "model_dump"):
+        d = obj.model_dump()
+        if hasattr(obj, "id") and obj.id is not None:
+            d["id"] = str(obj.id)
+        return _to_jsonable(d)
+    return str(obj)
 
 
 @router.get("/all-companies-summary", response_model=List[dict])
@@ -300,7 +306,6 @@ async def get_usage_analytics(
             continue
 
     return analytics
-
 
 
 
