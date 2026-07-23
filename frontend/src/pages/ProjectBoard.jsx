@@ -410,8 +410,10 @@ export default function ProjectBoard() {
       const response = await projectsApi.createProjectAgentRun({
         schema_version: '1.0',
         project_id: projectId,
+        task_id: null,
         operation: projectAgentOperation,
         user_request: request,
+        requested_focus: null,
         selected_record_ids: {},
         preferences: { detail_level: 'standard' },
         session_id: `project:${projectId}`,
@@ -906,6 +908,38 @@ export default function ProjectBoard() {
               ) : null}
               {projectAgentRun.sanitized_result?.summary ? (
                 <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{projectAgentRun.sanitized_result.summary}</p>
+              ) : null}
+              {projectAgentRun.sanitized_result?.department_specialist ? (
+                <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200">
+                  <div className="font-semibold">Selected specialist</div>
+                  <div className="mt-1">
+                    {projectAgentRun.sanitized_result.department_specialist.pack_id} / {projectAgentRun.sanitized_result.department_specialist.specialist_id} v{projectAgentRun.sanitized_result.department_specialist.specialist_version}
+                  </div>
+                  <div className="mt-1 text-indigo-700 dark:text-indigo-300">
+                    {projectAgentRun.sanitized_result.department_specialist.selection_reason}
+                  </div>
+                  {projectAgentRun.sanitized_result.department_specialist.fallback_reason ? (
+                    <div className="mt-1 text-amber-700 dark:text-amber-300">
+                      Fallback: {projectAgentRun.sanitized_result.department_specialist.fallback_reason}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {projectAgentRun.sanitized_result?.department_specialist_output ? (
+                <div className="mt-3 grid gap-3 text-xs text-gray-600 dark:text-gray-400">
+                  <div>
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">Guidance: </span>
+                    {(projectAgentRun.sanitized_result.department_specialist_output.task_guidance || []).join(', ') || projectAgentRun.sanitized_result.department_specialist_output.summary}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">Checklist: </span>
+                    {(projectAgentRun.sanitized_result.department_specialist_output.checklist || []).join(', ') || 'No checklist returned'}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">Proposal status: </span>
+                    {projectAgentRun.sanitized_result.department_specialist_output.proposal_only ? 'Proposal only' : 'Read only'}
+                  </div>
+                </div>
               ) : null}
               {projectAgentRun.sanitized_result?.warnings?.length ? (
                 <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">

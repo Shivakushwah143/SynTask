@@ -6,16 +6,23 @@ import pytest
 from pydantic import ValidationError
 
 from app.agents.project_agent import (
+    DEPARTMENT_SPECIALIST_EVALUATION_SET_VERSION,
+    DEPARTMENT_SPECIALIST_OUTPUT_SCHEMA_VERSION,
+    DEPARTMENT_SPECIALIST_ROUTING_RULE_VERSION,
+    DEPARTMENT_SPECIALIST_VERSION,
     PROJECT_AGENT_FORBIDDEN_TOOL_IDS,
     PROJECT_AGENT_ID,
     PROJECT_AGENT_INPUT_SCHEMA_VERSION,
     PROJECT_AGENT_OUTPUT_SCHEMA_VERSION,
+    DepartmentSpecialistOutput,
+    DepartmentSpecialistSelector,
     ProjectAgentOperation,
     ProjectAgentOutput,
     ProjectAgentRequest,
     ProjectSpecialistId,
     ProjectSpecialistSelector,
     ProposedWorkItem,
+    department_specialist_definitions,
     project_agent_definition,
     project_specialist_definitions,
 )
@@ -46,6 +53,15 @@ def test_project_agent_request_rejects_unknown_operation_and_client_trust_fields
             user_request="Summarize status",
             idempotency_key="idempotent-1",
             roles=["admin"],
+        )
+
+    with pytest.raises(ValidationError):
+        ProjectAgentRequest(
+            project_id="project-1",
+            operation=ProjectAgentOperation.PROJECT_SUMMARY,
+            user_request="Summarize status",
+            idempotency_key="idempotent-1",
+            specialist_id="content_seo_task_specialist",
         )
 
 
@@ -109,6 +125,88 @@ def test_project_specialist_definitions_are_generic_profiles_not_autonomous_tool
         assert specialist.enabled is False
         assert specialist.evaluated is False
         assert specialist.published is False
+
+
+def test_department_specialist_pack_definitions_are_governed_profiles():
+    specialists = department_specialist_definitions()
+    pack_counts = {}
+
+    assert len(specialists) == 14
+    assert len({(item.specialist_id, item.version) for item in specialists}) == 14
+    for specialist in specialists:
+        assert specialist.version == DEPARTMENT_SPECIALIST_VERSION
+        assert specialist.supported_agent_ids == [PROJECT_AGENT_ID]
+        assert specialist.allowed_tools == []
+        assert specialist.maximum_fan_out == 1
+        assert specialist.input_schema_version == "department-specialist-input-v1"
+        assert specialist.output_schema_version == DEPARTMENT_SPECIALIST_OUTPUT_SCHEMA_VERSION
+        assert specialist.evaluation_set_version == DEPARTMENT_SPECIALIST_EVALUATION_SET_VERSION
+        assert "run_command" in specialist.forbidden_actions
+        assert "send_email" in specialist.forbidden_actions
+        assert "change_budget" in specialist.forbidden_actions
+        assert specialist.enabled is False
+        assert specialist.evaluated is False
+        assert specialist.published is False
+        pack_id = specialist.provider_policy["policy_id"]
+        assert pack_id == "project-agent-read-only"
+        actual_pack = specialist.prompt_version.removesuffix("-v1")
+        assert actual_pack == specialist.specialist_id
+        pack_counts.setdefault(tuple(specialist.department_types), 0)
+        pack_counts[tuple(specialist.department_types)] += 1
+
+    assert sum(pack_counts.values()) == 14
+
+
+def test_department_specialist_selection_is_authoritative_and_single_fan_out():
+    specialists = [item.model_copy(update={"enabled": True, "evaluated": True, "published": True}) for item in department_specialist_definitions()]
+    generic = [item.model_copy(update={"enabled": True, "evaluated": True, "published": True}) for item in project_specialist_definitions()]
+    selector = DepartmentSpecialistSelector()
+
+    marketing = selector.select(department_type="marketing", project_type="marketing", task_category="content", specialists=specialists, generic_specialists=generic)
+    assert marketing.specialist_id == "content_seo_task_specialist"
+    assert marketing.pack_id == "digital_marketing"
+    assert marketing.routing_rule_version == DEPARTMENT_SPECIALIST_ROUTING_RULE_VERSION
+
+    software = selector.select(department_type=None, project_type="software", task_category="backend", specialists=specialists, generic_specialists=generic)
+    assert software.specialist_id == "software_implementation_specialist"
+    assert software.pack_id == "software_technology"
+
+    sales_in_software_project = selector.select(department_type="sales", project_type="software", task_category="proposal", specialists=specialists, generic_specialists=generic)
+    assert sales_in_software_project.specialist_id == "proposal_follow_up_task_specialist"
+    assert sales_in_software_project.pack_id == "sales"
+
+    fallback = selector.select(department_type="marketing", project_type="marketing", task_category="unknown", specialists=specialists, generic_specialists=generic)
+    assert len(fallback.selected) == 1
+    assert fallback.selected[0].reason == "Generic fallback: no_department_specialist_match"
+
+    disabled = selector.select(department_type="marketing", project_type="marketing", task_category="content", specialists=department_specialist_definitions(), generic_specialists=generic)
+    assert disabled.selected[0].reason == "Generic fallback: department_specialist_disabled"
+
+
+def test_department_specialist_output_is_proposal_only_and_requires_approval_for_actions():
+    with pytest.raises(ValidationError):
+        DepartmentSpecialistOutput(
+            pack_id="digital_marketing",
+            specialist_id="content_seo_task_specialist",
+            selection_reason="Exact server-resolved category match: content",
+            summary="Review complete.",
+            confidence=0.7,
+            proposed_actions=[ProposedWorkItem(title="Add content checklist")],
+            approval_required=False,
+        )
+
+    output = DepartmentSpecialistOutput(
+        pack_id="digital_marketing",
+        specialist_id="content_seo_task_specialist",
+        selection_reason="Exact server-resolved category match: content",
+        summary="Review complete.",
+        confidence=0.7,
+        proposed_actions=[ProposedWorkItem(title="Add content checklist")],
+        approval_required=True,
+    )
+
+    assert output.proposal_only is True
+    assert output.proposed_actions[0].mutation_status == "proposal_only"
 
 
 def test_specialist_selection_is_deterministic_and_exact_operation_based():

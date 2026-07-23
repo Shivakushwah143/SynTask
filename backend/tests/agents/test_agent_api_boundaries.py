@@ -17,7 +17,7 @@ class FakeUser:
     status = UserStatus.ACTIVE
     company_id = "tenant-a"
     department_id = None
-    modules = ["task"]
+    modules = ["task", "ai_agents"]
 
 
 async def fake_current_user():

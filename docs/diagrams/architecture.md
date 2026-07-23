@@ -148,8 +148,12 @@ flowchart TB
 
     Registry --> ProjectAgent[Versioned Project Agent]
     ProjectAgent --> LogicalRun[Project-scoped logical run]
-    LogicalRun --> SpecialistProfile[Task specialist profile]
-    SpecialistProfile --> ProjectAgent
+    LogicalRun --> GenericSpecialist[Milestone 7 generic specialist profile]
+    LogicalRun --> DepartmentSelector[Deterministic department specialist selector]
+    DepartmentSelector --> DepartmentPack[Milestone 10 department pack]
+    DepartmentPack --> DepartmentSpecialist[One governed department task specialist]
+    GenericSpecialist --> ProjectAgent
+    DepartmentSpecialist --> ProjectAgent
 
     StructuredMemory --> Mongo[(MongoDB)]
     RAG --> Qdrant[(Qdrant)]
@@ -176,8 +180,8 @@ sequenceDiagram
     CP->>MR: Route structured, RAG and working memory
     MR->>SM: Read current project/task facts
     MR->>RAG: Retrieve approved project/client docs
-    Orchestrator->>SR: Deterministic specialist selection
-    SR-->>Orchestrator: Evaluated specialist profile or unavailable
+    Orchestrator->>SR: Deterministic generic and department specialist selection
+    SR-->>Orchestrator: Evaluated generic fallback or one department specialist profile
     Orchestrator->>SP: Delegate bounded task guidance
     SP-->>Orchestrator: Schema-valid specialist output
     Orchestrator->>PR: Generate consolidated response
