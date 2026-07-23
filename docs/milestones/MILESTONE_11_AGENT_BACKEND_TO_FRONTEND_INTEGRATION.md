@@ -279,6 +279,7 @@ Stop after Milestone 11. Do not begin a subsequent milestone.
 - [x] AI Hub Email Draft workspace preserved as draft-only with no Send action.
 - [x] AI Hub Task Performance workspace renders immutable verified metrics, employee-reported EOD context, missing/conflicting data, hypotheses, and proposal-only recommendations.
 - [x] Existing Project Board Project Agent helper corrected to consume real response data.
+- [x] Legacy AI Assistant current-project questions bridged to verified role and tenant filtered project context.
 - [x] Focused backend and frontend verification passed.
 - [ ] Full backend suite clean or unrelated failures accepted.
 - [ ] Full frontend lint/test suite clean or unrelated failures accepted.
@@ -299,6 +300,8 @@ Changed files:
 - `frontend/src/api/projects.js`
 - `frontend/src/pages/AIHub.jsx`
 - `frontend/src/pages/AIHub.test.jsx`
+- `backend/app/ai/service.py`
+- `backend/tests/test_ai_chat_project_context.py`
 - `docs/milestones/MILESTONE_11_AGENT_BACKEND_TO_FRONTEND_INTEGRATION.md`
 
 Safety evidence:
@@ -307,9 +310,12 @@ Safety evidence:
 - Project Agent UI sends project/task/operation/request fields only; it does not send tenant ID, user ID, role, or specialist ID.
 - Email Draft UI has Generate, Copy Draft, and Regenerate only; no Send, Schedule, connector, SMTP, Gmail, or Microsoft 365 action exists.
 - Task Performance UI displays metric values as immutable verified metrics and separates EOD, missing/conflicting data, hypotheses, and proposal-only recommendations.
+- Legacy `/ai/chat` handles current/running project questions with read-only structured project data, role visibility, and tenant filtering. It returns no actions and does not call mutation tools.
 
 Verification:
 
+- `python -m pytest backend/tests/test_ai_chat_project_context.py`: 3 passed.
+- `python -m compileall backend/app/ai/service.py`: passed.
 - `npm.cmd -C frontend run test -- src/api/agents.test.js src/pages/AIHub.test.jsx`: 2 files passed, 6 tests passed.
 - `npm.cmd -C frontend run build`: passed.
 - `python -m pytest backend\tests\agents\test_agent_api_boundaries.py backend\tests\agents\test_project_agent_contract.py backend\tests\agents\test_email_draft_contract.py backend\tests\agents\test_task_performance_api_boundaries.py backend\tests\agents\test_task_performance_contract.py -q`: 43 passed, 7 warnings.

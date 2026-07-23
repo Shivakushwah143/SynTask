@@ -12,7 +12,6 @@ import {
   X,
   Package,
   BarChart3,
-  Bot,
   TrendingUp,
   Zap
 } from 'lucide-react'
@@ -20,6 +19,8 @@ import { useAuthStore } from '../store/authStore'
 import { useUIStore } from '../store/uiStore'
 import ThemeToggle from '../components/ThemeToggle'
 import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
+import { SynzinAvatar } from '../components/ai/SynzinAvatar'
+import { SynzinHelpPrompt } from '../components/ai/SynzinHelpPrompt'
 
 const SuperAdminLayout = () => {
   const location = useLocation()
@@ -27,6 +28,7 @@ const SuperAdminLayout = () => {
   const { user, logout, isLoggingOut } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [synzinPromptOpen, setSynzinPromptOpen] = useState(true)
 
   const handleLogout = async () => {
     if (isLoggingOut) return
@@ -187,11 +189,14 @@ const SuperAdminLayout = () => {
           <div className="flex items-center space-x-4 ml-auto">
             <button
               type="button"
-              onClick={() => setAssistantOpen(true)}
+              onClick={() => {
+                setSynzinPromptOpen(false)
+                setAssistantOpen(true)
+              }}
               className="inline-flex items-center gap-2 rounded-full border border-surface-border bg-surface/95 px-3 py-2 text-sm font-medium text-text-primary transition hover:bg-surface-muted dark:border-gray-800 dark:bg-black dark:text-gray-100 dark:hover:bg-gray-900"
             >
-              <Bot className="h-4 w-4" />
-              AI
+              <SynzinAvatar />
+              Synzin
             </button>
             <ThemeToggle />
             <span className="text-sm text-text-secondary dark:text-gray-300">
@@ -206,6 +211,14 @@ const SuperAdminLayout = () => {
         </main>
       </div>
       <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      <SynzinHelpPrompt
+        isOpen={synzinPromptOpen && !assistantOpen}
+        onAsk={() => {
+          setSynzinPromptOpen(false)
+          setAssistantOpen(true)
+        }}
+        onDismiss={() => setSynzinPromptOpen(false)}
+      />
     </div>
   )
 }

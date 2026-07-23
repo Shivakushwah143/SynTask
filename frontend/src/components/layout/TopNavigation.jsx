@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Bot, Maximize2, Menu, MessageCircle, Minimize2, Search, Video, Command, Sparkles, LayoutDashboard, Bell } from 'lucide-react'
+import { Maximize2, Menu, MessageCircle, Minimize2, Search, Video, Command, Sparkles, LayoutDashboard, Bell } from 'lucide-react'
 import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
 import GlobalClock from '../GlobalClock'
 import { Button } from '../ui'
 import { useAuthStore } from '../../store/authStore'
 import { ROLE, hasCompanyAdminAccess, isManagerRole, isSuperAdminRole, normalizeRole } from '../../utils/roles'
+import { SynzinAvatar } from '../ai/SynzinAvatar'
 
 const GLOBAL_COMMUNICATION_LINKS = [
   {
@@ -122,8 +123,8 @@ export function TopNavigation({
               onClick={onAssistantOpen}
               className="hidden sm:inline-flex h-9 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 transition-all hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-indigo-950/30 dark:hover:text-indigo-400"
             >
-              <Bot className="h-4 w-4" />
-              <span>AI</span>
+              <SynzinAvatar />
+              <span>Synzin</span>
             </Button>
           )}
 
