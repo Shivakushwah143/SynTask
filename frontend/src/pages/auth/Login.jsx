@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Mail, Lock, Shield } from 'lucide-react'
+import { Mail, Lock, Shield, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { authAPI } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
@@ -44,8 +44,21 @@ const Login = () => {
     }
   }
 
+  const handleBack = () => {
+    navigate('/')
+  }
+
   return (
     <div className="space-y-6">
+      {/* Back Button */}
+      <button
+        onClick={handleBack}
+        className="group flex items-center gap-2 text-sm font-medium text-gray-600 transition-all hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400"
+      >
+        <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+        Back to home
+      </button>
+
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600">Welcome back</p>
         <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">Sign in to SynTask</h2>
