@@ -1,5 +1,6 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Maximize2, Menu, MessageCircle, Minimize2, Search, Video, Command, Sparkles, LayoutDashboard, Bell } from 'lucide-react'
+import { Maximize2, Menu, MessageCircle, Minimize2, Search, Video, LayoutDashboard } from 'lucide-react'
 import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
 import GlobalClock from '../GlobalClock'
@@ -48,6 +49,18 @@ export function TopNavigation({
     (item) => item.roles.includes(userRole) && hasModule(item.module),
   )
   const canUseAssistant = hasCompanyAdminAccess(userRole) || isManagerRole(userRole)
+  const searchShortcut = useMemo(() => getSearchShortcutLabel(), [])
+  const [highlightSearch, setHighlightSearch] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const storageKey = 'syntask:search-discovery-seen'
+    if (window.localStorage.getItem(storageKey)) return undefined
+    setHighlightSearch(true)
+    window.localStorage.setItem(storageKey, 'true')
+    const timer = window.setTimeout(() => setHighlightSearch(false), 1800)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   return (
     <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur-xl shadow-sm dark:border-gray-700 dark:bg-gray-900/95">
@@ -82,6 +95,9 @@ export function TopNavigation({
                     {breadcrumb}
                   </p>
                 )}
+                <p className="hidden truncate text-xs text-indigo-600 lg:block dark:text-indigo-300">
+                  Tip: Press {searchShortcut} to search commands, projects, tasks, and people.
+                </p>
               </div>
             </div>
           </div>
@@ -128,26 +144,31 @@ export function TopNavigation({
             </Button>
           )}
 
-          {/* Command Palette Button */}
+          {/* Quick Search */}
           <Button
             variant="ghost"
             size="sm"
             onClick={onCommandOpen}
-            className="hidden md:inline-flex h-9 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 transition-all hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+            className={`hidden md:inline-flex h-10 w-[18rem] max-w-[28vw] items-center gap-3 rounded-2xl border bg-white px-3 text-sm font-medium text-gray-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-white hover:text-gray-900 hover:shadow-lg hover:shadow-indigo-500/10 focus:outline-none focus:ring-4 focus:ring-indigo-500/20 xl:w-[23rem] dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white ${
+              highlightSearch
+                ? 'animate-[search-discovery-pulse_1.4s_ease-out_1] border-indigo-400 shadow-lg shadow-indigo-500/20 dark:border-indigo-500'
+                : 'border-gray-200 dark:border-gray-700'
+            }`}
+            aria-label="Open quick search. Search commands, projects, tasks, and people."
           >
-            <Search className="h-4 w-4" />
-            <span className="hidden lg:inline">Search</span>
-            <kbd className="hidden rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400 lg:inline-flex">
-              ⌘K
+            <Search className="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+            <span className="min-w-0 flex-1 truncate text-left text-gray-500 dark:text-gray-300">Search projects, tasks...</span>
+            <kbd className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-semibold text-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
+              {searchShortcut}
             </kbd>
           </Button>
 
           {/* Mobile Search */}
           <button
             type="button"
-            onClick={onSearchOpen}
+            onClick={onCommandOpen || onSearchOpen}
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 transition-all hover:bg-gray-50 hover:text-gray-900 md:hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
-            aria-label="Open global search"
+            aria-label="Open quick search"
           >
             <Search className="h-5 w-5" />
           </button>
@@ -191,3 +212,10 @@ export function TopNavigation({
     </header>
   )
 }
+
+function getSearchShortcutLabel() {
+  if (typeof window === 'undefined') return 'Ctrl K'
+  const platform = window.navigator?.platform || ''
+  return /Mac|iPhone|iPad|iPod/i.test(platform) ? '⌘ K' : 'Ctrl K'
+}
+
