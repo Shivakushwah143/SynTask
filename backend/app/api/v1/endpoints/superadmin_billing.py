@@ -22,6 +22,27 @@ from app.core.clock import utc_now
 
 router = APIRouter()
 
+
+def _json_safe(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if hasattr(value, "value"):
+        return value.value
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if hasattr(value, "model_dump"):
+        data = value.model_dump()
+        if getattr(value, "id", None) is not None:
+            data["id"] = str(value.id)
+        return _json_safe(data)
+    return str(value)
+
 # Razorpay client (install razorpay: pip install razorpay)
 try:
     import razorpay
@@ -59,7 +80,7 @@ async def list_transactions(
         query["payment_status"] = payment_status
     
     transactions = await BillingTransaction.find(query).sort("-invoice_date").skip(skip).limit(limit).to_list()
-    return [t.dict() for t in transactions]
+    return [_json_safe(transaction) for transaction in transactions]
 
 
 @router.get("/revenue/analytics", response_model=dict)
@@ -198,7 +219,7 @@ async def generate_invoice(
     await log_audit("generate_invoice", str(current_user.id), "company", request.company_id, {"invoice_id": str(invoice.id), "invoice_number": invoice_number})
     
     return {
-        **invoice.dict(),
+        **_json_safe(invoice),
         "id": str(invoice.id),
         "invoice_id": str(invoice.id),
         "message": "Invoice generated successfully",
@@ -260,7 +281,7 @@ async def list_invoices(
     companies = {str(company.id): company for company in await Company.find(In(Company.id, list(company_ids))).to_list()} if company_ids else {}
     result = []
     for invoice in invoices:
-        row = invoice.dict()
+        row = _json_safe(invoice)
         row["id"] = str(invoice.id)
         row["status"] = invoice.payment_status.value if hasattr(invoice.payment_status, "value") else invoice.payment_status
         row["company_name"] = companies.get(invoice.company_id).name if companies.get(invoice.company_id) else invoice.company_id
@@ -430,6 +451,5 @@ async def export_billing_data(
         "data": export_data,
         "count": len(export_data)
     }
-
 
 

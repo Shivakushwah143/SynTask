@@ -28,6 +28,27 @@ except ImportError:
 router = APIRouter()
 
 
+def _json_safe(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if hasattr(value, "value"):
+        return value.value
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if hasattr(value, "model_dump"):
+        data = value.model_dump()
+        if getattr(value, "id", None) is not None:
+            data["id"] = str(value.id)
+        return _json_safe(data)
+    return str(value)
+
+
 # Request Models
 class TenantApproveRequest(BaseModel):
     plan_id: str
@@ -154,24 +175,11 @@ async def list_tenants(
             User.company_id == str(company.id)
         ).count()
         
-        company_dict = company.dict()
-        company_dict["id"] = str(company.id)
-        for key in ("created_at", "updated_at", "approved_at"):
-            if key in company_dict and company_dict[key] is not None and hasattr(company_dict[key], "isoformat"):
-                company_dict[key] = company_dict[key].isoformat()
-        for key in ("status", "requested_plan"):
-            if key in company_dict and company_dict[key] is not None and hasattr(company_dict[key], "value"):
-                company_dict[key] = company_dict[key].value
+        company_dict = _json_safe(company)
         
         sub_dict = None
         if subscription:
-            sub_dict = subscription.dict()
-            sub_dict["id"] = str(subscription.id)
-            for k in ("start_date", "end_date", "trial_end_date", "next_billing_date", "created_at", "updated_at", "cancelled_at"):
-                if k in sub_dict and sub_dict[k] is not None and hasattr(sub_dict[k], "isoformat"):
-                    sub_dict[k] = sub_dict[k].isoformat()
-            if "status" in sub_dict and hasattr(sub_dict["status"], "value"):
-                sub_dict["status"] = sub_dict["status"].value
+            sub_dict = _json_safe(subscription)
         company_dict["subscription"] = sub_dict
         company_dict["user_count"] = user_count
         result.append(company_dict)
@@ -221,12 +229,12 @@ async def get_tenant(
     ).sort("-invoice_date").limit(10).to_list()
     
     return {
-        "company": company.dict(),
-        "subscription": subscription.dict() if subscription else None,
-        "plan": plan.dict() if plan else None,
-        "users": [u.dict() for u in users],
-        "usage": usage.dict() if usage else None,
-        "billing_history": [t.dict() for t in transactions],
+        "company": _json_safe(company),
+        "subscription": _json_safe(subscription) if subscription else None,
+        "plan": _json_safe(plan) if plan else None,
+        "users": [_json_safe(u) for u in users],
+        "usage": _json_safe(usage) if usage else None,
+        "billing_history": [_json_safe(t) for t in transactions],
         "enabled_modules": subscription.enabled_modules if subscription else []
     }
 
@@ -398,8 +406,8 @@ async def approve_tenant(
     
     return {
         "message": "Company approved and activated",
-        "company": company.dict(),
-        "subscription": subscription.dict()
+        "company": _json_safe(company),
+        "subscription": _json_safe(subscription)
     }
 
 
@@ -448,7 +456,7 @@ async def suspend_tenant(
             )
     await log_audit("suspend_tenant", str(current_user.id), "company", company_id, {"reason": request.reason, "notes": request.notes})
     
-    return {"message": "Company suspended", "company": company.dict()}
+    return {"message": "Company suspended", "company": _json_safe(company)}
 
 
 @router.post("/{company_id}/activate", response_model=dict)
@@ -480,7 +488,7 @@ async def activate_tenant(
         await subscription.save()
     await log_audit("activate_tenant", str(current_user.id), "company", company_id, {})
     
-    return {"message": "Company activated", "company": company.dict()}
+    return {"message": "Company activated", "company": _json_safe(company)}
 
 
 @router.post("/{company_id}/assign-plan", response_model=dict)
@@ -525,7 +533,7 @@ async def assign_plan_to_tenant(
     company.updated_at = utc_now()
     await company.save()
     await log_audit("assign_plan", str(current_user.id), "company", company_id, {"plan_id": body.plan_id, "billing_cycle": body.billing_cycle})
-    return {"message": f"Plan '{plan.name}' assigned to {company.name}", "subscription": existing.dict()}
+    return {"message": f"Plan '{plan.name}' assigned to {company.name}", "subscription": _json_safe(existing)}
 
 
 @router.put("/{company_id}/modules", response_model=dict)
@@ -648,8 +656,8 @@ async def update_subscription(
     
     return {
         "message": "Subscription updated successfully",
-        "subscription": subscription.dict(),
-        "plan": plan.dict() if plan else None
+        "subscription": _json_safe(subscription),
+        "plan": _json_safe(plan) if plan else None
     }
 
 
@@ -716,4 +724,3 @@ async def delete_tenant(
             "message": f"Company marked for deletion. Data will be retained for {request.retention_days} days.",
             "retention_until": retention_date.isoformat()
         }
-
