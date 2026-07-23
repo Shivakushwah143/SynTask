@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { authAPI } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
+import { isSuperAdminRole } from '../../utils/roles'
 import { Button, PasswordInput, inputClassName } from '../../components/ui'
 import GoogleLoginButton from '../../components/auth/GoogleLoginButton'
 
@@ -35,9 +36,14 @@ const Login = () => {
       const response = await authAPI.login(formData.email, formData.password, formData.remember_me)
       setAuth(response.user, response.access_token, response.refresh_token, formData.remember_me)
       toast.success('Login successful!')
-      navigate('/dashboard')
+      navigate(isSuperAdminRole(response.user?.role) ? '/super-admin/dashboard' : '/dashboard')
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Login failed')
+      const detail = error.response?.data?.detail
+      if (detail === 'account_suspended' || detail?.code === 'account_suspended' || detail?.detail === 'account_suspended') {
+        toast.error('Your account has been suspended. Please contact support.')
+      } else {
+        toast.error(detail?.detail || detail || 'Login failed')
+      }
     } finally {
       setLoading(false)
       useUIStore.getState().setLoading(false)

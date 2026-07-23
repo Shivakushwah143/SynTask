@@ -13,7 +13,8 @@ import {
   Package,
   BarChart3,
   Bot,
-  TrendingUp
+  TrendingUp,
+  Zap
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useUIStore } from '../store/uiStore'
@@ -40,7 +41,7 @@ const SuperAdminLayout = () => {
 
   const navigation = [
     {
-      name: 'Admin Dashboard',
+      name: 'Dashboard',
       href: '/super-admin/dashboard',
       icon: LayoutDashboard
     },
@@ -50,19 +51,19 @@ const SuperAdminLayout = () => {
       icon: Users
     },
     {
-      name: 'Tenant Companies',
-      href: '/super-admin/companies',
-      icon: Building2
-    },
-    {
       name: 'Subscription Plans',
       href: '/super-admin/plans',
       icon: Package
     },
     {
-      name: 'Tenant Management',
+      name: 'Clients',
       href: '/super-admin/tenants',
       icon: Building2
+    },
+    {
+      name: 'Billing & Revenue',
+      href: '/super-admin/billing',
+      icon: TrendingUp
     },
     {
       name: 'Usage Analytics',
@@ -70,9 +71,9 @@ const SuperAdminLayout = () => {
       icon: BarChart3
     },
     {
-      name: 'Billing & Revenue',
-      href: '/super-admin/billing',
-      icon: TrendingUp
+      name: 'Feature Flags',
+      href: '/super-admin/feature-flags',
+      icon: Zap
     },
     {
       name: 'Platform Audit Log',

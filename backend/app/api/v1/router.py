@@ -29,7 +29,7 @@ from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import content_calendar
 from app.api.v1.endpoints import scheduled_jobs
 from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports
-from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing
+from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing, superadmin_features
 from app.api.dependencies import require_module
 from app.recruitment.routes import careers_router, router as recruitment_router
 from app.integrations.meta import api as meta_integration
@@ -177,4 +177,5 @@ api_router.include_router(superadmin_plans.router, prefix="/superadmin/plans", t
 api_router.include_router(superadmin_tenants.router, prefix="/superadmin/tenants", tags=["Super Admin - Tenants"])
 api_router.include_router(superadmin_usage.router, prefix="/superadmin/usage", tags=["Super Admin - Usage"])
 api_router.include_router(superadmin_billing.router, prefix="/superadmin/billing", tags=["Super Admin - Billing"])
+api_router.include_router(superadmin_features.router, prefix="/superadmin/features", tags=["Super Admin - Features"])
 api_router.include_router(admin_permissions.router, prefix="/admin/permissions", tags=["Admin Permissions"])

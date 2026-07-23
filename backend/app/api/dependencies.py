@@ -59,6 +59,20 @@ async def get_current_user(token: str = Depends(get_token_from_header)) -> User:
         user.role = _normalize_role(getattr(user, "role", None))
     if not isinstance(getattr(user, "previous_role", None), UserRole) and getattr(user, "previous_role", None) is not None:
         user.previous_role = _normalize_role(user.previous_role)
+
+    if _normalize_role(getattr(user, "role", None)) != UserRole.SUPER_ADMIN and getattr(user, "company_id", None):
+        from app.models.company import Company, CompanyStatus
+
+        company = await Company.get(user.company_id)
+        if company and company.status == CompanyStatus.SUSPENDED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "detail": "account_suspended",
+                    "code": "account_suspended",
+                    "reason": getattr(company, "notes", None) or "manual",
+                },
+            )
     
     return user
 

@@ -129,6 +129,33 @@ Existing module requirements from Phase 1 remain valid: identity, tenant adminis
 
 Global time acceptance: browser timezone is detected on first login when no preference exists; navbar clock exposes timezone, automatic/manual time, 12/24-hour format, and seconds display; Admin and Super Admin can edit these settings; non-admin users are read-only; backend business time uses `ClockService`; frontend display and UTC serialization use `timeService`; settings mutate only the authenticated user.
 
+### Super Admin platform operations
+
+Status: Implemented baseline as of 2026-07-23.
+
+Super Admin can manage subscribed clients from the `/super-admin` workspace. Backend enforcement uses `get_current_super_admin` on all superadmin routes. Tenant-owned data remains company-scoped; cross-tenant client users are retrieved only by explicit Super Admin tenant endpoints.
+
+Implemented capabilities:
+
+- Client list and tenant detail show user counts, subscription state, plan limits, usage, and feature flags.
+- Super Admin can list tenant users and trigger a password reset email for a selected user. Reset tokens are stored hashed and expire through the existing reset-password flow.
+- Super Admin can suspend a tenant with reason, notes, and optional admin notification. Suspended non-superadmin users receive a `403` response with `account_suspended`; login shows a suspension support message. Super Admin can reactivate suspended tenants.
+- Super Admin can create and edit subscription plans with monthly/yearly price, user/project/storage limits, enabled modules, and feature labels.
+- Super Admin can assign a plan to a tenant with monthly/yearly billing and optional custom user limit.
+- Super Admin can generate invoices, list invoices, and send invoice email notices to the tenant admin or company billing email.
+- Super Admin dashboard and billing views show revenue, MRR, active and overdue subscriptions, invoice status, and revenue trend data.
+- Super Admin can view usage summary across tenants and expand a tenant for users, projects, tasks, storage, and monthly API request counts.
+- Super Admin can toggle per-tenant feature flags from tenant detail or a global matrix page. Feature flags are stored in `feature_flags`.
+- Material Super Admin actions are recorded in `audit_logs`: password reset, suspend, activate, assign plan, generate invoice, send invoice, and feature toggle.
+
+Acceptance criteria:
+
+- Given a Super Admin session, when `/super-admin/tenants` loads, then company rows include user counts and suspended tenants have visible suspended status.
+- Given a tenant user row, when Super Admin confirms reset password, then a reset token is stored and an email send is attempted.
+- Given a suspended tenant, when a company user logs in, then API access is denied with `account_suspended` and the frontend shows a support message.
+- Given invoice data, when Super Admin generates an invoice, then a billing transaction is created and appears in invoice list.
+- Given a feature toggle, when Super Admin changes it, then only that tenant's feature flag changes and the action is audited.
+
 ## 5. AI-enabled Phase 2 scope
 
 | Feature | Status | Product behavior |
