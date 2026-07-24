@@ -97,20 +97,35 @@ export const authAPI = {
     return response.data
   },
 
+  // ============================================================
+  // ✅ FIXED: Avatar endpoints - match backend routes
+  // ============================================================
   uploadAvatar: async (file) => {
     const formData = new FormData()
-    formData.append('file', file)
-    const response = await api.post('/auth/upload-avatar', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-    return response.data
+    formData.append('file', file) // ✅ Must match backend field name
+    
+    try {
+      const response = await api.post('/files/avatar', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+      console.log('📤 Avatar upload response:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('❌ Avatar upload error:', error)
+      throw error
+    }
   },
 
   deleteAvatar: async () => {
-    const response = await api.delete('/auth/avatar')
-    return response.data
+    try {
+      const response = await api.delete('/files/avatar')
+      console.log('🗑️ Avatar delete response:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('❌ Avatar delete error:', error)
+      throw error
+    }
   },
 }
-
