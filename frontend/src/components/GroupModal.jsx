@@ -287,14 +287,14 @@ const GroupModal = ({ isOpen, onClose, mode = 'create', groupId = null, onGroupC
                     />
                   </div>
 
-                  {/* Search Results */}
+                  {/* Search Results Dropdown */}
                   {searchResults.length > 0 && (
-                    <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto mb-3">
+                    <div className="border-2 border-primary-300 bg-white rounded-lg shadow-lg max-h-56 overflow-y-auto mb-3">
                       {searchResults.map((user) => (
                         <button
                           key={user.id}
                           onClick={() => handleAddUser(user)}
-                          className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-3 border-b border-gray-100 last:border-b-0"
+                          className="w-full px-4 py-3 text-left hover:bg-primary-50 flex items-center space-x-3 border-b border-gray-100 last:border-b-0 transition-colors"
                         >
                           {renderAvatar(user.avatar, user.name, 'md')}
                           <div className="flex-1">

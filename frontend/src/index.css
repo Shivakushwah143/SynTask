@@ -1,8 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes search-discovery-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.34);
+    transform: scale(1);
+  }
+  55% {
+    box-shadow: 0 0 0 10px rgba(99, 102, 241, 0);
+    transform: scale(1.015);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+    transform: scale(1);
+  }
+}
 
 @layer base {
   html,
@@ -380,12 +393,15 @@
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-gray-100,
-  :where(html.dark, html[data-theme='dark']) .bg-gray-200 {
+  :where(html.dark, html[data-theme='dark']) .bg-gray-200,
+  :where(html.dark, html[data-theme='dark']) .bg-slate-200 {
     background-color: var(--color-app-surface-subtle);
   }
 
   :where(html.dark, html[data-theme='dark']) .bg-gray-50,
-  :where(html.dark, html[data-theme='dark']) .bg-gray-100 {
+  :where(html.dark, html[data-theme='dark']) .bg-gray-100,
+  :where(html.dark, html[data-theme='dark']) .bg-slate-50,
+  :where(html.dark, html[data-theme='dark']) .bg-slate-100 {
     background-color: var(--color-app-surface-muted);
   }
 
@@ -408,8 +424,8 @@
     background-color: var(--color-app-surface);
   }
 
-  :where(html:not(.dark):not([data-theme='dark'])) tbody.bg-white,
-  :where(html:not(.dark):not([data-theme='dark'])) tr.bg-white {
+  :where(html:not(.dark):not([data-theme='dark'])) tbody[class~='bg-white'],
+  :where(html:not(.dark):not([data-theme='dark'])) tr[class~='bg-white'] {
     background-color: var(--color-app-row);
   }
 
@@ -527,6 +543,9 @@
   :where(html.dark, html[data-theme='dark']) .border-gray-100,
   :where(html.dark, html[data-theme='dark']) .border-gray-200,
   :where(html.dark, html[data-theme='dark']) .border-gray-300,
+  :where(html.dark, html[data-theme='dark']) .border-slate-100,
+  :where(html.dark, html[data-theme='dark']) .border-slate-200,
+  :where(html.dark, html[data-theme='dark']) .border-slate-300,
   :where(html.dark, html[data-theme='dark']) .border-surface-border {
     border-color: var(--color-app-border);
   }
@@ -557,7 +576,9 @@
   }
 
   :where(html.dark, html[data-theme='dark']) .text-gray-900,
-  :where(html.dark, html[data-theme='dark']) .text-gray-800 {
+  :where(html.dark, html[data-theme='dark']) .text-gray-800,
+  :where(html.dark, html[data-theme='dark']) .text-slate-900,
+  :where(html.dark, html[data-theme='dark']) .text-slate-800 {
     color: theme('colors.text.inverse');
   }
 
@@ -574,12 +595,16 @@
   }
 
   :where(html.dark, html[data-theme='dark']) .text-gray-700,
-  :where(html.dark, html[data-theme='dark']) .text-gray-600 {
+  :where(html.dark, html[data-theme='dark']) .text-gray-600,
+  :where(html.dark, html[data-theme='dark']) .text-slate-700,
+  :where(html.dark, html[data-theme='dark']) .text-slate-600 {
     color: var(--color-app-text-secondary);
   }
 
   :where(html.dark, html[data-theme='dark']) .text-gray-500,
-  :where(html.dark, html[data-theme='dark']) .text-gray-400 {
+  :where(html.dark, html[data-theme='dark']) .text-gray-400,
+  :where(html.dark, html[data-theme='dark']) .text-slate-500,
+  :where(html.dark, html[data-theme='dark']) .text-slate-400 {
     color: var(--color-app-text-muted);
   }
 

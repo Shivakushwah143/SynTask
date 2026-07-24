@@ -12,6 +12,8 @@ from app.models.subscription_plan import SubscriptionPlan as SubscriptionPlanDoc
 from app.core.security import get_password_hash
 from app.api.dependencies import get_current_user, get_current_super_admin
 from app.api.deps import Pagination20, PaginationParams
+from app.core.clock import utc_now
+from app.schemas.admin_permissions import normalize_modules
 
 
 router = APIRouter()
@@ -205,17 +207,8 @@ async def approve_company(
             detail="Admin email already exists"
         )
     
-    allowed_modules = ["task", "sales"]
-    parsed_modules = []
-    if modules:
-        parsed_modules = [
-            m.strip()
-            for m in modules.split(",")
-            if m and m.strip() in allowed_modules
-        ]
-    if not parsed_modules:
-        parsed_modules = ["task"]
-    active_module = parsed_modules[0]
+    parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
+    active_module = parsed_modules[0] if parsed_modules else "task"
     
     plan_doc = None
     if plan_id and plan_id.strip():
@@ -225,10 +218,8 @@ async def approve_company(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Subscription plan not found"
             )
-        parsed_modules = list(plan_doc.enabled_modules) if getattr(plan_doc, "enabled_modules", None) else ["task"]
-        if not parsed_modules:
-            parsed_modules = ["task"]
-        active_module = parsed_modules[0]
+        parsed_modules = normalize_modules(list(plan_doc.enabled_modules) if getattr(plan_doc, "enabled_modules", None) else [], require_tasks_projects=False)
+        active_module = parsed_modules[0] if parsed_modules else "task"
     
     # Determine role
     try:
@@ -261,7 +252,7 @@ async def approve_company(
     # Update company
     company.status = CompanyStatus.ACTIVE
     company.admin_id = str(admin.id)
-    company.approved_at = datetime.now()
+    company.approved_at = utc_now()
     company.approved_by = str(current_user.id)
     await company.save()
     
@@ -273,7 +264,7 @@ async def approve_company(
     
     if plan_doc:
         amount = plan_doc.price_monthly if billing_cycle_val == "monthly" else plan_doc.price_yearly
-        start_date = datetime.now()
+        start_date = utc_now()
         sub = CompanySubscription(
             company_id=company_id,
             plan_id=str(plan_doc.id),
@@ -338,7 +329,7 @@ async def update_company_status(
         )
     
     company.status = new_status
-    company.updated_at = datetime.now()
+    company.updated_at = utc_now()
     await company.save()
     
     return {"message": "Company status updated successfully"}

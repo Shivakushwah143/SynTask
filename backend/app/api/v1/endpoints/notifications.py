@@ -12,6 +12,7 @@ from app.models.user import User
 from app.api.dependencies import get_current_user
 from app.api.deps import Pagination20, PaginationParams
 from app.services.reminder_service import reminder_service
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -124,7 +125,7 @@ async def mark_notification_as_read(
     """Mark notification as read"""
     notification = await _get_owned_notification(notification_id, current_user)
     notification.is_read = True
-    notification.read_at = datetime.now()
+    notification.read_at = utc_now()
     await notification.save()
     
     return {"message": "Notification marked as read", "notification": _serialize_notification(notification)}
@@ -141,7 +142,7 @@ async def mark_all_notifications_as_read(
     
     for notification in notifications:
         notification.is_read = True
-        notification.read_at = datetime.now()
+        notification.read_at = utc_now()
         await notification.save()
     
     return {"message": f"{len(notifications)} notifications marked as read"}

@@ -13,6 +13,7 @@ from app.core.rbac_visibility import build_visibility_query, can_view_owned_reco
 from app.models.user import User, UserRole
 from app.models.sales_contact import SalesContact, ContactSharing, ContactSharingAccess
 from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 
 router = APIRouter(dependencies=[Depends(require_module("sales"))])
@@ -347,7 +348,7 @@ async def update_contact(
     if company_name is not None:
         contact.company_name = company_name.strip() if company_name else None
     
-    contact.updated_at = datetime.now()
+    contact.updated_at = utc_now()
     await contact.save()
     return {"message": "Contact updated successfully"}
 
@@ -366,7 +367,7 @@ async def delete_contact(
     await require_owned_record_access(current_user, contact, ownership_fields=("created_by",))
     
     contact.deleted = True
-    contact.updated_at = datetime.now()
+    contact.updated_at = utc_now()
     await contact.save()
     return {"message": "Contact deleted successfully"}
 

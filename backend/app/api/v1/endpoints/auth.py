@@ -26,6 +26,7 @@ from app.middleware.rate_limiter import limiter
 from app.api.dependencies import get_current_user
 from app.schemas.auth import RefreshTokenRequest, LoginRequest, ChangePasswordRequest
 from app.core.email import send_password_reset_email as _send_password_reset_email
+from app.core.clock import utc_now
 from app.services.file_service import FileService
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,11 @@ def _auth_response(user: User, remember_me: bool = False) -> Dict:
             }),
             "avatar": user.avatar,
             "provider": getattr(user, "provider", AuthProvider.LOCAL),
+            "timezone": getattr(user, "timezone", None),
+            "automatic_time": getattr(user, "automatic_time", True),
+            "manual_time": getattr(user, "manual_time", None),
+            "hour_format": getattr(user, "hour_format", "12"),
+            "show_seconds": getattr(user, "show_seconds", False),
         }
     }
 
@@ -259,8 +265,8 @@ async def google_login(
             user.is_email_verified = True
             if user.status == UserStatus.PENDING:
                 user.status = UserStatus.ACTIVE
-            user.last_login = datetime.utcnow()
-            user.updated_at = datetime.utcnow()
+            user.last_login = utc_now()
+            user.updated_at = utc_now()
             await user.save()
             auth_payload = _auth_response(user, google_request.remember_me)
             _set_auth_cookies(response, auth_payload, google_request.remember_me)
@@ -280,7 +286,7 @@ async def google_login(
             modules=["task"],
             active_module="task",
             is_email_verified=True,
-            last_login=datetime.utcnow(),
+            last_login=utc_now(),
         )
         await user.insert()
         auth_payload = _auth_response(user, google_request.remember_me)
@@ -402,7 +408,7 @@ async def forgot_password(
     
     # Set token with expiration (30 minutes)
     user.password_reset_token = get_password_hash(reset_token)
-    user.password_reset_token_expires_at = datetime.now() + timedelta(minutes=30)
+    user.password_reset_token_expires_at = utc_now() + timedelta(minutes=30)
     user.password_reset_token_used = False
     await user.save()
     
@@ -458,7 +464,7 @@ async def verify_reset_token(
         )
     
     # Check if token is expired
-    if not user.password_reset_token_expires_at or user.password_reset_token_expires_at < datetime.now():
+    if not user.password_reset_token_expires_at or user.password_reset_token_expires_at < utc_now():
         # Clear expired token
         user.password_reset_token = None
         user.password_reset_token_expires_at = None
@@ -505,7 +511,7 @@ async def reset_password(
         )
     
     # Check if token is expired
-    if not user.password_reset_token_expires_at or user.password_reset_token_expires_at < datetime.now():
+    if not user.password_reset_token_expires_at or user.password_reset_token_expires_at < utc_now():
         # Clear expired token
         user.password_reset_token = None
         user.password_reset_token_expires_at = None
@@ -605,6 +611,11 @@ async def get_current_user_info(
             "task_assignment_alerts": True,
             "ticket_updates": True
         }),
+        "timezone": getattr(current_user, "timezone", None),
+        "automatic_time": getattr(current_user, "automatic_time", True),
+        "manual_time": getattr(current_user, "manual_time", None),
+        "hour_format": getattr(current_user, "hour_format", "12"),
+        "show_seconds": getattr(current_user, "show_seconds", False),
     }
 
 
@@ -631,7 +642,7 @@ async def update_notification_preferences(
             if key not in current_user.notification_preferences:
                 current_user.notification_preferences[key] = True
         
-        current_user.updated_at = datetime.now()
+        current_user.updated_at = utc_now()
         await current_user.save()
         
         logger.info(f"Notification preferences updated for user: {current_user.email}")
@@ -704,7 +715,7 @@ async def upload_avatar(
         # Update user avatar
         avatar_url = f"/uploads/avatars/{unique_filename}"
         current_user.avatar = avatar_url
-        current_user.updated_at = datetime.now()
+        current_user.updated_at = utc_now()
         await current_user.save()
         
         logger.info(f"Avatar uploaded for user: {current_user.email}")
@@ -744,7 +755,7 @@ async def delete_avatar(
         
         # Update user
         current_user.avatar = None
-        current_user.updated_at = datetime.now()
+        current_user.updated_at = utc_now()
         await current_user.save()
         
         logger.info(f"Avatar deleted for user: {current_user.email}")

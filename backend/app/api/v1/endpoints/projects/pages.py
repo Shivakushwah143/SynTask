@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from .shared import *
 from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -57,7 +58,7 @@ async def create_page(
     )
     
     if page_status == PageStatus.PUBLISHED:
-        page.published_at = datetime.now()
+        page.published_at = utc_now()
     
     await page.insert()
     
@@ -198,13 +199,13 @@ async def update_page(
         try:
             page.status = PageStatus(status.lower())
             if page.status == PageStatus.PUBLISHED and not page.published_at:
-                page.published_at = datetime.now()
+                page.published_at = utc_now()
         except:
             pass
     
     page.updated_by = str(current_user.id)
     page.updated_by_name = current_user.full_name()
-    page.updated_at = datetime.now()
+    page.updated_at = utc_now()
     
     await page.save()
     

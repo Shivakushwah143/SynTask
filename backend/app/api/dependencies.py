@@ -2,12 +2,28 @@
 API Dependencies - Authentication and Authorization
 """
 from fastapi import Depends, HTTPException, status
-from typing import Optional
+from typing import Any, Optional
 
 from app.core.security import get_token_from_header, decode_token_with_blacklist_check
 from app.models.department import Department
 from app.models.capability import get_capabilities_for_role
 from app.models.user import User, UserRole, UserStatus
+
+
+def _normalize_role(role: Any) -> UserRole:
+    if isinstance(role, UserRole):
+        return role
+    if role is None:
+        return UserRole.EMPLOYEE
+    try:
+        return UserRole.from_legacy(str(role))
+    except Exception:
+        normalized = str(role).strip().lower().replace(" ", "_").replace("-", "_")
+        try:
+            return UserRole(normalized)
+        except ValueError:
+            return UserRole.EMPLOYEE
+
 
 
 async def get_current_user(token: str = Depends(get_token_from_header)) -> User:
@@ -37,19 +53,55 @@ async def get_current_user(token: str = Depends(get_token_from_header)) -> User:
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Account is {user.status.value}"
         )
+
+    # Normalize user role values so downstream guards work consistently.
+    if not isinstance(user.role, UserRole):
+        user.role = _normalize_role(getattr(user, "role", None))
+    if not isinstance(getattr(user, "previous_role", None), UserRole) and getattr(user, "previous_role", None) is not None:
+        user.previous_role = _normalize_role(user.previous_role)
+
+    if _normalize_role(getattr(user, "role", None)) != UserRole.SUPER_ADMIN and getattr(user, "company_id", None):
+        from app.models.company import Company, CompanyStatus
+
+        company = await Company.get(user.company_id)
+        if company and company.status == CompanyStatus.SUSPENDED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "detail": "account_suspended",
+                    "code": "account_suspended",
+                    "reason": getattr(company, "notes", None) or "manual",
+                },
+            )
     
     return user
+
+
+def _module_access_allowed(module_name: str, user_modules: list[str]) -> bool:
+    normalized_modules = set(user_modules or [])
+    if module_name == "task":
+        return "task" in normalized_modules or "tasks_projects" in normalized_modules
+    if module_name == "tasks_projects":
+        return "tasks_projects" in normalized_modules or "task" in normalized_modules
+    if module_name == "chat":
+        return (
+            "chat" in normalized_modules
+            or "task" in normalized_modules
+            or "tasks_projects" in normalized_modules
+        )
+    return module_name in normalized_modules
 
 
 def require_module(module_name: str):
     """Dependency factory to ensure the current user has access to a specific module."""
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
-        if current_user.role == UserRole.SUPER_ADMIN:
+        current_role = _normalize_role(getattr(current_user, "role", None))
+        if current_role == UserRole.SUPER_ADMIN:
             return current_user
-        if module_name == "sales" and current_user.role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+        if module_name == "sales" and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user
         modules = getattr(current_user, "modules", []) or []
-        if module_name not in modules:
+        if not _module_access_allowed(module_name, modules):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access to module '{module_name}' is forbidden"
@@ -61,9 +113,10 @@ def require_module(module_name: str):
 def require_capability(capability: str):
     """Dependency factory to ensure the current user has a department capability."""
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
-        if current_user.role == UserRole.SUPER_ADMIN:
+        current_role = _normalize_role(getattr(current_user, "role", None))
+        if current_role == UserRole.SUPER_ADMIN:
             return current_user
-        if current_user.role == UserRole.ADMIN:
+        if current_role == UserRole.ADMIN:
             return current_user
         department_id = getattr(current_user, "department_id", None)
         if not department_id:
@@ -95,7 +148,8 @@ async def get_current_super_admin(
     current_user: User = Depends(get_current_user)
 ) -> User:
     """Require Super Admin role"""
-    if current_user.role != UserRole.SUPER_ADMIN:
+    current_role = _normalize_role(getattr(current_user, "role", None))
+    if current_role != UserRole.SUPER_ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Super Admin access required"
@@ -107,8 +161,8 @@ async def get_current_company_admin(
     current_user: User = Depends(get_current_user)
 ) -> User:
     """Require Admin role or Super Admin"""
-    is_admin = current_user.role == UserRole.ADMIN
-    if not is_admin and current_user.role != UserRole.SUPER_ADMIN:
+    current_role = _normalize_role(getattr(current_user, "role", None))
+    if current_role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
@@ -120,8 +174,9 @@ async def get_current_lead(
     current_user: User = Depends(get_current_user)
 ) -> User:
     """Require Lead, Manager, Admin, or Super Admin role"""
-    allowed_roles = [UserRole.LEAD, UserRole.MANAGER, UserRole.ADMIN, UserRole.SUPER_ADMIN]
-    if current_user.role not in allowed_roles:
+    allowed_roles = {UserRole.LEAD, UserRole.MANAGER, UserRole.ADMIN, UserRole.SUPER_ADMIN}
+    current_role = _normalize_role(getattr(current_user, "role", None))
+    if current_role not in allowed_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Lead access required"
@@ -133,8 +188,9 @@ async def get_current_company_admin_or_lead(
     current_user: User = Depends(get_current_user)
 ) -> User:
     """Require Admin, Manager, Lead, or Super Admin role"""
-    allowed_roles = [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]
-    if current_user.role not in allowed_roles:
+    allowed_roles = {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
+    current_role = _normalize_role(getattr(current_user, "role", None))
+    if current_role not in allowed_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin, Manager, or Lead access required"
@@ -144,7 +200,8 @@ async def get_current_company_admin_or_lead(
 
 def check_company_access(user: User, company_id: str):
     """Check if user has access to a specific company"""
-    if user.role == UserRole.SUPER_ADMIN:
+    current_role = _normalize_role(getattr(user, "role", None))
+    if current_role == UserRole.SUPER_ADMIN:
         return True
     
     if user.company_id != company_id:

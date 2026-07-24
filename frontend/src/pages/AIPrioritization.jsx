@@ -4,6 +4,7 @@ import { AlertTriangle, Bot, Clock3, RefreshCw, Sparkles, Target, TrendingUp, Sh
 import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
 import { Badge, Button, EmptyState, PageHeader } from '../components/ui'
+import { timeService } from '@/services/timeService'
 
 export default function AIPrioritization() {
   const [result, setResult] = useState(null)
@@ -76,7 +77,7 @@ export default function AIPrioritization() {
           <StatCard label="Source" value={result.source} detail={`${result.provider || '-'} / ${result.model || '-'}`} />
           <StatCard label="Tasks reviewed" value={result.context?.task_count || 0} detail="Campaign signals and delivery pressure." />
           <StatCard label="Generated for" value={result.context?.generated_for?.full_name || 'Current user'} detail={result.context?.generated_for?.role || 'Strategist'} />
-          <StatCard label="Generated at" value={result.generated_at ? format(new Date(result.generated_at), 'MMM d, HH:mm') : '-'} detail={result.source === 'fallback' ? 'Heuristic fallback' : 'Validated output'} />
+          <StatCard label="Generated at" value={result.generated_at ? format(timeService.instant(result.generated_at), 'MMM d, HH:mm') : '-'} detail={result.source === 'fallback' ? 'Heuristic fallback' : 'Validated output'} />
         </section>
       ) : null}
 
@@ -172,7 +173,7 @@ export default function AIPrioritization() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-semibold text-text-primary dark:text-text-primary">{log.feature}</div>
-                        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">{log.created_at ? format(new Date(log.created_at), 'MMM d, HH:mm:ss') : '-'}</div>
+                        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">{log.created_at ? format(timeService.instant(log.created_at), 'MMM d, HH:mm:ss') : '-'}</div>
                       </div>
                       <Badge label={log.status} colorKey={log.status === 'success' ? 'active' : 'pending'} />
                     </div>

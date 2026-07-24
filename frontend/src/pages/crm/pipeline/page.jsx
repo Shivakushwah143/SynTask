@@ -4,8 +4,37 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners,
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { CRMPage, CRMPageTitle } from '../../../components/crm'
-import { Button, Modal, PhoneInput, inputClassName } from '../../../components/ui'
+import { 
+  LayoutDashboard, 
+  Users, 
+  TrendingUp, 
+  Clock, 
+  DollarSign, 
+  RefreshCw,
+  Plus,
+  Import,
+  Filter,
+  Search,
+  X,
+  GripVertical,
+  User,
+  Building2,
+  Mail,
+  Phone,
+  Tag,
+  Calendar,
+  Star,
+  AlertCircle,
+  BarChart3,
+  PieChart,
+  Target,
+  Award,
+  Activity,
+  ArrowRight,
+  CheckCircle,
+  Clock as ClockIcon,
+  Zap
+} from 'lucide-react'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
@@ -30,8 +59,10 @@ import {
   parsePipelineFilters,
   stageOptionsFromBoard,
 } from './utils'
-import { RefreshCw } from 'lucide-react'
 
+// ============================================================
+// CONSTANTS & HELPERS
+// ============================================================
 const PIPELINE_QUERY_KEY = 'crm-pipeline-board'
 
 const mergeSearchParams = (searchParams, nextPartial) => {
@@ -63,6 +94,9 @@ const getResponseItems = (data, key) => {
   return []
 }
 
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 export default function CRMPipelinePage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -165,6 +199,7 @@ export default function CRMPipelinePage() {
       leadIndex,
     }
   }, [board, visibleLeadIds])
+  
   const defaultStageId = getStageValue(stages[0])
   const defaultCategoryId = getOptionId(categories[0])
   const defaultProductIds = getOptionId(products[0])
@@ -196,7 +231,7 @@ export default function CRMPipelinePage() {
 
   const createLeadMutation = useMutation((payload) => salesApi.createLead(payload), {
     onSuccess: () => {
-      toast.success('Lead created')
+      toast.success('Lead created successfully! 🎉')
       setCreateOpen(false)
       setCreateForm({
         first_name: '',
@@ -287,7 +322,7 @@ export default function CRMPipelinePage() {
         if (updatedLeadId) {
           queryClient.invalidateQueries(['crm-pipeline-history', updatedLeadId], { exact: true })
         }
-        toast.success('Lead stage updated')
+        toast.success('Lead moved successfully! 🚀')
       },
     }
   )
@@ -311,7 +346,7 @@ export default function CRMPipelinePage() {
     if (!value) return
     try {
       await navigator.clipboard.writeText(String(value))
-      toast.success('Lead ID copied')
+      toast.success('Lead ID copied to clipboard! 📋')
     } catch {
       toast.error('Could not copy lead ID')
     }
@@ -346,6 +381,30 @@ export default function CRMPipelinePage() {
     handleLeadMove(activeLead, targetStageKey)
   }, [handleLeadMove, visibleBoard])
 
+  // ============================================================
+  // STATS CALCULATION
+  // ============================================================
+  const pipelineStats = useMemo(() => {
+    const allLeads = board.stages.flatMap(stage => stage.leads)
+    const total = allLeads.length
+    const openLeads = allLeads.filter(lead => 
+      !['closed_won', 'closed_lost', 'disqualified'].includes(lead.current_stage?.toLowerCase())
+    ).length
+    const wonLeads = allLeads.filter(lead => 
+      lead.current_stage?.toLowerCase() === 'closed_won'
+    ).length
+    const highValueLeads = allLeads.filter(lead => 
+      parseFloat(lead.amount || lead.value || 0) > 100000
+    ).length
+    const totalValue = allLeads.reduce((sum, lead) => 
+      sum + parseFloat(lead.amount || lead.value || 0), 0
+    )
+    const avgValue = total > 0 ? totalValue / total : 0
+    const conversionRate = total > 0 ? (wonLeads / total) * 100 : 0
+    
+    return { total, openLeads, wonLeads, highValueLeads, totalValue, avgValue, conversionRate }
+  }, [board.stages])
+
   const currency = rawPipeline?.meta?.currency || 'INR'
   const hasMoreLeads = Boolean(rawPipeline?.meta?.has_more)
   const totalLeads = Number(rawPipeline?.meta?.total_leads || 0)
@@ -353,29 +412,178 @@ export default function CRMPipelinePage() {
   const loading = pipelineQuery.isLoading
   const hasError = pipelineQuery.isError
 
-  return (
-    <CRMPage>
-      <CRMPageTitle
-        title={selectedStageLabel ? `${selectedStageLabel} Pipeline` : 'CRM Pipeline'}
-        description={selectedStageLabel ? `Showing leads in the ${selectedStageLabel} stage.` : 'Manage your leads and move them through the pipeline.'}
-        actions={(
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
-              + New Lead
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => navigate('/crm/leads?import=1')}>
-              Import Leads
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => pipelineQuery.refetch()} aria-label="Refresh pipeline">
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+  // ============================================================
+  // Phone Input Component
+  // ============================================================
+  const PhoneInput = ({ countryCode, phoneNumber, onCountryCodeChange, onPhoneNumberChange, required }) => (
+    <div className="flex gap-2">
+      <select
+        value={countryCode}
+        onChange={(e) => onCountryCodeChange(e.target.value)}
+        className="w-24 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+      >
+        <option value="+91">+91</option>
+        <option value="+1">+1</option>
+        <option value="+44">+44</option>
+        <option value="+61">+61</option>
+        <option value="+81">+81</option>
+        <option value="+86">+86</option>
+      </select>
+      <input
+        type="tel"
+        value={phoneNumber}
+        onChange={(e) => onPhoneNumberChange(e.target.value)}
+        className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        placeholder="9876543210"
+        required={required}
       />
+    </div>
+  )
 
-      <div className="space-y-4">
-        <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start xl:gap-4 xl:space-y-0">
-          <main className="min-w-0 space-y-4">
+  // ============================================================
+  // Stat Card Component
+  // ============================================================
+  const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, suffix = '' }) => {
+    const colors = {
+      indigo: 'from-indigo-500 to-purple-500',
+      emerald: 'from-emerald-500 to-teal-500',
+      blue: 'from-blue-500 to-cyan-500',
+      amber: 'from-amber-500 to-orange-500',
+      rose: 'from-rose-500 to-pink-500',
+      teal: 'from-teal-500 to-cyan-500',
+    }
+
+    return (
+      <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+          <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+            <Icon className="h-4 w-4" />
+          </div>
+        </div>
+        <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+          {typeof value === 'number' && label.includes('Value') 
+            ? `${currency} ${value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+            : typeof value === 'number'
+              ? value.toLocaleString('en-IN')
+              : value}
+          {suffix}
+        </p>
+        {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      </div>
+    )
+  }
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+  return (
+    <div className="space-y-6 p-4 md:p-6">
+      {/* ============================================================ */}
+      {/* HERO SECTION - Gradient with Glassmorphism */}
+      {/* ============================================================ */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
+        
+        <div className="relative z-10">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+                <LayoutDashboard className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold md:text-3xl">
+                  {selectedStageLabel ? `${selectedStageLabel} Pipeline` : 'Sales Pipeline'}
+                </h1>
+                <p className="mt-1 text-indigo-100">
+                  {selectedStageLabel 
+                    ? `Showing leads in the ${selectedStageLabel} stage.` 
+                    : 'Manage your leads and move them through the pipeline workflow.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button 
+                onClick={() => setCreateOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <Plus className="h-4 w-4" />
+                New Lead
+              </button>
+              <button 
+                onClick={() => navigate('/crm/leads?import=1')}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <Import className="h-4 w-4" />
+                Import
+              </button>
+              <button 
+                onClick={() => pipelineQuery.refetch()}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* STAT CARDS - 4 Cards with Gradients */}
+      {/* ============================================================ */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard 
+          label="Total Leads" 
+          value={pipelineStats.total} 
+          icon={Users} 
+          color="indigo"
+          subtitle="All leads in pipeline"
+        />
+        
+        <StatCard 
+          label="Active Leads" 
+          value={pipelineStats.openLeads} 
+          icon={TrendingUp} 
+          color="emerald"
+          subtitle="In progress"
+        />
+        
+        <StatCard 
+          label="Won" 
+          value={pipelineStats.wonLeads} 
+          icon={Award} 
+          color="blue"
+          subtitle={`${pipelineStats.conversionRate.toFixed(1)}% conversion`}
+        />
+        
+        <StatCard 
+          label="Pipeline Value" 
+          value={pipelineStats.totalValue} 
+          icon={DollarSign} 
+          color="amber"
+          subtitle={`${currency} ${pipelineStats.avgValue.toFixed(0)} average`}
+        />
+      </div>
+
+      {/* ============================================================ */}
+      {/* FILTERS BAR - Section with Header */}
+      {/* ============================================================ */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+              <Filter className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-white">Filters & Search</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Narrow down leads by stage, owner, or keyword</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4">
           <PipelineFiltersBar
             filters={filters}
             onChange={updateFilters}
@@ -386,25 +594,66 @@ export default function CRMPipelinePage() {
             onSearchChange={handleSearchChange}
             currency={currency}
           />
+        </div>
+      </div>
 
-          <PipelineTopMetrics visibleLeads={visibleLeads} stages={visibleBoard.stages} currency={currency} />
-          {hasMoreLeads ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-              Showing the latest {boardLimit.toLocaleString('en-IN')} of {totalLeads.toLocaleString('en-IN')} leads. Use filters to narrow the board.
+      {/* ============================================================ */}
+      {/* METRICS RAIL */}
+      {/* ============================================================ */}
+      <PipelineTopMetrics visibleLeads={visibleLeads} stages={visibleBoard.stages} currency={currency} />
+      
+      {/* Info Banner */}
+      {hasMoreLeads && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+          <AlertCircle className="mr-2 inline h-4 w-4" />
+          Showing the latest {boardLimit.toLocaleString('en-IN')} of {totalLeads.toLocaleString('en-IN')} leads. 
+          Use filters to narrow the board.
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* PIPELINE BOARD - Main Content */}
+      {/* ============================================================ */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+              <LayoutDashboard className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             </div>
-          ) : null}
-
-        <PipelineBoardShell
-          title={selectedStageLabel ? `${selectedStageLabel} board` : 'Pipeline board'}
-          description={selectedStageLabel ? 'This view came from a workflow shortcut. Clear filters to return to the full pipeline.' : 'Drag leads between stages, or use the quick actions menu to move them with a single click.'}
-        >
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-white">
+                {selectedStageLabel ? `${selectedStageLabel} Board` : 'Pipeline Board'}
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {selectedStageLabel 
+                  ? 'This view came from a workflow shortcut. Clear filters to return to the full pipeline.' 
+                  : 'Drag leads between stages, or use the quick actions menu to move them with a single click.'}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4">
           {loading ? (
-            <PipelineLoadingState />
+            <div className="flex h-96 items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Loading pipeline...</p>
+              </div>
+            </div>
           ) : hasError ? (
-            <PipelineErrorState
-              onRetry={() => pipelineQuery.refetch()}
-              message={pipelineQuery.error?.response?.data?.detail || 'We could not load the pipeline board. Please retry.'}
-            />
+            <div className="flex h-96 flex-col items-center justify-center gap-4">
+              <AlertCircle className="h-12 w-12 text-rose-500" />
+              <p className="text-gray-600 dark:text-gray-400">
+                {pipelineQuery.error?.response?.data?.detail || 'Could not load pipeline board'}
+              </p>
+              <button
+                onClick={() => pipelineQuery.refetch()}
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </button>
+            </div>
           ) : (
             <DndContext
               collisionDetection={closestCorners}
@@ -425,22 +674,45 @@ export default function CRMPipelinePage() {
                 hasActiveFilters={hasActiveFilters}
               />
               <DragOverlay>
-                {dragOverlayLead ? (
-                  <div className="w-80 rounded-2xl border border-surface-border/80 bg-white p-4 shadow-xl dark:border-gray-800 dark:bg-gray-900">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                      {dragOverlayLead.company_name || dragOverlayLead.prospect_name || 'Lead'}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {getLeadOwnerLabel(dragOverlayLead)}
-                    </p>
+                {dragOverlayLead && (
+                  <div className="w-80 rounded-2xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 p-2 text-white shadow-lg">
+                        <User className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                          {dragOverlayLead.company_name || dragOverlayLead.prospect_name || 'Lead'}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {getLeadOwnerLabel(dragOverlayLead)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                ) : null}
+                )}
               </DragOverlay>
             </DndContext>
           )}
-        </PipelineBoardShell>
-          </main>
+        </div>
+      </div>
 
+      {/* ============================================================ */}
+      {/* INSIGHT RAIL - Sidebar Analytics */}
+      {/* ============================================================ */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+              <BarChart3 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-white">Pipeline Insights</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Key metrics and analytics</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4">
           <PipelineInsightRail
             visibleLeads={visibleLeads}
             stages={visibleBoard.stages}
@@ -449,108 +721,243 @@ export default function CRMPipelinePage() {
           />
         </div>
       </div>
-      <Modal
-        isOpen={createOpen}
-        onClose={() => setCreateOpen(false)}
-        title="Add lead"
-        description="Capture the basic lead details first, then assign ownership and products."
-        size="lg"
-        footer={(
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button type="button" loading={createLeadMutation.isLoading} onClick={submitCreateLead}>Save lead</Button>
+
+      {/* ============================================================ */}
+      {/* CREATE LEAD MODAL - Beautiful Glassmorphism */}
+      {/* ============================================================ */}
+      {createOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="mb-6 flex items-start justify-between border-b border-gray-200 pb-4 dark:border-gray-700">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Add New Lead</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Capture lead details and assign ownership
+                </p>
+              </div>
+              <button
+                onClick={() => setCreateOpen(false)}
+                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form className="space-y-5" onSubmit={submitCreateLead}>
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* First Name */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    First Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    placeholder="John" 
+                    value={createForm.first_name} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, first_name: e.target.value }))} 
+                    required
+                  />
+                </div>
+
+                {/* Last Name */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Last Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    placeholder="Doe" 
+                    value={createForm.last_name} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))} 
+                    required
+                  />
+                </div>
+
+                {/* Phone */}
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Phone <span className="text-rose-500">*</span>
+                  </label>
+                  <PhoneInput
+                    countryCode={createForm.country_code}
+                    phoneNumber={createForm.phone}
+                    onCountryCodeChange={(value) => setCreateForm((state) => ({ ...state, country_code: value }))}
+                    onPhoneNumberChange={(value) => setCreateForm((state) => ({ ...state, phone: value }))}
+                    required
+                  />
+                </div>
+
+                {/* Email */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+                  <input 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    placeholder="john@example.com" 
+                    type="email"
+                    value={createForm.email} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, email: e.target.value }))} 
+                  />
+                </div>
+
+                {/* Company */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company</label>
+                  <input 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    placeholder="Acme Corp" 
+                    value={createForm.company_name} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, company_name: e.target.value }))} 
+                  />
+                </div>
+
+                {/* Category */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
+                  <select 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    value={createForm.category_id || defaultCategoryId} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}
+                  >
+                    <option value="">Select category</option>
+                    {categories.map((category) => (
+                      <option key={getOptionId(category)} value={getOptionId(category)}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Product */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Product</label>
+                  <select 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    value={createForm.product_ids || defaultProductIds} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, product_ids: e.target.value }))}
+                  >
+                    <option value="">Select product</option>
+                    {products.map((product) => (
+                      <option key={getOptionId(product)} value={getOptionId(product)}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Stage */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Stage</label>
+                  <select 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    value={createForm.current_stage || defaultStageId} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, current_stage: e.target.value }))}
+                  >
+                    <option value="">Select stage</option>
+                    {stages.map((stage) => (
+                      <option key={getStageValue(stage)} value={getStageValue(stage)}>
+                        {stage.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Owner */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Owner</label>
+                  <select 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    value={createForm.assigned_to || defaultOwnerId} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}
+                  >
+                    <option value="">Select owner</option>
+                    {users.map((user) => (
+                      <option key={getUserId(user)} value={getUserId(user)}>
+                        {user.first_name} {user.last_name} {user.role ? `(${user.role})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Interest Level */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Interest Level</label>
+                  <select 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    value={createForm.interest_level} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, interest_level: e.target.value }))}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+
+                {/* Estimated Close */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated Close</label>
+                  <input 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    type="date" 
+                    value={createForm.estimated_close_date} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, estimated_close_date: e.target.value }))} 
+                  />
+                </div>
+
+                {/* Tags */}
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Tags</label>
+                  <input 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    placeholder="Enter tags separated by | (e.g., hot | priority | enterprise)" 
+                    value={createForm.tag} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, tag: e.target.value }))} 
+                  />
+                </div>
+
+                {/* Remark */}
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Remarks</label>
+                  <textarea 
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white min-h-24"
+                    placeholder="Add any additional notes or remarks..." 
+                    value={createForm.remark} 
+                    onChange={(e) => setCreateForm((state) => ({ ...state, remark: e.target.value }))} 
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+                <button
+                  type="button"
+                  onClick={() => setCreateOpen(false)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLeadMutation.isLoading}
+                  className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-2 text-sm font-medium text-white shadow-lg transition hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
+                >
+                  {createLeadMutation.isLoading ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      Create Lead
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
-        )}
-      >
-        <form className="space-y-5" onSubmit={submitCreateLead}>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">First name *</span>
-              <input className={inputClassName} placeholder="First name" value={createForm.first_name} onChange={(e) => setCreateForm((state) => ({ ...state, first_name: e.target.value }))} />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Last name *</span>
-              <input className={inputClassName} placeholder="Last name" value={createForm.last_name} onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))} />
-            </label>
-            <label className="space-y-1 md:col-span-2">
-              <span className="text-xs font-medium text-text-muted">Phone *</span>
-              <PhoneInput
-                countryCode={createForm.country_code}
-                phoneNumber={createForm.phone}
-                onCountryCodeChange={(value) => setCreateForm((state) => ({ ...state, country_code: value }))}
-                onPhoneNumberChange={(value) => setCreateForm((state) => ({ ...state, phone: value }))}
-                required
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Email</span>
-              <input className={inputClassName} placeholder="Email" value={createForm.email} onChange={(e) => setCreateForm((state) => ({ ...state, email: e.target.value }))} />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Company name</span>
-              <input className={inputClassName} placeholder="Company name" value={createForm.company_name} onChange={(e) => setCreateForm((state) => ({ ...state, company_name: e.target.value }))} />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Category</span>
-              <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
-                <option value="">Select category</option>
-                {categories.map((category) => (
-                  <option key={getOptionId(category)} value={getOptionId(category)}>{category.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Product</span>
-              <select className={inputClassName} value={createForm.product_ids || defaultProductIds} onChange={(e) => setCreateForm((state) => ({ ...state, product_ids: e.target.value }))}>
-                <option value="">Select product</option>
-                {products.map((product) => (
-                  <option key={getOptionId(product)} value={getOptionId(product)}>{product.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Stage</span>
-              <select className={inputClassName} value={createForm.current_stage || defaultStageId} onChange={(e) => setCreateForm((state) => ({ ...state, current_stage: e.target.value }))}>
-                <option value="">Select stage</option>
-                {stages.map((stage) => (
-                  <option key={getStageValue(stage)} value={getStageValue(stage)}>{stage.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Owner</span>
-              <select className={inputClassName} value={createForm.assigned_to || defaultOwnerId} onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}>
-                <option value="">Select owner</option>
-                {users.map((user) => (
-                  <option key={getUserId(user)} value={getUserId(user)}>
-                    {user.first_name} {user.last_name} {user.role ? `(${user.role})` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Interest level</span>
-              <select className={inputClassName} value={createForm.interest_level} onChange={(e) => setCreateForm((state) => ({ ...state, interest_level: e.target.value }))}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-text-muted">Estimated close date</span>
-              <input className={inputClassName} type="date" value={createForm.estimated_close_date} onChange={(e) => setCreateForm((state) => ({ ...state, estimated_close_date: e.target.value }))} />
-            </label>
-            <label className="space-y-1 md:col-span-2">
-              <span className="text-xs font-medium text-text-muted">Tags</span>
-              <input className={inputClassName} placeholder="Tags, pipe-separated" value={createForm.tag} onChange={(e) => setCreateForm((state) => ({ ...state, tag: e.target.value }))} />
-            </label>
-            <label className="space-y-1 md:col-span-2">
-              <span className="text-xs font-medium text-text-muted">Remark</span>
-              <textarea className={`${inputClassName} min-h-28`} placeholder="Remark" value={createForm.remark} onChange={(e) => setCreateForm((state) => ({ ...state, remark: e.target.value }))} />
-            </label>
-          </div>
-        </form>
-      </Modal>
-    </CRMPage>
+        </div>
+      )}
+    </div>
   )
 }

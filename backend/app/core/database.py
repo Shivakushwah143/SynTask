@@ -17,6 +17,8 @@ from app.models.company_subscription import CompanySubscription
 from app.models.usage_tracking import UsageTracking
 from app.models.billing_transaction import BillingTransaction
 from app.models.payment_webhook import PaymentWebhook
+from app.models.audit_log import AuditLog
+from app.models.feature_flag import FeatureFlag
 from app.models.task import Task, TaskComment, TaskExtensionRequest
 from app.models.ticket import Ticket, TicketComment
 from app.models.notification import Notification
@@ -42,6 +44,15 @@ from app.models.ai_conversation import AIConversation
 from app.models.ai_user_state import AIUserState
 from app.models.ai_memory import ClientMemory, CompanyMemory, ProjectMemory, UserMemory
 from app.models.knowledge import KnowledgeRecord
+from app.models.agent import AgentDefinition, AgentRun, AgentRunEvent, ActionProposal, SpecialistDefinition
+from app.rag.models import (
+    RAGCitation,
+    RAGKnowledgeChunk,
+    RAGKnowledgeSource,
+    RAGKnowledgeSourceVersion,
+    RAGRetrievalRun,
+)
+from app.rag.feedback import RAGFeedback
 from app.models.creative_review import (
     CreativeAssetMetadata,
     CreativeCampaignReview,
@@ -95,6 +106,11 @@ from app.integrations.meta.identity_models import (
     CrossChannelIdentityLink,
 )
 from app.integrations.meta.ai_draft_models import MetaAIDraft
+from app.integrations.google_workspace.models import (
+    GoogleWorkspaceConnection,
+    GoogleWorkspaceMail,
+    GoogleWorkspaceCalendarEvent,
+)
 from app.recruitment.models import (
     Application, Candidate, CandidateNote, CandidateTimeline, Interview,
     InterviewFeedback, Offer, RecruitmentAttachment, RecruitmentAudit,
@@ -168,6 +184,8 @@ async def init_db():
                 UsageTracking,
                 BillingTransaction,
                 PaymentWebhook,
+                AuditLog,
+                FeatureFlag,
                 Task,
                 TaskComment,
                 TaskExtensionRequest,
@@ -207,6 +225,17 @@ async def init_db():
                 UserMemory,
                 ClientMemory,
                 KnowledgeRecord,
+                AgentDefinition,
+                SpecialistDefinition,
+                AgentRun,
+                AgentRunEvent,
+                ActionProposal,
+                RAGKnowledgeSource,
+                RAGKnowledgeSourceVersion,
+                RAGKnowledgeChunk,
+                RAGRetrievalRun,
+                RAGCitation,
+                RAGFeedback,
                 CreativeAssetMetadata,
                 CreativeCampaignReview,
                 CreativeReview,
@@ -258,6 +287,9 @@ async def init_db():
                 CustomerIdentity,
                 CrossChannelIdentityLink,
                 MetaAIDraft,
+                GoogleWorkspaceConnection,
+                GoogleWorkspaceMail,
+                GoogleWorkspaceCalendarEvent,
                 RecruitmentJob,
                 Candidate,
                 Application,

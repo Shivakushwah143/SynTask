@@ -9,6 +9,7 @@ from app.models.notification import Notification, NotificationType
 from app.models.project import Project, ProjectStatus
 from app.models.task import Task
 from app.models.user import Employee, Lead, User, UserRole, UserStatus
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +259,7 @@ class ProjectService:
 
                 project.assigned_to = assigned_to
                 project.assigned_by = str(current_user.id)
-                project.assigned_at = datetime.now()
+                project.assigned_at = utc_now()
                 if assigned_user.role == UserRole.LEAD:
                     project.lead_id = assigned_to
                 if old_assigned_to != assigned_to:
@@ -279,13 +280,13 @@ class ProjectService:
             project.assigned_user_ids = clean_ids
             project.assigned_to = clean_ids[0] if clean_ids else None
             project.assigned_by = str(current_user.id) if clean_ids else None
-            project.assigned_at = datetime.now() if clean_ids else None
+            project.assigned_at = utc_now() if clean_ids else None
             if old_ids != clean_ids:
                 history = getattr(project, "assignment_history", None) or []
                 history.append({
                     "assigned_by": str(current_user.id),
                     "assigned_user_ids": clean_ids,
-                    "assigned_at": datetime.now().isoformat(),
+                    "assigned_at": utc_now().isoformat(),
                     "action": "updated",
                 })
                 project.assignment_history = history
@@ -306,7 +307,7 @@ class ProjectService:
                 detail="Start date cannot be after delivery date",
             )
 
-        project.updated_at = datetime.now()
+        project.updated_at = utc_now()
         await project.save()
         return project
 
@@ -441,11 +442,11 @@ class ProjectService:
             "assigned_to": primary_assigned_to,
             "assigned_user_ids": assigned_ids,
             "assigned_by": str(current_user.id) if assigned_ids else None,
-            "assigned_at": datetime.now() if assigned_ids else None,
+            "assigned_at": utc_now() if assigned_ids else None,
             "assignment_history": [{
                 "assigned_by": str(current_user.id),
                 "assigned_user_ids": assigned_ids,
-                "assigned_at": datetime.now().isoformat(),
+                "assigned_at": utc_now().isoformat(),
                 "action": "created",
             }] if assigned_ids else [],
             "start_date": start_date_obj,
@@ -477,7 +478,7 @@ class ProjectService:
             client_project_ids = [str(item) for item in (client.project_ids or [])]
             if str(project.id) not in client_project_ids:
                 client.project_ids = client_project_ids + [str(project.id)]
-            client.updated_at = datetime.now()
+            client.updated_at = utc_now()
             await client.save()
         
         # Send notification to assigned user

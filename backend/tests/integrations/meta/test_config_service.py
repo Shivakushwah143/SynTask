@@ -75,6 +75,15 @@ def test_meta_documents_are_tenant_scoped():
         assert model.model_fields["company_id"].is_required()
 
 
+def test_meta_settings_include_phase4_messaging_connection_fields():
+    fields = MetaIntegrationSettings.model_fields
+
+    assert "instagram_scoped_sender_ids" in fields
+    assert "messenger_scoped_sender_ids" in fields
+    assert "instagram_scopes" in fields
+    assert "messenger_scopes" in fields
+
+
 def test_meta_documents_define_migration_visible_tenant_indexes():
     for model in (
         MetaIntegrationSettings,

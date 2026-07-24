@@ -40,6 +40,7 @@ import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { Badge, Button, FormField, Modal, Skeleton } from '../components/ui'
 import { asArray } from './phase4Utils'
+import { timeService } from '@/services/timeService'
 
 const PLATFORMS = ['Instagram', 'YouTube', 'LinkedIn', 'Facebook', 'Twitter/X', 'Pinterest', 'Email', 'Blog', 'Other']
 const CATEGORIES = ['Marketing Campaign', 'Instagram Reel / Post', 'YouTube Video', 'Product Launch', 'LinkedIn Article', 'Festival Campaign', 'Office Event', 'Training Session', 'Promotion', 'Other']
@@ -67,8 +68,8 @@ export default function ContentCalendar() {
 
   // Views & Dates
   const [view, setView] = useState('month') // 'month' | 'week' | 'day'
-  const [currentDate, setCurrentDate] = useState(new Date())
-  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(timeService.now())
+  const [selectedDate, setSelectedDate] = useState(timeService.now())
   const [search, setSearch] = useState('')
   const [platformFilter, setPlatformFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -195,13 +196,13 @@ export default function ContentCalendar() {
   }
 
   const handleToday = () => {
-    const now = new Date()
+    const now = timeService.now()
     setCurrentDate(now)
     setSelectedDate(now)
   }
 
   // Open Create Form
-  const handleOpenCreate = (date = new Date()) => {
+  const handleOpenCreate = (date = timeService.now()) => {
     setEditingItem(null)
     setForm({
       title: '',
@@ -232,8 +233,8 @@ export default function ContentCalendar() {
       platform: item.platform || 'Instagram',
       priority: item.priority || 'medium',
       status: item.status || 'draft',
-      start_date: item.start_date ? format(new Date(item.start_date), 'yyyy-MM-dd') : item.publish_date ? format(new Date(item.publish_date), 'yyyy-MM-dd') : '',
-      end_date: item.end_date ? format(new Date(item.end_date), 'yyyy-MM-dd') : item.due_date ? format(new Date(item.due_date), 'yyyy-MM-dd') : '',
+      start_date: item.start_date ? format(timeService.instant(item.start_date), 'yyyy-MM-dd') : item.publish_date ? format(timeService.instant(item.publish_date), 'yyyy-MM-dd') : '',
+      end_date: item.end_date ? format(timeService.instant(item.end_date), 'yyyy-MM-dd') : item.due_date ? format(timeService.instant(item.due_date), 'yyyy-MM-dd') : '',
       time: item.time || '12:00',
       assigned_person: item.assigned_person || item.assignee_name || '',
       reminder: item.reminder || 'none',
@@ -255,8 +256,8 @@ export default function ContentCalendar() {
       platform: item.platform || 'Instagram',
       priority: item.priority || 'medium',
       status: 'draft',
-      start_date: item.start_date ? new Date(item.start_date).toISOString() : null,
-      end_date: item.end_date ? new Date(item.end_date).toISOString() : null,
+      start_date: item.start_date ? timeService.toUtcISOString(item.start_date) : null,
+      end_date: item.end_date ? timeService.toUtcISOString(item.end_date) : null,
       time: item.time || '12:00',
       assigned_person: item.assigned_person || item.assignee_name || '',
       reminder: item.reminder || 'none',
@@ -284,10 +285,10 @@ export default function ContentCalendar() {
       platform: form.platform,
       priority: form.priority,
       status: form.status,
-      start_date: form.start_date ? new Date(`${form.start_date}T00:00:00`).toISOString() : null,
-      end_date: form.end_date ? new Date(`${form.end_date}T23:59:59`).toISOString() : null,
-      due_date: form.end_date ? new Date(`${form.end_date}T23:59:59`).toISOString() : null,
-      publish_date: form.start_date ? new Date(`${form.start_date}T${form.time}:00`).toISOString() : null,
+      start_date: form.start_date ? timeService.zonedInputToUtcISOString(`${form.start_date}T00:00:00`) : null,
+      end_date: form.end_date ? timeService.zonedInputToUtcISOString(`${form.end_date}T23:59:59`) : null,
+      due_date: form.end_date ? timeService.zonedInputToUtcISOString(`${form.end_date}T23:59:59`) : null,
+      publish_date: form.start_date ? timeService.zonedInputToUtcISOString(`${form.start_date}T${form.time}:00`) : null,
       time: form.time,
       assigned_person: form.assigned_person,
       assignee_name: form.assigned_person,
@@ -320,7 +321,7 @@ export default function ContentCalendar() {
 
         {/* Navigation & Controls */}
         <div className="flex flex-wrap items-center gap-2 sm:self-center">
-          <Button onClick={() => handleOpenCreate(new Date())}>
+          <Button onClick={() => handleOpenCreate(timeService.now())}>
             <Plus className="h-4 w-4 mr-1.5" />
             Schedule Content
           </Button>
@@ -392,8 +393,8 @@ export default function ContentCalendar() {
           <div className="rounded-3xl border border-surface-border bg-surface p-4 dark:border-gray-800 dark:bg-black">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Platform</h3>
             <select className="input text-xs" value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)}>
-              <option value="">All Platforms</option>
-              {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Platforms</option>
+              {PLATFORMS.map((p) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={p} value={p}>{p}</option>)}
             </select>
           </div>
 
@@ -401,9 +402,9 @@ export default function ContentCalendar() {
           <div className="rounded-3xl border border-surface-border bg-surface p-4 dark:border-gray-800 dark:bg-black">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Workflow State</h3>
             <select className="input text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">All Statuses</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Statuses</option>
               {['draft', 'planned', 'shoot_scheduled', 'shot', 'editing', 'internal_review', 'client_review', 'approved', 'scheduled', 'published'].map((status) => (
-                <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status} value={status}>{status.replace(/_/g, ' ')}</option>
               ))}
             </select>
           </div>
@@ -573,7 +574,7 @@ function ContentMonthView({ days, items, onOpen, onCreateAt, onDuplicate, parseE
           
           return (
             <div
-              key={day.toISOString()}
+              key={timeService.toUtcISOString(day)}
               onClick={() => onCreateAt(day)}
               className="min-h-32 p-1.5 text-left transition-colors flex flex-col justify-between hover:bg-slate-50 dark:hover:bg-gray-900/40 cursor-pointer"
             >
@@ -622,7 +623,7 @@ function ContentWeekView({ days, items, onOpen, onDuplicate, parseEventDate }) {
     <div className="overflow-x-auto">
       <div className="grid min-w-[700px] grid-cols-7 divide-x divide-surface-border bg-slate-50/50 border-b border-surface-border dark:divide-gray-800 dark:bg-black dark:border-gray-800 text-center">
         {days.map((day) => (
-          <div key={day.toISOString()} className="p-4">
+          <div key={timeService.toUtcISOString(day)} className="p-4">
             <p className="text-xs font-semibold text-gray-500 uppercase">{format(day, 'EEE')}</p>
             <p className="mt-1 text-lg font-bold text-gray-900 dark:text-gray-100">{format(day, 'd')}</p>
           </div>
@@ -637,7 +638,7 @@ function ContentWeekView({ days, items, onOpen, onDuplicate, parseEventDate }) {
           })
 
           return (
-            <div key={day.toISOString()} className="p-2 space-y-2 bg-white dark:bg-black">
+            <div key={timeService.toUtcISOString(day)} className="p-2 space-y-2 bg-white dark:bg-black">
               {dayItems.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-[10px] text-gray-300 dark:text-gray-700 italic select-none py-10">
                   No Content

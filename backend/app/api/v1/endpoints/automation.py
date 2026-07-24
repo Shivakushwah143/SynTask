@@ -11,6 +11,7 @@ from app.models.task import Task, TaskStatus
 from app.models.notification import Notification, NotificationType
 from app.api.dependencies import get_current_user, get_current_company_admin, check_company_access
 from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -150,7 +151,7 @@ async def update_automation_rule(
     if actions is not None:
         rule.actions = actions
     
-    rule.updated_at = datetime.now()
+    rule.updated_at = utc_now()
     await rule.save()
     
     return {"message": "Automation rule updated successfully"}
@@ -173,7 +174,7 @@ async def toggle_automation_rule(
     check_company_access(current_user, rule.company_id)
     
     rule.is_active = not rule.is_active
-    rule.updated_at = datetime.now()
+    rule.updated_at = utc_now()
     await rule.save()
     
     return {

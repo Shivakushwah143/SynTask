@@ -27,6 +27,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Users = lazy(() => import('./pages/Users'))
 const Departments = lazy(() => import('./pages/Departments'))
+const AdminPermissions = lazy(() => import('./pages/AdminPermissions'))
 const AIPrioritization = lazy(() => import('./pages/AIPrioritization'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Subscriptions = lazy(() => import('./pages/Subscriptions'))
@@ -66,6 +67,7 @@ const ScheduledJobs = lazy(() => import('./pages/ScheduledJobs'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
+const GoogleWorkspace = lazy(() => import('./pages/GoogleWorkspace'))
 
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
@@ -104,6 +106,7 @@ const TenantDetail = lazy(() => import('./pages/superadmin/TenantDetail'))
 const SubscriptionPlans = lazy(() => import('./pages/superadmin/SubscriptionPlans'))
 const UsageAnalytics = lazy(() => import('./pages/superadmin/UsageAnalytics'))
 const BillingRevenue = lazy(() => import('./pages/superadmin/BillingRevenue'))
+const FeatureFlagsPage = lazy(() => import('./pages/superadmin/FeatureFlagsPage'))
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuthStore()
@@ -155,6 +158,14 @@ const LegacySalesLeadRedirect = () => {
   return <Navigate to={`/crm/leads/${id}`} replace />
 }
 
+const DashboardRoute = () => {
+  const { user } = useAuthStore()
+  if (isSuperAdminRole(user?.role)) return <Navigate to="/super-admin/dashboard" replace />
+  return withStandaloneBoundary(<Dashboard />)
+}
+
+const withStandaloneBoundary = (element) => <ErrorBoundary>{element}</ErrorBoundary>
+
 function App() {
   useTheme()
   const location = useLocation()
@@ -195,7 +206,7 @@ function App() {
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-          <Route path="dashboard" element={withBoundary(<Dashboard />)} />
+          <Route path="dashboard" element={<DashboardRoute />} />
           <Route path="workflow" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="leads" element={<Navigate to="/crm/leads" replace />} />
           <Route path="tasks" element={withBoundary(<Tasks />)} />
@@ -217,6 +228,7 @@ function App() {
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
           <Route path="calendar" element={withBoundary(<WorkspaceCalendar />)} />
+          <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
           <Route path="content-calendar" element={withBoundary(<ContentCalendar />)} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
@@ -237,6 +249,7 @@ function App() {
         <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="departments" element={withBoundary(<Departments />)} />
+          <Route path="admin-permissions" element={<CompanyAdminGuard>{withBoundary(<AdminPermissions />)}</CompanyAdminGuard>} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
         <Route path="activity" element={withBoundary(<ActivityLog />)} />
@@ -296,6 +309,7 @@ function App() {
           <Route path="plans" element={withBoundary(<SubscriptionPlans />)} />
           <Route path="usage" element={withBoundary(<UsageAnalytics />)} />
           <Route path="billing" element={withBoundary(<BillingRevenue />)} />
+          <Route path="feature-flags" element={withBoundary(<FeatureFlagsPage />)} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="activity" element={withBoundary(<ActivityLog />)} />

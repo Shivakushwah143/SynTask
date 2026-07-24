@@ -23,6 +23,8 @@ from app.api.dependencies import (
 )
 from app.services.user_service import UserService
 from app.api.deps import Pagination20, PaginationParams
+from app.core.clock import utc_now
+from app.schemas.admin_permissions import normalize_modules
 
 router = APIRouter()
 
@@ -886,7 +888,7 @@ async def update_user_status(
     check_company_access(current_user, user.company_id)
     
     user.status = new_status
-    user.updated_at = datetime.now()
+    user.updated_at = utc_now()
     await user.save()
     
     return {"message": "User status updated successfully"}
@@ -1045,7 +1047,7 @@ async def update_user(
                 assigned_by=current_user,
                 previous_department_name=previous_department_name,
             )
-    user.updated_at = datetime.now()
+    user.updated_at = utc_now()
     await user.save()
 
     return {"message": "User updated successfully"}
@@ -1110,18 +1112,8 @@ async def create_user_hierarchical(
     # Determine company_id
     company_id = current_user.company_id if current_user.company_id else None
     
-    # Modules parsing (comma-separated); default to ["task"]
-    allowed_modules = {"task", "sales"}
-    parsed_modules = []
-    if modules:
-        parsed_modules = [
-            m.strip()
-            for m in modules.split(",")
-            if m and m.strip() in allowed_modules
-        ]
-    if not parsed_modules:
-        parsed_modules = ["task"]
-    active_module = parsed_modules[0]
+    parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
+    active_module = parsed_modules[0] if parsed_modules else "task"
 
     department_doc = await _resolve_department(company_id, department_id) if company_id else None
 

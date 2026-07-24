@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -143,9 +144,9 @@ async def update_sprint_state(
     
     sprint.state = state
     if state == "closed":
-        sprint.completed_at = datetime.now()
+        sprint.completed_at = utc_now()
     
-    sprint.updated_at = datetime.now()
+    sprint.updated_at = utc_now()
     await sprint.save()
     
     return {"message": "Sprint state updated successfully"}

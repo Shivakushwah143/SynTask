@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { timeService } from '@/services/timeService'
 
 export const toArray = (value) => {
   if (Array.isArray(value)) return value;
@@ -17,13 +18,13 @@ export const compactParams = (params) =>
 
 export const fmtDate = (value) => {
   if (!value) return "—";
-  const date = new Date(value);
+  const date = timeService.instant(value);
   return Number.isNaN(date.getTime()) ? String(value) : format(date, "MMM d, yyyy");
 };
 
 export const fmtDateTime = (value) => {
   if (!value) return "—";
-  const date = new Date(value);
+  const date = timeService.instant(value);
   return Number.isNaN(date.getTime()) ? String(value) : format(date, "MMM d, yyyy, h:mm a");
 };
 

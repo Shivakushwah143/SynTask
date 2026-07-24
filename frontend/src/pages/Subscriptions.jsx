@@ -1,6 +1,44 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Building2, CheckCircle, CreditCard, Package, RefreshCw, ShieldCheck, TrendingUp } from 'lucide-react'
+import { 
+  ArrowRight, 
+  Building2, 
+  CheckCircle, 
+  CreditCard, 
+  Package, 
+  RefreshCw, 
+  ShieldCheck, 
+  TrendingUp,
+  LayoutDashboard,
+  Users,
+  DollarSign,
+  Clock,
+  Calendar,
+  Zap,
+  Award,
+  Target,
+  Activity,
+  BarChart3,
+  PieChart,
+  AlertCircle,
+  Check,
+  X,
+  Settings,
+  HelpCircle,
+  Mail,
+  Phone,
+  MapPin,
+  Star,
+  Crown,
+  Gem,
+  Sparkles,
+  Rocket,
+  Infinity,
+  Database,
+  Layers,
+  FileText,
+  Gift
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { companiesAPI } from '../api/companies'
 import { subscriptionsAPI } from '../api/subscriptions'
@@ -11,10 +49,46 @@ import { isSuperAdminRole } from '../utils/roles'
 import { asArray, formatDate, formatMoney } from './phase4Utils'
 
 const FALLBACK_PLANS = [
-  { name: 'Free', price_monthly: 0, max_users: 10, max_projects: 5, max_storage_gb: 5, enabled_modules: ['Tasks'] },
-  { name: 'Basic', price_monthly: 29, max_users: 25, max_projects: null, max_storage_gb: 25, enabled_modules: ['Tasks', 'Projects'] },
-  { name: 'Professional', price_monthly: 99, max_users: 100, max_projects: null, max_storage_gb: 100, enabled_modules: ['Tasks', 'Projects', 'CRM', 'Reports'] },
-  { name: 'Enterprise', price_monthly: 299, max_users: null, max_projects: null, max_storage_gb: null, enabled_modules: ['All modules', 'Priority support'] },
+  { 
+    name: 'Free', 
+    price_monthly: 0, 
+    max_users: 10, 
+    max_projects: 5, 
+    max_storage_gb: 5, 
+    enabled_modules: ['Tasks'],
+    icon: Star,
+    color: 'gray'
+  },
+  { 
+    name: 'Basic', 
+    price_monthly: 29, 
+    max_users: 25, 
+    max_projects: null, 
+    max_storage_gb: 25, 
+    enabled_modules: ['Tasks', 'Projects'],
+    icon: Gem,
+    color: 'blue'
+  },
+  { 
+    name: 'Professional', 
+    price_monthly: 99, 
+    max_users: 100, 
+    max_projects: null, 
+    max_storage_gb: 100, 
+    enabled_modules: ['Tasks', 'Projects', 'CRM', 'Reports'],
+    icon: Crown,
+    color: 'purple'
+  },
+  { 
+    name: 'Enterprise', 
+    price_monthly: 299, 
+    max_users: null, 
+    max_projects: null, 
+    max_storage_gb: null, 
+    enabled_modules: ['All modules', 'Priority support'],
+    icon: Rocket,
+    color: 'gold'
+  },
 ]
 
 const getPlanName = (plan) => plan?.name || plan?.plan_name || plan?.plan || plan?.subscription_plan || 'Free'
@@ -22,6 +96,200 @@ const getPlanPrice = (plan) => Number(plan?.price_monthly ?? plan?.monthly_price
 const normalizeResponse = (response) => response?.data || response || {}
 const normalizePlanKey = (value) => String(value || '').toLowerCase().replace(/[_\s-]+/g, '')
 
+// ============================================================
+// STAT CARD COMPONENT
+// ============================================================
+const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+    teal: 'from-teal-500 to-cyan-500',
+  }
+
+  return (
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    </div>
+  )
+}
+
+// ============================================================
+// SECTION HEADER COMPONENT
+// ============================================================
+const SectionHeader = ({ icon: Icon, title, description, action }) => (
+  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+          <Icon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        </div>
+        <div>
+          <h2 className="font-bold text-gray-900 dark:text-white">{title}</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+        </div>
+      </div>
+      {action}
+    </div>
+  </div>
+)
+
+// ============================================================
+// METRIC CARD COMPONENT
+// ============================================================
+const MetricCard = ({ icon: Icon, label, value, color = 'indigo' }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+  }
+
+  return (
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+      <div className={`inline-flex rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <p className="mt-3 text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+    </div>
+  )
+}
+
+// ============================================================
+// OWNER ACTION COMPONENT
+// ============================================================
+const OwnerAction = ({ icon: Icon, title, text, onClick }) => (
+  <button 
+    type="button" 
+    onClick={onClick} 
+    className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700"
+  >
+    <div className="inline-flex rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 p-2 text-white shadow-lg transition-transform group-hover:scale-110">
+      <Icon className="h-5 w-5" />
+    </div>
+    <p className="mt-3 font-semibold text-gray-900 dark:text-white">{title}</p>
+    <p className="mt-1 text-sm leading-5 text-gray-500 dark:text-gray-400">{text}</p>
+  </button>
+)
+
+// ============================================================
+// PLAN FACT COMPONENT
+// ============================================================
+const PlanFact = ({ label, value }) => (
+  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/50">
+    <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+    <p className="mt-1 text-sm font-semibold capitalize text-gray-900 dark:text-white">{value || '-'}</p>
+  </div>
+)
+
+// ============================================================
+// PLAN CARD COMPONENT
+// ============================================================
+const PlanCard = ({ plan, current, loading, onUpgrade }) => {
+  const name = getPlanName(plan)
+  const price = getPlanPrice(plan)
+  const modules = plan.enabled_modules || plan.features || []
+  const Icon = plan.icon || Package
+  
+  const facts = [
+    plan.max_users ? `${plan.max_users} users` : 'Unlimited users',
+    plan.max_projects ? `${plan.max_projects} projects` : 'Unlimited projects',
+    plan.max_storage_gb ? `${plan.max_storage_gb}GB storage` : 'Flexible storage',
+  ]
+
+  const getIconColor = () => {
+    if (current) return 'from-indigo-500 to-purple-500'
+    if (price === 0) return 'from-gray-500 to-gray-600'
+    if (price < 50) return 'from-blue-500 to-cyan-500'
+    if (price < 150) return 'from-purple-500 to-pink-500'
+    return 'from-amber-500 to-orange-500'
+  }
+
+  return (
+    <div className={`group rounded-2xl border bg-white shadow-sm transition-all hover:shadow-lg hover:scale-[1.02] dark:bg-gray-800 ${
+      current 
+        ? 'border-indigo-300 ring-4 ring-indigo-500/20 dark:border-indigo-700 dark:ring-indigo-500/30' 
+        : 'border-gray-200 dark:border-gray-700'
+    }`}>
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className={`inline-flex rounded-lg bg-gradient-to-r ${getIconColor()} p-2 text-white shadow-lg`}>
+              <Icon className="h-5 w-5" />
+            </div>
+            <h3 className="mt-3 text-lg font-bold text-gray-900 dark:text-white">{name}</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {plan.description || 'Company subscription plan'}
+            </p>
+          </div>
+          {current && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+              <Check className="h-3 w-3" />
+              Current
+            </span>
+          )}
+        </div>
+
+        <div className="mt-4">
+          <span className="text-3xl font-bold text-gray-900 dark:text-white">
+            {price === 0 ? 'Free' : formatMoney(price)}
+          </span>
+          {price > 0 && (
+            <span className="text-sm text-gray-500 dark:text-gray-400"> / month</span>
+          )}
+        </div>
+
+        <ul className="mt-5 space-y-2.5">
+          {[...facts, ...modules.slice(0, 3)].map((feature) => (
+            <li key={feature} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <CheckCircle className="mt-0.5 h-4 w-4 flex-none text-emerald-500" />
+              <span>{feature}</span>
+            </li>
+          ))}
+        </ul>
+
+        <button
+          className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            current 
+              ? 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700'
+              : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg hover:from-indigo-700 hover:to-purple-700'
+          } disabled:opacity-50`}
+          disabled={current || loading}
+          onClick={current ? undefined : onUpgrade}
+        >
+          {loading ? (
+            <>
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+              Processing...
+            </>
+          ) : current ? (
+            'Current Plan'
+          ) : (
+            <>
+              Upgrade
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 export default function Subscriptions() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
@@ -80,7 +348,7 @@ export default function Subscriptions() {
     try {
       setUpgradingPlan(planName)
       await subscriptionsAPI.createPaymentIntent(normalizePlanKey(planName), 'monthly', user?.company_id)
-      toast.success('Upgrade request created')
+      toast.success('Upgrade request created successfully! 🚀')
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Upgrade request could not be started')
     } finally {
@@ -90,8 +358,22 @@ export default function Subscriptions() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <PageHeader title="Subscription & Billing" description="Loading subscription workspace..." />
+      <div className="space-y-6 p-4 md:p-6">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+          <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+          <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+                <LayoutDashboard className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold md:text-3xl">Subscription & Billing</h1>
+                <p className="mt-1 text-indigo-100">Loading subscription workspace...</p>
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="grid gap-4 md:grid-cols-3">
           {[1, 2, 3].map((item) => <SkeletonCard key={item} lines={4} />)}
         </div>
@@ -101,80 +383,217 @@ export default function Subscriptions() {
 
   if (isSuperAdmin) {
     return (
-      <div className="space-y-6">
-        <PageHeader
-          title="Platform Subscriptions"
-          description="Owner view for renting SynTask access to tenant companies."
-          actions={(
-            <>
-              <Button variant="secondary" onClick={() => navigate('/super-admin/tenants')}>Tenant Companies</Button>
-              <Button onClick={() => navigate('/super-admin/plans')}>Manage Plans</Button>
-            </>
-          )}
-        />
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard icon={Building2} label="Tenant companies" value={tenants.length} />
-          <MetricCard icon={ShieldCheck} label="Active tenants" value={activeTenants.length} />
-          <MetricCard icon={Package} label="Plans" value={plans.length} />
-          <MetricCard icon={TrendingUp} label="MRR" value={formatMoney(revenue?.mrr || revenue?.monthly_recurring_revenue || 0)} />
+      <div className="space-y-6 p-4 md:p-6">
+        {/* ============================================================ */}
+        {/* HERO SECTION - Super Admin */}
+        {/* ============================================================ */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+          <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+          <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
+          
+          <div className="relative z-10">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+                  <LayoutDashboard className="h-6 w-6" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold md:text-3xl">Platform Subscriptions</h1>
+                  <p className="mt-1 text-indigo-100">Owner view for renting SynTask access to tenant companies.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button 
+                  onClick={() => navigate('/super-admin/tenants')}
+                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                >
+                  <Building2 className="h-4 w-4" />
+                  Tenant Companies
+                </button>
+                <button 
+                  onClick={() => navigate('/super-admin/plans')}
+                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                >
+                  <Package className="h-4 w-4" />
+                  Manage Plans
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-          <div className="rounded-2xl border border-surface-border bg-surface p-5 dark:bg-[var(--color-app-surface)]">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">Rental business controls</h2>
-                <p className="mt-1 text-sm text-text-secondary">Create plans, assign company access, suspend tenants, and review billing.</p>
+        {/* Stats */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard 
+            label="Tenant Companies" 
+            value={tenants.length} 
+            icon={Building2} 
+            color="indigo"
+            subtitle="All tenants"
+          />
+          <StatCard 
+            label="Active Tenants" 
+            value={activeTenants.length} 
+            icon={ShieldCheck} 
+            color="emerald"
+            subtitle="Active subscriptions"
+          />
+          <StatCard 
+            label="Plans" 
+            value={plans.length} 
+            icon={Package} 
+            color="blue"
+            subtitle="Available plans"
+          />
+          <StatCard 
+            label="MRR" 
+            value={formatMoney(revenue?.mrr || revenue?.monthly_recurring_revenue || 0)} 
+            icon={TrendingUp} 
+            color="amber"
+            subtitle="Monthly recurring revenue"
+          />
+        </div>
+
+        {/* Controls & Review */}
+        <div className="grid gap-6 xl:grid-cols-[1fr_0.5fr]">
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <SectionHeader 
+              icon={Settings}
+              title="Rental Business Controls"
+              description="Create plans, assign company access, suspend tenants, and review billing."
+              action={
+                <button 
+                  onClick={() => navigate('/super-admin/billing')}
+                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Billing
+                </button>
+              }
+            />
+            <div className="p-4">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <OwnerAction 
+                  icon={Package} 
+                  title="Plan Catalog" 
+                  text="Define pricing, limits, modules, trials." 
+                  onClick={() => navigate('/super-admin/plans')} 
+                />
+                <OwnerAction 
+                  icon={Building2} 
+                  title="Tenant Access" 
+                  text="Approve companies and assign plans." 
+                  onClick={() => navigate('/super-admin/tenants')} 
+                />
+                <OwnerAction 
+                  icon={CreditCard} 
+                  title="Revenue" 
+                  text="Track payments and recurring billing." 
+                  onClick={() => navigate('/super-admin/billing')} 
+                />
               </div>
-              <Button variant="secondary" size="sm" onClick={() => navigate('/super-admin/billing')}>Billing</Button>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <OwnerAction icon={Package} title="Plan catalog" text="Define pricing, limits, modules, trials." onClick={() => navigate('/super-admin/plans')} />
-              <OwnerAction icon={Building2} title="Tenant access" text="Approve companies and assign plans." onClick={() => navigate('/super-admin/tenants')} />
-              <OwnerAction icon={CreditCard} title="Revenue" text="Track payments and recurring billing." onClick={() => navigate('/super-admin/billing')} />
             </div>
           </div>
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/60 dark:bg-amber-950/20">
-            <h2 className="text-lg font-semibold text-amber-950 dark:text-amber-100">Needs review</h2>
-            <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">{pendingTenants.length} pending tenant{pendingTenants.length === 1 ? '' : 's'} awaiting approval.</p>
-            <Button className="mt-4" size="sm" onClick={() => navigate('/companies')}>Review companies</Button>
+
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/20">
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/40">
+                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-amber-900 dark:text-amber-100">Needs Review</h2>
+                  <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                    {pendingTenants.length} pending tenant{pendingTenants.length === 1 ? '' : 's'} awaiting approval.
+                  </p>
+                  <button 
+                    className="mt-4 inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-700"
+                    onClick={() => navigate('/companies')}
+                  >
+                    Review Companies
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        </section>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Subscription & Billing"
-        description="View your current company plan and upgrade when your team needs more capacity."
-        actions={<Button variant="secondary" onClick={loadData}><RefreshCw className="h-4 w-4" /> Refresh</Button>}
-      />
+    <div className="space-y-6 p-4 md:p-6">
+      {/* ============================================================ */}
+      {/* HERO SECTION */}
+      {/* ============================================================ */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
+        
+        <div className="relative z-10">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+                <CreditCard className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold md:text-3xl">Subscription & Billing</h1>
+                <p className="mt-1 text-indigo-100">
+                  View your current company plan and upgrade when your team needs more capacity.
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={loadData}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
 
-      <section className="rounded-2xl border border-primary-200 bg-primary-50/70 p-5 dark:border-primary-900/50 dark:bg-primary-950/20">
+      {/* ============================================================ */}
+      {/* CURRENT PLAN BANNER */}
+      {/* ============================================================ */}
+      <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-white p-6 shadow-sm dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-gray-800">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-700 dark:text-primary-300">Current company plan</p>
-            <h2 className="mt-2 text-3xl font-bold text-text-primary">{currentPlanName}</h2>
-            <p className="mt-2 text-sm text-text-secondary">This is the active plan for {company?.name || 'your company'}.</p>
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/40">
+                <Crown className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">Current Company Plan</p>
+            </div>
+            <h2 className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{currentPlanName}</h2>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              This is the active plan for {company?.name || 'your company'}.
+            </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <PlanFact label="Status" value={currentSubscription?.status || company?.status || 'Active'} />
             <PlanFact label="Billing" value={currentSubscription?.billing_cycle || 'Monthly'} />
-            <PlanFact label="Next billing" value={formatDate(currentSubscription?.next_billing_date)} />
+            <PlanFact label="Next Billing" value={formatDate(currentSubscription?.next_billing_date)} />
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary">Upgrade options</h2>
-          <p className="mt-1 text-sm text-text-secondary">Choose a larger plan when users, projects, modules, or storage need more room.</p>
+      {/* ============================================================ */}
+      {/* UPGRADE OPTIONS */}
+      {/* ============================================================ */}
+      <div>
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Upgrade Options</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Choose a larger plan when users, projects, modules, or storage need more room.
+          </p>
         </div>
         {plans.length ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {plans.map((plan) => {
               const planName = getPlanName(plan)
               const isCurrent = normalizePlanKey(planName) === normalizePlanKey(getPlanName(currentPlan))
@@ -190,75 +609,15 @@ export default function Subscriptions() {
             })}
           </div>
         ) : (
-          <EmptyState title="No plans available" description="Ask the platform owner to publish subscription plans." />
+          <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center dark:border-gray-700 dark:bg-gray-800">
+            <Package className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
+            <h3 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">No Plans Available</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Ask the platform owner to publish subscription plans.
+            </p>
+          </div>
         )}
-      </section>
-    </div>
-  )
-}
-
-function MetricCard({ icon: Icon, label, value }) {
-  return (
-    <div className="rounded-2xl border border-surface-border bg-surface p-5 dark:bg-[var(--color-app-surface)]">
-      <Icon className="h-5 w-5 text-primary-600" />
-      <p className="mt-3 text-sm text-text-secondary">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-text-primary">{value}</p>
-    </div>
-  )
-}
-
-function OwnerAction({ icon: Icon, title, text, onClick }) {
-  return (
-    <button type="button" onClick={onClick} className="rounded-xl border border-surface-border bg-white p-4 text-left transition hover:border-primary-300 hover:bg-primary-50/50 dark:bg-[var(--color-app-bg)] dark:hover:bg-[var(--color-app-surface-subtle)]">
-      <Icon className="h-5 w-5 text-primary-600" />
-      <p className="mt-3 font-semibold text-text-primary">{title}</p>
-      <p className="mt-1 text-sm leading-5 text-text-secondary">{text}</p>
-    </button>
-  )
-}
-
-function PlanFact({ label, value }) {
-  return (
-    <div className="rounded-xl border border-white/70 bg-white/80 px-4 py-3 dark:border-white/10 dark:bg-black/20">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">{label}</p>
-      <p className="mt-1 text-sm font-semibold capitalize text-text-primary">{value || '-'}</p>
-    </div>
-  )
-}
-
-function PlanCard({ plan, current, loading, onUpgrade }) {
-  const name = getPlanName(plan)
-  const modules = plan.enabled_modules || plan.features || []
-  const facts = [
-    plan.max_users ? `${plan.max_users} users` : 'Unlimited users',
-    plan.max_projects ? `${plan.max_projects} projects` : 'Unlimited projects',
-    plan.max_storage_gb ? `${plan.max_storage_gb}GB storage` : 'Flexible storage',
-  ]
-
-  return (
-    <article className={`flex min-h-full flex-col rounded-2xl border bg-surface p-5 dark:bg-[var(--color-app-surface)] ${current ? 'border-primary-500 ring-4 ring-primary-500/10' : 'border-surface-border'}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-bold text-text-primary">{name}</h3>
-          <p className="mt-1 text-sm text-text-secondary">{plan.description || 'Company subscription plan'}</p>
-        </div>
-        {current ? <span className="rounded-full bg-primary-100 px-2.5 py-1 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">Current</span> : null}
       </div>
-      <div className="mt-5">
-        <span className="text-3xl font-bold text-text-primary">{formatMoney(getPlanPrice(plan))}</span>
-        <span className="text-sm text-text-secondary"> / month</span>
-      </div>
-      <ul className="mt-5 flex-1 space-y-2">
-        {[...facts, ...modules.slice(0, 3)].map((feature) => (
-          <li key={feature} className="flex items-start gap-2 text-sm text-text-secondary">
-            <CheckCircle className="mt-0.5 h-4 w-4 flex-none text-emerald-500" />
-            <span>{feature}</span>
-          </li>
-        ))}
-      </ul>
-      <Button className="mt-5 w-full" variant={current ? 'secondary' : 'primary'} disabled={current} loading={loading} loadingText="Starting" onClick={current ? undefined : onUpgrade}>
-        {current ? 'Current Plan' : <>Upgrade <ArrowRight className="h-4 w-4" /></>}
-      </Button>
-    </article>
+    </div>
   )
 }

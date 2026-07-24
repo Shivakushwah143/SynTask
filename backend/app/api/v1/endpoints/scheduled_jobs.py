@@ -1,7 +1,7 @@
 """
 Scheduled Jobs Endpoints
 """
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, Any, Dict
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from pydantic import BaseModel, Field
@@ -12,6 +12,7 @@ from app.api.dependencies import get_current_user
 from app.services.scheduling_service import SchedulingService
 from app.api.deps import Pagination20, PaginationParams
 from app.models.notification import Notification, NotificationType
+from app.core.clock import parse_to_utc, utc_now
 
 router = APIRouter()
 
@@ -29,14 +30,12 @@ class UpdateScheduleRequest(BaseModel):
 
 def _normalize_run_at(run_at: datetime) -> datetime:
     """Return a naive UTC datetime for storage and due-job queries."""
-    if run_at.tzinfo:
-        return run_at.astimezone(timezone.utc).replace(tzinfo=None)
-    return run_at
+    return parse_to_utc(run_at)
 
 
 def _ensure_future_run_at(run_at: datetime) -> datetime:
     normalized = _normalize_run_at(run_at)
-    if normalized <= datetime.utcnow():
+    if normalized <= utc_now():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Schedule time must be in the future"
@@ -227,7 +226,7 @@ async def cancel_scheduled_job(
         )
 
     job.status = ScheduledJobStatus.CANCELLED
-    job.completed_at = datetime.utcnow()
+    job.completed_at = utc_now()
     await job.save()
 
     # Send cancellation notification to creator
@@ -270,8 +269,8 @@ async def retry_failed_job(
     job.retry_count = 0
     job.error = None
     # If run_at is in the past, reset it to now so it runs immediately on next minute check
-    if _normalize_run_at(job.run_at) <= datetime.utcnow():
-        job.run_at = datetime.utcnow()
+    if _normalize_run_at(job.run_at) <= utc_now():
+        job.run_at = utc_now()
     await job.save()
     return _serialize_job(job)
 

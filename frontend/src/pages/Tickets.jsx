@@ -1,5 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2, Inbox, AlertCircle, Activity, CheckCircle2, Clock3, LineChart, TrendingUp, Users } from 'lucide-react'
+import { 
+  Plus, User, Calendar, X, GripVertical, Settings, Edit, Trash2, 
+  Inbox, AlertCircle, Activity, CheckCircle2, Clock3, LineChart, 
+  TrendingUp, Users, Zap, Target, Award, BarChart3, PieChart, 
+  Sparkles, Rocket, Clock, AlertTriangle, CheckCheck, UserCheck, 
+  Briefcase, ArrowRight 
+} from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Link } from 'react-router-dom'
 import { ticketsAPI } from '../api/tickets'
@@ -28,6 +34,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ROLE, normalizeRole } from '../utils/roles'
+import { timeService } from '@/services/timeService'
 
 // Sortable Ticket Card Component
 const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
@@ -46,74 +53,89 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
     opacity: isDragging ? 0.5 : 1,
   }
 
+  const priorityColors = {
+    low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+    urgent: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  }
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      onClick={() => {
-        console.log('Ticket card clicked (container):', ticket)
-        onClick?.(ticket)
-      }}
-      className="group cursor-pointer rounded-lg border border-surface-border bg-surface/95 p-4 shadow-sm transition-colors hover:border-primary-200 hover:bg-surface-muted/70 dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-900"
+      onClick={() => onClick?.(ticket)}
+      className={`group cursor-pointer rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-lg hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700 ${isDragging ? 'opacity-50' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-2">
+        <div className="flex min-w-0 items-start gap-2 flex-1">
           <button
             type="button"
             aria-label={`Move ${ticket.title}`}
-            className="mt-0.5 cursor-grab rounded-md p-1 text-text-muted transition hover:bg-surface-muted hover:text-primary-600 active:cursor-grabbing dark:hover:bg-gray-800"
+            className="mt-0.5 cursor-grab rounded p-1 text-gray-400 transition hover:bg-gray-100 hover:text-indigo-600 active:cursor-grabbing dark:hover:bg-gray-700"
             {...attributes}
             {...listeners}
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-4 w-4" aria-hidden="true" />
           </button>
-          <p className="min-w-0 flex-1 text-sm font-semibold leading-6 text-text-primary dark:text-gray-100">
-            {ticket.title}
-          </p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+              {ticket.title}
+            </p>
+            {ticket.description && (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+                {ticket.description}
+              </p>
+            )}
+          </div>
         </div>
-        <span className={`badge ${statuses[ticket.status]?.color || 'badge-secondary'} ml-2 text-xs`}>
+        <span className={`badge ${statuses[ticket.status]?.color || 'badge-secondary'} ml-2 text-xs whitespace-nowrap`}>
           {statuses[ticket.status]?.label || ticket.status}
         </span>
       </div>
 
-      {ticket.description && (
-        <p className="mb-3 mt-3 line-clamp-2 text-sm leading-6 text-text-secondary dark:text-gray-400">
-          {ticket.description}
-        </p>
-      )}
-
-      <div className="grid gap-3 border-t border-surface-border pt-3 dark:border-gray-800">
-        <div className="flex items-center justify-between gap-2">
-          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${ticketPriorityPill(ticket.priority)}`}>
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${priorityColors[ticket.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
             {priorities[ticket.priority]?.label || ticket.priority}
           </span>
           {ticket.created_at ? (
             <div className="flex items-center text-xs text-text-secondary dark:text-gray-400">
               <Calendar className="mr-1 h-3.5 w-3.5" />
-              {format(new Date(ticket.created_at), 'MMM d')}
+              {format(timeService.instant(ticket.created_at), 'MMM d')}
             </div>
           ) : null}
+          {ticket.assigned_to ? (
+            <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+              <User className="h-3 w-3" />
+              <span>Assigned</span>
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-xs text-amber-500 dark:text-amber-400">
+              <AlertCircle className="h-3 w-3" />
+              <span>Unassigned</span>
+            </span>
+          )}
         </div>
-
-        <div className="flex items-center gap-2 text-xs text-text-secondary dark:text-gray-400">
-          <User className="h-3.5 w-3.5" />
-          <span>{ticket.assigned_to ? 'Assigned' : 'Unassigned'}</span>
-        </div>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            if (onClick) {
-              onClick(ticket)
-            }
-          }}
-          className="inline-flex min-h-9 w-fit items-center rounded-lg bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 dark:bg-primary-950/40 dark:text-primary-200 dark:hover:bg-primary-950/70"
-        >
-          Open
-        </button>
+        {ticket.created_at && (
+          <div className="flex items-center text-xs text-gray-400 dark:text-gray-500">
+            <Calendar className="mr-1 h-3 w-3" />
+            {format(new Date(ticket.created_at), 'MMM d')}
+          </div>
+        )}
       </div>
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (onClick) onClick(ticket)
+        }}
+        className="mt-3 w-full rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950/70"
+      >
+        Open Ticket
+      </button>
     </div>
   )
 }
@@ -121,50 +143,71 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
 const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick, canManageColumns, onEditColumn, onDeleteColumn }) => {
   const { setNodeRef, isOver } = useDroppable({ id: status.id })
 
+  const statusColors = {
+    open: 'from-amber-400 to-orange-400',
+    in_progress: 'from-blue-400 to-indigo-400',
+    waiting_for_customer: 'from-gray-400 to-stone-400',
+    resolved: 'from-emerald-400 to-green-400',
+    closed: 'from-gray-500 to-stone-500',
+    reopened: 'from-rose-400 to-pink-400',
+  }
+
+  const statusIcons = {
+    open: <Inbox className="h-4 w-4" />,
+    in_progress: <Activity className="h-4 w-4" />,
+    waiting_for_customer: <Clock className="h-4 w-4" />,
+    resolved: <CheckCheck className="h-4 w-4" />,
+    closed: <CheckCircle2 className="h-4 w-4" />,
+    reopened: <AlertTriangle className="h-4 w-4" />,
+  }
+
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[420px] w-[min(82vw,310px)] flex-shrink-0 flex-col overflow-hidden rounded-2xl border shadow-sm transition-colors md:w-[292px] ${isOver ? 'border-primary-300 bg-primary-50/60 ring-2 ring-primary-200 dark:bg-primary-950/30' : 'border-surface-border bg-surface/95 dark:border-gray-800 dark:bg-gray-900'}`}
+      className={`flex min-h-[420px] w-[min(82vw,310px)] flex-shrink-0 flex-col overflow-hidden rounded-2xl border shadow-lg transition-all md:w-[292px] ${isOver ? 'border-indigo-300 bg-indigo-50/60 ring-2 ring-indigo-200 dark:bg-indigo-950/30 dark:border-indigo-700' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'}`}
     >
-      <div className={`h-1.5 ${statusAccent(status.id)}`} />
-      <div className="flex items-center justify-between gap-3 border-b border-surface-border p-4 dark:border-gray-800">
-        <div>
-          <h3 className="font-semibold text-text-primary dark:text-gray-100">{status.label}</h3>
-          <p className="mt-1 text-xs text-text-secondary dark:text-gray-400">{columnSubtitle(status.id)}</p>
+      <div className={`h-2 bg-gradient-to-r ${statusColors[status.id] || 'from-gray-400 to-gray-500'}`} />
+      <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-4 dark:border-gray-700">
+        <div className="flex items-center gap-2">
+          <div className={`rounded-lg p-1.5 ${statusColors[status.id] ? 'bg-opacity-10' : ''}`}>
+            {statusIcons[status.id] || <Activity className="h-4 w-4 text-gray-400" />}
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">{status.label}</h3>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{columnSubtitle(status.id)}</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="badge badge-secondary text-xs">
+          <span className="inline-flex h-6 min-w-[24px] items-center justify-center rounded-full bg-indigo-100 px-2 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
             {tickets.length}
           </span>
           {canManageColumns && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5">
               <button
                 onClick={(e) => {
                   e.stopPropagation()
                   onEditColumn(status)
                 }}
-                className="rounded-lg p-1.5 text-text-muted transition hover:bg-surface-muted hover:text-primary-600 dark:hover:bg-gray-900"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-700"
                 title="Edit column"
-                aria-label={`Edit ${status.label} column`}
               >
-                <Edit className="h-4 w-4" />
+                <Edit className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
                   onDeleteColumn(status)
                 }}
-                className="rounded-lg p-1.5 text-text-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
                 title="Delete column"
-                aria-label={`Delete ${status.label} column`}
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
         </div>
       </div>
-      <div className="flex-1 bg-surface-muted/60 p-3 dark:bg-gray-950/40">
+      <div className="flex-1 bg-gray-50/50 p-3 dark:bg-gray-900/40">
         <SortableContext
           id={status.id}
           items={tickets.map(t => t.id)}
@@ -172,9 +215,10 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
         >
           <div className="space-y-3">
             {tickets.length === 0 ? (
-              <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed border-surface-border bg-surface/90 px-4 py-8 text-center text-sm text-text-muted dark:border-gray-700 dark:bg-gray-900/60">
-                <Inbox className="mb-2 h-5 w-5 text-text-muted" aria-hidden="true" />
-                No requests here
+              <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-white/50 px-4 py-8 text-center dark:border-gray-700 dark:bg-gray-800/50">
+                <Inbox className="mb-2 h-8 w-8 text-gray-300 dark:text-gray-600" aria-hidden="true" />
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No requests</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Tickets will appear here</p>
               </div>
             ) : (
               tickets.map((ticket) => (
@@ -194,52 +238,107 @@ const StatusColumn = ({ status, tickets, priorities, statusesMap, onTicketClick,
   )
 }
 
-const TicketBarChart = ({ title, description, data }) => {
+// Bar Chart Component
+const TicketBarChart = ({ title, description, data, icon: Icon, color = 'indigo' }) => {
   const maxValue = Math.max(...data.map((item) => item.value), 1)
+  const colorMap = {
+    indigo: 'bg-indigo-500',
+    emerald: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    rose: 'bg-rose-500',
+    blue: 'bg-blue-500',
+    purple: 'bg-purple-500',
+  }
+
   return (
-    <article className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-text-primary dark:text-gray-100">{title}</h3>
-          <p className="mt-1 text-xs text-text-secondary dark:text-gray-400">{description}</p>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{description}</p>
         </div>
-        <LineChart className="h-5 w-5 text-primary-600" />
+        {Icon && <Icon className="h-5 w-5 text-indigo-500" />}
       </div>
       <div className="mt-4 space-y-3">
         {data.map((item) => {
-          const width = `${Math.max((item.value / maxValue) * 100, item.value ? 8 : 0)}%`
+          const width = `${Math.max((item.value / maxValue) * 100, item.value ? 6 : 0)}%`
+          const barColor = item.color || colorMap[color]
           return (
             <div key={item.label}>
               <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                <span className="truncate font-medium text-text-secondary dark:text-gray-300">{item.label}</span>
-                <span className="font-semibold tabular-nums text-text-primary dark:text-gray-100">{item.value}</span>
+                <span className="truncate font-medium text-gray-700 dark:text-gray-300">{item.label}</span>
+                <span className="font-semibold tabular-nums text-gray-900 dark:text-white">{item.value}</span>
               </div>
-              <div className="h-2.5 overflow-hidden rounded-full bg-surface-muted dark:bg-gray-800">
-                <div className={`h-full rounded-full ${item.color}`} style={{ width }} />
+              <div className="h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
+                <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width }} />
               </div>
             </div>
           )
         })}
       </div>
-    </article>
+    </div>
   )
 }
 
-const SignalTile = ({ label, value, helper, icon: Icon, tone = 'amber' }) => {
+// Signal Tile Component
+const SignalTile = ({ label, value, helper, icon: Icon, tone = 'amber', trend, trendValue }) => {
   const tones = {
-    amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
-    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200',
-    stone: 'bg-stone-50 text-stone-700 dark:bg-stone-950/40 dark:text-stone-200',
+    amber: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+    rose: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+    indigo: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+    slate: 'bg-slate-50 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300 border-slate-200 dark:border-slate-800',
   }
+
   return (
-    <article className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone] || tones.blue}`}>
-        <Icon className="h-5 w-5" />
+    <div className={`rounded-2xl border ${tones[tone] || tones.amber} bg-white p-4 shadow-sm transition-all hover:shadow-md dark:bg-gray-800`}>
+      <div className="flex items-center justify-between">
+        <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone] || tones.amber}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        {trend && (
+          <span className={`text-xs font-semibold ${trend === 'up' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+            {trend === 'up' ? '↑' : '↓'} {trendValue}%
+          </span>
+        )}
       </div>
-      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-text-primary dark:text-gray-100">{value}</p>
-      <p className="mt-1 text-xs text-text-secondary dark:text-gray-400">{helper}</p>
-    </article>
+      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
+    </div>
+  )
+}
+
+// Quick Action Card
+const QuickActionCard = ({ icon: Icon, label, description, href, onClick, color = 'indigo' }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+  }
+
+  const Element = href ? Link : 'button'
+  const props = {
+    className: "group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-lg hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800",
+    ...(href ? { to: href } : { type: 'button', onClick }),
+  }
+
+  return (
+    <Element {...props}>
+      <div className={`absolute right-0 top-0 -mr-8 -mt-8 h-20 w-20 rounded-full bg-gradient-to-r ${colors[color]} opacity-10 blur-2xl`}></div>
+      <div className="relative flex items-center gap-3">
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2.5 text-white shadow-lg`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">{label}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
+        </div>
+        <ArrowRight className="ml-auto h-4 w-4 text-gray-400 transition group-hover:translate-x-1 group-hover:text-indigo-600" />
+      </div>
+    </Element>
   )
 }
 
@@ -263,7 +362,6 @@ const Tickets = () => {
   })
 
   const sensors = useSensors(
-    // Add small drag distance so simple clicks do NOT start dragging
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
@@ -274,7 +372,6 @@ const Tickets = () => {
     })
   )
 
-  // Default statuses - can be customized
   const defaultStatuses = [
     { id: 'open', label: 'Open', color: 'badge-warning', order: 0 },
     { id: 'in_progress', label: 'In Progress', color: 'badge-primary', order: 1 },
@@ -284,7 +381,6 @@ const Tickets = () => {
     { id: 'reopened', label: 'Reopened', color: 'badge-warning', order: 5 },
   ]
 
-  // Load statuses from localStorage or use defaults
   const loadStatuses = () => {
     try {
       const saved = localStorage.getItem('ticket_statuses')
@@ -300,7 +396,6 @@ const Tickets = () => {
 
   const [statuses, setStatuses] = useState(loadStatuses())
 
-  // Calculate statusesMap from current statuses (memoized for performance)
   const statusesMap = useMemo(() => {
     return statuses.reduce((acc, s) => {
       acc[s.id] = { label: s.label, color: s.color }
@@ -308,7 +403,6 @@ const Tickets = () => {
     }, {})
   }, [statuses])
 
-  // Column management states
   const canManageColumns = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [showColumnModal, setShowColumnModal] = useState(false)
   const [editingColumn, setEditingColumn] = useState(null)
@@ -333,7 +427,8 @@ const Tickets = () => {
     const urgentCount = tickets.filter((ticket) => ticket.priority === 'urgent').length
     const unassignedCount = tickets.filter((ticket) => !ticket.assigned_to).length
     const resolvedCount = tickets.filter((ticket) => ['closed', 'resolved'].includes(ticket.status)).length
-    return { activeCount, urgentCount, unassignedCount, resolvedCount }
+    const highPriorityCount = tickets.filter((ticket) => ['high', 'urgent'].includes(ticket.priority)).length
+    return { activeCount, urgentCount, unassignedCount, resolvedCount, highPriorityCount }
   }, [tickets])
 
   const sortedStatuses = useMemo(() => [...statuses].sort((a, b) => (a.order || 0) - (b.order || 0)), [statuses])
@@ -350,7 +445,6 @@ const Tickets = () => {
 
   const hasFilters = Boolean(filters.status || filters.priority || filters.type)
 
-  // Fetch team members for Leads
   useEffect(() => {
     if (userRole === ROLE.LEAD) {
       fetchTeamMembers()
@@ -366,7 +460,6 @@ const Tickets = () => {
     }
   }
 
-  // Save statuses to localStorage
   const saveStatuses = (newStatuses) => {
     try {
       localStorage.setItem('ticket_statuses', JSON.stringify(newStatuses))
@@ -377,7 +470,6 @@ const Tickets = () => {
     }
   }
 
-  // Fetch tickets
   const fetchTickets = useCallback(async () => {
     try {
       setLoading(true)
@@ -396,12 +488,10 @@ const Tickets = () => {
     fetchTickets()
   }, [fetchTickets])
 
-  // Check if we need to open a ticket from notification
   useEffect(() => {
     const ticketId = sessionStorage.getItem('open_ticket_id')
     if (ticketId) {
       sessionStorage.removeItem('open_ticket_id')
-      // Wait for tickets to load, then open the modal
       const timer = setTimeout(async () => {
         try {
           const ticketData = await ticketsAPI.getTicket(ticketId)
@@ -415,24 +505,19 @@ const Tickets = () => {
     }
   }, [tickets])
 
-  // Get tickets by status
   const getTicketsByStatus = (statusId) => {
     return tickets.filter(ticket => ticket.status === statusId)
   }
 
-  // Handle drag end
   const handleDragEnd = async (event) => {
     const { active, over } = event
     setActiveId(null)
 
-    if (!over) {
-      return
-    }
+    if (!over) return
 
     const activeTicket = tickets.find(t => t.id === active.id)
     if (!activeTicket) return
 
-    // Determine the destination status: containerId when dropped on a ticket, column id when dropped on empty column
     const destinationStatus = over.data?.current?.sortable?.containerId || over.id
     if (!destinationStatus || destinationStatus === activeTicket.status) return
     if (!statusesMap[destinationStatus]) return
@@ -446,11 +531,9 @@ const Tickets = () => {
     }
   }
 
-  // Fetch assignable users for ticket assignment
   const [assignableUsers, setAssignableUsers] = useState([])
 
   useEffect(() => {
-    // All users (Employees, Leads, Admins) can assign tickets
     if (user) {
       fetchAssignableUsers()
     }
@@ -458,11 +541,8 @@ const Tickets = () => {
 
   const fetchAssignableUsers = async () => {
     try {
-      // Pass for_tickets=true to get appropriate users based on role
-      // Employees get Leads/Admins, Leads/Admins get all users
       const data = await usersAPI.getAssignableUsers(true)
       const users = data.users || []
-      // Remove duplicates based on user ID
       const uniqueUsers = users.filter((user, index, self) =>
         index === self.findIndex((u) => String(u.id || u._id) === String(user.id || user._id))
       )
@@ -472,7 +552,6 @@ const Tickets = () => {
     }
   }
 
-  // Handle create ticket
   const handleCreateTicket = async (e) => {
     e.preventDefault()
     if (submitting) return
@@ -503,16 +582,11 @@ const Tickets = () => {
     }
   }
 
-  // Handle status change
   const handleStatusChange = async (ticketId, newStatus, resolution = null) => {
     try {
-      console.log('Updating ticket status:', { ticketId, newStatus, resolution })
-      const result = await ticketsAPI.updateTicketStatus(ticketId, newStatus, resolution)
-      console.log('Status update result:', result)
+      await ticketsAPI.updateTicketStatus(ticketId, newStatus, resolution)
       toast.success('Ticket status updated successfully')
-      // Refresh tickets list
       await fetchTickets()
-      // Update selected ticket if it's the one being updated
       if (selectedTicket && selectedTicket.id === ticketId) {
         const updatedTicket = await ticketsAPI.getTicket(ticketId)
         setSelectedTicket(updatedTicket)
@@ -524,20 +598,12 @@ const Tickets = () => {
     }
   }
 
-  // Handle ticket click
   const handleTicketClick = async (ticket) => {
-    // Always open the modal immediately with the data we already have
-    console.log('Ticket clicked:', ticket)
     setSelectedTicket(ticket)
     setShowTicketModal(true)
 
-    // Try to load the latest ticket details in the background,
-    // but NEVER close the modal if this fails – user should still see edit/delete.
     try {
       const ticketData = await ticketsAPI.getTicket(ticket.id)
-      console.log('Loaded ticket data:', ticketData)
-      console.log('Current user:', user)
-      // Only update if the same ticket is still selected
       setSelectedTicket((current) =>
         current && current.id === ticket.id ? ticketData : current
       )
@@ -547,13 +613,11 @@ const Tickets = () => {
     }
   }
 
-  // Handle assign ticket
   const handleAssignTicket = async (ticketId, assignedTo) => {
     try {
       await ticketsAPI.assignTicket(ticketId, assignedTo || '')
       toast.success('Ticket assignment updated successfully')
       await fetchTickets()
-      // Refresh selected ticket data
       if (selectedTicket && selectedTicket.id === ticketId) {
         try {
           const updatedTicket = await ticketsAPI.getTicket(ticketId)
@@ -564,20 +628,54 @@ const Tickets = () => {
       }
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to assign ticket')
-      throw error // Re-throw to let modal handle it
+      throw error
     }
   }
 
-  // Handle edit column
+  const handleQuickActionAssign = () => {
+    // Filter to show only unassigned tickets
+    const unassignedTickets = tickets.filter(t => !t.assigned_to)
+    if (unassignedTickets.length === 0) {
+      toast.info('No unassigned tickets found')
+      return
+    }
+    // Show the first unassigned ticket in the modal
+    handleTicketClick(unassignedTickets[0])
+  }
+
+  const handleQuickActionUrgent = () => {
+    // Set filter to show urgent tickets
+    setFilters(prev => ({ ...prev, priority: 'urgent' }))
+    toast.success('Filtered to urgent tickets')
+  }
+
+  const handleQuickActionMatrix = () => {
+    // Scroll to priority distribution chart
+    const chartsSection = document.querySelector('[data-section="priority-charts"]')
+    if (chartsSection) {
+      chartsSection.scrollIntoView({ behavior: 'smooth' })
+    } else {
+      toast.info('Priority distribution chart is below')
+    }
+  }
+
+  const handleQuickActionPerformance = () => {
+    // Scroll to quick stats section
+    const statsSection = document.querySelector('[data-section="quick-stats"]')
+    if (statsSection) {
+      statsSection.scrollIntoView({ behavior: 'smooth' })
+    } else {
+      toast.info('Performance metrics are below')
+    }
+  }
+
   const handleEditColumn = (column) => {
     setEditingColumn(column)
     setColumnForm({ label: column.label, color: column.color })
     setShowColumnModal(true)
   }
 
-  // Handle delete column
   const handleDeleteColumn = async (column) => {
-    // Check if column has tickets
     const ticketsInColumn = tickets.filter(t => t.status === column.id)
     if (ticketsInColumn.length > 0) {
       toast.error(`Cannot delete column with ${ticketsInColumn.length} ticket(s). Please move tickets to another column first.`)
@@ -599,7 +697,6 @@ const Tickets = () => {
     }
   }
 
-  // Handle column form submit (create or update)
   const handleColumnSubmit = async (e) => {
     e.preventDefault()
     if (!columnForm.label.trim()) {
@@ -609,7 +706,6 @@ const Tickets = () => {
 
     let newStatuses
     if (editingColumn) {
-      // Update existing column
       newStatuses = statuses.map(s =>
         s.id === editingColumn.id
           ? { ...s, label: columnForm.label.trim(), color: columnForm.color }
@@ -617,9 +713,7 @@ const Tickets = () => {
       )
       toast.success('Column updated successfully')
     } else {
-      // Create new column
       const newId = columnForm.label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
-      // Check if ID already exists
       if (statuses.find(s => s.id === newId)) {
         toast.error('A column with this name already exists')
         return
@@ -649,237 +743,379 @@ const Tickets = () => {
   }
 
   return (
-    <div className="space-y-6 p-4">
-      <section className="overflow-hidden rounded-3xl border border-surface-border/80 bg-surface/95 shadow-sm dark:border-gray-800 dark:bg-gray-950">
-        <div className="h-1.5 bg-gradient-to-r from-primary-500 via-emerald-400 to-amber-300" />
-        <div className="p-5">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600 dark:text-primary-300">Support desk</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary dark:text-gray-100">Requests</h1>
-              <p className="mt-2 text-sm leading-6 text-text-secondary dark:text-gray-400">
-                Triage, assign, and move tickets across a CRM-style operations board.
-              </p>
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+              <Briefcase className="h-6 w-6" />
             </div>
-          <div className="flex flex-wrap items-center gap-2">
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl">Service Requests</h1>
+              <p className="mt-1 text-indigo-100">Manage and track all support tickets in one place</p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <Plus className="h-4 w-4" />
+              New Request
+            </button>
             {canManageColumns && (
-              <Button
+              <button
                 type="button"
-                variant="secondary"
                 onClick={() => {
                   setEditingColumn(null)
                   setColumnForm({ label: '', color: 'badge-secondary' })
                   setShowColumnModal(true)
                 }}
-                className="min-h-11"
-                title="Manage columns"
+                className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
               >
                 <Settings className="h-4 w-4" />
-                Columns
-              </Button>
+                Manage Columns
+              </button>
             )}
-            {canManageRequests && userRole === ROLE.LEAD && (
-              <Link
-                to="/tasks?createTask=true"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-surface-border bg-surface px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-muted dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
-              >
-                <Plus className="h-4 w-4" />
-                Add Task
-              </Link>
-            )}
-            <Button
-              type="button"
-              onClick={() => setShowCreateModal(true)}
-              className="min-h-11"
-            >
-              <Plus className="h-4 w-4" />
-              New request
-            </Button>
           </div>
         </div>
-        </div>
-      </section>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <CRMStatCard icon={Inbox} label="Total Requests" value={String(tickets.length)} helper="All tickets in the current view." tone="amber" />
-        <CRMStatCard icon={Activity} label="Active" value={String(ticketStats.activeCount)} helper="Not resolved or closed." tone="emerald" />
-        <CRMStatCard icon={AlertCircle} label="Urgent" value={String(ticketStats.urgentCount)} helper="Needs immediate attention." tone="amber" />
-        <CRMStatCard icon={Users} label="Unassigned" value={String(ticketStats.unassignedCount)} helper={`${ticketStats.resolvedCount} resolved or closed.`} tone="slate" />
       </div>
 
+      {/* Quick Stats - 6 Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="group rounded-xl border border-indigo-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total</span>
+            <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+              <Inbox className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{tickets.length}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">All requests</p>
+        </div>
+
+        <div className="group rounded-xl border border-emerald-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Active</span>
+            <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+              <Activity className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.activeCount}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">In progress</p>
+        </div>
+
+        <div className="group rounded-xl border border-rose-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Urgent</span>
+            <div className="rounded-lg bg-rose-50 p-2 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+              <AlertCircle className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.urgentCount}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Needs attention</p>
+        </div>
+
+        <div className="group rounded-xl border border-amber-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Unassigned</span>
+            <div className="rounded-lg bg-amber-50 p-2 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+              <User className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.unassignedCount}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Needs assignment</p>
+        </div>
+
+        <div className="group rounded-xl border border-blue-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Resolved</span>
+            <div className="rounded-lg bg-blue-50 p-2 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.resolvedCount}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Closed/Resolved</p>
+        </div>
+
+        <div className="group rounded-xl border border-purple-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">High Priority</span>
+            <div className="rounded-lg bg-purple-50 p-2 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+              <Zap className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.highPriorityCount}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">High + Urgent</p>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <QuickActionCard
+          icon={Users}
+          label="Assign Tickets"
+          description="Assign unassigned tickets"
+          onClick={handleQuickActionAssign}
+          color="indigo"
+        />
+        <QuickActionCard
+          icon={Clock}
+          label="Review Urgent"
+          description="Check urgent tickets"
+          onClick={handleQuickActionUrgent}
+          color="rose"
+        />
+        <QuickActionCard
+          icon={Target}
+          label="Priority Matrix"
+          description="View priority distribution"
+          onClick={handleQuickActionMatrix}
+          color="amber"
+        />
+        <QuickActionCard
+          icon={Award}
+          label="Performance"
+          description="Team resolution metrics"
+          onClick={handleQuickActionPerformance}
+          color="emerald"
+        />
+      </div>
+
+      {/* Filters and Charts Row */}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)]">
-        <CRMSection
-          title="Ticket Controls"
-          description="Filter the board without leaving the request workflow."
-          actions={hasFilters ? (
-            <Button type="button" variant="secondary" size="sm" onClick={() => setFilters({ status: '', priority: '', type: '' })}>
-              Clear filters
-            </Button>
-          ) : null}
-        >
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <FormField label="Status" htmlFor="ticket-status-filter">
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Filter Tickets</h3>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Narrow down the ticket list</p>
+            </div>
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={() => setFilters({ status: '', priority: '', type: '' })}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Status</label>
               <select
-                id="ticket-status-filter"
                 value={filters.status}
                 onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className={inputClassName}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All statuses</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All statuses</option>
                 {sortedStatuses.map(status => (
-                  <option key={status.id} value={status.id}>{status.label}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status.id} value={status.id}>{status.label}</option>
                 ))}
               </select>
-            </FormField>
-            <FormField label="Priority" htmlFor="ticket-priority-filter">
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Priority</label>
               <select
-                id="ticket-priority-filter"
                 value={filters.priority}
                 onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-                className={inputClassName}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All priorities</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All priorities</option>
                 {Object.keys(priorities).map(priority => (
-                  <option key={priority} value={priority}>{priorities[priority].label}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={priority} value={priority}>{priorities[priority].label}</option>
                 ))}
               </select>
-            </FormField>
-            <FormField label="Type" htmlFor="ticket-type-filter">
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Type</label>
               <select
-                id="ticket-type-filter"
                 value={filters.type}
                 onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-                className={inputClassName}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               >
-                <option value="">All types</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All types</option>
                 {Object.keys(types).map(type => (
-                  <option key={type} value={type}>{types[type]}</option>
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={type} value={type}>{types[type]}</option>
                 ))}
               </select>
-            </FormField>
+            </div>
           </div>
-        </CRMSection>
+        </div>
 
-        <TicketBarChart
-          title="Priority Mix"
-          description="Distribution of requests by urgency."
-          data={priorityChartData}
-        />
+        <div data-section="priority-charts">
+          <TicketBarChart
+            title="Priority Distribution"
+            description="Requests by urgency level"
+            data={priorityChartData}
+            icon={BarChart3}
+            color="amber"
+          />
+        </div>
       </div>
 
+      {/* Charts Row */}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <TicketBarChart
-          title="Status Flow"
-          description="How tickets are distributed across columns."
+          title="Status Distribution"
+          description="Tickets across all stages"
           data={statusChartData}
+          icon={PieChart}
+          color="indigo"
         />
-        <CRMSection title="Operating Signal" description="Fast read of current desk pressure.">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <SignalTile label="Resolution" value={`${ticketStats.resolvedCount}/${tickets.length || 0}`} helper="Closed or resolved" icon={CheckCircle2} tone="emerald" />
-            <SignalTile label="Queue" value={String(ticketStats.activeCount)} helper="Still open" icon={Clock3} tone="amber" />
-            <SignalTile label="Pressure" value={String(ticketStats.urgentCount)} helper="Urgent priority" icon={TrendingUp} tone="amber" />
+        
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800" data-section="quick-stats">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Quick Stats</h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Ticket metrics at a glance</p>
           </div>
-        </CRMSection>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SignalTile 
+              label="Resolution Rate" 
+              value={`${ticketStats.resolvedCount}/${tickets.length || 0}`} 
+              helper="Closed or resolved" 
+              icon={CheckCircle2} 
+              tone="emerald"
+              trend="up"
+              trendValue="12"
+            />
+            <SignalTile 
+              label="Active Queue" 
+              value={String(ticketStats.activeCount)} 
+              helper="Still open" 
+              icon={Clock3} 
+              tone="amber"
+            />
+            <SignalTile 
+              label="Urgent" 
+              value={String(ticketStats.urgentCount)} 
+              helper="Needs immediate action" 
+              icon={AlertTriangle} 
+              tone="rose"
+            />
+            <SignalTile 
+              label="Unassigned" 
+              value={String(ticketStats.unassignedCount)} 
+              helper="Awaiting assignment" 
+              icon={User} 
+              tone="indigo"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Kanban Board */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={(event) => setActiveId(event.active.id)}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="viewport-scroll-x -mx-1 flex gap-4 px-1 pb-3">
-          {sortedStatuses.map((status) => {
-            const statusTickets = getTicketsByStatus(status.id)
-            return (
-              <StatusColumn
-                key={status.id}
-                status={status}
-                tickets={statusTickets}
-                priorities={priorities}
-                statusesMap={statusesMap}
-                onTicketClick={handleTicketClick}
-                canManageColumns={canManageColumns}
-                onEditColumn={handleEditColumn}
-                onDeleteColumn={handleDeleteColumn}
-              />
-            )
-          })}
+      <div>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Kanban Board</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Drag and drop tickets between columns</p>
+          </div>
+          <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+            {tickets.length} tickets
+          </span>
         </div>
-        <DragOverlay>
-          {activeId ? (
-            <div className="rounded-lg border border-primary-200 bg-surface px-4 py-3 text-sm font-medium shadow-lg dark:bg-gray-950">
-              Moving request
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+        
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={(event) => setActiveId(event.active.id)}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="viewport-scroll-x -mx-1 flex gap-4 px-1 pb-3 overflow-x-auto">
+            {sortedStatuses.map((status) => {
+              const statusTickets = getTicketsByStatus(status.id)
+              return (
+                <StatusColumn
+                  key={status.id}
+                  status={status}
+                  tickets={statusTickets}
+                  priorities={priorities}
+                  statusesMap={statusesMap}
+                  onTicketClick={handleTicketClick}
+                  canManageColumns={canManageColumns}
+                  onEditColumn={handleEditColumn}
+                  onDeleteColumn={handleDeleteColumn}
+                />
+              )
+            })}
+          </div>
+          <DragOverlay>
+            {activeId ? (
+              <div className="rounded-xl border-2 border-indigo-300 bg-white px-4 py-3 text-sm font-medium shadow-2xl dark:bg-gray-800">
+                Moving request...
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      </div>
 
       {/* Create Ticket Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-screen w-full max-w-lg overflow-y-auto rounded-lg bg-surface/95 p-6 shadow-2xl dark:bg-gray-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="max-h-screen w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-text-primary dark:text-gray-100">New request</h2>
-                <p className="mt-1 text-sm text-text-secondary dark:text-gray-400">Capture the issue clearly so it can be routed quickly.</p>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">New Request</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Create a new support ticket</p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="rounded-lg p-2 text-text-muted transition hover:bg-surface-muted hover:text-text-primary dark:hover:bg-gray-900"
-                aria-label="Close new request modal"
+                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800"
               >
-                <X className="h-5 w-5" aria-hidden="true" />
+                <X className="h-5 w-5" />
               </button>
             </div>
             <form onSubmit={handleCreateTicket} className="space-y-4">
-              <FormField label="Title" htmlFor="ticket-title" required>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
                 <input
-                  id="ticket-title"
                   type="text"
                   name="title"
                   required
-                  className={inputClassName}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   placeholder="Brief description of the issue"
                 />
-              </FormField>
-              <FormField label="Details" htmlFor="ticket-description" required>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
                 <textarea
-                  id="ticket-description"
                   name="description"
                   required
                   rows="4"
-                  className={`${inputClassName} resize-y`}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   placeholder="Detailed description of the issue..."
                 />
-              </FormField>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Category" htmlFor="ticket-type">
-                  <select id="ticket-type" name="type" className={inputClassName}>
-                    <option value="support">Support</option>
-                    <option value="feature_request">Feature Request</option>
-                    <option value="query">Query</option>
-                    <option value="complaint">Complaint</option>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
+                  <select name="type" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="support">Support</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="feature_request">Feature Request</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="query">Query</option>
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="complaint">Complaint</option>
                   </select>
-                </FormField>
-                <FormField label="Priority" htmlFor="ticket-priority">
-                  <select id="ticket-priority" name="priority" className={inputClassName} defaultValue="medium">
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Priority</label>
+                  <select name="priority" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" defaultValue="medium">
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="urgent">Urgent</option>
                   </select>
-                </FormField>
+                </div>
               </div>
               {assignableUsers.length > 0 && (
-                <FormField
-                  label="Assignee"
-                  htmlFor="ticket-assignee"
-                  helperText={userRole === ROLE.EMPLOYEE ? 'Lead or Admin.' : userRole === ROLE.LEAD ? 'Anyone in the company.' : 'Team member.'}
-                >
-                  <select id="ticket-assignee" name="assigned_to" className={inputClassName}>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Assignee</label>
+                  <select name="assigned_to" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white">
                     <option value="">Unassigned</option>
                     {assignableUsers.map((assignUser, index) => {
                       const userId = String(assignUser.id || assignUser._id || index)
@@ -890,27 +1126,24 @@ const Tickets = () => {
                       )
                     })}
                   </select>
-                </FormField>
+                </div>
               )}
               <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row">
-                <Button
+                <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
                   disabled={submitting}
-                  variant="secondary"
-                  className="flex-1"
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   Cancel
-                </Button>
-                <Button
+                </button>
+                <button
                   type="submit"
                   disabled={submitting}
-                  loading={submitting}
-                  loadingText="Creating"
-                  className="flex-1"
+                  className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  Create request
-                </Button>
+                  {submitting ? 'Creating...' : 'Create Request'}
+                </button>
               </div>
             </form>
           </div>
@@ -934,38 +1167,38 @@ const Tickets = () => {
 
       {/* Column Management Modal */}
       {canManageColumns && showColumnModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-lg bg-surface/95 p-6 shadow-2xl dark:bg-gray-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
             <div className="mb-5 flex items-start gap-3">
-              <AlertCircle className="mt-1 h-5 w-5 text-primary-600" aria-hidden="true" />
+              <Settings className="mt-1 h-5 w-5 text-indigo-600" />
               <div>
-                <h2 className="text-xl font-bold text-text-primary dark:text-gray-100">
-                  {editingColumn ? 'Edit column' : 'Create column'}
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  {editingColumn ? 'Edit Column' : 'Create Column'}
                 </h2>
-                <p className="mt-1 text-sm text-text-secondary dark:text-gray-400">Keep stages short and easy for the team to scan.</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage your board columns</p>
               </div>
             </div>
             <form onSubmit={handleColumnSubmit}>
               <div className="space-y-4">
-                <FormField label="Column name" htmlFor="column-name" required>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Column Name</label>
                   <input
-                    id="column-name"
                     type="text"
                     value={columnForm.label}
                     onChange={(e) => setColumnForm({ ...columnForm, label: e.target.value })}
-                    className={inputClassName}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     placeholder="e.g., Open, In Progress, Resolved"
                     required
                     autoComplete="off"
                   />
-                </FormField>
+                </div>
 
-                <FormField label="Color" htmlFor="column-color">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Color</label>
                   <select
-                    id="column-color"
                     value={columnForm.color}
                     onChange={(e) => setColumnForm({ ...columnForm, color: e.target.value })}
-                    className={inputClassName}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   >
                     <option value="badge-secondary">Gray</option>
                     <option value="badge-primary">Blue</option>
@@ -975,40 +1208,37 @@ const Tickets = () => {
                     <option value="badge-info">Cyan</option>
                     <option value="badge-purple">Purple</option>
                   </select>
-                </FormField>
+                </div>
 
                 {editingColumn && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteColumn(editingColumn)}
-                      className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-white transition hover:bg-red-700"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteColumn(editingColumn)}
+                    className="w-full rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700"
+                  >
+                    Delete Column
+                  </button>
                 )}
               </div>
 
               <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
-                <Button
+                <button
                   type="button"
                   onClick={() => {
                     setShowColumnModal(false)
                     setEditingColumn(null)
                     setColumnForm({ label: '', color: 'badge-secondary' })
                   }}
-                  variant="secondary"
-                  className="flex-1"
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   Cancel
-                </Button>
-                <Button
+                </button>
+                <button
                   type="submit"
-                  className="flex-1"
+                  className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
                 >
-                  {editingColumn ? 'Save' : 'Create'}
-                </Button>
+                  {editingColumn ? 'Save Changes' : 'Create Column'}
+                </button>
               </div>
             </form>
           </div>
@@ -1023,7 +1253,7 @@ export default Tickets
 function ticketPriorityPill(priority) {
   switch (priority) {
     case 'urgent':
-      return 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200'
+      return 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200'
     case 'high':
       return 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200'
     case 'medium':
@@ -1031,7 +1261,7 @@ function ticketPriorityPill(priority) {
     case 'low':
       return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
     default:
-      return 'bg-surface-muted text-text-secondary dark:bg-gray-800 dark:text-gray-200'
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'
   }
 }
 
@@ -1046,7 +1276,7 @@ function priorityBarColor(priority) {
     case 'low':
       return 'bg-emerald-500'
     default:
-      return 'bg-stone-400'
+      return 'bg-gray-400'
   }
 }
 
@@ -1055,54 +1285,35 @@ function statusBarColor(statusId) {
     case 'open':
       return 'bg-amber-500'
     case 'in_progress':
-      return 'bg-amber-500'
+      return 'bg-indigo-500'
     case 'waiting_for_customer':
-      return 'bg-stone-400'
+      return 'bg-gray-400'
     case 'resolved':
       return 'bg-emerald-500'
     case 'closed':
-      return 'bg-stone-500'
+      return 'bg-gray-500'
     case 'reopened':
       return 'bg-rose-500'
     default:
-      return 'bg-primary-500'
-  }
-}
-
-function statusAccent(statusId) {
-  switch (statusId) {
-    case 'open':
-      return 'bg-amber-400'
-    case 'in_progress':
-      return 'bg-amber-500'
-    case 'waiting_for_customer':
-      return 'bg-stone-300'
-    case 'resolved':
-      return 'bg-emerald-500'
-    case 'closed':
-      return 'bg-stone-500'
-    case 'reopened':
-      return 'bg-rose-500'
-    default:
-      return 'bg-primary-500'
+      return 'bg-indigo-500'
   }
 }
 
 function columnSubtitle(statusId) {
   switch (statusId) {
     case 'open':
-      return 'New issues to review.'
+      return 'New issues to review'
     case 'in_progress':
-      return 'Work in motion.'
+      return 'Work in motion'
     case 'waiting_for_customer':
-      return 'Waiting on a reply.'
+      return 'Waiting on a reply'
     case 'resolved':
-      return 'Ready for review.'
+      return 'Ready for review'
     case 'closed':
-      return 'Archived requests.'
+      return 'Archived requests'
     case 'reopened':
-      return 'Needs another look.'
+      return 'Needs another look'
     default:
-      return 'Requests in this stage.'
+      return 'Requests in this stage'
   }
 }

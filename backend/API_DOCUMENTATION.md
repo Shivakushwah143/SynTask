@@ -45,6 +45,15 @@ Invalid signatures return `401` without persistence. A valid duplicate returns `
 {"access_token":"...","refresh_token":"...","token_type":"bearer","user":{"id":"...","email":"...","role":"admin"}}
 ```
 
+## Time Settings
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/v1/time/settings` | Yes | Return authenticated user's timezone, clock mode, display format, seconds preference, and server UTC time. |
+| PUT | `/api/v1/time/settings` | Admin/Super Admin | Update authenticated user's timezone, automatic/manual time, display format, and seconds preference. |
+
+First-login browser timezone detection can call `PUT /api/v1/time/settings` with `detected: true` only when the current user has no saved timezone. The endpoint mutates only `current_user`; it accepts no target user or tenant ID.
+
 ## Endpoints by Module
 
 ### 2FA
@@ -111,13 +120,15 @@ Invalid signatures return `401` without persistence. A valid duplicate returns `
 
 ### Chat
 
+Chat endpoints require authentication, active user status, same-tenant access, and either `chat`, `task`, or `tasks_projects` module access. User search returns same-company users only and excludes the requester. Group creation validates every participant is in the same company and adds the creator as group admin.
+
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/chat/conversations` | `list_conversations` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/chat/conversations` | `list_conversations` | Lists conversations where the current user is a participant. |
 | POST | `/api/v1/chat/conversations` | `create_or_get_conversation` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/chat/conversations/{conversation_id}/messages` | `get_messages` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/chat/conversations/{conversation_id}/messages` | `send_message` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/chat/groups` | `create_group` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/chat/groups` | `create_group` | Creates a same-tenant group conversation and makes the creator group admin. |
 | GET | `/api/v1/chat/groups/{group_id}` | `get_group_details` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/chat/groups/{group_id}/admins/{user_id}` | `remove_group_admin` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/chat/groups/{group_id}/admins/{user_id}` | `add_group_admin` | Uses router/endpoint dependencies where configured. |
@@ -126,7 +137,7 @@ Invalid signatures return `401` without persistence. A valid duplicate returns `
 | DELETE | `/api/v1/chat/groups/{group_id}/members/{user_id}` | `remove_member_from_group` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/chat/messages/{message_id}` | `delete_message` | Uses router/endpoint dependencies where configured. |
 | PATCH | `/api/v1/chat/messages/{message_id}/read` | `mark_message_read` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/chat/users/search` | `search_users_for_chat` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/chat/users/search` | `search_users_for_chat` | Searches same-company users by first name, last name, or email for chat/group selection. |
 
 ### Clients
 
@@ -240,7 +251,7 @@ Invalid signatures return `401` without persistence. A valid duplicate returns `
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/meetings/` | `list_meetings` | Lists meetings where the current user is host or participant; supports `status` and `upcoming` filters. |
+| GET | `/api/v1/meetings/` | `list_meetings` | Authenticated users can list meetings where they are host or participant; supports `status` and `upcoming` filters. `upcoming=true` returns future meetings ordered soonest first and is not hidden behind the `meetings_calendar` module gate. |
 | POST | `/api/v1/meetings/` | `create_meeting` | Admin, Manager, Lead, or Super Admin only; duration must be 1-60 minutes; participant IDs must be same-tenant junior users available to the creator role. |
 | PATCH | `/api/v1/meetings/{meeting_id}` | `update_meeting` | Host/Admin/Super Admin update or reschedule meeting details and participants. |
 | GET | `/api/v1/meetings/{meeting_id}` | `get_meeting` | Host or invited participant only; host start URL is returned only to host/Admin/Super Admin. |
@@ -568,6 +579,30 @@ Invalid signatures return `401` without persistence. A valid duplicate returns `
 
 The existing Celery beat schedule evaluates enabled tenant configurations hourly and re-dispatches due persisted runs every minute. Marketing API calls are read-only Graph `GET` requests; campaign, ad-set, ad, budget, bid, publish, pause, resume, create, update, and delete operations are not exposed. Phase 4 adds only optional run lifecycle fields and additive indexes (`active_key` and pending-dispatch) through `scripts/migrate_meta_insights_runs.py`; this safety deviation prevents concurrent tenant runs and recovers broker-dispatch failures without placing tokens in task payloads.
 
+### Super Admin Platform Operations
+
+All routes require `get_current_super_admin`.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| GET | `/api/v1/superadmin/tenants/subscription-overview` | `subscription_overview` | Lists tenant plan, purchase date, next billing date, amount, status, and user count. |
+| GET | `/api/v1/superadmin/tenants/{company_id}/users` | `list_company_users` | Lists users for one tenant company. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/users/{user_id}/reset-password` | `reset_user_password` | Stores a hashed reset token, sends reset email, and writes audit log. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/suspend` | `suspend_tenant` | Suspends tenant with reason, notes, optional admin notification, and audit log. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/activate` | `activate_tenant` | Reactivates tenant and clears subscription suspension state. |
+| POST | `/api/v1/superadmin/tenants/{company_id}/assign-plan` | `assign_plan_to_tenant` | Assigns a plan and billing cycle, with optional custom user limit. |
+| GET | `/api/v1/superadmin/billing/revenue/analytics` | `get_revenue_analytics` | Supports `period=7d\|30d\|90d\|1y` plus legacy date range query. |
+| GET | `/api/v1/superadmin/billing/invoices` | `list_invoices` | Lists invoice-like billing transactions with company name and sent status. |
+| POST | `/api/v1/superadmin/billing/invoices/generate` | `generate_invoice` | Creates pending billing transaction invoice and audit log. |
+| POST | `/api/v1/superadmin/billing/invoices/{invoice_id}/send` | `send_invoice_email` | Sends invoice notice to tenant admin/company email and audits action. |
+| GET | `/api/v1/superadmin/features/available` | `get_available_features` | Lists supported feature toggle keys. |
+| GET | `/api/v1/superadmin/features/{company_id}` | `get_company_features` | Lists a tenant's feature flag states. |
+| PUT | `/api/v1/superadmin/features/{company_id}/toggle` | `toggle_feature` | Enables/disables one feature for one tenant and audits action. |
+| GET | `/api/v1/superadmin/usage/all-companies-summary` | `all_companies_usage_summary` | Lists company, plan, users, projects, status, and limits. |
+| GET | `/api/v1/superadmin/usage/company/{company_id}/detailed` | `get_company_detailed_usage` | Returns active users, total users, monthly API requests, storage, projects, and tasks. |
+
+Suspended tenant enforcement occurs in `get_current_user`: non-superadmin users whose company status is `suspended` receive HTTP 403 with `code=account_suspended`.
+
 ## Error Responses
 
 | Status | Meaning | Typical Cause |
@@ -585,4 +620,4 @@ The existing Celery beat schedule evaluates enabled tenant configurations hourly
 List endpoints commonly use `skip` and `limit`; default page size is configured in `Settings.DEFAULT_PAGE_SIZE` and max size is `Settings.MAX_PAGE_SIZE`.
 
 ## Role and Module Access
-Route groups for task-management features are protected with `require_module("task")`; sales routes rely on endpoint-level role checks. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.
+Route groups for task-management features are protected with `require_module("task")`; chat also allows `task` or `tasks_projects` workspace access so global communication works for task workspace users. Sales routes rely on endpoint-level role checks. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.

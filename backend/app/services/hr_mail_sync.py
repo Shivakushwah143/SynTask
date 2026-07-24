@@ -19,6 +19,7 @@ from app.models.user import User
 from app.recruitment.models import ImportStatus, RecruitmentImportJob
 from app.recruitment.repositories import JobRepository
 from app.recruitment.services import RecruitmentInboxService
+from app.core.clock import parse_to_utc, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +246,7 @@ async def sync_inbox_once() -> dict[str, int]:
         subject = message.get("subject")
         sender_name, sender_email = _message_address(message.get("from"))
         message_id = message.get("message-id") or item["uid"]
-        received_at = item["internal_date"] or datetime.now(timezone.utc)
+        received_at = item["internal_date"] or utc_now()
         text_body, html_body = _extract_body(message)
         attachments = _extract_attachments(message)
         body_source = text_body or (html_body and _html_to_text(html_body)) or ""
@@ -260,7 +261,7 @@ async def sync_inbox_once() -> dict[str, int]:
             subject=_clean_text(subject) if subject else None,
             body_preview=body_preview,
             attachments=attachments,
-            received_at=(received_at.astimezone(timezone.utc).replace(tzinfo=None) if received_at.tzinfo else received_at),
+            received_at=parse_to_utc(received_at),
         )
         if created:
             saved += 1

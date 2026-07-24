@@ -8,6 +8,7 @@ from app.models.crm_activity import CRMActivity, CRMActivityPriority, CRMActivit
 from app.models.notification import Notification, NotificationType
 from app.crm.models import ProspectStatus, SalesProspect
 from app.models.user import User, UserRole
+from app.core.clock import utc_now
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -19,7 +20,7 @@ def _display_name(user: Optional[User], fallback: str = "System") -> str:
 
 async def handle_lost_workflow(current_user: User, lead: SalesProspect, reason: Optional[str]) -> Dict[str, Any]:
     company_id = str(getattr(lead, "company_id", "") or "")
-    now = datetime.now()
+    now = utc_now()
     lead.status = ProspectStatus.LOST
     lead.reason_for_lost = reason.strip() if reason else None
     lead.closed_date = now

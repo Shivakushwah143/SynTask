@@ -10,6 +10,7 @@ from app.models.project import Project, Sprint
 from app.models.user import User
 from app.api.dependencies import get_current_user, check_company_access
 from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -156,7 +157,7 @@ async def move_task_to_sprint(
         )
     
     task.sprint_id = sprint_id
-    task.updated_at = datetime.now()
+    task.updated_at = utc_now()
     await task.save()
     
     return {"message": "Task moved to sprint successfully"}
@@ -188,7 +189,7 @@ async def remove_task_from_sprint(
         )
     
     task.sprint_id = None
-    task.updated_at = datetime.now()
+    task.updated_at = utc_now()
     await task.save()
     
     return {"message": "Task removed from sprint successfully"}

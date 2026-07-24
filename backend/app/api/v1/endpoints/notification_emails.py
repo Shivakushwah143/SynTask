@@ -11,6 +11,7 @@ from app.models.notification import Notification
 from app.models.user import User
 from app.services.notification_service import notification_service
 from app.api.deps import Pagination20, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -216,5 +217,5 @@ async def test_email(current_user: User = Depends(get_current_user)):
         actor_id=str(current_user.id),
         company_id=current_user.company_id or "platform",
     )
-    return {"success": True, "data": result, "tested_at": datetime.now().isoformat()}
+    return {"success": True, "data": result, "tested_at": utc_now().isoformat()}
 

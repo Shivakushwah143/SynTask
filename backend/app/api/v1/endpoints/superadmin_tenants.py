@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query, Body
 from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
+from beanie.operators import In
 
 from app.models.company import Company, CompanyStatus
 from app.models.company_subscription import CompanySubscription, CompanySubscriptionStatus
@@ -12,6 +13,8 @@ from app.models.subscription_plan import SubscriptionPlan
 from app.models.user import User
 from app.api.dependencies import get_current_super_admin
 from app.core.config import settings
+from app.core.clock import utc_now
+from app.models.audit_log import log_audit
 
 # Razorpay client
 try:
@@ -25,6 +28,27 @@ except ImportError:
 router = APIRouter()
 
 
+def _json_safe(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if hasattr(value, "value"):
+        return value.value
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if hasattr(value, "model_dump"):
+        data = value.model_dump()
+        if getattr(value, "id", None) is not None:
+            data["id"] = str(value.id)
+        return _json_safe(data)
+    return str(value)
+
+
 # Request Models
 class TenantApproveRequest(BaseModel):
     plan_id: str
@@ -36,6 +60,7 @@ class TenantApproveRequest(BaseModel):
 class TenantSuspendRequest(BaseModel):
     reason: str  # payment_failed, compliance, manual
     notes: Optional[str] = None
+    notify_admin: bool = True
 
 
 class TenantModuleUpdate(BaseModel):
@@ -47,6 +72,55 @@ class TenantDeleteRequest(BaseModel):
     delete_data: bool = False  # True = full deletion, False = soft delete with retention
     retention_days: int = 30  # Data retention period if delete_data=False
     notes: Optional[str] = None
+
+
+class AssignPlanRequest(BaseModel):
+    plan_id: str = Field(..., min_length=1)
+    billing_cycle: str = Field("monthly", pattern="^(monthly|yearly)$")
+    custom_user_limit: Optional[int] = Field(None, ge=1)
+    notes: Optional[str] = None
+
+
+def _user_to_response(user: User) -> dict:
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "role": user.role.value if hasattr(user.role, "value") else user.role,
+        "is_active": getattr(user, "is_active", None) if getattr(user, "is_active", None) is not None else getattr(user, "status", None) == "active",
+        "created_at": user.created_at.isoformat() if getattr(user, "created_at", None) else None,
+    }
+
+
+@router.get("/subscription-overview", response_model=List[dict])
+async def subscription_overview(current_user: User = Depends(get_current_super_admin)):
+    companies = await Company.find_all().to_list()
+    result = []
+    for company in companies:
+        sub = await CompanySubscription.find_one(
+            CompanySubscription.company_id == str(company.id),
+            In(
+                CompanySubscription.status,
+                [
+                    CompanySubscriptionStatus.ACTIVE,
+                    CompanySubscriptionStatus.TRIAL,
+                    CompanySubscriptionStatus.GRACE_PERIOD,
+                ],
+            ),
+        )
+        plan = await SubscriptionPlan.get(sub.plan_id) if sub and sub.plan_id else None
+        result.append({
+            "company_id": str(company.id),
+            "company_name": company.name,
+            "status": company.status.value if hasattr(company.status, "value") else company.status,
+            "plan": plan.name if plan else None,
+            "purchase_date": sub.created_at.isoformat() if sub and sub.created_at else None,
+            "next_billing_date": sub.next_billing_date.isoformat() if sub and sub.next_billing_date else None,
+            "monthly_amount": sub.amount if sub else None,
+            "user_count": await User.find(User.company_id == str(company.id)).count(),
+        })
+    return result
 
 
 @router.get("/", response_model=List[dict])
@@ -101,24 +175,11 @@ async def list_tenants(
             User.company_id == str(company.id)
         ).count()
         
-        company_dict = company.dict()
-        company_dict["id"] = str(company.id)
-        for key in ("created_at", "updated_at", "approved_at"):
-            if key in company_dict and company_dict[key] is not None and hasattr(company_dict[key], "isoformat"):
-                company_dict[key] = company_dict[key].isoformat()
-        for key in ("status", "requested_plan"):
-            if key in company_dict and company_dict[key] is not None and hasattr(company_dict[key], "value"):
-                company_dict[key] = company_dict[key].value
+        company_dict = _json_safe(company)
         
         sub_dict = None
         if subscription:
-            sub_dict = subscription.dict()
-            sub_dict["id"] = str(subscription.id)
-            for k in ("start_date", "end_date", "trial_end_date", "next_billing_date", "created_at", "updated_at", "cancelled_at"):
-                if k in sub_dict and sub_dict[k] is not None and hasattr(sub_dict[k], "isoformat"):
-                    sub_dict[k] = sub_dict[k].isoformat()
-            if "status" in sub_dict and hasattr(sub_dict["status"], "value"):
-                sub_dict["status"] = sub_dict["status"].value
+            sub_dict = _json_safe(subscription)
         company_dict["subscription"] = sub_dict
         company_dict["user_count"] = user_count
         result.append(company_dict)
@@ -153,8 +214,8 @@ async def get_tenant(
     
     # Get usage stats
     from app.models.usage_tracking import UsageTracking
-    current_month = datetime.now().month
-    current_year = datetime.now().year
+    current_month = utc_now().month
+    current_year = utc_now().year
     usage = await UsageTracking.find_one(
         UsageTracking.company_id == company_id,
         UsageTracking.period_month == current_month,
@@ -168,14 +229,50 @@ async def get_tenant(
     ).sort("-invoice_date").limit(10).to_list()
     
     return {
-        "company": company.dict(),
-        "subscription": subscription.dict() if subscription else None,
-        "plan": plan.dict() if plan else None,
-        "users": [u.dict() for u in users],
-        "usage": usage.dict() if usage else None,
-        "billing_history": [t.dict() for t in transactions],
+        "company": _json_safe(company),
+        "subscription": _json_safe(subscription) if subscription else None,
+        "plan": _json_safe(plan) if plan else None,
+        "users": [_json_safe(u) for u in users],
+        "usage": _json_safe(usage) if usage else None,
+        "billing_history": [_json_safe(t) for t in transactions],
         "enabled_modules": subscription.enabled_modules if subscription else []
     }
+
+
+@router.get("/{company_id}/users", response_model=List[dict])
+async def list_company_users(
+    company_id: str,
+    current_user: User = Depends(get_current_super_admin),
+):
+    company = await Company.get(company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail={"detail": "Company not found", "code": "company_not_found"})
+    users = await User.find(User.company_id == company_id).to_list()
+    return [_user_to_response(user) for user in users]
+
+
+@router.post("/{company_id}/users/{user_id}/reset-password", response_model=dict)
+async def reset_user_password(
+    company_id: str,
+    user_id: str,
+    current_user: User = Depends(get_current_super_admin),
+):
+    import secrets
+    from app.core.security import get_password_hash
+    from app.core.email import send_password_reset_email
+
+    user = await User.get(user_id)
+    if not user or str(user.company_id) != company_id:
+        raise HTTPException(status_code=404, detail={"detail": "User not found", "code": "user_not_found"})
+
+    reset_token = secrets.token_urlsafe(32)
+    user.password_reset_token = get_password_hash(reset_token)
+    user.password_reset_token_expires_at = utc_now() + timedelta(minutes=30)
+    user.password_reset_token_used = False
+    await user.save()
+    await send_password_reset_email(user.email, reset_token, user.first_name)
+    await log_audit("reset_password", str(current_user.id), "user", user_id, {"company_id": company_id, "email": user.email})
+    return {"message": f"Password reset email sent to {user.email}"}
 
 
 @router.post("/{company_id}/approve", response_model=dict)
@@ -199,7 +296,7 @@ async def approve_tenant(
     
     # Update company status
     company.status = CompanyStatus.ACTIVE
-    company.approved_at = datetime.now()
+    company.approved_at = utc_now()
     company.approved_by = str(current_user.id)
     await company.save()
     
@@ -213,7 +310,7 @@ async def approve_tenant(
         amount = plan.price_monthly if request.billing_cycle == "monthly" else plan.price_yearly
         
         # Calculate dates
-        start_date = datetime.now()
+        start_date = utc_now()
         if plan.has_trial and plan.trial_days > 0:
             trial_end = start_date.replace(day=1) + timedelta(days=plan.trial_days)
             end_date = None
@@ -304,13 +401,13 @@ async def approve_tenant(
         subscription.billing_cycle = request.billing_cycle
         subscription.status = CompanySubscriptionStatus.ACTIVE
         subscription.enabled_modules = request.enabled_modules or plan.enabled_modules
-        subscription.updated_at = datetime.now()
+        subscription.updated_at = utc_now()
         await subscription.save()
     
     return {
         "message": "Company approved and activated",
-        "company": company.dict(),
-        "subscription": subscription.dict()
+        "company": _json_safe(company),
+        "subscription": _json_safe(subscription)
     }
 
 
@@ -326,6 +423,8 @@ async def suspend_tenant(
         raise HTTPException(status_code=404, detail="Company not found")
     
     company.status = CompanyStatus.SUSPENDED
+    company.notes = request.notes or company.notes
+    company.updated_at = utc_now()
     await company.save()
     
     # Update subscription
@@ -334,12 +433,30 @@ async def suspend_tenant(
     )
     if subscription:
         subscription.status = CompanySubscriptionStatus.SUSPENDED
-        subscription.suspended_at = datetime.now()
+        subscription.suspended_at = utc_now()
         subscription.suspension_reason = request.reason
-        subscription.updated_at = datetime.now()
+        subscription.metadata = subscription.metadata or {}
+        subscription.metadata["suspension_notes"] = request.notes
+        subscription.metadata["suspended_by"] = str(current_user.id)
+        subscription.updated_at = utc_now()
         await subscription.save()
+    if request.notify_admin:
+        admin = await User.find_one(User.company_id == company_id, User.role == "admin")
+        if admin:
+            from app.core.email import send_task_assignment_email
+            await send_task_assignment_email(
+                assignee_email=admin.email,
+                assignee_name=f"{admin.first_name or ''} {admin.last_name or ''}".strip() or admin.email,
+                task_title="SynTask account suspended",
+                task_description=f"Your account has been suspended. Reason: {request.reason}. Please contact support.",
+                task_priority="critical",
+                task_due_date=None,
+                assigned_by_name="SynTask Super Admin",
+                task_id=company_id,
+            )
+    await log_audit("suspend_tenant", str(current_user.id), "company", company_id, {"reason": request.reason, "notes": request.notes})
     
-    return {"message": "Company suspended", "company": company.dict()}
+    return {"message": "Company suspended", "company": _json_safe(company)}
 
 
 @router.post("/{company_id}/activate", response_model=dict)
@@ -353,6 +470,7 @@ async def activate_tenant(
         raise HTTPException(status_code=404, detail="Company not found")
     
     company.status = CompanyStatus.ACTIVE
+    company.updated_at = utc_now()
     await company.save()
     
     # Update subscription
@@ -363,10 +481,59 @@ async def activate_tenant(
         subscription.status = CompanySubscriptionStatus.ACTIVE
         subscription.suspended_at = None
         subscription.suspension_reason = None
-        subscription.updated_at = datetime.now()
+        if subscription.metadata:
+            subscription.metadata.pop("suspension_notes", None)
+            subscription.metadata.pop("suspended_by", None)
+        subscription.updated_at = utc_now()
         await subscription.save()
+    await log_audit("activate_tenant", str(current_user.id), "company", company_id, {})
     
-    return {"message": "Company activated", "company": company.dict()}
+    return {"message": "Company activated", "company": _json_safe(company)}
+
+
+@router.post("/{company_id}/assign-plan", response_model=dict)
+async def assign_plan_to_tenant(
+    company_id: str,
+    body: AssignPlanRequest,
+    current_user: User = Depends(get_current_super_admin),
+):
+    company = await Company.get(company_id)
+    plan = await SubscriptionPlan.get(body.plan_id)
+    if not company or not plan or getattr(plan, "deleted", False):
+        raise HTTPException(status_code=404, detail={"detail": "Company or plan not found", "code": "company_or_plan_not_found"})
+
+    existing = await CompanySubscription.find_one(CompanySubscription.company_id == company_id)
+    amount = plan.price_monthly if body.billing_cycle == "monthly" else plan.price_yearly
+    if existing:
+        existing.plan_id = body.plan_id
+        existing.billing_cycle = body.billing_cycle
+        existing.amount = amount
+        existing.status = CompanySubscriptionStatus.ACTIVE
+        existing.metadata = existing.metadata or {}
+        existing.metadata["custom_user_limit"] = body.custom_user_limit
+        existing.metadata["assignment_notes"] = body.notes
+        existing.updated_at = utc_now()
+        await existing.save()
+    else:
+        existing = CompanySubscription(
+            company_id=company_id,
+            plan_id=body.plan_id,
+            billing_cycle=body.billing_cycle,
+            amount=amount,
+            status=CompanySubscriptionStatus.ACTIVE,
+            next_billing_date=utc_now() + timedelta(days=30 if body.billing_cycle == "monthly" else 365),
+            enabled_modules=plan.enabled_modules,
+            metadata={"custom_user_limit": body.custom_user_limit, "assignment_notes": body.notes},
+        )
+        await existing.insert()
+
+    company.max_users = body.custom_user_limit or plan.max_users or company.max_users
+    company.max_projects = plan.max_projects or company.max_projects
+    company.max_storage_gb = plan.max_storage_gb or company.max_storage_gb
+    company.updated_at = utc_now()
+    await company.save()
+    await log_audit("assign_plan", str(current_user.id), "company", company_id, {"plan_id": body.plan_id, "billing_cycle": body.billing_cycle})
+    return {"message": f"Plan '{plan.name}' assigned to {company.name}", "subscription": _json_safe(existing)}
 
 
 @router.put("/{company_id}/modules", response_model=dict)
@@ -387,7 +554,7 @@ async def update_tenant_modules(
         raise HTTPException(status_code=404, detail="Subscription not found")
     
     subscription.enabled_modules = request.enabled_modules
-    subscription.updated_at = datetime.now()
+    subscription.updated_at = utc_now()
     await subscription.save()
     
     return {
@@ -481,7 +648,7 @@ async def update_subscription(
     if request.end_date:
         subscription.end_date = request.end_date
     
-    subscription.updated_at = datetime.now()
+    subscription.updated_at = utc_now()
     await subscription.save()
     
     # Get updated plan details
@@ -489,8 +656,8 @@ async def update_subscription(
     
     return {
         "message": "Subscription updated successfully",
-        "subscription": subscription.dict(),
-        "plan": plan.dict() if plan else None
+        "subscription": _json_safe(subscription),
+        "plan": _json_safe(plan) if plan else None
     }
 
 
@@ -557,14 +724,14 @@ async def delete_tenant(
         )
         if subscription:
             subscription.status = CompanySubscriptionStatus.CANCELLED
-            subscription.cancelled_at = datetime.now()
+            subscription.cancelled_at = utc_now()
             subscription.cancellation_reason = "Tenant deleted by Super Admin"
-            subscription.updated_at = datetime.now()
+            subscription.updated_at = utc_now()
             await subscription.save()
         
         # Schedule data deletion after retention period
         # This would typically be handled by a background job
-        retention_date = datetime.now() + timedelta(days=request.retention_days)
+        retention_date = utc_now() + timedelta(days=request.retention_days)
         company.metadata = company.metadata or {}
         company.metadata["delete_after"] = retention_date.isoformat()
         await company.save()
@@ -573,5 +740,3 @@ async def delete_tenant(
             "message": f"Company marked for deletion. Data will be retained for {request.retention_days} days.",
             "retention_until": retention_date.isoformat()
         }
-
-

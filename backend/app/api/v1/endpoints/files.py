@@ -6,6 +6,8 @@ from fastapi.responses import FileResponse
 import mimetypes
 import logging
 from pathlib import Path
+import uuid
+import re
 
 from app.models.user import User
 from app.api.dependencies import get_current_user
@@ -15,15 +17,25 @@ from app.services.file_service import FileService
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# ============================================================
+# ✅ FIXED: Get absolute path for upload directory
+# ============================================================
+# File location: /backend/app/api/v1/endpoints/files.py
 # Get absolute path for upload directory (relative to backend folder)
-BACKEND_DIR = Path(__file__).parent.parent.parent.parent  # Go up from app/api/v1/endpoints/files.py to backend/
-UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR
-
-# Ensure upload directory exists
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-logger.info(f"Upload directory set to: {UPLOAD_DIR.absolute()}")
+BACKEND_DIR = Path(__file__).resolve().parents[4]  # Go up from app/api/v1/endpoints/files.py to backend/
+UPLOAD_DIR = BACKEND_DIR / "uploads"
 PROJECT_UPLOAD_DIR = UPLOAD_DIR / "projects"
+
+# Ensure all directories exist
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+(UPLOAD_DIR / "avatars").mkdir(parents=True, exist_ok=True)
+(UPLOAD_DIR / "clients").mkdir(parents=True, exist_ok=True)
+(UPLOAD_DIR / "msa").mkdir(parents=True, exist_ok=True)
+(UPLOAD_DIR / "leaves").mkdir(parents=True, exist_ok=True)
+
+logger.info(f"📁 Upload directory: {UPLOAD_DIR.absolute()}")
+logger.info(f"📁 Avatars directory: {(UPLOAD_DIR / 'avatars').absolute()}")
 
 
 def resolve_upload_path(root: Path, relative_path: str) -> Path:
@@ -41,6 +53,7 @@ def resolve_upload_path(root: Path, relative_path: str) -> Path:
 
 
 def detect_content_type(file_path: Path) -> str:
+    """Detect content type based on file extension."""
     content_type, _ = mimetypes.guess_type(str(file_path))
     if content_type:
         return content_type
@@ -64,12 +77,14 @@ def detect_content_type(file_path: Path) -> str:
 
 
 def serve_upload_file(root: Path, relative_path: str, download_name: str | None = None) -> FileResponse:
+    """Serve a file from the upload directory"""
     file_path = resolve_upload_path(root, relative_path)
+    
     if not file_path.exists() or not file_path.is_file():
-        logger.warning(f"File not found: {relative_path}")
+        logger.warning(f"❌ File not found: {file_path.absolute()}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found",
+            detail=f"File not found",
         )
 
     content_type = detect_content_type(file_path)
@@ -77,6 +92,7 @@ def serve_upload_file(root: Path, relative_path: str, download_name: str | None 
     if content_type.startswith('image/'):
         headers['Cache-Control'] = 'private, max-age=86400'
 
+    logger.info(f"✅ Serving file: {file_path.name}")
     return FileResponse(
         path=file_path,
         filename=download_name or file_path.name,
@@ -84,16 +100,153 @@ def serve_upload_file(root: Path, relative_path: str, download_name: str | None 
         headers=headers,
     )
 
+
+# ============================================================
+# ✅ FIXED: Avatar endpoints for profile pictures
+# ============================================================
+@router.post("/avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload user avatar/profile picture"""
+    try:
+        # Validate file type
+        allowed_types = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only PNG, JPG, JPEG, and WEBP images are allowed"
+            )
+        
+        # Validate file size (5MB max)
+        content = await file.read()
+        file_size = len(content)
+        if file_size > 5 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File size must be 5 MB or smaller"
+            )
+        
+        # Reset file position
+        await file.seek(0)
+        
+        # Get avatars directory
+        avatar_dir = UPLOAD_DIR / "avatars"
+        avatar_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        file_extension = Path(file.filename).suffix
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = avatar_dir / unique_filename
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        # Reset file position
+        await file.seek(0)
+        
+        # ✅ Return the correct URL format
+        avatar_url = f"/uploads/avatars/{unique_filename}"
+        
+        # Save to database
+        from app.core.clock import utc_now
+        current_user.avatar = avatar_url
+        current_user.updated_at = utc_now()
+        await current_user.save()
+        
+        logger.info(f"✅ Avatar uploaded successfully: {avatar_url}")
+        
+        return {
+            "avatar_url": avatar_url,
+            "filename": unique_filename,
+            "size": file_size,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Avatar upload failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Avatar upload failed: {str(e)}"
+        )
+
+
+@router.delete("/avatar")
+async def delete_avatar(
+    current_user: User = Depends(get_current_user)
+):
+    """Delete user avatar"""
+    try:
+        avatar_path = current_user.avatar
+        if not avatar_path:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No avatar found to delete"
+            )
+        
+        # Extract filename from URL
+        match = re.search(r'/uploads/avatars/([^?]+)', avatar_path)
+        if match:
+            filename = match.group(1)
+            file_path = UPLOAD_DIR / "avatars" / filename
+            
+            if file_path.exists() and file_path.is_file():
+                file_path.unlink()
+                logger.info(f"🗑️ Deleted avatar: {filename}")
+            else:
+                logger.warning(f"⚠️ Avatar file not found: {file_path}")
+        else:
+            logger.warning(f"⚠️ Could not extract filename from: {avatar_path}")
+        
+        # Save to database
+        from app.core.clock import utc_now
+        current_user.avatar = None
+        current_user.updated_at = utc_now()
+        await current_user.save()
+        
+        return {"message": "Avatar deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Avatar deletion failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Avatar deletion failed: {str(e)}"
+        )
+
+
+@router.get("/avatars/{filename}")
+async def get_avatar_file(
+    filename: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get user avatar file"""
+    filename = Path(filename).name
+    logger.info(f"🔍 Serving avatar: {filename}")
+    return serve_upload_file(UPLOAD_DIR / "avatars", filename, filename)
+
+
+# ============================================================
+# General file upload endpoint
+# ============================================================
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user)
 ):
-    """Upload a file"""
+    """Upload a general file"""
     try:
-        stored = await FileService.store_uploaded_file(file, upload_dir=UPLOAD_DIR, url_prefix="/api/v1/files")
-        logger.info(f"Upload attempt: {file.filename}, size: {stored['size']} bytes, user: {current_user.email}")
-        logger.info(f"File uploaded successfully: {stored['unique_filename']}, URL: {stored['file_url']}")
+        stored = await FileService.store_uploaded_file(
+            file, 
+            upload_dir=UPLOAD_DIR, 
+            url_prefix="/uploads"
+        )
+        logger.info(f"📤 File uploaded: {stored['filename']}, user: {current_user.email}")
         return {
             "message": "File uploaded successfully",
             "file_url": stored["file_url"],
@@ -104,45 +257,61 @@ async def upload_file(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error during file upload: {str(e)}")
+        logger.error(f"❌ File upload failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"File upload failed: {str(e)}"
         )
 
 
+# ============================================================
+# Other file endpoints
+# ============================================================
 @router.get("/clients/{filename}")
-async def get_client_file(filename: str, current_user: User = Depends(get_current_user)):
+async def get_client_file(
+    filename: str, 
+    current_user: User = Depends(get_current_user)
+):
     """Get client document file"""
     filename = Path(filename).name
     return serve_upload_file(UPLOAD_DIR / "clients", filename, filename)
 
 
 @router.get("/projects/{filename}")
-async def get_project_file(filename: str, current_user: User = Depends(get_current_user)):
+async def get_project_file(
+    filename: str, 
+    current_user: User = Depends(get_current_user)
+):
     """Get project file"""
     filename = Path(filename).name
-    
     return serve_upload_file(PROJECT_UPLOAD_DIR, filename, filename)
 
 
 @router.get("/msa/{filename}")
-async def get_msa_file(filename: str, current_user: User = Depends(get_current_user)):
+async def get_msa_file(
+    filename: str, 
+    current_user: User = Depends(get_current_user)
+):
     """Get MSA file (stamp image)"""
     filename = Path(filename).name
-    
     return serve_upload_file(UPLOAD_DIR / "msa", filename, filename)
 
 
 @router.get("/leaves/{filename}")
-async def get_leave_file(filename: str, current_user: User = Depends(get_current_user)):
-    """Get leave attachment file."""
+async def get_leave_file(
+    filename: str, 
+    current_user: User = Depends(get_current_user)
+):
+    """Get leave attachment file"""
     filename = Path(filename).name
     return serve_upload_file(UPLOAD_DIR / "leaves", filename, filename)
 
 
 @router.get("/{filename}")
-async def get_file(filename: str, current_user: User = Depends(get_current_user)):
-    """Get uploaded file."""
+async def get_file(
+    filename: str, 
+    current_user: User = Depends(get_current_user)
+):
+    """Get uploaded file"""
     filename = Path(filename).name
     return serve_upload_file(UPLOAD_DIR, filename, filename)

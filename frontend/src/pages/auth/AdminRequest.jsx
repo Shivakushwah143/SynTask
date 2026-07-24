@@ -287,12 +287,12 @@ const AdminRequest = () => {
             <TextInput label="Registration number" name="registration_number" value={formData.registration_number} onChange={handleChange} />
             <TextInput label="Tax ID" name="tax_id" value={formData.tax_id} onChange={handleChange} />
             <SelectField label="Industry" name="industry" value={formData.industry} onChange={handleChange}>
-              <option value="">Select industry</option>
-              {industries.map((industry) => <option key={industry} value={industry.toLowerCase()}>{industry}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Select industry</option>
+              {industries.map((industry) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={industry} value={industry.toLowerCase()}>{industry}</option>)}
             </SelectField>
             <SelectField label="Company size" name="company_size" value={formData.company_size} onChange={handleChange}>
-              <option value="">Select company size</option>
-              {companySizes.map((size) => <option key={size} value={size}>{size}</option>)}
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Select company size</option>
+              {companySizes.map((size) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={size} value={size}>{size}</option>)}
             </SelectField>
             <TextInput label="Seats requested" name="seats_requested" type="number" min="1" value={formData.seats_requested} onChange={handleChange} />
             <TextInput label="Your role / title" name="contact_role" value={formData.contact_role} onChange={handleChange} />

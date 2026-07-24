@@ -1,12 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
+  AlertTriangle,
   BarChart3,
   Bot,
+  Briefcase,
+  CalendarClock,
   Clipboard,
   ClipboardList,
+  FileText,
+  HeartPulse,
   Lightbulb,
   Loader2,
   Maximize2,
+  MessagesSquare,
   Paperclip,
   RefreshCw,
   Send,
@@ -19,12 +26,25 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { aiAPI } from '../../api/ai'
+import { useAuthStore } from '../../store/authStore'
+import { timeService } from '@/services/timeService'
 
-const STARTER_PROMPTS = [
-  { label: 'What did HR do yesterday?', icon: Sparkles },
-  { label: 'Summarize today\'s blockers', icon: ClipboardList },
-  { label: 'Which employees need follow-up?', icon: UserRound },
-  { label: 'What should I review first today?', icon: ClipboardList },
+const QUICK_ACTIONS = [
+  { key: 'summary', label: "Today's Summary", icon: Sparkles, prompt: "Give me today's verified workspace summary with tasks, blockers, projects, and next actions." },
+  { key: 'blockers', label: 'Blockers', icon: AlertTriangle, prompt: 'Show my current blockers and what needs attention first.' },
+  { key: 'hr', label: 'HR', icon: HeartPulse, prompt: 'Summarize HR items that need my attention, including leave and team context.' },
+  { key: 'crm', label: 'CRM', icon: Briefcase, prompt: 'Show CRM follow-ups, leads, and customer actions that need attention.' },
+  { key: 'meetings', label: 'Meetings', icon: CalendarClock, prompt: 'Summarize upcoming meetings and preparation items.' },
+  { key: 'reports', label: 'Reports', icon: FileText, prompt: 'Generate a concise report summary with verified sources and risks.' },
+  { key: 'team-performance', label: 'Team Performance', icon: BarChart3, prompt: 'Show team performance insights with verified metrics, limitations, and safe recommendations.' },
+]
+
+const PLACEHOLDER_PROMPTS = [
+  'Ask for today’s summary...',
+  'Show current project blockers...',
+  'Draft a verified status report...',
+  'What CRM follow-ups need attention?',
+  'Summarize team performance safely...',
 ]
 
 const QUICK_TIPS = [
@@ -43,20 +63,22 @@ const buildHistory = (messages) =>
     }))
 
 export function AIAssistantDialog({ isOpen, onClose }) {
-  const [messages, setMessages] = useState([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: 'Hello! I can help with HR insights, tasks, CRM updates, blockers, and more. What would you like to know?',
-      createdAt: new Date(),
-    },
-  ])
+  const { user } = useAuthStore()
+  const firstName = user?.first_name || 'there'
+  const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
+  const [placeholderIndex, setPlaceholderIndex] = useState(0)
   const [conversationId, setConversationId] = useState(null)
   const [isSending, setIsSending] = useState(false)
   const messagesEndRef = useRef(null)
 
   const canSend = input.trim().length > 0 && !isSending
+  const greeting = useMemo(() => {
+    const hour = timeService.now().getHours()
+    if (hour < 12) return 'Good Morning'
+    if (hour < 17) return 'Good Afternoon'
+    return 'Good Evening'
+  }, [])
 
   useEffect(() => {
     if (!isOpen) return
@@ -64,15 +86,22 @@ export function AIAssistantDialog({ isOpen, onClose }) {
     return () => clearTimeout(timer)
   }, [isOpen, messages])
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setPlaceholderIndex((current) => (current + 1) % PLACEHOLDER_PROMPTS.length)
+    }, 3500)
+    return () => window.clearInterval(interval)
+  }, [])
+
   const sendMessage = async (rawMessage) => {
     const text = rawMessage.trim()
     if (!text || isSending) return
 
     const userMessage = {
-      id: `user-${Date.now()}`,
+      id: `user-${timeService.now().getTime()}`,
       role: 'user',
       content: text,
-      createdAt: new Date(),
+      createdAt: timeService.now(),
     }
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
@@ -89,11 +118,11 @@ export function AIAssistantDialog({ isOpen, onClose }) {
       setMessages((current) => [
         ...current,
         {
-          id: `assistant-${Date.now()}`,
+          id: `assistant-${timeService.now().getTime()}`,
           role: 'assistant',
           content: response.message || 'I could not generate a response.',
           actions: response.suggested_actions || response.actions || [],
-          createdAt: new Date(),
+          createdAt: timeService.now(),
         },
       ])
     } catch (error) {
@@ -101,21 +130,16 @@ export function AIAssistantDialog({ isOpen, onClose }) {
       setMessages((current) => [
         ...current,
         {
-          id: `assistant-error-${Date.now()}`,
+          id: `assistant-error-${timeService.now().getTime()}`,
           role: 'assistant',
           content: 'I could not reach the assistant right now. Please try again.',
           isError: true,
-          createdAt: new Date(),
+          createdAt: timeService.now(),
         },
       ])
     } finally {
       setIsSending(false)
     }
-  }
-
-  const handleStarterPrompt = (prompt) => {
-    setInput(prompt.label)
-    void sendMessage(prompt.label)
   }
 
   if (!isOpen) return null
@@ -148,28 +172,22 @@ export function AIAssistantDialog({ isOpen, onClose }) {
         </header>
 
         <main className="min-h-0 flex-1 overflow-y-auto px-7 py-7">
-          <section>
-            <h3 className="text-base font-semibold text-text-primary dark:text-[var(--color-app-text)]">Suggested questions</h3>
-            <div className="mt-4 flex flex-wrap gap-3">
-              {STARTER_PROMPTS.map((prompt) => {
-                const Icon = prompt.icon
-                return (
-                  <button
-                    key={prompt.label}
-                    type="button"
-                    onClick={() => handleStarterPrompt(prompt)}
-                    disabled={isSending}
-                    className="inline-flex min-h-14 items-center gap-3 rounded-xl border border-orange-100 bg-white px-5 text-base font-semibold text-text-secondary shadow-sm transition hover:border-orange-200 hover:bg-orange-50 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#5a4635] dark:bg-black/25 dark:text-gray-200 dark:hover:bg-white/5"
-                  >
-                    <Icon className="h-5 w-5 text-orange-600 dark:text-orange-300" />
-                    {prompt.label}
-                  </button>
-                )
-              })}
-            </div>
-          </section>
+          <AnimatePresence mode="wait">
+            {messages.length === 0 ? (
+              <DialogWelcomeExperience
+                firstName={firstName}
+                greeting={greeting}
+                isSending={isSending}
+                onPrompt={sendMessage}
+              />
+            ) : null}
+          </AnimatePresence>
 
-          <section className="mt-8 space-y-6">
+          <motion.section
+            initial={false}
+            animate={{ opacity: messages.length ? 1 : 0 }}
+            className={messages.length ? 'mt-8 space-y-6' : 'hidden'}
+          >
             {messages.map((message) => {
               const isUser = message.role === 'user'
               const Icon = isUser ? UserRound : Bot
@@ -222,7 +240,7 @@ export function AIAssistantDialog({ isOpen, onClose }) {
               </div>
             ) : null}
             <div ref={messagesEndRef} />
-          </section>
+          </motion.section>
         </main>
 
         <footer className="border-t border-orange-100/80 bg-[#fffaf3] px-7 py-5 dark:border-[#5a4635] dark:bg-black/20">
@@ -246,7 +264,7 @@ export function AIAssistantDialog({ isOpen, onClose }) {
                 }}
                 rows={2}
                 className="min-h-[58px] w-full resize-none border-0 bg-transparent text-base leading-7 text-text-primary outline-none placeholder:text-text-secondary disabled:opacity-70 dark:text-[var(--color-app-text)] dark:placeholder:text-[var(--color-app-text-secondary)]"
-                placeholder="Ask about HR, tasks, CRM, blockers, or what needs attention next..."
+                placeholder={PLACEHOLDER_PROMPTS[placeholderIndex]}
                 disabled={isSending}
               />
             </label>
@@ -289,7 +307,86 @@ export function AIAssistantDialog({ isOpen, onClose }) {
   )
 }
 
+function DialogWelcomeExperience({ firstName, greeting, isSending, onPrompt }) {
+  return (
+    <motion.section
+      key="welcome"
+      initial={{ opacity: 0, scale: 0.96, y: 14 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.98, y: -8 }}
+      transition={{ duration: 0.28, ease: 'easeOut' }}
+      className="flex min-h-[52vh] flex-col items-center justify-center text-center"
+    >
+      <div className="relative">
+        <motion.div
+          aria-hidden="true"
+          className="absolute inset-0 rounded-[2rem] bg-orange-500/25 blur-xl"
+          animate={{ opacity: [0.35, 0.75, 0.35], scale: [0.92, 1.08, 0.92] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <div className="relative flex h-20 w-20 items-center justify-center rounded-[2rem] border border-orange-200 bg-white text-orange-600 shadow-xl shadow-orange-500/10 dark:border-orange-900 dark:bg-black/30 dark:text-orange-200">
+          <Sparkles className="h-8 w-8" aria-hidden="true" />
+        </div>
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08, duration: 0.24 }}
+        className="mt-6 max-w-3xl"
+      >
+        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-600 dark:text-orange-300">
+          SynTask AI
+        </p>
+        <h3 className="mt-3 text-3xl font-semibold tracking-tight text-text-primary dark:text-[var(--color-app-text)] sm:text-4xl">
+          {greeting}, {firstName}
+        </h3>
+        <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-text-secondary dark:text-[var(--color-app-text-secondary)]">
+          I&apos;m SynTask AI. I can help you manage tasks, CRM, HR, projects, and reports.
+        </p>
+      </motion.div>
+
+      <div className="mt-8 grid w-full max-w-4xl grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {QUICK_ACTIONS.map((action, index) => {
+          const Icon = action.icon
+          return (
+            <motion.button
+              key={action.key}
+              type="button"
+              disabled={isSending}
+              onClick={() => onPrompt(action.prompt)}
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ delay: 0.16 + index * 0.035, duration: 0.2 }}
+              whileHover={{ y: -3, scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              className="group rounded-2xl border border-orange-100 bg-white/85 p-4 text-left shadow-sm transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#5a4635] dark:bg-black/25 dark:hover:bg-white/5"
+              aria-label={`Ask SynTask AI about ${action.label}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600 transition group-hover:bg-white dark:bg-orange-950/60 dark:text-orange-200 dark:group-hover:bg-black/30">
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-semibold text-text-primary dark:text-[var(--color-app-text)]">{action.label}</div>
+                  <div className="mt-1 text-sm leading-5 text-text-secondary dark:text-[var(--color-app-text-secondary)]">
+                    {action.prompt}
+                  </div>
+                </div>
+              </div>
+            </motion.button>
+          )
+        })}
+      </div>
+
+      <div className="mt-6 flex items-center gap-2 text-sm text-text-secondary dark:text-[var(--color-app-text-secondary)]">
+        <MessagesSquare className="h-4 w-4" aria-hidden="true" />
+        Answers stay grounded in your verified SynTask context.
+      </div>
+    </motion.section>
+  )
+}
+
 function formatMessageTime(value) {
-  const date = value instanceof Date ? value : new Date(value || Date.now())
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return timeService.formatTime(value || timeService.now())
 }

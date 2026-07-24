@@ -10,6 +10,7 @@ from app.models.task import Task
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, check_company_access
 from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -40,7 +41,7 @@ async def log_time(
     total_hours = hours + (minutes / 60.0 if minutes else 0)
     
     # Parse date
-    log_date = datetime.now()
+    log_date = utc_now()
     if date:
         try:
             log_date = datetime.fromisoformat(date.replace('Z', '+00:00'))
@@ -81,8 +82,8 @@ async def log_time(
     if is_billable:
         summary.total_billable_hours += total_hours
     summary.total_entries += 1
-    summary.last_logged_at = datetime.now()
-    summary.updated_at = datetime.now()
+    summary.last_logged_at = utc_now()
+    summary.updated_at = utc_now()
     await summary.save()
     
     # Update task actual hours
@@ -218,7 +219,7 @@ async def delete_time_log(
         if time_log.is_billable:
             summary.total_billable_hours -= time_log.hours
         summary.total_entries -= 1
-        summary.updated_at = datetime.now()
+        summary.updated_at = utc_now()
         await summary.save()
     
     # Update task

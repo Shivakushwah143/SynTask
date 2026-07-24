@@ -32,7 +32,7 @@ from app.core.config import settings
 from app.core.cache import cache_delete_pattern, project_list_key, cache_delete, cache_get, cache_set
 
 # Upload directory for project files
-BACKEND_DIR = Path(__file__).parent.parent.parent.parent
+BACKEND_DIR = Path(__file__).resolve().parents[5]
 PROJECT_UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "projects"
 PROJECT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
