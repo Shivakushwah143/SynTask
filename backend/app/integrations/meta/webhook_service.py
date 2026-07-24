@@ -15,6 +15,7 @@ from app.integrations.meta.models import (
     MetaWebhookEvent,
     MetaWebhookStatus,
 )
+from app.integrations.meta.messaging_models import MetaChannelConnection
 
 
 INITIAL_QUEUE_DISPATCH_BACKOFF_SECONDS = 60
@@ -31,6 +32,8 @@ class WebhookIngestResult:
 class ExtractedMetaEvent:
     page_id: Optional[str]
     form_id: Optional[str]
+    channel: Optional[str]
+    connection_id: Optional[str]
     event_type: str
     object_type: Optional[str]
     object_id: Optional[str]
@@ -64,6 +67,7 @@ class MetaWebhookService:
         result = WebhookIngestResult()
         for extracted in self.extract_events(payload, payload_sha256):
             settings = await self._resolve_settings(
+                extracted.page_id, extracted.form_id, extracted.channel
                 extracted.page_id,
                 extracted.form_id,
                 extracted.object_type,
@@ -73,6 +77,12 @@ class MetaWebhookService:
                 if settings is not None
                 else self.UNRESOLVED_COMPANY_ID
             )
+            event_payload = dict(extracted.payload)
+            if settings is not None and extracted.channel:
+                event_payload["connection"] = {
+                    "id": extracted.connection_id or str(getattr(settings, "id", "")),
+                    "channel": extracted.channel,
+                }
             event = self._event_factory(
                 company_id=company_id,
                 provider="meta",
@@ -80,7 +90,7 @@ class MetaWebhookService:
                 event_type=extracted.event_type,
                 object_type=extracted.object_type,
                 object_id=extracted.object_id,
-                payload=extracted.payload,
+                payload=event_payload,
                 payload_sha256=payload_sha256,
                 status=(
                     MetaWebhookStatus.QUEUED
@@ -130,6 +140,24 @@ class MetaWebhookService:
 
     @staticmethod
     async def _resolve_settings(
+        page_id: Optional[str], form_id: Optional[str], channel: Optional[str] = None
+    ) -> Optional[MetaIntegrationSettings | MetaChannelConnection]:
+        if not page_id:
+            return None
+        if form_id:
+            return await MetaIntegrationSettings.find_one(
+                {"page_id": page_id, "lead_form_id": form_id, "enabled": True}
+            )
+        if channel:
+            return await MetaChannelConnection.find_one(
+                {
+                    "provider_asset_id": page_id,
+                    "channel": channel,
+                    "status": "active",
+                    "can_receive": True,
+                }
+            )
+        return None
         page_id: Optional[str],
         form_id: Optional[str],
         object_type: Optional[str] = None,
@@ -177,6 +205,20 @@ class MetaWebhookService:
                     value = value if isinstance(value, dict) else {}
                     event_type = _as_string(change.get("field")) or "unknown"
                     form_id = _as_string(value.get("form_id"))
+                    channel = None
+                    connection_asset_id = page_id
+                    object_id = _as_string(value.get("leadgen_id") or value.get("id"))
+                    provider_event_id = _as_string(value.get("leadgen_id") or value.get("event_id"))
+                    if object_type == "whatsapp_business_account" and event_type == "messages":
+                        metadata = value.get("metadata") if isinstance(value.get("metadata"), dict) else {}
+                        channel = "whatsapp"
+                        connection_asset_id = _as_string(metadata.get("phone_number_id")) or page_id
+                        messages = value.get("messages") if isinstance(value.get("messages"), list) else []
+                        statuses = value.get("statuses") if isinstance(value.get("statuses"), list) else []
+                        first_message = messages[0] if messages and isinstance(messages[0], dict) else {}
+                        first_status = statuses[0] if statuses and isinstance(statuses[0], dict) else {}
+                        object_id = _as_string(first_message.get("id") or first_status.get("id"))
+                        provider_event_id = object_id
                     object_id = _as_string(value.get("leadgen_id") or value.get("id"))
                     provider_event_id = _as_string(value.get("leadgen_id") or value.get("event_id"))
                     event_payload = {
@@ -195,6 +237,10 @@ class MetaWebhookService:
                         )
                     extracted.append(
                         ExtractedMetaEvent(
+                            page_id=connection_asset_id,
+                            form_id=form_id,
+                            channel=channel,
+                            connection_id=None,
                             page_id=page_id,
                             form_id=form_id,
                             event_type=event_type,
@@ -205,6 +251,42 @@ class MetaWebhookService:
                         )
                     )
             messaging = entry.get("messaging")
+            if not isinstance(messaging, list):
+                continue
+            for item in messaging:
+                if not isinstance(item, dict):
+                    continue
+                event_type = _messaging_event_type(item)
+                message = item.get("message") if isinstance(item.get("message"), dict) else {}
+                postback = item.get("postback") if isinstance(item.get("postback"), dict) else {}
+                object_id = _as_string(
+                    message.get("mid")
+                    or item.get("mid")
+                    or postback.get("mid")
+                )
+                provider_event_id = object_id or _derive_event_id(
+                    object_type=object_type,
+                    page_id=page_id,
+                    form_id=None,
+                    object_id=_as_string(item.get("timestamp")),
+                    event_time=event_time,
+                    payload_sha256=payload_sha256,
+                )
+                extracted.append(
+                    ExtractedMetaEvent(
+                        page_id=page_id,
+                        form_id=None,
+                        channel=_channel_for_object(object_type),
+                        connection_id=None,
+                        event_type=event_type,
+                        object_type=object_type,
+                        object_id=object_id,
+                        provider_event_id=provider_event_id,
+                        payload={
+                            "object": object_type,
+                            "entry": {"id": page_id, "time": event_time},
+                            "messaging": item,
+                        },
             if isinstance(messaging, list):
                 for message_event in messaging:
                     if not isinstance(message_event, dict):
@@ -283,6 +365,32 @@ async def mark_initial_webhook_dispatch_failure(
 
 def _as_string(value: Any) -> Optional[str]:
     return str(value) if value is not None and str(value) else None
+
+
+def _channel_for_object(object_type: str) -> Optional[str]:
+    if object_type == "instagram":
+        return "instagram"
+    if object_type == "page":
+        return "messenger"
+    if object_type == "whatsapp_business_account":
+        return "whatsapp"
+    return None
+
+
+def _messaging_event_type(item: Dict[str, Any]) -> str:
+    if isinstance(item.get("message"), dict):
+        return "message"
+    if isinstance(item.get("postback"), dict):
+        return "postback"
+    if isinstance(item.get("delivery"), dict):
+        return "delivery"
+    if isinstance(item.get("read"), dict):
+        return "read"
+    if isinstance(item.get("reaction"), dict):
+        return "reaction"
+    if isinstance(item.get("referral"), dict):
+        return "referral"
+    return "unknown"
 
 
 def _derive_event_id(

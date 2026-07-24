@@ -15,6 +15,12 @@ _NAMED_SECRET = re.compile(
 )
 _BEARER_SECRET = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
 
+# Customer PII / Phone number redactions
+_PHONE_PREFIX = re.compile(
+    r"""(?i)\b(["']?(?:phone|tel|whatsapp_id|mobile|contact|customer_phone|phone_number)["']?)\s*[:=]\s*["']?(\+?[0-9\-]+)["']?"""
+)
+_PHONE_E164 = re.compile(r"\+\d{9,14}\b")
+
 
 def sanitize_error_message(
     message: Optional[object],
@@ -37,4 +43,12 @@ def sanitize_error_message(
         lambda match: f"{match.group(1)}[REDACTED]",
         sanitized,
     )
+    
+    # Redact PII (phone numbers and prefixes)
+    sanitized = _PHONE_PREFIX.sub(
+        lambda match: f"{match.group(1)}:[REDACTED]",
+        sanitized,
+    )
+    sanitized = _PHONE_E164.sub("[REDACTED]", sanitized)
+    
     return sanitized[:MAX_ERROR_MESSAGE_LENGTH]

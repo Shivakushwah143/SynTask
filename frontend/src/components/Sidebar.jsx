@@ -31,6 +31,7 @@ import {
   LayoutDashboard,
   LineChart,
   Megaphone,
+  MessageSquareText,
   MonitorCheck,
   Network,
   Palette,
@@ -477,6 +478,16 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/crm/contacts",
       icon: UserCheck,
     },
+    {
+      name: "Meta Inbox",
+      href: "/crm/inbox",
+      icon: MessageSquareText,
+    },
+    // {
+    //   name: "CRM Activities",
+    //   href: "/crm/activities",
+    //   icon: CalendarClock,
+    // },
     {
       name: "CRM Calendar",
       href: "/crm/calendar",
