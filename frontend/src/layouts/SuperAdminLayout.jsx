@@ -88,7 +88,7 @@ const SuperAdminLayout = () => {
   ]
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-surface-muted dark:bg-black">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-surface-muted dark:bg-transparent">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
