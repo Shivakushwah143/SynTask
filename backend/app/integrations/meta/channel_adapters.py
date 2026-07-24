@@ -87,9 +87,10 @@ class MessagingChannelAdapter(Protocol):
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, TYPE_CHECKING
 
-from app.integrations.meta.messaging_models import NormalizedMessagingEvent
+if TYPE_CHECKING:
+    from app.integrations.meta.messaging_models import NormalizedMessagingEvent
 
 
 @dataclass(frozen=True)
@@ -105,7 +106,7 @@ class ComposerPolicy:
 
 
 class MetaMessagingAdapter(Protocol):
-    def normalize_webhook_entry(self, entry: dict[str, Any]) -> list[NormalizedMessagingEvent]:
+    def normalize_webhook_entry(self, entry: dict[str, Any]) -> list["NormalizedMessagingEvent"]:
         ...
 
     def connection_health(self, connection_fields: dict[str, Any]) -> ChannelHealth:

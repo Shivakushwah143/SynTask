@@ -235,6 +235,7 @@ export default function CRMSettingsPage() {
           ]}
         />
       </div>
+</div>
     </CRMPage>
   )
 }
