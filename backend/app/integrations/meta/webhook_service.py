@@ -300,3 +300,28 @@ def _derive_event_id(
         sort_keys=False,
     )
     return hashlib.sha256(stable_fields.encode("utf-8")).hexdigest()
+
+def _derive_message_event_id(
+    *,
+    object_type: str,
+    page_id: Optional[str],
+    sender_id: Optional[str],
+    event_time: Any,
+    payload: Dict[str, Any],
+    payload_sha256: str,
+) -> str:
+    """Derive a deterministic ID for a message event when no explicit `mid` is present.
+
+    The ID combines the key identifying fields and a hash of the stable payload
+    components. This mirrors the behaviour of Meta's `mid` but is generated
+    locally for fallback scenarios.
+    """
+    stable_fields = json.dumps(
+        [object_type, page_id, sender_id, event_time, payload_sha256],
+        separators=(",", ":"),
+        sort_keys=False,
+    )
+    hash_part = hashlib.sha256(stable_fields.encode("utf-8")).hexdigest()
+    # Prefix mirrors the expected format used in tests.
+    return f"{object_type}:{page_id}:{sender_id}:{event_time}:{hash_part}"
+
