@@ -1,15 +1,19 @@
-import { Suspense, lazy, useEffect } from 'react'
-import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
-import Loader from './components/Loader'
-import { useUIStore } from './store/uiStore'
-import { useAuthStore } from './store/authStore'
-import { useTheme } from './hooks/useTheme'
-import { ErrorBoundary } from './components/ErrorBoundary'
-import ConfirmDialog from './components/ConfirmDialog'
-import UndoBar from './components/UndoBar'
+import NavBar from './components/NavBar';
+import DemoLayout from './layouts/DemoLayout';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { useEffect } from 'react';
+import Loader from './components/Loader';
+import { useUIStore } from './store/uiStore';
+import { useAuthStore } from './store/authStore';
+import { useTheme } from './hooks/useTheme';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import ConfirmDialog from './components/ConfirmDialog';
+import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isSuperAdminRole } from './utils/roles'
-import { applySeoMeta, getSeoMeta } from './utils/seo'
+import { hasCompanyAdminAccess, isSuperAdminRole } from './utils/roles';
+import { applySeoMeta, getSeoMeta } from './utils/seo';
+import DemoHome from './pages/DemoHome';
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
@@ -194,6 +198,9 @@ function App() {
         <Route path="/" element={<NewLandingRoute />} />
         <Route path="/old-landing" element={<LandingRoute />} />
         <Route path="/new-landing" element={<NewLanding />} />
+        <Route path="/demo/*" element={<DemoLayout />}>
+          <Route index element={<DemoHome />} />
+        </Route>
         <Route path="/login" element={<PublicRoute><AuthLayout previewImage="/dashboard-preview.png"><Login /></AuthLayout></PublicRoute>} />
         <Route path="/admin-request" element={<PublicRoute><AuthLayout maxWidth="max-w-5xl"><AdminRequest /></AuthLayout></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />

@@ -49,9 +49,6 @@ export const CRM_ROUTE_DESCRIPTIONS = {
   '/crm/settings': 'CRM settings placeholder for workspace configuration.',
   '/crm/settings/meta': 'Admin-only Meta API connection, webhook, and sync controls.',
 }
-export const CRM_ROUTE_LABELS = {}
-
-export const CRM_ROUTE_DESCRIPTIONS = {}
 
 export const CRM_ROUTE_ICONS = {
   '/crm/pipeline': TrendingUp,

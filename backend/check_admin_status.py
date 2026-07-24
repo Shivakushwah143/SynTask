@@ -10,11 +10,11 @@ async def check_and_fix_admin():
     admin = await User.find_one(User.email == 'admin@demo.com')
     
     if not admin:
-        print("❌ Admin user not found!")
+        print("Admin user not found!")
         print("Run: python create_demo_admin.py")
         return
     
-    print(f"✓ Found admin user: {admin.email}")
+    print(f"Found admin user: {admin.email}")
     print(f"  - User ID: {admin.id}")
     print(f"  - Name: {admin.first_name} {admin.last_name}")
     print(f"  - Role: {admin.role}")
@@ -24,30 +24,30 @@ async def check_and_fix_admin():
     
     # Check if status is ACTIVE
     if admin.status != UserStatus.ACTIVE:
-        print(f"\n⚠️  WARNING: User status is '{admin.status}' but should be 'active'")
+        print(f"\nWARNING: User status is '{admin.status}' but should be 'active'")
         print("   This is causing the 403 Forbidden error!")
         
         # Fix the status
         admin.status = UserStatus.ACTIVE
         await admin.save()
-        print("✓ Fixed: User status updated to 'active'")
+        print("Fixed: User status updated to 'active'")
     else:
-        print("\n✓ User status is correct (active)")
+        print("\nUser status is correct (active)")
     
     # Check role
     if admin.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER, UserRole.LEAD]:
-        print(f"\n⚠️  WARNING: User role is '{admin.role}' but should be 'admin', 'manager', 'lead', or 'super_admin'")
+        print(f"\nWARNING: User role is '{admin.role}' but should be 'admin', 'manager', 'lead', or 'super_admin'")
         print("   This will prevent access to clients!")
         
         # Fix the role
         admin.role = UserRole.ADMIN
         await admin.save()
-        print("✓ Fixed: User role updated to 'admin'")
+        print("Fixed: User role updated to 'admin'")
     else:
-        print(f"✓ User role is correct ({admin.role})")
+        print(f"User role is correct ({admin.role})")
     
     print("\n" + "="*50)
-    print("✅ Admin user is now properly configured!")
+    print("Admin user is now properly configured!")
     print("="*50)
     print("\nYou can now login with:")
     print("  Email: admin@demo.com")

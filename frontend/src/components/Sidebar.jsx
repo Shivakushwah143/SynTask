@@ -193,6 +193,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
+      name: "Demo",
+      href: "/demo",
+      icon: LayoutDashboard,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
       name: "Projects",
       href: "/projects",
       icon: FolderKanban,
