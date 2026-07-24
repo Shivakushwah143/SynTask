@@ -79,12 +79,12 @@ const MainLayout = () => {
 
         /* --- App Shell with Clean Background --- */
         .app-shell {
-          background: #f1f5f9;
+          background: var(--color-app-bg);
           position: relative;
         }
 
         .dark .app-shell {
-          background: #0f172a;
+          background: var(--color-app-bg);
         }
 
         /* Subtle background pattern */
@@ -127,9 +127,9 @@ const MainLayout = () => {
 
         /* --- Content Card - Clean & Minimal --- */
         .content-card {
-          background: white;
+          background: var(--color-app-surface);
           border-radius: 1.25rem;
-          border: 1px solid rgba(226, 232, 240, 0.8);
+          border: 1px solid var(--color-app-border);
           box-shadow: 
             0 1px 3px rgba(0, 0, 0, 0.02),
             0 4px 12px rgba(0, 0, 0, 0.03);
@@ -142,8 +142,8 @@ const MainLayout = () => {
         }
 
         .dark .content-card {
-          background: rgba(30, 41, 59, 0.7);
-          border-color: rgba(51, 65, 85, 0.4);
+          background: var(--color-app-surface);
+          border-color: var(--color-app-border);
           box-shadow: 
             0 1px 3px rgba(0, 0, 0, 0.1),
             0 4px 12px rgba(0, 0, 0, 0.2);

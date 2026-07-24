@@ -29,7 +29,7 @@ from app.core.clock import utc_now
 router = APIRouter()
 
 # Get upload directory
-BACKEND_DIR = Path(__file__).parent.parent.parent.parent
+BACKEND_DIR = Path(__file__).resolve().parents[4]
 UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "clients"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PROJECT_UPLOAD_DIR = BACKEND_DIR / settings.UPLOAD_DIR / "projects"

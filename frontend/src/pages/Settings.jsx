@@ -178,6 +178,7 @@ const Settings = () => {
   const [changingPassword, setChangingPassword] = useState(false)
   const [savingPreferences, setSavingPreferences] = useState(false)
   const [savingMailSync, setSavingMailSync] = useState(false)
+  const [imageError, setImageError] = useState(false)
   const [notificationPrefs, setNotificationPrefs] = useState({
     email_notifications: user?.notification_preferences?.email_notifications ?? true,
     in_app_notifications: user?.notification_preferences?.in_app_notifications ?? true,
@@ -185,21 +186,68 @@ const Settings = () => {
     ticket_updates: user?.notification_preferences?.ticket_updates ?? true,
   })
   const [mailSync, setMailSync] = useState(() => readMailSync())
-  const currentAvatarUrl = useMemo(() => getAvatarUrl(user?.avatar, avatarVersion), [avatarVersion, user?.avatar])
-  const displayedAvatar = avatarPreview || (!avatarRemoved ? currentAvatarUrl : '')
+  
+  // FIXED: Get API URL from import.meta.env instead of process.env
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+  
+  // FIXED: Better avatar URL construction with cache busting
+  const currentAvatarUrl = useMemo(() => {
+    if (!user?.avatar) return null;
+    
+    // If avatar is already a full URL
+    if (user.avatar.startsWith('http://') || user.avatar.startsWith('https://')) {
+      const version = avatarVersion || user.avatar_version || Date.now();
+      return `${user.avatar}${user.avatar.includes('?') ? '&' : '?'}v=${version}`;
+    }
+    
+    // If it's a relative path
+    const cleanAvatar = user.avatar.startsWith('/') ? user.avatar : `/${user.avatar}`;
+    const version = avatarVersion || user.avatar_version || Date.now();
+    return `${API_URL}${cleanAvatar}?v=${version}`;
+  }, [user?.avatar, avatarVersion, user?.avatar_version, API_URL]);
+
+  // FIXED: Display logic with proper fallback
+  const displayedAvatar = useMemo(() => {
+    if (avatarPreview) return avatarPreview;
+    if (avatarRemoved) return null;
+    if (imageError) return null;
+    return currentAvatarUrl;
+  }, [avatarPreview, avatarRemoved, currentAvatarUrl, imageError]);
+
   const profileChanged = Boolean(avatarFile || avatarRemoved)
 
+  // Clean up object URLs on unmount
   useEffect(() => {
     return () => {
       if (avatarPreview) URL.revokeObjectURL(avatarPreview)
     }
   }, [avatarPreview])
 
+  // Reset image error when avatar changes
+  useEffect(() => {
+    setImageError(false)
+  }, [currentAvatarUrl, avatarPreview])
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🔍 Debug - Avatar State:', {
+      userAvatar: user?.avatar,
+      currentAvatarUrl,
+      displayedAvatar,
+      avatarVersion,
+      avatarPreview,
+      avatarRemoved,
+      imageError,
+      API_URL
+    })
+  }, [user?.avatar, currentAvatarUrl, displayedAvatar, avatarVersion, avatarPreview, avatarRemoved, imageError, API_URL])
+
   const resetProfileDraft = () => {
     if (avatarPreview) URL.revokeObjectURL(avatarPreview)
     setAvatarFile(null)
     setAvatarPreview('')
     setAvatarRemoved(false)
+    setImageError(false)
   }
 
   const handleChangePhoto = (event) => {
@@ -221,6 +269,7 @@ const Settings = () => {
     setAvatarFile(file)
     setAvatarPreview(URL.createObjectURL(file))
     setAvatarRemoved(false)
+    setImageError(false)
   }
 
   const handleRemovePhoto = () => {
@@ -228,32 +277,75 @@ const Settings = () => {
     setAvatarFile(null)
     setAvatarPreview('')
     setAvatarRemoved(true)
+    setImageError(false)
   }
 
+  // FIXED: Improved profile save handler
   const handleSaveProfile = async () => {
-    if (!profileChanged) return
+    if (!profileChanged) return;
+    
     try {
-      setSavingProfile(true)
+      setSavingProfile(true);
+      
+      // Handle avatar removal
       if (avatarRemoved && user?.avatar) {
-        await authAPI.deleteAvatar()
-        const nextVersion = String(Date.now())
-        setAvatarVersion(nextVersion)
-        updateUser({ avatar: null, avatar_version: nextVersion })
+        await authAPI.deleteAvatar();
+        const nextVersion = String(Date.now());
+        setAvatarVersion(nextVersion);
+        const updatedUser = { 
+          ...user, 
+          avatar: null, 
+          avatar_version: nextVersion 
+        };
+        updateUser(updatedUser);
+        setAvatarRemoved(false);
+        toast.success('Profile photo removed successfully');
+        return;
       }
+      
+      // Handle avatar upload
       if (avatarFile) {
-        const response = await authAPI.uploadAvatar(avatarFile)
-        const nextVersion = String(Date.now())
-        setAvatarVersion(nextVersion)
-        updateUser({ avatar: response.avatar_url, avatar_version: nextVersion })
+        const response = await authAPI.uploadAvatar(avatarFile);
+        console.log('📤 Upload response:', response);
+        
+        // Handle different response formats
+        let avatarUrl = response.avatar_url || response.url || response.data?.avatar_url || response.file_url;
+        
+        if (!avatarUrl) {
+          throw new Error('No avatar URL returned from server');
+        }
+        
+        // Ensure URL is absolute if it's relative
+        if (!avatarUrl.startsWith('http://') && !avatarUrl.startsWith('https://')) {
+          avatarUrl = avatarUrl.startsWith('/') ? `${API_URL}${avatarUrl}` : `${API_URL}/${avatarUrl}`;
+        }
+        
+        const nextVersion = String(Date.now());
+        setAvatarVersion(nextVersion);
+        
+        const updatedUser = { 
+          ...user, 
+          avatar: avatarUrl, 
+          avatar_version: nextVersion 
+        };
+        updateUser(updatedUser);
+        
+        // Clear the preview
+        if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+        setAvatarFile(null);
+        setAvatarPreview('');
+        setImageError(false);
+        
+        toast.success('Profile photo updated successfully!');
       }
-      resetProfileDraft()
-      toast.success('Profile photo updated')
+      
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to save profile changes')
+      console.error('❌ Profile update error:', error);
+      toast.error(error.response?.data?.detail || error.message || 'Failed to save profile changes');
     } finally {
-      setSavingProfile(false)
+      setSavingProfile(false);
     }
-  }
+  };
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
@@ -386,6 +478,14 @@ const Settings = () => {
                       src={displayedAvatar}
                       alt={`${user?.first_name || 'User'} profile`}
                       className="h-32 w-32 rounded-full border-4 border-white object-cover shadow-xl shadow-indigo-500/15 dark:border-gray-800"
+                      onError={(e) => {
+                        console.error('❌ Image failed to load:', displayedAvatar);
+                        setImageError(true);
+                      }}
+                      onLoad={() => {
+                        console.log('✅ Image loaded successfully:', displayedAvatar);
+                        setImageError(false);
+                      }}
                     />
                   ) : (
                     <div className="flex h-32 w-32 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-3xl font-bold text-white shadow-xl shadow-indigo-500/15 dark:border-gray-800">
@@ -397,6 +497,11 @@ const Settings = () => {
                       Preview
                     </span>
                   ) : null}
+                  {imageError && !avatarPreview && (
+                    <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-rose-600 px-3 py-1 text-xs font-semibold text-white shadow-sm">
+                      Load Error
+                    </span>
+                  )}
                 </div>
 
                 <div className="min-w-0 flex-1">
