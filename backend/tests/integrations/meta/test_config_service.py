@@ -249,3 +249,124 @@ def test_foundation_migration_dry_run_needs_no_database():
     assert "meta_webhook_events" in result.stdout
     assert "meta_sync_runs" in result.stdout
     assert "meta_marketing_insights" in result.stdout
+
+
+@pytest.mark.asyncio
+async def test_create_and_complete_onboarding_session_invalid_channel(monkeypatch):
+    from app.integrations.meta.messaging_models import MetaOnboardingSession
+    monkeypatch.setattr("app.integrations.meta.messaging_models.MetaOnboardingSession", lambda **kwargs: MetaOnboardingSession(**kwargs))
+    with pytest.raises(MetaConfigurationError, match="channel"):
+        await MetaIntegrationConfigService.create_onboarding_session(
+            company_id="tenant-1", channel="invalid-channel"
+        )
+
+
+@pytest.mark.asyncio
+async def test_onboarding_sessions_flow(monkeypatch):
+    from app.integrations.meta.channel_adapters import ChannelType
+    from bson import ObjectId
+    
+    sessions = []
+    connections = []
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+            self.id = ObjectId()
+            self.status = kwargs.get("status", "pending")
+        async def insert(self):
+            sessions.append(self)
+            return self
+        async def save(self):
+            return self
+        @classmethod
+        async def get(cls, doc_id):
+            for s in sessions:
+                if s.id == doc_id:
+                    return s
+            return None
+
+    class FakeConnection:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+            self.id = ObjectId()
+        @classmethod
+        async def find_one(cls, query):
+            for c in connections:
+                if c.company_id == query.get("company_id") and c.channel == query.get("channel") and c.provider_asset_id == query.get("provider_asset_id"):
+                    return c
+            return None
+        async def save(self):
+            if self not in connections:
+                connections.append(self)
+            return self
+
+    monkeypatch.setattr("app.integrations.meta.messaging_models.MetaOnboardingSession", FakeSession)
+    monkeypatch.setattr("app.integrations.meta.messaging_models.MetaChannelConnection", FakeConnection)
+    monkeypatch.setattr("app.integrations.meta.config_service.encrypt_sensitive_value", lambda x: f"enc_{x}")
+
+    # Create session
+    session = await MetaIntegrationConfigService.create_onboarding_session(
+        company_id="tenant-1", channel="instagram"
+    )
+    assert session.company_id == "tenant-1"
+    assert session.channel == ChannelType.INSTAGRAM
+    assert session.status == "pending"
+    assert session.state.startswith("instagram_")
+    
+    # Mock httpx response
+    class MockResponse:
+        def __init__(self, json_data, status_code=200):
+            self._json = json_data
+            self.status_code = status_code
+        def json(self):
+            return self._json
+        @property
+        def text(self):
+            return str(self._json)
+            
+    # Mock httpx AsyncClient get method
+    class MockClient:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+        async def get(self, url, params):
+            if "oauth/access_token" in url:
+                return MockResponse({"access_token": "mock-token-123"})
+            elif "me/accounts" in url:
+                return MockResponse({
+                    "data": [
+                        {
+                            "id": "page-123",
+                            "name": "My Page",
+                            "access_token": "page-token-456",
+                            "instagram_business_account": {
+                                "id": "ig-123",
+                                "username": "my_ig_profile",
+                                "name": "My IG Profile"
+                            }
+                        }
+                    ]
+                })
+            return MockResponse({}, 404)
+
+    monkeypatch.setattr("httpx.AsyncClient", MockClient)
+    
+    conn = await MetaIntegrationConfigService.complete_onboarding_session(
+        session_id=str(session.id),
+        code="auth-code-789",
+        current_user_id="user-1"
+    )
+    
+    assert conn.channel == ChannelType.INSTAGRAM
+    assert conn.provider_asset_id == "ig-123"
+    assert conn.instagram_professional_account_id == "ig-123"
+    assert conn.page_id == "page-123"
+    assert conn.status == "active"
+    assert conn.display_name == "My IG Profile"
+    
+    # Verify session is completed
+    assert session.status == "completed"
+
+

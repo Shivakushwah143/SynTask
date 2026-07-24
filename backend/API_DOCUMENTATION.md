@@ -17,6 +17,8 @@ Most endpoints require `Authorization: Bearer <access_token>`. Public exceptions
 |---|---|---|---|
 | GET | `/api/v1/integrations/meta/webhook` | Meta verification token | Validates `hub.mode` and the deployment verify token, then returns the exact `hub.challenge`. |
 | POST | `/api/v1/integrations/meta/webhook` | Meta HMAC | Reads a maximum 1 MiB raw body, validates `X-Hub-Signature-256` before JSON parsing, persists tenant-mapped events idempotently, and returns a fast acknowledgement. |
+| GET | `/api/v1/integrations/meta/inbox/conversations` | Bearer token | Lists tenant-scoped Meta conversations across WhatsApp, Instagram, and Messenger. Supports `channel`, `status`, `assigned_to`, `unread`, `linked`, `limit`, `skip`, and super-admin `company_id`. |
+| GET | `/api/v1/integrations/meta/inbox/conversations/{conversation_id}/messages` | Bearer token | Lists tenant-scoped messages for one Meta conversation after verifying the conversation belongs to the selected tenant. |
 
 Invalid signatures return `401` without persistence. A valid duplicate returns `200` without duplicate dispatch. The endpoint remains inactive until the global Meta feature flag and the mapped tenant setting are enabled.
 

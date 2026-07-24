@@ -52,6 +52,7 @@ For every tenant-owned endpoint/job, attempt list, get, foreign-parent create, u
 - Scheduled job tests verify future-date validation, timezone normalization, role gates by action type, company-scoped list/action authorization, pending-to-running atomic lock, exactly-once project/task creation, retry/cancel/delete state gates, creator notifications, and activity timeline entries.
 - Project/task role matrix: Admin company-wide list/manage; Manager company-wide list with same-department edit/assign only; Employee assigned-task visibility with project context and no detail edits except progress, comments, and attachments.
 - CRM lifecycle, deduplication, import, conversion.
+- Meta unified inbox: tenant-scoped conversation/message API filters, channel badges, provider traceability, and read-only UI with no send action.
 - Invoice/ledger/MSA states, rounding, signing, payment callbacks.
 - Attendance duplicate sessions, timezone, corrections, leave, reports.
 - Recruitment public fields, files/privacy, transitions.

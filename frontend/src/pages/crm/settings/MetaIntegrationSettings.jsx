@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import { metaApi } from '../../../api/meta'
 import { useAuthStore } from '../../../store/authStore'
 import { Button, FormField, inputClassName } from '../../../components/ui'
+import { MetaAnalyticsPanel } from './MetaAnalyticsPanel'
+import { MetaReadinessDashboard } from './MetaReadinessDashboard'
 
 const ADMIN_ROLES = new Set(['admin', 'super_admin'])
 const EMPTY_FORM = {
@@ -25,14 +27,55 @@ export function MetaIntegrationSettings() {
   const user = useAuthStore((state) => state.user)
   const [result, setResult] = useState('')
   const [form, setForm] = useState(EMPTY_FORM)
+  const [isCompleting, setIsCompleting] = useState(false)
   const queryClient = useQueryClient()
   const companyId = user?.role === 'super_admin' ? user?.company_id : undefined
   const allowed = ADMIN_ROLES.has(user?.role)
   const tenantSelected = user?.role !== 'super_admin' || Boolean(companyId)
+  
   const settingsQuery = useQuery(['meta-settings', companyId], () => metaApi.getSettings(companyId), { enabled: allowed && tenantSelected, retry: false })
   const healthQuery = useQuery(['meta-health', companyId], () => metaApi.getHealth(companyId), { enabled: allowed && tenantSelected, retry: false })
   const insightsQuery = useQuery(['meta-insights', companyId], () => metaApi.getInsights(companyId), { enabled: allowed && tenantSelected, retry: false })
   const runsQuery = useQuery(['meta-sync-runs', companyId], () => metaApi.getSyncRuns(companyId), { enabled: allowed && tenantSelected, retry: false })
+  const channelsQuery = useQuery(['meta-channels', companyId], () => metaApi.getChannels(companyId), { enabled: allowed && tenantSelected, retry: false })
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const code = urlParams.get('code')
+    const state = urlParams.get('state')
+    
+    if (code && state) {
+      const storedSession = sessionStorage.getItem('meta_onboarding_session')
+      if (storedSession) {
+        try {
+          const { id, state: storedState, channel } = JSON.parse(storedSession)
+          if (state === storedState) {
+            setIsCompleting(true)
+            const promise = channel === 'instagram'
+              ? metaApi.completeInstagramOnboardingSession(id, code, companyId)
+              : metaApi.completeMessengerOnboardingSession(id, code, companyId)
+              
+            promise
+              .then(() => {
+                toast.success(`Successfully connected ${channel === 'instagram' ? 'Instagram' : 'Facebook Page'}!`)
+                queryClient.invalidateQueries(['meta-channels', companyId])
+                window.history.replaceState({}, document.title, window.location.pathname)
+              })
+              .catch((err) => {
+                toast.error(`Onboarding completion failed: ${err.response?.data?.detail || err.message}`)
+              })
+              .finally(() => {
+                setIsCompleting(false)
+                sessionStorage.removeItem('meta_onboarding_session')
+              })
+          }
+        } catch (e) {
+          sessionStorage.removeItem('meta_onboarding_session')
+        }
+      }
+    }
+  }, [companyId, queryClient])
+
   const testMutation = useMutation(() => metaApi.testConnection(companyId), {
     onSuccess: (data) => {
       setResult(data?.status === 'connected' ? 'Connected' : 'Connection test completed')
@@ -134,21 +177,166 @@ export function MetaIntegrationSettings() {
         <TextField label="New page token" type="password" value={form.page_access_token} onChange={(value) => updateField('page_access_token', value)} />
         <TextField label="New system user token" type="password" value={form.system_user_token} onChange={(value) => updateField('system_user_token', value)} />
       </div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <InstagramConnectionPanel
+          connections={channelsQuery.data?.items?.filter(c => c.channel === 'instagram') || []}
+          companyId={companyId}
+          onConnect={() => {
+            metaApi.createInstagramOnboardingSession(companyId).then((res) => {
+              sessionStorage.setItem('meta_onboarding_session', JSON.stringify({
+                id: res.session_id,
+                state: res.state,
+                channel: 'instagram'
+              }))
+              window.location.href = res.redirect_url
+            }).catch(err => {
+              toast.error(`Failed to start Instagram onboarding: ${err.message}`)
+            })
+          }}
+          onRefresh={() => queryClient.invalidateQueries(['meta-channels', companyId])}
+        />
+        <MessengerConnectionPanel
+          connections={channelsQuery.data?.items?.filter(c => c.channel === 'messenger') || []}
+          companyId={companyId}
+          onConnect={() => {
+            metaApi.createMessengerOnboardingSession(companyId).then((res) => {
+              sessionStorage.setItem('meta_onboarding_session', JSON.stringify({
+                id: res.session_id,
+                state: res.state,
+                channel: 'messenger'
+              }))
+              window.location.href = res.redirect_url
+            }).catch(err => {
+              toast.error(`Failed to start Messenger onboarding: ${err.message}`)
+            })
+          }}
+          onRefresh={() => queryClient.invalidateQueries(['meta-channels', companyId])}
+        />
+      </div>
       <div className="mt-5 flex flex-wrap gap-3">
         <Button type="button" variant="secondary" onClick={save} loading={saveMutation.isLoading} loadingText="Saving">Save Settings</Button>
         <Button type="button" onClick={() => testMutation.mutate()} disabled={testMutation.isLoading}>Test Connection</Button>
         <Button type="button" variant="secondary" onClick={() => syncMutation.mutate()} disabled={syncMutation.isLoading}>Sync Now</Button>
       </div>
       {result ? <p className="mt-3 text-sm text-slate-700" role="status">{result}</p> : null}
+      {isCompleting && <p className="mt-3 text-sm text-slate-700" role="status">Completing Meta integration...</p>}
+      <div className="mt-6">
+        <MetaAnalyticsPanel companyId={companyId} />
+      </div>
       <MetaInsightsPanel
         insights={insightsQuery.data}
         runs={runsQuery.data?.items || []}
         isLoading={insightsQuery.isLoading || runsQuery.isLoading}
         isError={insightsQuery.isError || runsQuery.isError}
       />
+      <div className="mt-6">
+        <MetaReadinessDashboard />
+      </div>
     </section>
   )
 }
+
+export function InstagramConnectionPanel({ connections, onConnect, onRefresh, companyId }) {
+  return (
+    <ChannelConnectionPanel
+      title="Instagram Messaging"
+      connections={connections}
+      onConnect={onConnect}
+      onRefresh={onRefresh}
+      companyId={companyId}
+      note="Production requires Meta App Review approval before Instagram messaging can receive customer DMs."
+    />
+  )
+}
+
+export function MessengerConnectionPanel({ connections, onConnect, onRefresh, companyId }) {
+  return (
+    <ChannelConnectionPanel
+      title="Facebook Messenger"
+      connections={connections}
+      onConnect={onConnect}
+      onRefresh={onRefresh}
+      companyId={companyId}
+      note="Production requires Meta App Review approval before Messenger messaging can receive customer messages."
+    />
+  )
+}
+
+function ChannelConnectionPanel({ title, connections, onConnect, onRefresh, companyId, note }) {
+  const validateMutation = useMutation((connId) => metaApi.validateChannel(connId, companyId), {
+    onSuccess: () => {
+      toast.success("Connection status validated")
+      onRefresh()
+    },
+    onError: (err) => {
+      toast.error(`Validation failed: ${err.message}`)
+    }
+  })
+
+  const disconnectMutation = useMutation((connId) => metaApi.disconnectChannel(connId, companyId), {
+    onSuccess: () => {
+      toast.success("Disconnected successfully")
+      onRefresh()
+    },
+    onError: (err) => {
+      toast.error(`Disconnection failed: ${err.message}`)
+    }
+  })
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      <p className="mt-1 text-xs text-slate-600">{note}</p>
+      
+      {connections.length > 0 ? (
+        <div className="mt-3 space-y-3">
+          {connections.map((conn) => (
+            <div key={conn.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-900">{conn.display_name || conn.provider_asset_id}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  conn.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
+                  {conn.status}
+                </span>
+              </div>
+              <div className="mt-2 text-xs text-slate-500">
+                <p>Asset ID: {conn.provider_asset_id}</p>
+                {conn.page_id && <p>Page ID: {conn.page_id}</p>}
+                {conn.health_reason && <p className="text-red-500 mt-1">Reason: {conn.health_reason}</p>}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => validateMutation.mutate(conn.id)}
+                  loading={validateMutation.isLoading}
+                >
+                  Validate
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => disconnectMutation.mutate(conn.id)}
+                  loading={disconnectMutation.isLoading}
+                >
+                  Disconnect
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3">
+          <Button type="button" onClick={onConnect}>
+            Connect Channel
+          </Button>
+        </div>
+      )}
+    </section>
+  )
+}
+
 
 function Status({ label, value }) {
   return <div><dt className="text-xs font-medium text-slate-500">{label}</dt><dd className="break-all text-sm text-slate-900">{value || 'Not configured'}</dd></div>

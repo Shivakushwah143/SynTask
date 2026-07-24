@@ -14,6 +14,17 @@ vi.mock('../../../api/meta', () => ({
       system_user_token_masked: null,
     }),
     getHealth: vi.fn().mockResolvedValue({ status: 'not_configured' }),
+    getChannels: vi.fn().mockResolvedValue({ items: [] }),
+    getAnalytics: vi.fn().mockResolvedValue({
+      total_conversations: 0,
+      channel_counts: {},
+      status_counts: {},
+      ai_metrics: {},
+      crm_metrics: {}
+    }),
+    getReadiness: vi.fn().mockResolvedValue([]),
+    updateReadiness: vi.fn().mockResolvedValue({}),
+    exportReadiness: vi.fn().mockResolvedValue({}),
     getInsights: vi.fn().mockResolvedValue({
       summary: {
         spend: 100,
@@ -60,6 +71,10 @@ describe('MetaIntegrationSettings', () => {
     renderSettings()
     expect(await screen.findByText('••••1234')).toBeInTheDocument()
     expect(screen.getByText('app-1')).toBeInTheDocument()
+    expect(screen.getByText('Instagram Messaging')).toBeInTheDocument()
+    expect(screen.getByText('Facebook Messenger')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /connect channel/i }).length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText(/production requires Meta App Review approval/i).length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('Marketing performance')).toBeInTheDocument()
     expect(screen.getByText('Launch campaign')).toBeInTheDocument()
     expect(screen.getByText(/completed \(1 records\)/i)).toBeInTheDocument()

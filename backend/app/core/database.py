@@ -83,6 +83,18 @@ from app.integrations.meta.models import (
     MetaSyncRun,
     MetaWebhookEvent,
 )
+from app.integrations.meta.messaging_models import (
+    MetaChannelConnection,
+    MetaConversation,
+    MetaMessage,
+    MetaOnboardingSession,
+)
+from app.integrations.meta.readiness_models import MetaReadinessRecord
+from app.integrations.meta.identity_models import (
+    CustomerIdentity,
+    CrossChannelIdentityLink,
+)
+from app.integrations.meta.ai_draft_models import MetaAIDraft
 from app.recruitment.models import (
     Application, Candidate, CandidateNote, CandidateTimeline, Interview,
     InterviewFeedback, Offer, RecruitmentAttachment, RecruitmentAudit,
@@ -238,6 +250,14 @@ async def init_db():
                 MetaWebhookEvent,
                 MetaSyncRun,
                 MetaMarketingInsight,
+                MetaChannelConnection,
+                MetaConversation,
+                MetaMessage,
+                MetaOnboardingSession,
+                MetaReadinessRecord,
+                CustomerIdentity,
+                CrossChannelIdentityLink,
+                MetaAIDraft,
                 RecruitmentJob,
                 Candidate,
                 Application,

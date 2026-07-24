@@ -23,10 +23,14 @@ from app.integrations.meta.tasks import (
     create_and_enqueue_insights_sync_run,
 )
 from app.integrations.meta.webhook_service import MetaWebhookService, WebhookIngestResult
+from app.integrations.meta import ai_draft_api, identity_api, inbox_api
 
 
 MAX_WEBHOOK_BODY_BYTES = 1_048_576
 router = APIRouter()
+router.include_router(inbox_api.router)
+router.include_router(identity_api.router)
+router.include_router(ai_draft_api.router)
 webhook_service = MetaWebhookService()
 
 
@@ -385,3 +389,235 @@ async def _read_limited_body(request: Request) -> bytes:
             raise HTTPException(status_code=413, detail="Webhook payload too large")
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+@router.post("/instagram/onboarding-sessions")
+async def create_instagram_onboarding_session(
+    company_id: str | None = Query(default=None),
+    current_user=Depends(get_current_company_admin),
+):
+    target = _target_company(current_user, company_id)
+    session = await MetaIntegrationConfigService.create_onboarding_session(
+        company_id=target, channel="instagram"
+    )
+    redirect_url = (
+        f"https://www.facebook.com/v20.0/dialog/oauth"
+        f"?client_id={settings.META_APP_ID or ''}"
+        f"&redirect_uri={settings.FRONTEND_URL}/crm/settings"
+        f"&state={session.state}"
+        f"&scope=instagram_business_manage_messages,instagram_basic,pages_show_list,pages_read_engagement"
+    )
+    return {
+        "session_id": str(session.id),
+        "state": session.state,
+        "redirect_url": redirect_url,
+    }
+
+
+@router.post("/instagram/onboarding-sessions/{session_id}/complete")
+async def complete_instagram_onboarding_session(
+    session_id: str,
+    code: str = Query(...),
+    current_user=Depends(get_current_company_admin),
+):
+    try:
+        connection = await MetaIntegrationConfigService.complete_onboarding_session(
+            session_id=session_id,
+            code=code,
+            current_user_id=str(current_user.id),
+        )
+    except MetaConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "connected", "connection_id": str(connection.id)}
+
+
+@router.post("/messenger/onboarding-sessions")
+async def create_messenger_onboarding_session(
+    company_id: str | None = Query(default=None),
+    current_user=Depends(get_current_company_admin),
+):
+    target = _target_company(current_user, company_id)
+    session = await MetaIntegrationConfigService.create_onboarding_session(
+        company_id=target, channel="messenger"
+    )
+    redirect_url = (
+        f"https://www.facebook.com/v20.0/dialog/oauth"
+        f"?client_id={settings.META_APP_ID or ''}"
+        f"&redirect_uri={settings.FRONTEND_URL}/crm/settings"
+        f"&state={session.state}"
+        f"&scope=pages_messaging,pages_show_list,pages_read_engagement"
+    )
+    return {
+        "session_id": str(session.id),
+        "state": session.state,
+        "redirect_url": redirect_url,
+    }
+
+
+@router.post("/messenger/onboarding-sessions/{session_id}/complete")
+async def complete_messenger_onboarding_session(
+    session_id: str,
+    code: str = Query(...),
+    current_user=Depends(get_current_company_admin),
+):
+    try:
+        connection = await MetaIntegrationConfigService.complete_onboarding_session(
+            session_id=session_id,
+            code=code,
+            current_user_id=str(current_user.id),
+        )
+    except MetaConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "connected", "connection_id": str(connection.id)}
+
+
+@router.get("/channels")
+async def get_meta_channels(
+    company_id: str | None = Query(default=None),
+    current_user=Depends(get_current_company_admin),
+):
+    from app.integrations.meta.messaging_models import MetaChannelConnection
+    target = _target_company(current_user, company_id)
+    connections = await MetaChannelConnection.find({"company_id": target}).to_list()
+    return {
+        "items": [
+            {
+                "id": str(conn.id),
+                "company_id": conn.company_id,
+                "channel": conn.channel.value if hasattr(conn.channel, "value") else conn.channel,
+                "provider_asset_id": conn.provider_asset_id,
+                "display_name": conn.display_name,
+                "instagram_professional_account_id": conn.instagram_professional_account_id,
+                "page_id": conn.page_id,
+                "scopes": conn.scopes,
+                "status": conn.status,
+                "can_receive": conn.can_receive,
+                "can_send": conn.can_send,
+                "health_reason": conn.health_reason,
+                "last_health_check_at": conn.last_health_check_at,
+                "last_webhook_at": conn.last_webhook_at,
+                "created_at": conn.created_at,
+                "updated_at": conn.updated_at,
+            }
+            for conn in connections
+        ]
+    }
+
+
+@router.post("/channels/{connection_id}/validate")
+async def validate_meta_channel(
+    connection_id: str,
+    company_id: str | None = Query(default=None),
+    current_user=Depends(get_current_company_admin),
+):
+    from app.integrations.meta.messaging_models import MetaChannelConnection
+    from bson import ObjectId
+    
+    target = _target_company(current_user, company_id)
+    try:
+        conn_obj_id = ObjectId(connection_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid connection ID format")
+        
+    connection = await MetaChannelConnection.find_one({
+        "_id": conn_obj_id,
+        "company_id": target,
+    })
+    if not connection:
+        raise HTTPException(status_code=404, detail="Channel connection not found")
+        
+    connection.last_health_check_at = datetime.utcnow()
+    connection.status = "active"
+    await connection.save()
+    return {
+        "id": str(connection.id),
+        "status": connection.status,
+        "can_receive": connection.can_receive,
+        "can_send": connection.can_send,
+    }
+
+
+@router.post("/channels/{connection_id}/disconnect")
+async def disconnect_meta_channel(
+    connection_id: str,
+    company_id: str | None = Query(default=None),
+    current_user=Depends(get_current_company_admin),
+):
+    from app.integrations.meta.messaging_models import MetaChannelConnection
+    from bson import ObjectId
+    
+    target = _target_company(current_user, company_id)
+    try:
+        conn_obj_id = ObjectId(connection_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid connection ID format")
+        
+    connection = await MetaChannelConnection.find_one({
+        "_id": conn_obj_id,
+        "company_id": target,
+    })
+    if not connection:
+        raise HTTPException(status_code=404, detail="Channel connection not found")
+        
+    connection.status = "disconnected"
+    connection.can_receive = False
+    connection.can_send = False
+    await connection.save()
+    return {"status": "disconnected"}
+
+
+@router.get("/analytics")
+async def get_meta_analytics(
+    company_id: str | None = Query(default=None),
+    current_user=Depends(get_current_company_admin),
+):
+    from app.integrations.meta.omnichannel_analytics import MetaOmnichannelAnalyticsService
+    target = _target_company(current_user, company_id)
+    return await MetaOmnichannelAnalyticsService.get_analytics_summary(target)
+
+
+from pydantic import BaseModel
+
+class UpdateReadinessRequest(BaseModel):
+    status: str
+    evidence_url: str | None = None
+    notes: str | None = None
+
+
+@router.get("/readiness")
+async def get_meta_readiness(
+    current_user=Depends(get_current_company_admin),
+):
+    from app.integrations.meta.readiness_service import MetaReadinessService
+    return await MetaReadinessService.get_readiness_checklist()
+
+
+@router.patch("/readiness/{checklist_id}")
+async def update_meta_readiness(
+    checklist_id: str,
+    payload: UpdateReadinessRequest,
+    current_user=Depends(get_current_company_admin),
+):
+    from app.integrations.meta.readiness_service import MetaReadinessService
+    try:
+        return await MetaReadinessService.update_readiness_record(
+            checklist_id=checklist_id,
+            status=payload.status,
+            evidence_url=payload.evidence_url,
+            notes=payload.notes,
+            verified_by=str(current_user.id) if hasattr(current_user, "id") else "admin",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/readiness/export")
+async def export_meta_readiness(
+    current_user=Depends(get_current_company_admin),
+):
+    from app.integrations.meta.readiness_service import MetaReadinessService
+    return await MetaReadinessService.export_evidence_package()
+
+
+
+

@@ -80,6 +80,7 @@ const CRMCompaniesPage = lazy(() => import('./pages/crm/companies/page'))
 const CRMCompanyWorkspacePage = lazy(() => import('./pages/crm/companies/workspace'))
 const CRMContactsPage = lazy(() => import('./pages/crm/contacts/page'))
 const CRMActivitiesPage = lazy(() => import('./pages/crm/activities/page'))
+const CRMMetaInboxPage = lazy(() => import('./pages/crm/inbox/MetaInbox'))
 const CRMCalendarPage = lazy(() => import('./pages/crm/calendar/page'))
 const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
@@ -265,6 +266,7 @@ function App() {
             <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
             <Route path="companies/:companyId" element={withBoundary(<CRMCompanyWorkspacePage />)} />
             <Route path="contacts" element={withBoundary(<CRMContactsPage />)} />
+            <Route path="inbox" element={withBoundary(<CRMMetaInboxPage />)} />
             <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
             <Route path="reports" element={withBoundary(<CRMReportsPage />)} />

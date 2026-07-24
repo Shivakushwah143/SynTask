@@ -519,6 +519,22 @@ async def delete_tenant(
             user.status = UserStatus.SUSPENDED
             await user.save()
         
+        # Delete Meta Integration and Messaging data (PII & tenant isolation compliance)
+        from app.integrations.meta.models import MetaIntegrationSettings, MetaSyncRun, MetaMarketingInsight
+        from app.integrations.meta.messaging_models import MetaChannelConnection, MetaConversation, MetaMessage
+        from app.integrations.meta.ai_draft_models import MetaAIDraft
+        from app.integrations.meta.identity_models import CustomerIdentity, CrossChannelIdentityLink
+
+        await MetaIntegrationSettings.find({"company_id": company_id}).delete()
+        await MetaSyncRun.find({"company_id": company_id}).delete()
+        await MetaMarketingInsight.find({"company_id": company_id}).delete()
+        await MetaChannelConnection.find({"company_id": company_id}).delete()
+        await MetaConversation.find({"company_id": company_id}).delete()
+        await MetaMessage.find({"company_id": company_id}).delete()
+        await MetaAIDraft.find({"company_id": company_id}).delete()
+        await CustomerIdentity.find({"company_id": company_id}).delete()
+        await CrossChannelIdentityLink.find({"company_id": company_id}).delete()
+
         # Delete company
         await company.delete()
         

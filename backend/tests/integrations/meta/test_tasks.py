@@ -33,6 +33,23 @@ class FakeEvent:
         self.updated_at = None
         self.saved = 0
         self.id = "507f1f77bcf86cd799439011"
+        self.company_id = "tenant-1"
+        self.event_type = "message"
+        self.object_type = "page"
+        self.object_id = "mid-1"
+        self.provider_event_id = "mid-1"
+        self.payload = {
+            "object": "page",
+            "entry": {"id": "page-1", "time": 1700000000},
+            "messaging": {
+                "sender": {"id": "sender-1"},
+                "recipient": {"id": "page-1"},
+                "timestamp": 1700000001,
+                "message": {"mid": "mid-1", "text": "hello"},
+            },
+            "connection": {"id": "connection-1", "channel": "messenger"},
+        }
+        self.correlation_id = "corr-1"
 
     async def save(self):
         self.saved += 1
@@ -40,6 +57,172 @@ class FakeEvent:
 
 async def _return_event(event):
     return event
+
+
+@pytest.mark.asyncio
+async def test_execute_event_routes_non_lead_message_to_messaging_service(monkeypatch):
+    processed = []
+    event = FakeEvent()
+
+    class Service:
+        async def process_normalized_event(self, normalized, *, correlation_id):
+            processed.append((normalized, correlation_id))
+            return "message_created"
+
+    monkeypatch.setattr(tasks, "MetaMessagingService", Service)
+
+    await tasks._execute_event(event)
+
+    assert len(processed) == 1
+    normalized, correlation_id = processed[0]
+    assert normalized.company_id == "tenant-1"
+    assert normalized.channel.value == "messenger"
+    assert normalized.connection_id == "connection-1"
+    assert normalized.event_type.value == "inbound_message"
+    assert normalized.provider_message_id == "mid-1"
+    assert normalized.provider_thread_id == "page-1:sender-1"
+    assert normalized.text == "hello"
+    assert correlation_id == "corr-1"
+
+
+@pytest.mark.asyncio
+async def test_execute_event_routes_instagram_message_through_adapter(monkeypatch):
+    processed = []
+    event = FakeEvent()
+    event.object_type = "instagram"
+    event.payload = {
+        "object": "instagram",
+        "entry": {"id": "ig-business-1", "time": 1700000000},
+        "messaging": {
+            "sender": {"id": "ig-user-1"},
+            "recipient": {"id": "ig-business-1"},
+            "timestamp": 1700000001000,
+            "message": {"mid": "ig-mid-1", "text": "hello ig"},
+        },
+        "connection": {"id": "connection-ig", "channel": "instagram"},
+    }
+
+    class Service:
+        async def process_normalized_event(self, normalized, *, correlation_id):
+            processed.append((normalized, correlation_id))
+            return "message_created"
+
+    monkeypatch.setattr(tasks, "MetaMessagingService", Service)
+
+    await tasks._execute_event(event)
+
+    assert len(processed) == 1
+    normalized, _correlation_id = processed[0]
+    assert normalized.channel.value == "instagram"
+    assert normalized.connection_id == "connection-ig"
+    assert normalized.provider_message_id == "ig-mid-1"
+    assert normalized.provider_thread_id == "ig-business-1:ig-user-1"
+    assert normalized.text == "hello ig"
+
+
+@pytest.mark.asyncio
+async def test_execute_event_routes_whatsapp_change_payload_to_messaging_service(monkeypatch):
+    processed = []
+    event = FakeEvent()
+    event.event_type = "messages"
+    event.object_type = "whatsapp_business_account"
+    event.provider_event_id = "wamid.1"
+    event.object_id = "wamid.1"
+    event.payload = {
+        "object": "whatsapp_business_account",
+        "change": {
+            "field": "messages",
+            "value": {
+                "metadata": {"phone_number_id": "phone-number-1"},
+                "messages": [{
+                    "id": "wamid.1",
+                    "from": "15551234567",
+                    "timestamp": "1784688000",
+                    "type": "text",
+                    "text": {"body": "Need pricing"},
+                }],
+            },
+        },
+        "connection": {"id": "connection-1", "channel": "whatsapp"},
+    }
+
+    class Service:
+        async def process_normalized_event(self, normalized, *, correlation_id):
+            processed.append((normalized, correlation_id))
+            return "message_created"
+
+    monkeypatch.setattr(tasks, "MetaMessagingService", Service)
+
+    await tasks._execute_event(event)
+
+    assert len(processed) == 1
+    normalized, _correlation_id = processed[0]
+    assert normalized.channel.value == "whatsapp"
+    assert normalized.provider_message_id == "wamid.1"
+    assert normalized.provider_thread_id == "phone-number-1:15551234567"
+    assert normalized.text == "Need pricing"
+
+
+@pytest.mark.asyncio
+async def test_execute_event_processes_every_whatsapp_normalized_event(monkeypatch):
+    processed = []
+    event = FakeEvent()
+    event.event_type = "messages"
+    event.object_type = "whatsapp_business_account"
+    event.payload = {
+        "object": "whatsapp_business_account",
+        "change": {
+            "field": "messages",
+            "value": {
+                "metadata": {"phone_number_id": "phone-number-1"},
+                "messages": [
+                    {"id": "wamid.1", "from": "15551234567", "type": "text", "text": {"body": "One"}},
+                    {"id": "wamid.2", "from": "15557654321", "type": "text", "text": {"body": "Two"}},
+                ],
+                "statuses": [
+                    {"id": "wamid.3", "recipient_id": "15559876543", "status": "delivered"}
+                ],
+            },
+        },
+        "connection": {"id": "connection-1", "channel": "whatsapp"},
+    }
+
+    class Service:
+        async def process_normalized_event(self, normalized, *, correlation_id):
+            processed.append(normalized.provider_event_id)
+            return "message_created"
+
+    monkeypatch.setattr(tasks, "MetaMessagingService", Service)
+
+    await tasks._execute_event(event)
+
+    assert processed == ["wamid.1", "wamid.2", "wamid.3:delivered"]
+
+
+@pytest.mark.asyncio
+async def test_execute_event_quarantines_unknown_messaging_event_without_processing(monkeypatch):
+    processed = []
+    event = FakeEvent()
+    event.event_type = "unknown"
+    event.payload["messaging"] = {
+        "sender": {"id": "sender-1"},
+        "recipient": {"id": "page-1"},
+        "timestamp": 1700000001,
+        "unsupported": {"value": "ignored"},
+    }
+
+    class Service:
+        async def process_normalized_event(self, normalized, *, correlation_id):
+            processed.append((normalized, correlation_id))
+
+    monkeypatch.setattr(tasks, "MetaMessagingService", Service)
+
+    await tasks._execute_event(event)
+
+    assert processed == []
+    assert event.status == MetaWebhookStatus.REJECTED
+    assert event.error_code == "unsupported_messaging_event"
+    assert event.error_message == "Unsupported Meta messaging event"
 
 
 @pytest.mark.asyncio

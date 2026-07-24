@@ -24,6 +24,110 @@ def _service(enqueue, insert):
     return MetaWebhookService(enqueue=enqueue, event_factory=Event)
 
 
+def test_extract_events_supports_messenger_message_payloads():
+    events = list(MetaWebhookService.extract_events(
+        {
+            "object": "page",
+            "entry": [{
+                "id": "page-1",
+                "time": 1700000000,
+                "messaging": [{
+                    "sender": {"id": "sender-1"},
+                    "recipient": {"id": "page-1"},
+                    "timestamp": 1700000001,
+                    "message": {"mid": "mid-1", "text": "hello"},
+                }],
+            }],
+        },
+        "sha",
+    ))
+
+    assert len(events) == 1
+    assert events[0].event_type == "message"
+    assert events[0].object_type == "page"
+    assert events[0].page_id == "page-1"
+    assert events[0].object_id == "mid-1"
+    assert events[0].provider_event_id == "mid-1"
+    assert events[0].payload["messaging"]["message"]["text"] == "hello"
+
+
+def test_extract_events_supports_instagram_message_payloads():
+    events = list(MetaWebhookService.extract_events(
+        {
+            "object": "instagram",
+            "entry": [{
+                "id": "ig-professional-1",
+                "time": 1700000000,
+                "messaging": [{
+                    "sender": {"id": "ig-scoped-sender"},
+                    "recipient": {"id": "ig-professional-1"},
+                    "timestamp": 1700000001,
+                    "message": {"mid": "ig-mid-1", "text": "hello ig"},
+                }],
+            }],
+        },
+        "sha",
+    ))
+
+    assert len(events) == 1
+    assert events[0].event_type == "message"
+    assert events[0].object_type == "instagram"
+    assert events[0].page_id == "ig-professional-1"
+    assert events[0].object_id == "ig-mid-1"
+    assert events[0].provider_event_id == "ig-mid-1"
+
+
+def test_extract_events_supports_whatsapp_business_messages_payloads():
+    events = list(MetaWebhookService.extract_events(
+        {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "id": "waba-1",
+                "time": 1700000000,
+                "changes": [{
+                    "field": "messages",
+                    "value": {
+                        "metadata": {"phone_number_id": "phone-number-1"},
+                        "messages": [{"id": "wamid.1", "from": "15551234567"}],
+                    },
+                }],
+            }],
+        },
+        "sha",
+    ))
+
+    assert len(events) == 1
+    assert events[0].event_type == "messages"
+    assert events[0].object_type == "whatsapp_business_account"
+    assert events[0].page_id == "phone-number-1"
+    assert events[0].channel == "whatsapp"
+    assert events[0].provider_event_id == "wamid.1"
+
+
+def test_extract_events_keeps_whatsapp_status_provider_event_id():
+    events = list(MetaWebhookService.extract_events(
+        {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "id": "waba-1",
+                "time": 1700000000,
+                "changes": [{
+                    "field": "messages",
+                    "value": {
+                        "metadata": {"phone_number_id": "phone-number-1"},
+                        "statuses": [{"id": "wamid.status.1", "status": "delivered"}],
+                    },
+                }],
+            }],
+        },
+        "sha",
+    ))
+
+    assert len(events) == 1
+    assert events[0].object_id == "wamid.status.1"
+    assert events[0].provider_event_id == "wamid.status.1"
+
+
 @pytest.mark.asyncio
 async def test_ingest_persists_mapped_event_before_dispatch(monkeypatch):
     persisted = []
