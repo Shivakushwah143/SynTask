@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { 
   Bell, 
   Inbox, 
@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { authAPI } from '../api/auth'
+import { getAvatarUrl } from '../utils/avatarUrl'
 import toast from 'react-hot-toast'
 import { Badge, Button, FormField, PageHeader, PasswordInput, inputClassName } from '../components/ui'
 
@@ -160,12 +161,20 @@ const SettingsCard = ({ children, className = '' }) => (
   </div>
 )
 
+const getInitials = (user) => `${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}` || 'U'
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
 const Settings = () => {
-  const { user } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
   const [activeTab, setActiveTab] = useState('profile')
+  const fileInputRef = useRef(null)
+  const [avatarFile, setAvatarFile] = useState(null)
+  const [avatarPreview, setAvatarPreview] = useState('')
+  const [avatarVersion, setAvatarVersion] = useState(user?.avatar_version || '')
+  const [avatarRemoved, setAvatarRemoved] = useState(false)
+  const [savingProfile, setSavingProfile] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
   const [savingPreferences, setSavingPreferences] = useState(false)
   const [savingMailSync, setSavingMailSync] = useState(false)
@@ -176,6 +185,75 @@ const Settings = () => {
     ticket_updates: user?.notification_preferences?.ticket_updates ?? true,
   })
   const [mailSync, setMailSync] = useState(() => readMailSync())
+  const currentAvatarUrl = useMemo(() => getAvatarUrl(user?.avatar, avatarVersion), [avatarVersion, user?.avatar])
+  const displayedAvatar = avatarPreview || (!avatarRemoved ? currentAvatarUrl : '')
+  const profileChanged = Boolean(avatarFile || avatarRemoved)
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview)
+    }
+  }, [avatarPreview])
+
+  const resetProfileDraft = () => {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview)
+    setAvatarFile(null)
+    setAvatarPreview('')
+    setAvatarRemoved(false)
+  }
+
+  const handleChangePhoto = (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Use PNG, JPG, JPEG, or WEBP image')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Photo must be 5 MB or smaller')
+      return
+    }
+
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview)
+    setAvatarFile(file)
+    setAvatarPreview(URL.createObjectURL(file))
+    setAvatarRemoved(false)
+  }
+
+  const handleRemovePhoto = () => {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview)
+    setAvatarFile(null)
+    setAvatarPreview('')
+    setAvatarRemoved(true)
+  }
+
+  const handleSaveProfile = async () => {
+    if (!profileChanged) return
+    try {
+      setSavingProfile(true)
+      if (avatarRemoved && user?.avatar) {
+        await authAPI.deleteAvatar()
+        const nextVersion = String(Date.now())
+        setAvatarVersion(nextVersion)
+        updateUser({ avatar: null, avatar_version: nextVersion })
+      }
+      if (avatarFile) {
+        const response = await authAPI.uploadAvatar(avatarFile)
+        const nextVersion = String(Date.now())
+        setAvatarVersion(nextVersion)
+        updateUser({ avatar: response.avatar_url, avatar_version: nextVersion })
+      }
+      resetProfileDraft()
+      toast.success('Profile photo updated')
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to save profile changes')
+    } finally {
+      setSavingProfile(false)
+    }
+  }
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
@@ -297,16 +375,100 @@ const Settings = () => {
           <SectionHeader 
             icon={UserCog}
             title="Profile Information"
-            description="View your account details"
+            description="Manage your profile photo and view account details"
           />
-          <div className="p-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <ReadOnly label="First Name" value={user?.first_name} />
-              <ReadOnly label="Last Name" value={user?.last_name} />
-              <ReadOnly label="Email" value={user?.email} />
-              <ReadOnly label="Role" value={user?.role?.replace('_', ' ').toUpperCase()} />
-              <ReadOnly label="Company" value={user?.company_name || 'Not assigned'} />
-              <ReadOnly label="Account Status" value={user?.is_active ? 'Active' : 'Inactive'} />
+          <div className="space-y-6 p-4">
+            <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5 dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-gray-900/30">
+              <div className="flex flex-col items-center gap-5 text-center sm:flex-row sm:text-left">
+                <div className="relative">
+                  {displayedAvatar ? (
+                    <img
+                      src={displayedAvatar}
+                      alt={`${user?.first_name || 'User'} profile`}
+                      className="h-32 w-32 rounded-full border-4 border-white object-cover shadow-xl shadow-indigo-500/15 dark:border-gray-800"
+                    />
+                  ) : (
+                    <div className="flex h-32 w-32 items-center justify-center rounded-full border-4 border-white bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-3xl font-bold text-white shadow-xl shadow-indigo-500/15 dark:border-gray-800">
+                      {getInitials(user)}
+                    </div>
+                  )}
+                  {avatarFile ? (
+                    <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white shadow-sm">
+                      Preview
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-xl font-bold text-gray-950 dark:text-white">
+                    {user?.first_name} {user?.last_name}
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                    Profile photo updates after Save Changes. Files accepted: PNG, JPG, JPEG, WEBP up to 5 MB.
+                  </p>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    className="sr-only"
+                    onChange={handleChangePhoto}
+                  />
+                  <div className="mt-4 flex flex-wrap justify-center gap-3 sm:justify-start">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/20"
+                    >
+                      Change Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      disabled={!displayedAvatar && !user?.avatar}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/50 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/20"
+                    >
+                      Remove Photo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Account fields</h3>
+                <Badge label="Read-only" colorKey="scheduled" />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <ReadOnly label="First Name" value={user?.first_name} />
+                <ReadOnly label="Last Name" value={user?.last_name} />
+                <ReadOnly label="Email" value={user?.email} />
+                <ReadOnly label="Role" value={user?.role?.replace('_', ' ').toUpperCase()} />
+                <ReadOnly label="Company" value={user?.company_name || 'Not assigned'} />
+                <ReadOnly label="Account Status" value={user?.is_active ? 'Active' : 'Inactive'} />
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-4 sm:flex-row sm:justify-end dark:border-gray-700">
+              <button
+                type="button"
+                onClick={resetProfileDraft}
+                disabled={!profileChanged || savingProfile}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <Button
+                type="button"
+                onClick={handleSaveProfile}
+                disabled={!profileChanged}
+                loading={savingProfile}
+                className="min-h-10"
+              >
+                <Save className="h-4 w-4" />
+                Save Changes
+              </Button>
             </div>
           </div>
         </SettingsCard>

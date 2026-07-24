@@ -5,6 +5,7 @@ import Header from '../components/Header'
 import { GlobalSearch } from '../components/GlobalSearch'
 import { CommandPalette } from '../components/CommandPalette'
 import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
+import { SynzinHelpPrompt } from '../components/ai/SynzinHelpPrompt'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
 import ReminderToastListener from '../components/ReminderToastListener'
 
@@ -46,6 +47,7 @@ const MainLayout = () => {
   const [searchOpen, setSearchOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [synzinPromptOpen, setSynzinPromptOpen] = useState(true)
   const location = useLocation()
   const isChatPage = location.pathname === '/chat'
   const openSearch = useCallback(() => setSearchOpen(true), [])
@@ -293,7 +295,10 @@ const MainLayout = () => {
             onMenuClick={() => setSidebarOpen(true)}
             onSearchOpen={openSearch}
             onCommandOpen={openCommand}
-            onAssistantOpen={() => setAssistantOpen(true)}
+            onAssistantOpen={() => {
+              setSynzinPromptOpen(false)
+              setAssistantOpen(true)
+            }}
           />
 
           {/* Content Wrapper */}
@@ -310,6 +315,14 @@ const MainLayout = () => {
         <GlobalSearch isOpen={searchOpen} onClose={closeSearch} />
         <CommandPalette isOpen={commandOpen} onClose={closeCommand} />
         <AIAssistantDialog isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
+        <SynzinHelpPrompt
+          isOpen={synzinPromptOpen && !assistantOpen}
+          onAsk={() => {
+            setSynzinPromptOpen(false)
+            setAssistantOpen(true)
+          }}
+          onDismiss={() => setSynzinPromptOpen(false)}
+        />
         <ReminderToastListener />
       </div>
     </>
