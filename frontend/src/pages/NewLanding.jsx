@@ -1616,7 +1616,7 @@ const Header = () => {
             variants={buttonVariants}
             whileHover="hover"
             whileTap="tap"
-            className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-[#ffffff] dark:text-slate-950 dark:hover:bg-slate-200"
           >
             Start Free Trial
             <motion.span

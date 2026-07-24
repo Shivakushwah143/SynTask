@@ -94,6 +94,18 @@ from app.integrations.meta.models import (
     MetaSyncRun,
     MetaWebhookEvent,
 )
+from app.integrations.meta.messaging_models import (
+    MetaChannelConnection,
+    MetaConversation,
+    MetaMessage,
+    MetaOnboardingSession,
+)
+from app.integrations.meta.readiness_models import MetaReadinessRecord
+from app.integrations.meta.identity_models import (
+    CustomerIdentity,
+    CrossChannelIdentityLink,
+)
+from app.integrations.meta.ai_draft_models import MetaAIDraft
 from app.integrations.google_workspace.models import (
     GoogleWorkspaceConnection,
     GoogleWorkspaceMail,
@@ -267,6 +279,14 @@ async def init_db():
                 MetaWebhookEvent,
                 MetaSyncRun,
                 MetaMarketingInsight,
+                MetaChannelConnection,
+                MetaConversation,
+                MetaMessage,
+                MetaOnboardingSession,
+                MetaReadinessRecord,
+                CustomerIdentity,
+                CrossChannelIdentityLink,
+                MetaAIDraft,
                 GoogleWorkspaceConnection,
                 GoogleWorkspaceMail,
                 GoogleWorkspaceCalendarEvent,

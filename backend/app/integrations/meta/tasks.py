@@ -20,7 +20,16 @@ from app.integrations.meta.models import (
     MetaWebhookEvent,
     MetaWebhookStatus,
 )
+from app.integrations.meta.channel_adapters import (
+    ChannelType,
+    NormalizedChannelEvent,
+    NormalizedEventType,
+)
 from app.integrations.meta.lead_service import MetaLeadQuarantined, MetaLeadService
+from app.integrations.meta.messaging_service import MetaMessagingService
+from app.integrations.meta.instagram_adapter import InstagramAdapter
+from app.integrations.meta.messenger_adapter import MessengerAdapter
+from app.integrations.meta.whatsapp_adapter import WhatsAppAdapter
 from app.integrations.meta.redaction import sanitize_error_message
 from app.worker.celery_app import celery_app
 
@@ -553,11 +562,88 @@ async def _process_event(event_id: str) -> str:
 
 
 async def _execute_event(event: MetaWebhookEvent) -> None:
-    """Route supported Meta webhook events to the Phase 3 lead adapter."""
+    """Route supported Meta webhook events without mixing Meta logic into CRM."""
     if event.event_type != "leadgen":
+        normalized_events = await _normalize_messaging_events(event)
+        for normalized in normalized_events:
+            if normalized.event_type == NormalizedEventType.UNKNOWN:
+                event.status = MetaWebhookStatus.REJECTED
+                event.error_code = "unsupported_messaging_event"
+                event.error_message = "Unsupported Meta messaging event"
+                continue
+            await MetaMessagingService().process_normalized_event(
+                normalized, correlation_id=event.correlation_id
+            )
         return None
     await MetaLeadService().process_event(event)
 
 
 def _status_value(status: MetaWebhookStatus | str) -> str:
     return status.value if isinstance(status, MetaWebhookStatus) else str(status)
+
+
+async def _normalize_messaging_events(event: MetaWebhookEvent) -> list[NormalizedChannelEvent]:
+    payload = event.payload or {}
+    connection = payload.get("connection") if isinstance(payload.get("connection"), dict) else {}
+    channel_value = connection.get("channel")
+    connection_id = connection.get("id")
+    if not channel_value or not connection_id:
+        return []
+    try:
+        channel = ChannelType(channel_value)
+    except ValueError:
+        return []
+    if channel == ChannelType.WHATSAPP and isinstance(payload.get("change"), dict):
+        return await _normalize_whatsapp_event(payload, event.company_id, str(connection_id))
+    if channel == ChannelType.INSTAGRAM:
+        return await InstagramAdapter().normalize_webhook(
+            payload, company_id=event.company_id, connection_id=str(connection_id)
+        )
+    if channel == ChannelType.MESSENGER:
+        return await MessengerAdapter().normalize_webhook(
+            payload, company_id=event.company_id, connection_id=str(connection_id)
+        )
+
+    messaging = payload.get("messaging") if isinstance(payload.get("messaging"), dict) else {}
+    sender = messaging.get("sender") if isinstance(messaging.get("sender"), dict) else {}
+    recipient = messaging.get("recipient") if isinstance(messaging.get("recipient"), dict) else {}
+    message = messaging.get("message") if isinstance(messaging.get("message"), dict) else {}
+    event_type = _normalized_event_type(str(event.event_type or "unknown"))
+    provider_message_id = (
+        message.get("mid")
+        or messaging.get("mid")
+        or event.object_id
+        or event.provider_event_id
+    )
+    return [NormalizedChannelEvent(
+        company_id=event.company_id,
+        channel=channel,
+        connection_id=str(connection_id),
+        provider_event_id=event.provider_event_id,
+        provider_message_id=str(provider_message_id) if provider_message_id else None,
+        event_type=event_type,
+        sender_id=str(sender.get("id")) if sender.get("id") else None,
+        recipient_id=str(recipient.get("id")) if recipient.get("id") else None,
+        text=str(message.get("text")) if message.get("text") else None,
+        raw_payload=payload,
+    )]
+
+
+def _normalized_event_type(event_type: str) -> NormalizedEventType:
+    mapping = {
+        "message": NormalizedEventType.INBOUND_MESSAGE,
+        "postback": NormalizedEventType.POSTBACK,
+        "delivery": NormalizedEventType.DELIVERY,
+        "read": NormalizedEventType.READ,
+        "reaction": NormalizedEventType.REACTION,
+        "referral": NormalizedEventType.REFERRAL,
+    }
+    return mapping.get(event_type, NormalizedEventType.UNKNOWN)
+
+
+async def _normalize_whatsapp_event(
+    payload: dict, company_id: str, connection_id: str
+) -> list[NormalizedChannelEvent]:
+    return await WhatsAppAdapter().normalize_webhook(
+        payload, company_id=company_id, connection_id=connection_id
+    )

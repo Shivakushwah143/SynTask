@@ -12,6 +12,7 @@ import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
 import { LEAD_NOTES_QUERY_KEY, LeadNotesTab } from './notes'
 import { LeadTimelineTab } from './timeline'
 import { LeadAISalesTab } from './ai'
+import { MetaAttribution } from './MetaAttribution'
 
 const ACTIVE_TAB_KEY = 'tab'
 const WORKSPACE_QUERY_KEY = 'crm-lead-workspace'
@@ -242,6 +243,7 @@ export default function CRMLeadWorkspacePage() {
   } else {
     body = (
       <div className="space-y-4">
+        <MetaAttribution lead={lead} />
         <LeadOverview
           lead={lead}
           onSubmit={handleLeadOverviewSubmit}
