@@ -79,6 +79,7 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
 
 const Users = () => {
   const { user } = useAuthStore()
+  const currentUser = user
   const { confirm } = useConfirmation()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -330,6 +331,17 @@ const Users = () => {
   }
 
   const handleEdit = (userToEdit) => {
+    // Permission: allow editing if self or company admin, or manager/lead over the user
+    const isSelf = String(userToEdit.id || userToEdit._id) === String(user.id || user._id)
+    const isAdmin = hasCompanyAdminAccess(user?.role)
+    const isManagerRole = normalizeRole(user?.role) === 'manager'
+    const isLeadRoleLocal = isLeadRole(user?.role)
+    const managerCanEdit = isManagerRole && userToEdit.department_id && userToEdit.department_id === user.department_id
+    const leadCanEdit = isLeadRoleLocal && userToEdit.lead_id && String(userToEdit.lead_id) === String(user.id || user._id)
+    if (!(isSelf || isAdmin || managerCanEdit || leadCanEdit)) {
+      toast.error('You do not have permission to edit this user')
+      return
+    }
     setEditingUser(userToEdit)
     setSelectedDepartmentId(userToEdit.department_id || '')
     setShowDepartmentCreate(false)
@@ -857,12 +869,22 @@ const Users = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEdit(user)}
-                          className="rounded-lg px-3 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/30"
-                        >
-                          Edit
-                        </button>
+                        {/* Show Edit button only when row is not current user OR current user is company admin */}
+                        {(() => {
+                          const rowId = String((user && (user.id || user._id)) || '')
+                          const currentUserId = String((currentUser && (currentUser.id || currentUser._id)) || '')
+                          if (rowId !== currentUserId || isCompanyAdmin) {
+                            return (
+                              <button
+                                onClick={() => handleEdit(user)}
+                                className="rounded-lg px-3 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/30"
+                              >
+                                Edit
+                              </button>
+                            )
+                          }
+                          return null
+                        })()}
                         <button
                           onClick={() => handleDelete(user.id)}
                           className="rounded-lg px-3 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/30"

@@ -6,6 +6,7 @@ import {
   Sparkles, Rocket, Clock, AlertTriangle, CheckCheck, UserCheck, 
   Briefcase, ArrowRight 
 } from 'lucide-react'
+import { excludeCurrentUser } from '../utils/userFilters'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Link } from 'react-router-dom'
 import { ticketsAPI } from '../api/tickets'
@@ -546,7 +547,7 @@ const Tickets = () => {
       const uniqueUsers = users.filter((user, index, self) =>
         index === self.findIndex((u) => String(u.id || u._id) === String(user.id || user._id))
       )
-      setAssignableUsers(uniqueUsers)
+          setAssignableUsers(excludeCurrentUser(uniqueUsers, user))
     } catch (error) {
       console.error('Error loading assignable users:', error)
     }

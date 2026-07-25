@@ -116,4 +116,20 @@ export const usersAPI = {
     const response = await api.get(`/users/assignable?${params.toString()}`)
     return response.data
   },
+
+  // Get assignable users but ensure junior employees are included regardless of department/manager
+  getAssignableUsersWithJuniors: async (forTickets = false, projectId = null) => {
+    const [assignableResp, juniorsResp] = await Promise.all([
+      usersAPI.getAssignableUsers(forTickets, projectId),
+      usersAPI.listUsers(null, 'junior', 'active', 0, 500),
+    ])
+    const assignable = assignableResp.users || []
+    const juniors = juniorsResp.users || []
+    const map = new Map()
+    assignable.concat(juniors).forEach((u) => {
+      if (!u) return
+      map.set(String(u.id || u._id), u)
+    })
+    return { users: Array.from(map.values()) }
+  },
 }

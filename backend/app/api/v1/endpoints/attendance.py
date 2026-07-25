@@ -26,6 +26,7 @@ from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+ws_router = APIRouter()
 
 # Standard working hours threshold (seconds)
 STANDARD_WORK_SECONDS = 8 * 3600  # 28800 seconds = 8 hours
@@ -383,7 +384,7 @@ async def delayed_logout_check(user_id: str, user: User, company_id: str):
 # -----------------------------------------------------------------------------
 # WebSocket Handler Endpoint
 # -----------------------------------------------------------------------------
-@router.websocket("/ws")
+@ws_router.websocket("/ws")
 async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
     user: Optional[User] = None
     user_id_str: str = ""
