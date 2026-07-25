@@ -136,7 +136,10 @@ api_router.include_router(content_calendar.router, prefix="/content-calendar", t
 api_router.include_router(scheduled_jobs.router, prefix="/scheduled-jobs", tags=["Scheduled Jobs"])
 api_router.include_router(timesheet.router, prefix="/timesheet", tags=["Timesheet"], dependencies=[Depends(require_module("task"))])
 api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
-api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"], dependencies=[Depends(require_module("attendance_leaves"))])
+# Expose attendance HTTP endpoints to authenticated users; gate specific admin/report endpoints inside the module where needed.
+api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
+# WebSocket handler for attendance is mounted without module dependency so token-auth via query param works for WS clients
+api_router.include_router(attendance.ws_router, prefix="/attendance")
 api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])
 api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"], dependencies=[Depends(require_module("attendance_leaves"))])
 api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"], dependencies=[Depends(require_module("attendance_leaves"))])
