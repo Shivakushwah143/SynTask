@@ -77,9 +77,11 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
   const loadUsers = useCallback(async () => {
     try {
       setLoadingUsers(true)
-      // Use assignable users endpoint to get users based on role
-      const data = await usersAPI.getAssignableUsers()
-      setUsers(data.users || [])
+      // Use assignable users endpoint (merged with juniors) to get users based on role
+      const data = await usersAPI.getAssignableUsersWithJuniors()
+      // Exclude current logged-in user from assign dropdowns
+      const filtered = (data.users || []).filter((u) => String(u.id || u._id) !== String(user.id || user._id))
+      setUsers(filtered)
     } catch (error) {
       console.error('Error loading users:', error)
       // Fallback to list users if assignable endpoint fails
@@ -94,7 +96,8 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
         } else if (isLeadRole(user.role)) {
           fallbackUsers = fallbackUsers.filter(u => u.role === 'employee')
         }
-        setUsers(fallbackUsers)
+        // Ensure current user is not present in assign dropdown
+        setUsers(fallbackUsers.filter((u) => String(u.id || u._id) !== String(user.id || user._id)))
       } catch (fallbackError) {
         console.error('Error loading fallback users:', fallbackError)
       }

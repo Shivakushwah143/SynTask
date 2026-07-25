@@ -133,6 +133,21 @@
     color: var(--select-option-text);
   }
 
+  /* Stronger select/option enforcement for browsers that render native dropdowns */
+  select,
+  select option,
+  select optgroup {
+    background-color: var(--color-app-input) !important;
+    color: var(--color-app-text) !important;
+  }
+
+  :where(html.dark, html[data-theme='dark']) select,
+  :where(html.dark, html[data-theme='dark']) select option,
+  :where(html.dark, html[data-theme='dark']) select optgroup {
+    background-color: var(--color-app-surface) !important;
+    color: var(--color-app-text) !important;
+  }
+
   main,
   main > *,
   section,
@@ -254,6 +269,24 @@
 }
 
 @layer utilities {
+  /* Map common Tailwind text-gray utilities to app color vars in dark mode
+     to avoid low-contrast combinations when components use static gray classes. */
+  :where(html.dark, html[data-theme='dark']) .text-gray-900,
+  :where(html.dark, html[data-theme='dark']) .text-gray-800 {
+    color: var(--color-app-text) !important;
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-gray-700,
+  :where(html.dark, html[data-theme='dark']) .text-gray-600 {
+    color: var(--color-app-text-secondary) !important;
+  }
+
+  :where(html.dark, html[data-theme='dark']) .text-gray-500,
+  :where(html.dark, html[data-theme='dark']) .text-gray-400,
+  :where(html.dark, html[data-theme='dark']) .text-gray-300 {
+    color: var(--color-app-text-muted) !important;
+  }
+
   :where(
     .btn,
     button,

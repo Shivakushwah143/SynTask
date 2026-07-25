@@ -17,6 +17,7 @@ import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/ro
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
 import { timeService } from '@/services/timeService'
+import { excludeCurrentUser } from '../utils/userFilters'
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -134,7 +135,7 @@ const Tasks = () => {
       setLoadingUsers(true)
       // Use listUsers to surface all junior employees regardless of department/manager
       const data = await usersAPI.listUsers(null, 'junior', 'active', 0, 500)
-      setAssignableUsers(data.users || [])
+      setAssignableUsers(excludeCurrentUser(data.users || [], user))
     } catch (error) {
       console.error('Error loading users:', error)
       toast.error('Failed to load users')

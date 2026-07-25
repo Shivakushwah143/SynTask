@@ -78,14 +78,15 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
 
   const loadAssignableUsers = async () => {
     try {
-      // Pass for_tickets=true to get all users for Leads and Admins
-      const data = await usersAPI.getAssignableUsers(true)
+      // Pass for_tickets=true to get all users for Leads and Admins; include juniors
+      const data = await usersAPI.getAssignableUsersWithJuniors(true)
       const users = data.users || []
       // Remove duplicates based on user ID
       const uniqueUsers = users.filter((user, index, self) =>
         index === self.findIndex((u) => String(u.id || u._id) === String(user.id || user._id))
       )
-      setAssignableUsers(uniqueUsers)
+      // Exclude current logged-in user from assign dropdowns
+      setAssignableUsers(uniqueUsers.filter((u) => String(u.id || u._id) !== String(user.id || user._id)))
     } catch (error) {
       console.error('Error loading assignable users:', error)
     }

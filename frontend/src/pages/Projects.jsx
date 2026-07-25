@@ -16,6 +16,7 @@ import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
 import { canCreateProject, canManageProject, normalizeRole } from '../utils/roles'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonTable, inputClassName } from '../components/ui'
+import { excludeCurrentUser } from '../utils/userFilters'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import { timeService } from '@/services/timeService'
 import {
@@ -148,12 +149,12 @@ export default function Projects() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user])
 
   const loadAssignableUsers = useCallback(async () => {
     try {
       const response = await usersAPI.getAssignableUsers()
-      setAssignableUsers(response.users || [])
+      setAssignableUsers(excludeCurrentUser(response.users || [], user))
     } catch (error) {
       setAssignableUsers([])
     }

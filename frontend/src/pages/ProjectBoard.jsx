@@ -34,6 +34,7 @@ import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, Page
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import { getProjectRoleAssignmentIds, getProjectRoleNames, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
 import { timeService } from '../services/timeService'
+import { excludeCurrentUser } from '../utils/userFilters'
 
 const DEFAULT_STATUSES = [
   { id: 'todo', label: 'To Do' },
@@ -205,8 +206,8 @@ export default function ProjectBoard() {
         usersAPI.listUsers(null, null, 'active', 0, 500),
         usersAPI.listUsers(null, 'junior', 'active', 0, 500),
       ])
-      setAssignableUsers(juniorUsersData.users || [])
-      setProjectAssignableUsers(projectAssignableData.users || [])
+      setAssignableUsers(excludeCurrentUser(juniorUsersData.users || [], user))
+      setProjectAssignableUsers(excludeCurrentUser(projectAssignableData.users || [], user))
     } catch (error) {
       setAssignableUsers([])
       setProjectAssignableUsers([])
