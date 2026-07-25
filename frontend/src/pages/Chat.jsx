@@ -7,6 +7,14 @@ import { format, formatDistanceToNow } from 'date-fns'
 import GroupModal from '../components/GroupModal'
 import { timeService } from '@/services/timeService'
 
+const parseChatTimestamp = (value) => {
+  if (!value) return null
+  if (value instanceof Date) return value
+  const timestamp = String(value)
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(timestamp)
+  return new Date(hasTimezone ? timestamp : `${timestamp}Z`)
+}
+
 const Chat = () => {
   const { user } = useAuthStore()
   const [conversations, setConversations] = useState([])
@@ -447,7 +455,7 @@ const Chat = () => {
                     </div>
                     {conversation.last_message_at && (
                       <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                        {formatDistanceToNow(new Date(conversation.last_message_at), { addSuffix: true })}
+                        {formatDistanceToNow(parseChatTimestamp(conversation.last_message_at), { addSuffix: true })}
                       </div>
                     )}
                   </div>
@@ -582,7 +590,7 @@ const Chat = () => {
                           )}
                           <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                           <div className={`text-[10px] mt-1 ${isOwn ? 'text-indigo-200' : 'text-gray-400 dark:text-gray-500'}`}>
-                            {format(new Date(message.created_at), 'HH:mm')}
+                            {format(parseChatTimestamp(message.created_at), 'HH:mm')}
                           </div>
                         </div>
                       </div>
