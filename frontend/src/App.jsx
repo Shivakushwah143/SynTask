@@ -1,15 +1,19 @@
-import { Suspense, lazy, useEffect } from 'react'
-import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
-import Loader from './components/Loader'
-import { useUIStore } from './store/uiStore'
-import { useAuthStore } from './store/authStore'
-import { useTheme } from './hooks/useTheme'
-import { ErrorBoundary } from './components/ErrorBoundary'
-import ConfirmDialog from './components/ConfirmDialog'
-import UndoBar from './components/UndoBar'
+import NavBar from './components/NavBar';
+import DemoLayout from './layouts/DemoLayout';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { useEffect } from 'react';
+import Loader from './components/Loader';
+import { useUIStore } from './store/uiStore';
+import { useAuthStore } from './store/authStore';
+import { useTheme } from './hooks/useTheme';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import ConfirmDialog from './components/ConfirmDialog';
+import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isSuperAdminRole } from './utils/roles'
-import { applySeoMeta, getSeoMeta } from './utils/seo'
+import { hasCompanyAdminAccess, isSuperAdminRole } from './utils/roles';
+import { applySeoMeta, getSeoMeta } from './utils/seo';
+import DemoHome from './pages/DemoHome';
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
@@ -77,15 +81,16 @@ const BulkLeads = lazy(() => import('./pages/BulkLeads'))
 const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
 const SalesSettings = lazy(() => import('./pages/sales/SalesSettings'))
 const CRMPipelinePage = lazy(() => import('./pages/crm/pipeline/page'))
-const CRMDashboardPage = lazy(() => import('./pages/crm/dashboard/page'))
 const CRMLeadWorkspacePage = lazy(() => import('./pages/crm/leads/workspace'))
 const CRMCompaniesPage = lazy(() => import('./pages/crm/companies/page'))
 const CRMCompanyWorkspacePage = lazy(() => import('./pages/crm/companies/workspace'))
 const CRMContactsPage = lazy(() => import('./pages/crm/contacts/page'))
 const CRMActivitiesPage = lazy(() => import('./pages/crm/activities/page'))
+const CRMMetaInboxPage = lazy(() => import('./pages/crm/inbox/MetaInbox'))
 const CRMCalendarPage = lazy(() => import('./pages/crm/calendar/page'))
 const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
+const CRMMetaIntegrationPage = lazy(() => import('./pages/crm/settings/meta'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
 const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
@@ -193,6 +198,9 @@ function App() {
         <Route path="/" element={<NewLandingRoute />} />
         <Route path="/old-landing" element={<LandingRoute />} />
         <Route path="/new-landing" element={<NewLanding />} />
+        <Route path="/demo/*" element={<DemoLayout />}>
+          <Route index element={<DemoHome />} />
+        </Route>
         <Route path="/login" element={<PublicRoute><AuthLayout previewImage="/dashboard-preview.png"><Login /></AuthLayout></PublicRoute>} />
         <Route path="/admin-request" element={<PublicRoute><AuthLayout maxWidth="max-w-5xl"><AdminRequest /></AuthLayout></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />
@@ -278,10 +286,12 @@ function App() {
             <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
             <Route path="companies/:companyId" element={withBoundary(<CRMCompanyWorkspacePage />)} />
             <Route path="contacts" element={withBoundary(<CRMContactsPage />)} />
+            <Route path="inbox" element={withBoundary(<CRMMetaInboxPage />)} />
             <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
             <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
             <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
+            <Route path="settings/meta" element={withBoundary(<CRMMetaIntegrationPage />)} />
             <Route path="settings" element={withBoundary(<CRMSettingsPage />)} />
           </Route>
       </Route>

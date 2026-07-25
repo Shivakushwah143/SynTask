@@ -31,6 +31,7 @@ import {
   LayoutDashboard,
   LineChart,
   Megaphone,
+  MessageSquareText,
   MonitorCheck,
   Network,
   Palette,
@@ -188,6 +189,12 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       name: "Dashboard",
       href: "/dashboard",
+      icon: LayoutDashboard,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+    },
+    {
+      name: "Demo",
+      href: "/demo",
       icon: LayoutDashboard,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
@@ -477,6 +484,16 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/crm/contacts",
       icon: UserCheck,
     },
+    {
+      name: "Meta Inbox",
+      href: "/crm/inbox",
+      icon: MessageSquareText,
+    },
+    // {
+    //   name: "CRM Activities",
+    //   href: "/crm/activities",
+    //   icon: CalendarClock,
+    // },
     {
       name: "CRM Calendar",
       href: "/crm/calendar",
@@ -794,11 +811,11 @@ const Sidebar = ({ isOpen, onClose }) => {
           {/* Logo with colorful gradient */}
           <div className={`flex h-16 items-center border-b border-[#1a1a1a] px-4 ${collapsed ? "lg:justify-center lg:px-0" : "justify-between"}`}>
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-blue-500/20">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-lg shadow-black/5">
                 <img
                   src="/logo.svg"
                   alt="SynTask Logo"
-                  className="h-6 w-6 flex-shrink-0 object-contain invert"
+                  className="h-6 w-6 flex-shrink-0 object-contain"
                   onError={(e) => {
                     e.target.style.display = "none";
                   }}

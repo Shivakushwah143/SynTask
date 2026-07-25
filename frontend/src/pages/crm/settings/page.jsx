@@ -21,6 +21,7 @@ import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '.
 import { Badge, Button, FormField, inputClassName, Modal } from '../../../components/ui'
 import { useConfirmation } from '../../../hooks/useConfirmation'
 import { asArray } from '../../phase4Utils'
+import { MetaIntegrationSettings } from './MetaIntegrationSettings'
 
 const STORAGE_KEY = 'sytask-crm-settings'
 
@@ -177,6 +178,9 @@ export default function CRMSettingsPage() {
       {/* Pipeline Masters Section */}
       <PipelineMastersSection />
 
+      <MetaIntegrationSettings />
+
+      <div className="grid gap-6 xl:grid-cols-2">
       {/* CRM Settings */}
       <div className="grid gap-6 xl:grid-cols-2 mb-6">
         <EditableListSection
@@ -231,6 +235,7 @@ export default function CRMSettingsPage() {
           ]}
         />
       </div>
+</div>
     </CRMPage>
   )
 }

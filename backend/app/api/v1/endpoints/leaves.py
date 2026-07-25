@@ -34,7 +34,7 @@ from app.services.timeline_service import create_timeline_event
 from app.core.clock import utc_now
 
 router = APIRouter()
-UPLOAD_DIR = Path(__file__).parent.parent.parent.parent / settings.UPLOAD_DIR / "leaves"
+UPLOAD_DIR = Path(__file__).resolve().parents[4] / settings.UPLOAD_DIR / "leaves"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 

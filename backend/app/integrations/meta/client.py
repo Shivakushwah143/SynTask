@@ -47,6 +47,17 @@ class MetaGraphClient:
             raise MetaGraphClientError("Meta Graph lead response was invalid")
         return payload
 
+    async def test_connection(self) -> Dict[str, Any]:
+        """Validate token with a read-only identity lookup."""
+        payload = await self._get_json(
+            f"{self.BASE_URL}/me",
+            params={"fields": "id,name"},
+            operation="connection test",
+        )
+        if not isinstance(payload, dict) or not payload.get("id"):
+            raise MetaGraphClientError("Meta Graph connection response was invalid")
+        return {"id": str(payload["id"]), "name": payload.get("name")}
+
     async def get_insights(
         self,
         *,
