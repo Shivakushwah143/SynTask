@@ -6,39 +6,24 @@ import {
   Mail, 
   Shield, 
   User,
-  LayoutDashboard,
   Settings as SettingsIcon,
   Key,
   BellRing,
   MailCheck,
   UserCog,
   ShieldCheck,
-  CheckCircle,
   AlertCircle,
   RefreshCw,
   Save,
   Eye,
   EyeOff,
-  Copy,
-  Check,
-  X,
-  ArrowRight,
-  Crown,
-  Star,
   Sparkles,
-  Zap,
-  Clock,
-  Calendar,
-  Database,
-  Server,
-  Globe,
-  Smartphone
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { authAPI } from '../api/auth'
-import { getAvatarUrl } from '../utils/avatarUrl'
+import { aiAPI } from '../api/ai'
 import toast from 'react-hot-toast'
-import { Badge, Button, FormField, PageHeader, PasswordInput, inputClassName } from '../components/ui'
+import { Badge, Button, FormField, inputClassName } from '../components/ui'
 
 // ============================================================
 // SECTION HEADER COMPONENT
@@ -178,6 +163,10 @@ const Settings = () => {
   const [changingPassword, setChangingPassword] = useState(false)
   const [savingPreferences, setSavingPreferences] = useState(false)
   const [savingMailSync, setSavingMailSync] = useState(false)
+  const [aiMemory, setAiMemory] = useState({ enabled: true, memories: [], policy: {} })
+  const [aiMemoryDraft, setAiMemoryDraft] = useState({ title: '', content: '', preference_key: 'response_detail' })
+  const [loadingAiMemory, setLoadingAiMemory] = useState(false)
+  const [savingAiMemory, setSavingAiMemory] = useState(false)
   const [imageError, setImageError] = useState(false)
   const [notificationPrefs, setNotificationPrefs] = useState({
     email_notifications: user?.notification_preferences?.email_notifications ?? true,
@@ -400,10 +389,71 @@ const Settings = () => {
     toast.success('Mail sync settings reset')
   }
 
+  const loadAiMemory = async () => {
+    try {
+      setLoadingAiMemory(true)
+      setAiMemory(await aiAPI.listPersonalMemory())
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to load AI memory')
+    } finally {
+      setLoadingAiMemory(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'ai-memory') void loadAiMemory()
+  }, [activeTab])
+
+  const saveAiPreference = async (event) => {
+    event.preventDefault()
+    try {
+      setSavingAiMemory(true)
+      await aiAPI.savePersonalPreference(aiMemoryDraft)
+      setAiMemoryDraft({ title: '', content: '', preference_key: 'response_detail' })
+      await loadAiMemory()
+      toast.success('AI memory saved')
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to save AI memory')
+    } finally {
+      setSavingAiMemory(false)
+    }
+  }
+
+  const toggleAiMemory = async (enabled) => {
+    try {
+      await aiAPI.updatePersonalMemorySettings(enabled)
+      await loadAiMemory()
+      toast.success(enabled ? 'AI memory enabled' : 'AI memory disabled')
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to update AI memory')
+    }
+  }
+
+  const deleteAiMemory = async (memoryId) => {
+    try {
+      await aiAPI.deletePersonalMemory(memoryId)
+      await loadAiMemory()
+      toast.success('AI memory deleted')
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to delete AI memory')
+    }
+  }
+
+  const clearAiMemory = async () => {
+    try {
+      await aiAPI.clearPersonalMemory()
+      await loadAiMemory()
+      toast.success('AI memory cleared')
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to clear AI memory')
+    }
+  }
+
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'security', label: 'Security', icon: Lock },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'ai-memory', label: 'AI Memory', icon: Sparkles },
     ...(user?.role === 'manager' ? [] : [{ id: 'mail-sync', label: 'Mail Sync', icon: Inbox }]),
   ]
 
@@ -478,7 +528,7 @@ const Settings = () => {
                       src={displayedAvatar}
                       alt={`${user?.first_name || 'User'} profile`}
                       className="h-32 w-32 rounded-full border-4 border-white object-cover shadow-xl shadow-indigo-500/15 dark:border-gray-800"
-                      onError={(e) => {
+                      onError={() => {
                         console.error('❌ Image failed to load:', displayedAvatar);
                         setImageError(true);
                       }}
@@ -712,6 +762,102 @@ const Settings = () => {
                 </p>
               </div>
             </div>
+          </div>
+        </SettingsCard>
+      )}
+
+      {activeTab === 'ai-memory' && (
+        <SettingsCard>
+          <SectionHeader
+            icon={Sparkles}
+            title="AI Memory"
+            description="Control saved professional preferences used by SynTask AI"
+            action={
+              <button
+                type="button"
+                onClick={() => toggleAiMemory(!aiMemory.enabled)}
+                className={`inline-flex min-h-10 items-center rounded-xl px-4 text-sm font-semibold text-white shadow-sm transition ${aiMemory.enabled ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-gray-600 hover:bg-gray-700'}`}
+              >
+                {aiMemory.enabled ? 'Disable Memory' : 'Enable Memory'}
+              </button>
+            }
+          />
+          <div className="space-y-5 p-4">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200">
+              Conversation memory is short-lived session context. Saved personal memory is user-controlled preference data such as language, response detail, tone, and report layout. It cannot change permissions, facts, approvals, or safety policy.
+            </div>
+
+            <form onSubmit={saveAiPreference} className="grid gap-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40 md:grid-cols-[0.8fr_0.8fr_1.4fr_auto]">
+              <label className="space-y-1">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Preference</span>
+                <select
+                  className={inputClassName}
+                  value={aiMemoryDraft.preference_key}
+                  onChange={(event) => setAiMemoryDraft((current) => ({ ...current, preference_key: event.target.value }))}
+                  disabled={!aiMemory.enabled || savingAiMemory}
+                >
+                  <option value="response_detail">Response detail</option>
+                  <option value="language">Language</option>
+                  <option value="draft_tone">Draft tone</option>
+                  <option value="report_layout">Report layout</option>
+                </select>
+              </label>
+              <FormField label="Title">
+                <input
+                  className={inputClassName}
+                  value={aiMemoryDraft.title}
+                  onChange={(event) => setAiMemoryDraft((current) => ({ ...current, title: event.target.value }))}
+                  disabled={!aiMemory.enabled || savingAiMemory}
+                  placeholder="Concise replies"
+                />
+              </FormField>
+              <FormField label="Memory">
+                <input
+                  className={inputClassName}
+                  value={aiMemoryDraft.content}
+                  onChange={(event) => setAiMemoryDraft((current) => ({ ...current, content: event.target.value }))}
+                  disabled={!aiMemory.enabled || savingAiMemory}
+                  placeholder="Use short summaries with action bullets"
+                />
+              </FormField>
+              <Button type="submit" loading={savingAiMemory} disabled={!aiMemory.enabled || !aiMemoryDraft.title.trim() || !aiMemoryDraft.content.trim()} className="self-end">
+                <Save className="h-4 w-4" />
+                Save
+              </Button>
+            </form>
+
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Remembered preferences</h3>
+              <button type="button" onClick={clearAiMemory} disabled={!aiMemory.memories?.length} className="min-h-10 rounded-xl border border-rose-200 px-4 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/50 dark:text-rose-300">
+                Clear All
+              </button>
+            </div>
+
+            {loadingAiMemory ? (
+              <div className="rounded-xl border border-gray-200 p-4 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-300">Loading AI memory...</div>
+            ) : aiMemory.memories?.length ? (
+              <div className="space-y-3">
+                {aiMemory.memories.map((memory) => (
+                  <div key={memory.memory_id} className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-gray-900 dark:text-white">{memory.title}</p>
+                        <Badge label={memory.preference_key || memory.memory_type} colorKey="scheduled" />
+                      </div>
+                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{memory.content}</p>
+                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Source: {memory.source_type}</p>
+                    </div>
+                    <button type="button" onClick={() => deleteAiMemory(memory.memory_id)} className="min-h-10 rounded-xl border border-rose-200 px-4 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-300">
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:text-gray-300">
+                No saved AI preferences.
+              </div>
+            )}
           </div>
         </SettingsCard>
       )}

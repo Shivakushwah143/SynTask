@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.ai.agents.lead_intelligence import LeadIntelligenceAgent
 from app.ai.agents.sales_agent import SalesAgent
+from app.ai.logger import AILogger
 from app.ai.service import AIService
 from app.api.dependencies import get_current_user
 from app.models.user import User
@@ -33,6 +34,41 @@ lead_intelligence_agent = LeadIntelligenceAgent(tool_registry=ai_service.tool_re
 sales_agent = SalesAgent(tool_registry=ai_service.tool_registry)
 
 
+async def _log_legacy_ai_usage(*, current_user: User, feature: str, migration_status: str = "legacy_active", fallback_reason: str = "not_migrated") -> None:
+    try:
+        await AILogger.log_interaction(
+            feature=f"legacy_ai:{feature}",
+            role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+            provider="legacy_ai_service",
+            status="deprecated_route_used",
+            company_id=getattr(current_user, "company_id", None),
+            user_id=str(getattr(current_user, "id", "")),
+            target_user_id=None,
+            model=None,
+            prompt_version=None,
+            prompt_role_key=None,
+            prompt=None,
+            context={
+                "route": f"/api/v1/ai/{feature}",
+                "migration_status": migration_status,
+                "fallback_reason": fallback_reason,
+                "safe_for_logs": True,
+            },
+            raw_response=None,
+            parsed_response=None,
+            latency_ms=None,
+            prompt_tokens=None,
+            completion_tokens=None,
+            total_tokens=None,
+            response_size_bytes=None,
+            fallback_used=False,
+            fallback_chain=[],
+            executed_actions=[],
+        )
+    except Exception as exc:
+        logging.getLogger(__name__).warning("legacy_ai_telemetry_failed:%s", type(exc).__name__)
+
+
 async def _require_company_context(current_user: User) -> User:
     if not current_user.company_id and current_user.role.value != "super_admin":
         raise HTTPException(
@@ -49,6 +85,7 @@ async def generate_task_prioritization(
 ):
     """Generate a daily task prioritization plan for the current employee."""
     current_user = await _require_company_context(current_user)
+    await _log_legacy_ai_usage(current_user=current_user, feature="task-prioritization")
     try:
         return await ai_service.generate_task_prioritization(current_user, payload)
     except ValueError as error:
@@ -67,6 +104,7 @@ async def generate_task_breakdown(
 ):
     """Generate a structured breakdown for a single task."""
     current_user = await _require_company_context(current_user)
+    await _log_legacy_ai_usage(current_user=current_user, feature="task-breakdown")
     try:
         return await ai_service.generate_task_breakdown(current_user, payload)
     except ValueError as error:
@@ -85,6 +123,7 @@ async def generate_breakdown(
 ):
     """Generate a task breakdown for a free-form task description."""
     current_user = await _require_company_context(current_user)
+    await _log_legacy_ai_usage(current_user=current_user, feature="breakdown")
     try:
         return await ai_service.generate_breakdown(current_user, payload)
     except ValueError as error:
@@ -103,6 +142,7 @@ async def generate_daily_report(
 ):
     """Generate a role-aware daily report for the current user."""
     current_user = await _require_company_context(current_user)
+    await _log_legacy_ai_usage(current_user=current_user, feature="daily-report")
     try:
         return await ai_service.generate_daily_report(current_user, payload)
     except ValueError as error:
@@ -122,6 +162,7 @@ async def generate_chat_response(
 ):
     """Generate a role-aware personal assistant response."""
     current_user = await _require_company_context(current_user)
+    await _log_legacy_ai_usage(current_user=current_user, feature="chat", migration_status="frontend_flagged_gateway_available", fallback_reason="rollout_flag_disabled_or_legacy_client")
     try:
         if conversation_id and payload.conversation_id != conversation_id:
             payload = payload.model_copy(update={"conversation_id": conversation_id})
@@ -142,6 +183,7 @@ async def generate_marketing_chat_response(
 ):
     """Generate a marketing-focused client support assistant response."""
     current_user = await _require_company_context(current_user)
+    await _log_legacy_ai_usage(current_user=current_user, feature="marketing-chat")
     try:
         return await ai_service.generate_marketing_chat_response(current_user, payload)
     except ValueError as error:
@@ -160,6 +202,7 @@ async def generate_sales_agent_response(
 ):
     """Generate a sales-agent recommendation and optional execution plan for a lead."""
     current_user = await _require_company_context(current_user)
+    await _log_legacy_ai_usage(current_user=current_user, feature="sales-agent")
     return await sales_agent.analyze(current_user, payload)
 
 
