@@ -56,6 +56,75 @@ First-login browser timezone detection can call `PUT /api/v1/time/settings` with
 
 ## Endpoints by Module
 
+### Unified AI Assistant
+
+Routes require authentication and the `ai_agents` module gate. The unified workspace endpoint uses backend-derived tenant, user, role, department, module, and record authorization; client payloads cannot provide authoritative `company_id`, `tenant_id`, `user_id`, `role`, permission sets, or specialist IDs. Routing is deterministic from the user request, current workspace, and backend role capability pack. Unsupported role/capability combinations are rejected before an agent run is created.
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/ai-assistant/chat` | `unified_assistant_chat` | Creates or validates a server-owned `AIConversation`, creates or reuses a tenant/user-scoped Redis Working Memory session, validates current workspace project/task context, builds a sectioned Personal ContextPackage, routes through the existing governed Agent Orchestrator, and returns a normalized response. |
+| GET | `/api/v1/ai-assistant/memory` | `list_personal_memory` | Returns the authenticated user's optional personal AI memory state and policy. Disabled memory returns no saved memories. |
+| PUT | `/api/v1/ai-assistant/memory/preferences` | `upsert_personal_memory_preference` | Creates or updates a user-owned professional preference memory. Secrets, protected HR/payroll terms, profiling, and employment-decision content are rejected. |
+| PUT | `/api/v1/ai-assistant/memory/settings` | `update_personal_memory_settings` | Enables or disables optional personal AI memory for the authenticated user. |
+| DELETE | `/api/v1/ai-assistant/memory/{memory_id}` | `delete_personal_memory` | Deletes one user-owned personal AI memory record. Setting records cannot be deleted through this route. |
+| DELETE | `/api/v1/ai-assistant/memory` | `clear_personal_memory` | Deletes all user-owned optional personal AI memory records except the enable/disable setting. |
+
+Request body:
+
+```json
+{
+  "message": "What needs my attention today?",
+  "conversation_id": "optional-server-issued-id",
+  "session_id": "optional-server-issued-id",
+  "idempotency_key": "client-retry-key",
+  "workspace": {
+    "page": "dashboard",
+    "project_id": "optional",
+    "task_id": "optional",
+    "client_id": "optional",
+    "lead_id": "optional",
+    "selected_record_type": "optional",
+    "selected_record_id": "optional",
+    "filters": {}
+  },
+  "preferences": {
+    "response_detail": "optional",
+    "language": "optional"
+  }
+}
+```
+
+Response body:
+
+```json
+{
+  "conversation_id": "...",
+  "session_id": "...",
+  "message_id": "...",
+  "run_id": "...",
+  "state": "completed",
+  "agent": {"agent_id": "project_agent", "version": "1.0.0", "routing_reason": "project_workspace"},
+  "answer": {"summary": "...", "sections": [], "facts": [], "missing_data": [], "warnings": [], "confidence": 0.0},
+  "citations": [],
+  "proposed_actions": [],
+  "memory": {"saved": false, "candidate_ids": []},
+  "usage": {"provider": "...", "model": "...", "token_usage": {}, "estimated_cost": 0.0}
+}
+```
+
+Personal memory preference request:
+
+```json
+{
+  "memory_id": "optional-existing-id",
+  "title": "Response style",
+  "content": "Prefer concise summaries with blockers first.",
+  "preference_key": "response_style"
+}
+```
+
+Personal memory is tenant/user-owned through `UserMemory`. Saved preferences are advisory context only: they cannot override current workspace facts, permissions, policies, verified metrics, or action approval rules.
+
 ### 2FA
 
 | Method | Path | Handler | Notes |

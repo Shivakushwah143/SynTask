@@ -1,7 +1,7 @@
 # SynTask AI Platform — Milestone 12: Unified Personal AI Workspace
 
 **Version:** 1.0  
-**Status:** Not Started  
+**Status:** In Progress  
 **Target repository path:** `docs/milestones/MILESTONE_12_UNIFIED_PERSONAL_AI_WORKSPACE.md`  
 **Date:** 2026-07-25  
 **Depends on:** Milestones 1–11, especially the Shared Agent Platform, Project Agent, Email Draft Agent, Task Performance Insights Agent, Department Specialist Packs, and Agent Backend-to-Frontend Integration.
@@ -1109,23 +1109,110 @@ Use the repository Cavecrew/Caveman skill. First inspect the current code and ve
 
 ## 17. Implementation Progress
 
-- [ ] Repository review and current-state verification complete.
-- [ ] Milestone 11 prerequisites and blockers recorded.
-- [ ] Unified contracts approved in code and tests.
-- [ ] Provider context delivery fixed and proven.
-- [ ] Server-owned session lifecycle implemented.
-- [ ] Unified gateway implemented.
-- [ ] Personal ContextPackage implemented.
-- [ ] Agent Router implemented.
-- [ ] Role capability packs implemented.
-- [ ] Personal preferences and memory controls implemented.
-- [ ] Unified frontend workspace implemented.
-- [ ] Legacy migration completed or explicitly staged with safe rollout.
+- [x] Repository review and current-state verification complete.
+- [x] Milestone 11 prerequisites and blockers recorded.
+- [x] Unified contracts approved in code and tests.
+- [x] Provider context delivery fixed and proven.
+- [x] Server-owned session lifecycle implemented for the new unified gateway.
+- [x] Unified gateway implemented as a partial backend/frontend rollout path.
+- [x] Personal ContextPackage implemented for the unified gateway provider context.
+- [x] Agent Router implemented for deterministic M12 routing.
+- [x] Role capability packs implemented for governed role/module limits.
+- [x] Personal preferences and memory controls implemented.
+- [x] Unified frontend workspace API routing implemented behind rollout flag.
+- [x] Legacy migration explicitly staged with safe rollout and deprecation telemetry.
 - [ ] Security and isolation gates passed.
 - [ ] Focused and full verification completed.
 - [ ] Completion report recorded.
 
 ## 18. Completion Evidence
 
-**Status:** Not Started  
-**Evidence:** Add exact implementation and verification evidence here. Do not mark checklist items complete without code and test proof.
+**Status:** In Progress / Partial  
+
+Repository-grounded gap matrix, 2026-07-25:
+
+| Area | Evidence | Status |
+|---|---|---|
+| Legacy AI runtime | `backend/app/api/v1/endpoints/ai.py`, `frontend/src/api/ai.js`, `frontend/src/pages/AIChat.jsx`, `frontend/src/components/ai/AIAssistantDialog.jsx` used `/ai/chat` before this milestone. | Partial migration started |
+| Governed agent runtime | `backend/app/api/v1/endpoints/agents.py`, `backend/app/agents/orchestrator.py`, `backend/app/agents/registry.py`. | Existing |
+| Milestone 11 prerequisite | `docs/milestones/MILESTONE_11_AGENT_BACKEND_TO_FRONTEND_INTEGRATION.md` marks M11 `Partial`; full backend suite and frontend lint remain unclean. | Carry-forward blocker |
+| Provider context transmission | `ProviderRouter.generate(context=...)` already passed context, but `backend/app/ai/providers/openai.py` and `backend/app/ai/providers/groq.py` did not serialize it into outbound messages. | Fixed in this milestone |
+| Working Memory lifecycle | `backend/app/rag/working_memory.py` creates server-owned sessions; prior agent endpoints still use fallback strings. | New unified gateway uses server-owned sessions |
+| Frontend unified entry | `frontend/src/api/ai.js` now routes AI Chat to `/ai-assistant/chat` when `VITE_UNIFIED_AI_ASSISTANT_ENABLED=true`. | Partial rollout flag |
+| Personal ContextPackage | `backend/app/rag/personal_context.py` builds explicit identity, permission, workspace, working memory, preference, structured memory, RAG evidence, request, conflict, and budget sections before provider delivery. | Implemented for unified gateway |
+| Deterministic routing | `backend/app/agents/routing.py` routes email draft, task performance insight, project workspace, and safe-read fallback requests without trusting prompt-claimed roles. | Implemented |
+| Role capability packs | `backend/app/agents/capability_packs.py` derives allowed agents, safe-read tools, proposal-only actions, approval requirements, and forbidden operations from backend role/modules. | Implemented |
+| Personal memory controls | `GET/PUT/DELETE /api/v1/ai-assistant/memory*` reuse `UserMemory` for user-owned professional preferences; disable/clear/delete behavior is covered by focused tests and Settings UI. | Implemented |
+| Legacy telemetry | Legacy `/api/v1/ai/*` endpoints record sanitized `legacy_ai:*` usage through `AILogger` without raw prompt/response payloads. | Staged migration |
+
+Implemented files:
+
+- `backend/app/ai/providers/context_envelope.py`
+- `backend/app/ai/providers/openai.py`
+- `backend/app/ai/providers/groq.py`
+- `backend/app/api/v1/endpoints/ai_assistant.py`
+- `backend/app/api/v1/endpoints/ai.py`
+- `backend/app/api/v1/router.py`
+- `backend/app/agents/capability_packs.py`
+- `backend/app/agents/routing.py`
+- `backend/app/rag/personal_context.py`
+- `backend/tests/rag/test_provider_context_payload.py`
+- `backend/tests/agents/test_unified_ai_assistant_gateway.py`
+- `backend/tests/agents/test_milestone12_personal_context_routing.py`
+- `backend/tests/agents/test_unified_ai_personal_memory.py`
+- `backend/tests/test_legacy_ai_telemetry.py`
+- `frontend/src/api/ai.js`
+- `frontend/src/api/ai.test.js`
+- `frontend/src/pages/AIChat.jsx`
+- `frontend/src/pages/Settings.jsx`
+- `frontend/.env.example`
+- `backend/API_DOCUMENTATION.md`
+- `README.md`
+- `docs/product/PRD.md`
+- `docs/diagrams/architecture.md`
+- `docs/milestones/MILESTONE_12_UNIFIED_PERSONAL_AI_WORKSPACE.md`
+
+Implemented behavior:
+
+- Added `POST /api/v1/ai-assistant/chat` behind existing `ai_agents` module dependency and Agent Platform feature flags.
+- Gateway creates or validates `AIConversation` ownership by authenticated company and user.
+- Gateway creates or reuses Redis Working Memory through `WorkingMemoryService`; missing/expired client session references receive a replacement server-issued session.
+- Gateway rejects forged conversation ownership and validates project/task workspace context before binding it to Working Memory.
+- Unified request schemas forbid unknown top-level, workspace, and preference fields so frontend authority fields fail validation.
+- OpenAI and Groq providers now include a deterministic governance/context system message built from sanitized context.
+- Provider context envelope drops raw prompt, credential, secret, password, token, API key, and chain-of-thought style fields and omits content marked `external_model_allowed=false`.
+- Frontend `aiAPI.chat` routes existing AI Chat page and assistant dialog to `/ai-assistant/chat` only when `VITE_UNIFIED_AI_ASSISTANT_ENABLED=true`; default remains legacy fallback for rollback.
+- Unified gateway now sends route and role capability metadata into a sectioned Personal ContextPackage before provider delivery.
+- Deterministic routing chooses the email draft, task performance insight, project, or safe-read fallback agent from request/workspace context and backend capability packs.
+- Employee role packs cannot route into task performance insights; prompt-claimed authority does not override backend role/module context.
+- Users can view, save/update, delete, clear, enable, and disable optional personal AI memory from backend endpoints and the Settings AI Memory tab.
+- Saved personal memory is professional-preference-only, user-owned, and rejected when it contains secrets, protected HR/payroll, profiling, or employment-decision terms.
+- Legacy AI endpoints continue to work during rollout but now emit sanitized deprecation telemetry for remaining consumer discovery.
+- Existing AI Chat page now renders as the Milestone 12 personal AI workspace. It shows selected agent, routing reason, confidence, warnings, citations/source references, memory status, proposal-only status, missing/conflicting data, and current rollout state when those fields are present.
+- AI Chat includes empty, loading, error, retry, and disabled-feature rollout states while preserving existing cards, badges, buttons, icons, and page styling.
+
+Verification, 2026-07-25:
+
+- `python -m pytest backend\tests\rag\test_provider_router.py backend\tests\rag\test_provider_context_payload.py -q`: 6 passed.
+- `python -m compileall backend\app\api\v1\endpoints\ai_assistant.py backend\app\api\v1\router.py backend\app\ai\providers`: passed.
+- `python -m pytest backend\tests\agents\test_agent_api_boundaries.py backend\tests\agents\test_project_agent_contract.py -q`: 19 passed, 4 warnings.
+- `python -m pytest backend\tests\agents\test_unified_ai_assistant_gateway.py backend\tests\rag\test_provider_context_payload.py backend\tests\rag\test_provider_router.py -q`: 10 passed, 9 warnings.
+- `python -m pytest backend\tests\agents\test_milestone12_personal_context_routing.py backend\tests\agents\test_unified_ai_assistant_gateway.py -q`: 8 passed, 9 warnings.
+- `python -m pytest backend\tests\agents\test_unified_ai_personal_memory.py backend\tests\agents\test_milestone12_personal_context_routing.py backend\tests\agents\test_unified_ai_assistant_gateway.py backend\tests\rag\test_provider_context_payload.py backend\tests\rag\test_provider_router.py -q`: 17 passed, 9 warnings.
+- `python -m pytest backend\tests\test_legacy_ai_telemetry.py backend\tests\agents\test_unified_ai_personal_memory.py backend\tests\agents\test_milestone12_personal_context_routing.py backend\tests\agents\test_unified_ai_assistant_gateway.py backend\tests\rag\test_provider_context_payload.py backend\tests\rag\test_provider_router.py -q`: 18 passed, 9 warnings.
+- `python -m pytest backend\tests\agents backend\tests\rag\test_context_package.py backend\tests\rag\test_working_memory.py backend\tests\rag\test_structured_memory.py backend\tests\rag\test_provider_router.py backend\tests\rag\test_provider_context_payload.py -q`: 97 passed, 8 skipped, 43 warnings.
+- `python -m compileall backend\app\api\v1\endpoints\ai_assistant.py backend\app\api\v1\endpoints\ai.py backend\app\agents\capability_packs.py backend\app\agents\routing.py backend\app\rag\personal_context.py backend\app\agents\orchestrator.py`: passed.
+- `npm.cmd -C frontend run test -- src\api\ai.test.js src\api\agents.test.js`: 2 test files passed, 6 tests passed.
+- `npm.cmd exec eslint src/pages/Settings.jsx src/api/ai.js src/api/ai.test.js` from `frontend/`: passed.
+- `npm.cmd exec eslint src/pages/AIChat.jsx src/api/ai.js src/api/ai.test.js` from `frontend/`: passed.
+- `npm.cmd -C frontend run build`: passed with dependency freshness warnings for Browserslist/caniuse-lite.
+- `python -m pytest backend\tests -q`: failed during collection because `backend/tests/integrations/meta/test_instagram_adapter.py` and `backend/tests/integrations/meta/test_messenger_adapter.py` contain pre-existing unclosed-parenthesis syntax errors.
+- `npm.cmd -C frontend run lint`: failed with 656 problems across unrelated existing files after touched-file lint passed.
+
+Known blockers:
+
+- Milestone 12 is not complete. Full security gates, full backend suite, full frontend lint, full frontend tests, and real MongoDB/Redis/Qdrant verification remain open.
+- Full backend suite is blocked at collection by unrelated Meta integration test syntax errors in `backend/tests/integrations/meta/test_instagram_adapter.py` and `backend/tests/integrations/meta/test_messenger_adapter.py`.
+- Full frontend lint is blocked by unrelated existing no-unused-vars/no-undef issues; changed M12 frontend files pass targeted ESLint.
+- Carry-forward M11 blockers remain: full backend suite previously `418 passed, 21 failed, 12 skipped`; frontend lint previously `609 errors, 25 warnings`; full frontend suite previously did not complete cleanly.
+- No commits, pushes, pull requests, deployments, secrets, new connectors, direct mutations, email sending, or Milestone 13 work were performed.

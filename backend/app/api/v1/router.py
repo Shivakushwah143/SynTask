@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
     sales, search, departments, attendance, notification_emails, timeline, leaves, eod, admin_permissions, time
 )
 from app.api.v1.endpoints import ai
+from app.api.v1.endpoints import ai_assistant
 from app.api.v1.endpoints import rag
 from app.api.v1.endpoints import agents
 from app.api.v1.endpoints import creative
@@ -145,6 +146,7 @@ api_router.include_router(meta_integration.router, prefix="/integrations/meta", 
 api_router.include_router(google_workspace_router, prefix="/google-workspace", tags=["Google Workspace"])
 
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"], dependencies=[Depends(require_module("ai_agents"))])
+api_router.include_router(ai_assistant.router, prefix="/ai-assistant", tags=["Unified AI Assistant"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 api_router.include_router(agents.router, prefix="/agents", tags=["Agent Platform"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(creative.router, prefix="/creative", tags=["Creative Director"])

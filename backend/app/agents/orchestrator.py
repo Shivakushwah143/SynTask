@@ -25,6 +25,7 @@ from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.rag.context_package import ContextPackageBuilder, sanitize_for_model_context
+from app.rag.personal_context import build_personal_model_context
 from app.rag.permissions import RAGScope
 from app.services.task_performance_metrics import TaskPerformanceMetricService
 
@@ -128,6 +129,18 @@ class AgentOrchestrator:
                 return self._response(run)
             await self._advance(run, AgentRunState.PROCESSING, actor_id=str(current_user.id), reason="provider")
             model_context = sanitize_for_model_context(package).model_dump(mode="json")
+            if payload.input_payload.get("personal_context"):
+                model_context = build_personal_model_context(
+                    base_context=model_context,
+                    current_user=current_user,
+                    workspace_context=payload.input_payload.get("workspace") or {},
+                    preferences={
+                        **(payload.input_payload.get("preferences") or {}),
+                        "personal_memory": payload.input_payload.get("personal_memory") or {},
+                    },
+                    route=payload.input_payload["personal_context"]["route"],
+                    capability_pack=payload.input_payload["personal_context"]["capability_pack"],
+                )
             model_context = await self._provider_context_for_run(
                 definition=definition,
                 context=model_context,

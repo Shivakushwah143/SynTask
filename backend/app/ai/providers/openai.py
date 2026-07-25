@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.ai.provider import AIProvider, AIProviderResult
+from app.ai.providers.context_envelope import provider_context_message
 from app.core.config import settings
 
 
@@ -27,6 +28,7 @@ class OpenAIProvider(AIProvider):
             "max_tokens": (options or {}).get("max_tokens", settings.AI_MAX_TOKENS),
             "messages": [
                 {"role": "system", "content": (options or {}).get("system_prompt", "")},
+                {"role": "system", "content": provider_context_message(context)},
                 {"role": "user", "content": prompt},
             ],
         }
@@ -59,4 +61,3 @@ class OpenAIProvider(AIProvider):
             total_tokens=usage.get("total_tokens"),
             raw_response=data,
         )
-
