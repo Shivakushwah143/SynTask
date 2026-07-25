@@ -451,7 +451,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const navigate = useNavigate()
   const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
   const { data: stagesData } = useQuery('crm-lead-edit-stages', salesApi.getStages)
-  const { data: usersData } = useQuery('crm-lead-edit-users', () => usersAPI.getAssignableUsers())
+  const { data: usersData } = useQuery('crm-lead-edit-users', () => usersAPI.getAssignableUsersWithJuniors())
   const stages = Array.isArray(stagesData?.stages) ? stagesData.stages : []
   const users = Array.isArray(usersData?.users) ? usersData.users : []
   const [form, setForm] = useState({ current_stage: '', status: '', assigned_to: '', interest_level: '', channel: '', tag: '' })

@@ -96,7 +96,7 @@ export default function BulkLeads() {
   const [uploading, setUploading] = useState(false)
   const [fileError, setFileError] = useState('')
 
-  const { data: usersData } = useQuery('bulk-leads-assignable-users', () => usersAPI.getAssignableUsers())
+  const { data: usersData } = useQuery('bulk-leads-assignable-users', () => usersAPI.getAssignableUsersWithJuniors())
   const { data: departmentsData } = useQuery('bulk-leads-departments', departmentsAPI.listDepartments)
   const users = asArray(usersData, ['users'])
   const departments = asArray(departmentsData, ['departments'])

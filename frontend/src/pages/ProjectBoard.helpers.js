@@ -2,7 +2,7 @@ import { normalizeRole } from '../utils/roles'
 
 export function normalizeEstimatedHours(value) {
   const hours = Number(value)
-  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return null
+  if (!Number.isFinite(hours) || hours <= 0) return null
   return String(hours)
 }
 
