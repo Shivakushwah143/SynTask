@@ -342,13 +342,11 @@ app.include_router(avatar_router, include_in_schema=False)
 uploads_router = APIRouter()
 
 @uploads_router.get("/uploads/{file_path:path}")
-async def serve_authenticated_upload(
-    file_path: str,
-    current_user: User = Depends(get_current_user),
-):
-    """Serve uploaded files through authenticated API access."""
+async def serve_upload(file_path: str):
+    """Serve uploaded files from generated /uploads URLs."""
     return serve_upload_file(UPLOAD_DIR, file_path)
 
+app.include_router(uploads_router, include_in_schema=False)
 app.include_router(uploads_router, prefix="/api/v1", include_in_schema=False)
 
 # Root endpoint
@@ -360,4 +358,3 @@ async def root():
         "company": "SynTask",
         "copyright": "© 2025 SynTask. All Rights Reserved."
     }
-
