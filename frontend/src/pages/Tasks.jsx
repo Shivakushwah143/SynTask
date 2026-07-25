@@ -132,7 +132,8 @@ const Tasks = () => {
   const loadAssignableUsers = useCallback(async () => {
     try {
       setLoadingUsers(true)
-      const data = await usersAPI.getAssignableUsers()
+      // Use listUsers to surface all junior employees regardless of department/manager
+      const data = await usersAPI.listUsers(null, 'junior', 'active', 0, 500)
       setAssignableUsers(data.users || [])
     } catch (error) {
       console.error('Error loading users:', error)
@@ -943,9 +944,17 @@ const Tasks = () => {
                 />
               </div>
               <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setCreateMode('now')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${createMode === 'now' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>Create now</button>
-                  <button type="button" onClick={() => setCreateMode('schedule')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${createMode === 'schedule' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>Schedule</button>
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={createMode === 'schedule'}
+                      onChange={(e) => setCreateMode(e.target.checked ? 'schedule' : 'now')}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Schedule task</span>
+                  </label>
+                  <span className="text-xs text-gray-500">(check to set a future run time)</span>
                 </div>
                 {createMode === 'schedule' && (
                   <div className="mt-3">

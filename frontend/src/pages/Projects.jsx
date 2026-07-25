@@ -592,9 +592,17 @@ export default function Projects() {
             </FormField>
           </div>
           <div className="rounded-xl border border-gray-200 p-3 dark:border-[var(--color-app-border)]">
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant={createMode === 'now' ? 'primary' : 'secondary'} onClick={() => setCreateMode('now')}>Create now</Button>
-              <Button type="button" variant={createMode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setCreateMode('schedule')}>Schedule</Button>
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={createMode === 'schedule'}
+                  onChange={(e) => setCreateMode(e.target.checked ? 'schedule' : 'now')}
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Schedule project</span>
+              </label>
+              <span className="text-xs text-gray-500">(check to set a future run time)</span>
             </div>
             {createMode === 'schedule' && (
               <FormField label="Schedule for" required>
