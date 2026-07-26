@@ -65,6 +65,9 @@ const withDataCompatibility = (payload) => {
 
 const extractErrorMessage = (value) => {
   if (!value) return 'An error occurred'
+  if (typeof value === 'string' && /<html[\s>]/i.test(value)) {
+    return 'Server temporarily unavailable. Please try again.'
+  }
   if (typeof value === 'string') return value
   if (Array.isArray(value)) {
     return value
@@ -168,6 +171,11 @@ axiosInstance.interceptors.response.use(
     }
 
     // Handle other errors
+    if ([502, 503, 504].includes(error.response?.status)) {
+      toast.error('Server temporarily unavailable. Please try again.')
+      return Promise.reject(error)
+    }
+
     const errorMessage = extractErrorMessage(
       error.response?.data?.detail ||
       error.response?.data?.message ||
