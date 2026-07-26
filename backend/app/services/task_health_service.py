@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from app.models.task import Task, TaskExtensionRequest, TaskExtensionStatus, TaskHealthStatus, TaskStatus
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.models.user import User, UserRole, UserStatus
+from app.core.clock import parse_to_utc, utc_now
 from app.services.timeline_service import create_timeline_event
 
 
@@ -26,7 +27,7 @@ def _health_value(value: Any) -> str:
 
 
 def calculate_task_health(task: Task, now: Optional[datetime] = None) -> TaskHealthStatus:
-    now = now or datetime.now()
+    now = now or utc_now()
     if task.status == TaskStatus.COMPLETED:
         return TaskHealthStatus.COMPLETED
     if int(getattr(task, "extension_count", 0) or 0) > 0:
@@ -43,11 +44,11 @@ def calculate_task_health(task: Task, now: Optional[datetime] = None) -> TaskHea
 
 
 def _as_naive(value: datetime) -> datetime:
-    return value.replace(tzinfo=None) if getattr(value, "tzinfo", None) else value
+    return parse_to_utc(value) or value
 
 
 async def sync_task_health(task: Task, now: Optional[datetime] = None) -> Task:
-    now = now or datetime.now()
+    now = now or utc_now()
     previous = _health_value(getattr(task, "health_status", None))
     next_health = calculate_task_health(task, now)
     if previous != next_health.value:
@@ -168,7 +169,7 @@ async def review_extension_request(request: TaskExtensionRequest, reviewer: User
     if request.status != TaskExtensionStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Extension request already reviewed")
 
-    now = datetime.now()
+    now = utc_now()
     request.status = TaskExtensionStatus.APPROVED if approved else TaskExtensionStatus.REJECTED
     request.reviewed_by = str(reviewer.id)
     request.reviewed_at = now

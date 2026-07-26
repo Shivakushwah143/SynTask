@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from .shared import *
 from app.api.deps import Pagination50, PaginationParams
 from app.api.v1.endpoints.tasks import build_employee_project_visibility_query
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -84,7 +85,7 @@ async def list_projects(
         days_until_delivery = None
         priority = "normal"
         if project.delivery_date:
-            delta = project.delivery_date - datetime.now()
+            delta = project.delivery_date - utc_now()
             days_until_delivery = delta.days
             if days_until_delivery < 0:
                 priority = "overdue"

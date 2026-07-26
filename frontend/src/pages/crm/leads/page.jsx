@@ -16,7 +16,7 @@ import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
-import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection } from '../../../components/crm'
+import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { ChartCard } from '../../../components/charts/ChartCard'
 import { ChartTooltip } from '../../../components/charts/ChartTooltip'
 import { Badge, Button, Modal, PhoneInput, Skeleton, inputClassName } from '../../../components/ui'
@@ -24,6 +24,7 @@ import BulkImportLeadsModal from '../../../components/BulkImportProspectsModal'
 import { useAuthStore } from '../../../store/authStore'
 import { isEmployeeRole, normalizeRole } from '../../../utils/roles'
 import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, normalizeText } from '../pipeline/utils'
+import { timeService } from '@/services/timeService'
 
 // Helper functions (keeping existing ones)
 const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
@@ -176,7 +177,7 @@ export default function CRMLeadsPage() {
   const allLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []), [stages])
   const stageOptions = useMemo(() => stages.filter((stage) => (stage.leads || []).length).map((stage) => ({ value: stage.key, label: stage.name })), [stages])
   const totalPipelineValue = useMemo(() => allLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0), [allLeads])
-  const leadAnalytics = useMemo(() => buildLeadDashboardAnalytics(allLeads, stages, new Date(), pipelineQuery.data?.meta?.currency || 'INR'), [allLeads, pipelineQuery.data?.meta?.currency, stages])
+  const leadAnalytics = useMemo(() => buildLeadDashboardAnalytics(allLeads, stages, timeService.now(), pipelineQuery.data?.meta?.currency || 'INR'), [allLeads, pipelineQuery.data?.meta?.currency, stages])
   
   const filteredLeads = useMemo(() => {
     const query = normalizeText(leadSearch)
@@ -361,7 +362,7 @@ export default function CRMLeadsPage() {
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `crm-leads-${new Date().toISOString().slice(0, 10)}.csv`
+    anchor.download = `crm-leads-${timeService.toUtcISOString(timeService.now()).slice(0, 10)}.csv`
     anchor.click()
     URL.revokeObjectURL(url)
     toast.success('Leads exported')
@@ -473,36 +474,49 @@ export default function CRMLeadsPage() {
         />
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-        <MetricCard
-          label="Total Leads"
-          value={leadCount}
-          icon={Users}
-          trend="+12%"
-          color="blue"
-        />
-        <MetricCard
-          label="Pipeline Value"
-          value={formatCurrency(totalPipelineValue, pipelineQuery.data?.meta?.currency || 'INR')}
-          icon={DollarSign}
-          trend="+8%"
-          color="emerald"
-        />
-        <MetricCard
-          label="Active Stages"
-          value={stages.length}
-          icon={Layers}
-          color="purple"
-        />
-        <MetricCard
-          label="Hot Leads"
-          value={allLeads.filter(l => ['critical', 'high', 'hot'].includes(normalizeText(getLeadPriority(l)))).length}
-          icon={Zap}
-          trend="+5"
-          color="orange"
-        />
-      </div>
+      <section className="mb-6 overflow-hidden rounded-[28px] border border-primary-200/70 bg-gradient-to-br from-white via-primary-50/50 to-white p-5 shadow-[0_18px_60px_rgba(15,23,42,0.06)] dark:border-[#5a4635] dark:from-[#241c14] dark:via-[#17120e] dark:to-[#1d1711]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600 dark:text-primary-300">Pipeline snapshot</p>
+            <h2 className="mt-2 text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">A quick view of your current lead momentum</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge label={`${leadCount} active records`} colorKey="draft" />
+            <Badge label={`${filteredLeads.length} visible`} colorKey="scheduled" />
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <CRMStatCard
+            icon={Users}
+            label="Total Leads"
+            value={leadCount}
+            helper="Live records across the pipeline"
+            tone="blue"
+          />
+          <CRMStatCard
+            icon={DollarSign}
+            label="Pipeline Value"
+            value={formatCurrency(totalPipelineValue, pipelineQuery.data?.meta?.currency || 'INR')}
+            helper="Current opportunity value"
+            tone="emerald"
+          />
+          <CRMStatCard
+            icon={Layers}
+            label="Active Stages"
+            value={stages.length}
+            helper="Stages currently in motion"
+            tone="slate"
+          />
+          <CRMStatCard
+            icon={Zap}
+            label="Hot Leads"
+            value={allLeads.filter((lead) => ['critical', 'high', 'hot'].includes(normalizeText(getLeadPriority(lead)))).length}
+            helper="High-intent prospects"
+            tone="amber"
+          />
+        </div>
+      </section>
 
       {/* Analytics Charts Section */}
       <div className="grid gap-6 lg:grid-cols-2 mb-6">
@@ -511,6 +525,7 @@ export default function CRMLeadsPage() {
           title="Lead Trends"
           period="Last 6 Months"
           right={<Badge label={`${allLeads.length} total`} colorKey="draft" />}
+          className="overflow-hidden"
         >
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -533,6 +548,7 @@ export default function CRMLeadsPage() {
           title="Stage Distribution"
           period="Current pipeline"
           right={<Badge label={`${stages.length} stages`} colorKey="draft" />}
+          className="overflow-hidden"
         >
           <div className="h-72 flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
@@ -564,6 +580,7 @@ export default function CRMLeadsPage() {
         <ChartCard
           title="Priority Distribution"
           period="By lead priority"
+          className="overflow-hidden"
         >
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -582,6 +599,7 @@ export default function CRMLeadsPage() {
           title="Lead Velocity"
           period="Monthly growth"
           right={<Badge label={`${leadAnalytics.monthlyTrend.length} months`} colorKey="draft" />}
+          className="overflow-hidden"
         >
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -616,7 +634,7 @@ export default function CRMLeadsPage() {
           )}
         >
           {/* Search & Filter Bar */}
-          <div className="mb-4 rounded-xl border border-border bg-surface p-4 dark:bg-black/60">
+          <div className="mb-4 rounded-[24px] border border-primary-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-[#5a4635] dark:bg-black/60">
             <div className="grid gap-3 lg:grid-cols-[1fr,160px,160px,auto]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
@@ -1314,25 +1332,25 @@ export default function CRMLeadsPage() {
 // Metric Card Component
 function MetricCard({ label, value, icon: Icon, trend, color }) {
   const colorClasses = {
-    blue: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
-    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
-    purple: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-300',
-    orange: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-300',
+    blue: 'bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-900/40',
+    emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/40',
+    purple: 'bg-purple-50 text-purple-600 ring-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-900/40',
+    orange: 'bg-orange-50 text-orange-600 ring-orange-100 dark:bg-orange-950/40 dark:text-orange-300 dark:ring-orange-900/40',
   }
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-border bg-surface p-5 transition-all hover:shadow-lg hover:-translate-y-0.5 dark:bg-black/80">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-text-muted">{label}</p>
-          <p className="mt-2 text-2xl font-bold text-text-primary">{value}</p>
+    <div className="group relative overflow-hidden rounded-2xl border border-surface-border/70 bg-gradient-to-br from-white via-primary-50/40 to-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface)] dark:via-[var(--color-app-surface-muted)] dark:to-[var(--color-app-surface)]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-text-muted">{label}</p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">{value}</p>
           {trend && (
             <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
               {trend} from last month
             </p>
           )}
         </div>
-        <div className={`rounded-xl p-3 ${colorClasses[color] || colorClasses.blue}`}>
+        <div className={`rounded-2xl p-3 ring-1 ring-inset ${colorClasses[color] || colorClasses.blue}`}>
           <Icon className="h-5 w-5" />
         </div>
       </div>
@@ -1447,13 +1465,13 @@ export function getOwnerName(lead, userNameById = new Map()) {
   return 'Unassigned'
 }
 
-export function buildLeadDashboardAnalytics(leads = [], stages = [], now = new Date(), currency = 'INR') {
-  const monthFormatter = new Intl.DateTimeFormat('en', { month: 'short' })
+export function buildLeadDashboardAnalytics(leads = [], stages = [], now = timeService.now(), currency = 'INR') {
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const monthKeys = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1)
+    const date = timeService.instantFromParts(now.getFullYear(), now.getMonth() - (5 - index), 1)
     return {
       key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
-      name: monthFormatter.format(date),
+      name: monthNames[date.getMonth()],
       count: 0,
       value: 0,
     }
@@ -1461,7 +1479,7 @@ export function buildLeadDashboardAnalytics(leads = [], stages = [], now = new D
   const monthByKey = new Map(monthKeys.map((item) => [item.key, item]))
   leads.forEach((lead) => {
     const rawDate = lead.created_at || lead.updated_at || lead.estimated_close_date
-    const date = rawDate ? new Date(rawDate) : null
+    const date = rawDate ? timeService.instant(rawDate) : null
     if (!date || Number.isNaN(date.getTime())) return
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
     const bucket = monthByKey.get(key)

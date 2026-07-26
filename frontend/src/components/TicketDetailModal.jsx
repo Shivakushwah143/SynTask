@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/authStore'
 import { useConfirmation } from '../hooks/useConfirmation'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMembers }) => {
   const { user } = useAuthStore()
@@ -77,14 +78,15 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
 
   const loadAssignableUsers = async () => {
     try {
-      // Pass for_tickets=true to get all users for Leads and Admins
-      const data = await usersAPI.getAssignableUsers(true)
+      // Pass for_tickets=true to get all users for Leads and Admins; include juniors
+      const data = await usersAPI.getAssignableUsersWithJuniors(true)
       const users = data.users || []
       // Remove duplicates based on user ID
       const uniqueUsers = users.filter((user, index, self) =>
         index === self.findIndex((u) => String(u.id || u._id) === String(user.id || user._id))
       )
-      setAssignableUsers(uniqueUsers)
+      // Exclude current logged-in user from assign dropdowns
+      setAssignableUsers(uniqueUsers.filter((u) => String(u.id || u._id) !== String(user.id || user._id)))
     } catch (error) {
       console.error('Error loading assignable users:', error)
     }
@@ -482,7 +484,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                         )}
                       </div>
                       <span className="text-xs text-gray-500">
-                        {format(new Date(comment.created_at), 'MMM d, h:mm a')}
+                        {format(timeService.instant(comment.created_at), 'MMM d, h:mm a')}
                       </span>
                     </div>
                     <p className="text-sm text-gray-700 ml-6">{comment.content}</p>

@@ -6,6 +6,7 @@ from app.models.ticket import Ticket, TicketStatus, TicketPriority
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 import logging
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 async def check_and_escalate_tickets():
     """Check for tickets that need escalation and escalate them"""
     # Get tickets that are open or in progress and older than escalation time
-    now = datetime.now()
+    now = utc_now()
     
     # Escalation rules:
     # - Urgent: 2 hours

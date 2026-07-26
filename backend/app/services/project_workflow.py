@@ -7,6 +7,7 @@ from fastapi import HTTPException, status as http_status
 
 from app.models.project import Project, ProjectStatus
 from app.models.user import User
+from app.core.clock import utc_now
 
 PROJECT_ALLOWED_TRANSITIONS: Dict[ProjectStatus, set[ProjectStatus]] = {
     ProjectStatus.CREATED: {ProjectStatus.KICKOFF, ProjectStatus.ON_HOLD},
@@ -48,12 +49,12 @@ async def advance_project(
         )
 
     if next_status == ProjectStatus.COMPLETED:
-        project.completed_at = datetime.now()
+        project.completed_at = utc_now()
     elif next_status != ProjectStatus.COMPLETED:
         project.completed_at = None
 
     project.status = next_status
-    project.updated_at = datetime.now()
+    project.updated_at = utc_now()
     await project.save()
     return project
 

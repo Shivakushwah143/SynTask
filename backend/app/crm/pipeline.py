@@ -19,6 +19,7 @@ from app.crm.models import ProspectStatus, SalesProspect
 from app.models.crm_company import CRMCompany
 from app.models.user import User, UserRole
 from beanie.exceptions import CollectionWasNotInitialized
+from app.core.clock import utc_now
 
 
 APPROVED_PIPELINE_STAGES: List[Dict[str, Any]] = [
@@ -237,7 +238,7 @@ def _serialize_lead(
     company_map: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     stage_entered_at = prospect.stage_entered_at or prospect.created_at
-    now = datetime.now()
+    now = utc_now()
     days_in_stage = prospect.days_in_stage
     if stage_entered_at:
         days_in_stage = max((now - stage_entered_at).days, 0)
@@ -279,6 +280,14 @@ def _serialize_lead(
         "stage_entered_at": stage_entered_at,
         "stage_last_changed_at": getattr(prospect, "stage_last_changed_at", None),
         "days_in_stage": days_in_stage,
+        "meta_lead_id": getattr(prospect, "meta_lead_id", None),
+        "meta_campaign_id": getattr(prospect, "meta_campaign_id", None),
+        "meta_adset_id": getattr(prospect, "meta_adset_id", None),
+        "meta_ad_id": getattr(prospect, "meta_ad_id", None),
+        "meta_form_id": getattr(prospect, "meta_form_id", None),
+        "meta_created_time": getattr(prospect, "meta_created_time", None),
+        "meta_consent": getattr(prospect, "meta_consent", None),
+        "meta_attribution": getattr(prospect, "meta_attribution", None) or {},
     }
 
 
@@ -288,7 +297,7 @@ def _build_pipeline_summary(prospects: List[SalesProspect]) -> Dict[str, Any]:
     lost = 0
     total_days = 0
     staged_count = 0
-    now = datetime.now()
+    now = utc_now()
 
     for prospect in prospects:
         if prospect.status == ProspectStatus.ACTIVE:
@@ -453,7 +462,7 @@ class CRMPipelineService:
                 detail=f"Illegal transition {current_stage} -> {resolved_stage}",
             )
 
-        now = datetime.now()
+        now = utc_now()
         previous_entered_at = prospect.stage_entered_at or prospect.created_at or now
         days_in_previous_stage = max((now - previous_entered_at).days, 0)
 
@@ -552,7 +561,7 @@ class CRMPipelineService:
             automation_result: Dict[str, Any] = {"status": "skipped"}
             try:
                 if deal:
-                    now = datetime.now()
+                    now = utc_now()
                     deal.stage = "won"
                     deal.updated_by = str(getattr(current_user, "id", ""))
                     deal.updated_by_name = _user_display_name(current_user)
@@ -603,7 +612,7 @@ class CRMPipelineService:
         reopened_stage = _resolve_stage_name("New", stage_index) or "New"
         previous_stage = _resolve_stage_name(prospect.current_stage, stage_index) or prospect.current_stage or "Lost"
 
-        now = datetime.now()
+        now = utc_now()
         days_in_previous_stage = max((now - (prospect.stage_entered_at or prospect.created_at or now)).days, 0)
 
         prospect.current_stage = reopened_stage
@@ -715,7 +724,7 @@ class CRMPipelineService:
         if prospect.status != ProspectStatus.LOST:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reminders can only be created for lost leads")
 
-        now = datetime.now()
+        now = utc_now()
         activity = CRMActivity(
             company_id=company_id,
             entity_type="lead",
@@ -794,7 +803,7 @@ class CRMPipelineService:
         if prospect.status != ProspectStatus.LOST:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nurture can only be started for lost leads")
 
-        now = datetime.now()
+        now = utc_now()
         prospect.updated_at = now
         prospect.remark = prospect.remark if prospect.remark else None
         await prospect.save()

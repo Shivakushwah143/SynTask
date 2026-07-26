@@ -8,6 +8,7 @@ import { tasksAPI } from '../../../api/tasks'
 import { CRMContent, CRMPage, CRMPageTitle } from '../../../components/crm'
 import { Button, EmptyState, Modal } from '../../../components/ui'
 import { useAuthStore } from '../../../store/authStore'
+import { timeService } from '@/services/timeService'
 import {
   ActivityComposer,
   ActivityDeleteState,
@@ -45,7 +46,7 @@ const DATE_RANGE_TO_QUERY = {
 
 function toDateTimeLocal(value) {
   if (!value) return ''
-  const date = new Date(value)
+  const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return ''
   const pad = (num) => String(num).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
@@ -67,14 +68,14 @@ function buildDateRange(range) {
   if (days === null || typeof days === 'undefined') {
     return {}
   }
-  const end = new Date()
-  const start = new Date()
+  const end = timeService.now()
+  const start = timeService.now()
   start.setDate(start.getDate() - days)
   start.setHours(0, 0, 0, 0)
   end.setHours(23, 59, 59, 999)
   return {
-    date_from: start.toISOString(),
-    date_to: end.toISOString(),
+    date_from: timeService.toUtcISOString(start),
+    date_to: timeService.toUtcISOString(end),
   }
 }
 
@@ -266,8 +267,8 @@ export default function CRMActivitiesPage() {
         owner_id: form.owner_id.trim() || null,
         status: form.status,
         priority: form.priority,
-        due_date: form.due_date ? new Date(form.due_date).toISOString() : null,
-        scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+        due_date: form.due_date ? timeService.toUtcISOString(form.due_date) : null,
+        scheduled_at: form.scheduled_at ? timeService.toUtcISOString(form.scheduled_at) : null,
         metadata: parseMetadata(form.metadata),
       }
 
@@ -434,9 +435,9 @@ export default function CRMActivitiesPage() {
           onDelete={setDeleteTarget}
           onComplete={(activity) => completeMutation.mutate(activity.id)}
           onSnooze={(activity) => {
-            const next = new Date()
+            const next = timeService.now()
             next.setDate(next.getDate() + 1)
-            snoozeMutation.mutate({ activityId: activity.id, snoozeUntil: next.toISOString() })
+            snoozeMutation.mutate({ activityId: activity.id, snoozeUntil: timeService.toUtcISOString(next) })
           }}
           emptyTitle="No matching activities"
           emptyDescription="Create or filter CRM activities to populate this hub."

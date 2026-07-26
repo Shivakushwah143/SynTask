@@ -1,15 +1,19 @@
-import { Suspense, lazy, useEffect } from 'react'
-import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
-import Loader from './components/Loader'
-import { useUIStore } from './store/uiStore'
-import { useAuthStore } from './store/authStore'
-import { useTheme } from './hooks/useTheme'
-import { ErrorBoundary } from './components/ErrorBoundary'
-import ConfirmDialog from './components/ConfirmDialog'
-import UndoBar from './components/UndoBar'
+import NavBar from './components/NavBar';
+import DemoLayout from './layouts/DemoLayout';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { useEffect } from 'react';
+import Loader from './components/Loader';
+import { useUIStore } from './store/uiStore';
+import { useAuthStore } from './store/authStore';
+import { useTheme } from './hooks/useTheme';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import ConfirmDialog from './components/ConfirmDialog';
+import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isSuperAdminRole } from './utils/roles'
-import { applySeoMeta, getSeoMeta } from './utils/seo'
+import { hasCompanyAdminAccess, isSuperAdminRole } from './utils/roles';
+import { applySeoMeta, getSeoMeta } from './utils/seo';
+import DemoHome from './pages/DemoHome';
 
 const MainLayout = lazy(() => import('./layouts/MainLayout'))
 const AuthLayout = lazy(() => import('./layouts/AuthLayout'))
@@ -27,6 +31,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Users = lazy(() => import('./pages/Users'))
 const Departments = lazy(() => import('./pages/Departments'))
+const AdminPermissions = lazy(() => import('./pages/AdminPermissions'))
 const AIPrioritization = lazy(() => import('./pages/AIPrioritization'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Subscriptions = lazy(() => import('./pages/Subscriptions'))
@@ -66,6 +71,7 @@ const ScheduledJobs = lazy(() => import('./pages/ScheduledJobs'))
 const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
+const GoogleWorkspace = lazy(() => import('./pages/GoogleWorkspace'))
 
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
@@ -75,15 +81,16 @@ const BulkLeads = lazy(() => import('./pages/BulkLeads'))
 const SalesReports = lazy(() => import('./pages/sales/SalesReports'))
 const SalesSettings = lazy(() => import('./pages/sales/SalesSettings'))
 const CRMPipelinePage = lazy(() => import('./pages/crm/pipeline/page'))
-const CRMDashboardPage = lazy(() => import('./pages/crm/dashboard/page'))
 const CRMLeadWorkspacePage = lazy(() => import('./pages/crm/leads/workspace'))
 const CRMCompaniesPage = lazy(() => import('./pages/crm/companies/page'))
 const CRMCompanyWorkspacePage = lazy(() => import('./pages/crm/companies/workspace'))
 const CRMContactsPage = lazy(() => import('./pages/crm/contacts/page'))
 const CRMActivitiesPage = lazy(() => import('./pages/crm/activities/page'))
+const CRMMetaInboxPage = lazy(() => import('./pages/crm/inbox/MetaInbox'))
 const CRMCalendarPage = lazy(() => import('./pages/crm/calendar/page'))
 const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
+const CRMMetaIntegrationPage = lazy(() => import('./pages/crm/settings/meta'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
 const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
@@ -103,6 +110,7 @@ const TenantDetail = lazy(() => import('./pages/superadmin/TenantDetail'))
 const SubscriptionPlans = lazy(() => import('./pages/superadmin/SubscriptionPlans'))
 const UsageAnalytics = lazy(() => import('./pages/superadmin/UsageAnalytics'))
 const BillingRevenue = lazy(() => import('./pages/superadmin/BillingRevenue'))
+const FeatureFlagsPage = lazy(() => import('./pages/superadmin/FeatureFlagsPage'))
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuthStore()
@@ -154,6 +162,14 @@ const LegacySalesLeadRedirect = () => {
   return <Navigate to={`/crm/leads/${id}`} replace />
 }
 
+const DashboardRoute = () => {
+  const { user } = useAuthStore()
+  if (isSuperAdminRole(user?.role)) return <Navigate to="/super-admin/dashboard" replace />
+  return withStandaloneBoundary(<Dashboard />)
+}
+
+const withStandaloneBoundary = (element) => <ErrorBoundary>{element}</ErrorBoundary>
+
 function App() {
   useTheme()
   const location = useLocation()
@@ -182,6 +198,9 @@ function App() {
         <Route path="/" element={<NewLandingRoute />} />
         <Route path="/old-landing" element={<LandingRoute />} />
         <Route path="/new-landing" element={<NewLanding />} />
+        <Route path="/demo/*" element={<DemoLayout />}>
+          <Route index element={<DemoHome />} />
+        </Route>
         <Route path="/login" element={<PublicRoute><AuthLayout previewImage="/dashboard-preview.png"><Login /></AuthLayout></PublicRoute>} />
         <Route path="/admin-request" element={<PublicRoute><AuthLayout maxWidth="max-w-5xl"><AdminRequest /></AuthLayout></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><AuthLayout><ForgotPassword /></AuthLayout></PublicRoute>} />
@@ -194,7 +213,7 @@ function App() {
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-          <Route path="dashboard" element={withBoundary(<Dashboard />)} />
+          <Route path="dashboard" element={<DashboardRoute />} />
           <Route path="workflow" element={<Navigate to="/crm/pipeline" replace />} />
           <Route path="leads" element={<Navigate to="/crm/leads" replace />} />
           <Route path="tasks" element={withBoundary(<Tasks />)} />
@@ -216,6 +235,7 @@ function App() {
           <Route path="time-tracking" element={withBoundary(<TimeTracking />)} />
           <Route path="meetings" element={withBoundary(<Meetings />)} />
           <Route path="calendar" element={withBoundary(<WorkspaceCalendar />)} />
+          <Route path="google-workspace" element={withBoundary(<GoogleWorkspace />)} />
           <Route path="content-calendar" element={withBoundary(<ContentCalendar />)} />
           <Route path="content-calendar/items" element={<Navigate to="/content-calendar" replace />} />
           <Route path="timesheet" element={withBoundary(<Timesheet />)} />
@@ -236,6 +256,7 @@ function App() {
         <Route path="ai-prioritization" element={withBoundary(<AIPrioritization />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="departments" element={withBoundary(<Departments />)} />
+          <Route path="admin-permissions" element={<CompanyAdminGuard>{withBoundary(<AdminPermissions />)}</CompanyAdminGuard>} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="subscriptions" element={withBoundary(<Subscriptions />)} />
         <Route path="activity" element={withBoundary(<ActivityLog />)} />
@@ -265,10 +286,12 @@ function App() {
             <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
             <Route path="companies/:companyId" element={withBoundary(<CRMCompanyWorkspacePage />)} />
             <Route path="contacts" element={withBoundary(<CRMContactsPage />)} />
+            <Route path="inbox" element={withBoundary(<CRMMetaInboxPage />)} />
             <Route path="activities" element={withBoundary(<CRMActivitiesPage />)} />
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
             <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
             <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
+            <Route path="settings/meta" element={withBoundary(<CRMMetaIntegrationPage />)} />
             <Route path="settings" element={withBoundary(<CRMSettingsPage />)} />
           </Route>
       </Route>
@@ -293,6 +316,7 @@ function App() {
           <Route path="plans" element={withBoundary(<SubscriptionPlans />)} />
           <Route path="usage" element={withBoundary(<UsageAnalytics />)} />
           <Route path="billing" element={withBoundary(<BillingRevenue />)} />
+          <Route path="feature-flags" element={withBoundary(<FeatureFlagsPage />)} />
           <Route path="companies" element={withBoundary(<Companies />)} />
           <Route path="users" element={withBoundary(<Users />)} />
           <Route path="activity" element={withBoundary(<ActivityLog />)} />

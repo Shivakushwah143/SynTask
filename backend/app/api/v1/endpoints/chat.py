@@ -14,10 +14,17 @@ from app.api.dependencies import (
     get_current_user,
     check_company_access,
 )
-from app.core.config import settings
+from app.core.clock import utc_now
+from app.api.v1.endpoints.files import UPLOAD_DIR
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def utc_iso(value):
+    if value is None:
+        return None
+    return value.isoformat().replace("+00:00", "Z") if value.tzinfo else f"{value.isoformat()}Z"
 
 
 @router.post("/conversations")
@@ -65,9 +72,9 @@ async def create_or_get_conversation(
             "id": str(existing_conversation.id),
             "participants": existing_conversation.participants,
             "last_message": existing_conversation.last_message,
-            "last_message_at": existing_conversation.last_message_at,
+            "last_message_at": utc_iso(existing_conversation.last_message_at),
             "unread_count": existing_conversation.unread_count.get(str(current_user.id), 0),
-            "created_at": existing_conversation.created_at,
+            "created_at": utc_iso(existing_conversation.created_at),
         }
     
     # Create new conversation
@@ -86,7 +93,7 @@ async def create_or_get_conversation(
         "last_message": None,
         "last_message_at": None,
         "unread_count": 0,
-        "created_at": conversation.created_at,
+        "created_at": utc_iso(conversation.created_at),
     }
 
 
@@ -145,9 +152,9 @@ async def list_conversations(
             "group_name": conv.group_name,
             "group_admins": conv.group_admins if conv.is_group else [],
             "last_message": conv.last_message,
-            "last_message_at": conv.last_message_at,
+            "last_message_at": utc_iso(conv.last_message_at),
             "unread_count": conv.unread_count.get(str(current_user.id), 0),
-            "created_at": conv.created_at,
+            "created_at": utc_iso(conv.created_at),
         })
     
     return {"conversations": result}
@@ -189,7 +196,7 @@ async def get_messages(
     for message in messages:
         if user_id_str not in message.read_by and message.sender_id != user_id_str:
             message.read_by.append(user_id_str)
-            message.read_at[user_id_str] = datetime.now()
+            message.read_at[user_id_str] = utc_now()
             await message.save()
     
     # Update conversation unread count
@@ -214,7 +221,7 @@ async def get_messages(
                 "file_size": msg.file_size,
                 "file_type": msg.file_type,
                 "read_by": msg.read_by,
-                "created_at": msg.created_at,
+                "created_at": utc_iso(msg.created_at),
                 "is_edited": msg.is_edited,
             }
             for msg in messages
@@ -270,13 +277,11 @@ async def send_message(
             message_type = MessageType.FILE
         
         # Save file
-        import os
         import uuid
         from pathlib import Path
-        from app.core.config import settings
         
         # Create uploads directory if it doesn't exist
-        upload_dir = Path(settings.UPLOAD_DIR) / "chat"
+        upload_dir = UPLOAD_DIR / "chat"
         upload_dir.mkdir(parents=True, exist_ok=True)
         
         # Generate unique filename
@@ -318,9 +323,9 @@ async def send_message(
     
     # Update conversation
     conversation.last_message = content[:100] if content else f"📎 {file_name}"
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     
     # Update unread counts for other participants and create notifications
     for participant_id in conversation.participants:
@@ -360,7 +365,7 @@ async def send_message(
         "file_name": message.file_name,
         "file_size": message.file_size,
         "file_type": message.file_type,
-        "created_at": message.created_at,
+        "created_at": utc_iso(message.created_at),
     }
 
 
@@ -428,7 +433,7 @@ async def mark_message_read(
     # Mark as read if not already read
     if user_id_str not in message.read_by and message.sender_id != user_id_str:
         message.read_by.append(user_id_str)
-        message.read_at[user_id_str] = datetime.now()
+        message.read_at[user_id_str] = utc_now()
         await message.save()
     
     return {"status": "read"}
@@ -459,7 +464,7 @@ async def delete_message(
     
     message.is_deleted = True
     message.content = "[Message deleted]"
-    message.updated_at = datetime.now()
+    message.updated_at = utc_now()
     await message.save()
     
     return {"status": "deleted"}
@@ -544,7 +549,7 @@ async def create_group(
         "is_group": True,
         "participants": participants_info,
         "group_admins": conversation.group_admins,
-        "created_at": conversation.created_at,
+        "created_at": utc_iso(conversation.created_at),
     }
 
 
@@ -598,7 +603,7 @@ async def get_group_details(
         "participants": participants_info,
         "group_admins": conversation.group_admins,
         "created_by": conversation.created_by,
-        "created_at": conversation.created_at,
+        "created_at": utc_iso(conversation.created_at),
     }
 
 
@@ -719,7 +724,7 @@ async def add_members_to_group(
     
     # Add new members
     conversation.participants.extend(new_member_ids)
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     await conversation.save()
     
     # Create system message about new members
@@ -737,7 +742,7 @@ async def add_members_to_group(
     
     # Update conversation
     conversation.last_message = system_message.content
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
     
     # Initialize unread count for new members
@@ -832,7 +837,7 @@ async def remove_member_from_group(
     if user_id in conversation.group_admins:
         conversation.group_admins.remove(user_id)
     
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     await conversation.save()
     
     # Create system message
@@ -854,7 +859,7 @@ async def remove_member_from_group(
     
     # Update conversation
     conversation.last_message = system_message.content
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
     
     # Remove unread count for removed user
@@ -929,7 +934,7 @@ async def add_group_admin(
     
     # Add as admin
     conversation.group_admins.append(user_id)
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     await conversation.save()
     
     # Create system message
@@ -946,7 +951,7 @@ async def add_group_admin(
     
     # Update conversation
     conversation.last_message = system_message.content
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
     await conversation.save()
     
@@ -1016,7 +1021,7 @@ async def remove_group_admin(
     
     # Remove admin
     conversation.group_admins.remove(user_id)
-    conversation.updated_at = datetime.now()
+    conversation.updated_at = utc_now()
     await conversation.save()
     
     # Create system message
@@ -1038,7 +1043,7 @@ async def remove_group_admin(
     
     # Update conversation
     conversation.last_message = system_message.content
-    conversation.last_message_at = datetime.now()
+    conversation.last_message_at = utc_now()
     conversation.last_message_by = str(current_user.id)
     await conversation.save()
     
@@ -1049,5 +1054,3 @@ async def remove_group_admin(
             "name": target_user.full_name(),
         },
     }
-
-

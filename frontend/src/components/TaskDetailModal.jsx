@@ -14,6 +14,7 @@ import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole, getRoleLabel } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh }) => {
   const { user } = useAuthStore()
@@ -65,7 +66,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
       description: task.description || '',
       priority: task.priority,
       assigned_to: task.assigned_to || '',
-      due_date: task.due_date ? format(new Date(task.due_date), "yyyy-MM-dd'T'HH:mm") : '',
+      due_date: task.due_date ? format(timeService.instant(task.due_date), "yyyy-MM-dd'T'HH:mm") : '',
       tags: task.tags ? task.tags.join(', ') : '',
       issue_type_id: task.issue_type_id || '',
       component_id: task.component_id || '',
@@ -76,9 +77,11 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
   const loadUsers = useCallback(async () => {
     try {
       setLoadingUsers(true)
-      // Use assignable users endpoint to get users based on role
-      const data = await usersAPI.getAssignableUsers()
-      setUsers(data.users || [])
+      // Use assignable users endpoint (merged with juniors) to get users based on role
+      const data = await usersAPI.getAssignableUsersWithJuniors()
+      // Exclude current logged-in user from assign dropdowns
+      const filtered = (data.users || []).filter((u) => String(u.id || u._id) !== String(user.id || user._id))
+      setUsers(filtered)
     } catch (error) {
       console.error('Error loading users:', error)
       // Fallback to list users if assignable endpoint fails
@@ -93,7 +96,8 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
         } else if (isLeadRole(user.role)) {
           fallbackUsers = fallbackUsers.filter(u => u.role === 'employee')
         }
-        setUsers(fallbackUsers)
+        // Ensure current user is not present in assign dropdown
+        setUsers(fallbackUsers.filter((u) => String(u.id || u._id) !== String(user.id || user._id)))
       } catch (fallbackError) {
         console.error('Error loading fallback users:', fallbackError)
       }
@@ -573,7 +577,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                 <div>
                   <label className="text-sm font-medium text-gray-700">Due Date</label>
                   <p className="text-gray-900 mt-1">
-                    {format(new Date(task.due_date), 'PPpp')}
+                    {format(timeService.instant(task.due_date), 'PPpp')}
                   </p>
                 </div>
               )}
@@ -713,7 +717,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                         </span>
                       </div>
                       <span className="text-xs text-gray-500">
-                        {format(new Date(comment.created_at), 'MMM d, h:mm a')}
+                        {format(timeService.instant(comment.created_at), 'MMM d, h:mm a')}
                       </span>
                     </div>
                     <p className="text-sm text-gray-700 ml-6">{comment.content}</p>
@@ -877,7 +881,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                           <span className="text-gray-600">{change.new_value || 'None'}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {format(new Date(change.created_at), 'PPpp')}
+                          {format(timeService.instant(change.created_at), 'PPpp')}
                         </div>
                       </div>
                     </div>

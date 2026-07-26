@@ -78,12 +78,12 @@ async def _startup_tasks() -> None:
     from app.models.user import User, UserRole
     from app.models.attendance import Attendance, AttendanceStatus
     try:
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = utc_now().strftime("%Y-%m-%d")
         async for att in Attendance.find({"date": today_str, "status": AttendanceStatus.WORKING.value}):
             user = await User.get(str(att.employee_id))
             if user and user.role == UserRole.MANAGER:
                 att.status = AttendanceStatus.OFFLINE
-                now = datetime.now()
+                now = utc_now()
                 att.logout_time = now
                 att.monitoring_end_time = now
                 wt = compute_work_type(att.total_working_hours)
@@ -327,6 +327,7 @@ from pathlib import Path
 from app.api.dependencies import get_current_user
 from app.api.v1.endpoints.files import UPLOAD_DIR, serve_upload_file
 from app.models.user import User
+from app.core.clock import utc_now
 
 avatar_router = APIRouter()
 
@@ -341,13 +342,11 @@ app.include_router(avatar_router, include_in_schema=False)
 uploads_router = APIRouter()
 
 @uploads_router.get("/uploads/{file_path:path}")
-async def serve_authenticated_upload(
-    file_path: str,
-    current_user: User = Depends(get_current_user),
-):
-    """Serve uploaded files through authenticated API access."""
+async def serve_upload(file_path: str):
+    """Serve uploaded files from generated /uploads URLs."""
     return serve_upload_file(UPLOAD_DIR, file_path)
 
+app.include_router(uploads_router, include_in_schema=False)
 app.include_router(uploads_router, prefix="/api/v1", include_in_schema=False)
 
 # Root endpoint
@@ -359,4 +358,3 @@ async def root():
         "company": "SynTask",
         "copyright": "© 2025 SynTask. All Rights Reserved."
     }
-

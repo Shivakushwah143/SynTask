@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw } from 'lucide-react'
+import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Zap, Target, Award, TrendingUp, Activity, BarChart3 } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { usersAPI } from '../api/users'
@@ -16,6 +16,33 @@ import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
+import { timeService } from '@/services/timeService'
+import { excludeCurrentUser } from '../utils/userFilters'
+
+// Stat Card Component
+const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    blue: 'from-blue-500 to-cyan-500',
+    teal: 'from-teal-500 to-cyan-500',
+  }
+
+  return (
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    </div>
+  )
+}
 
 const Tasks = () => {
   const navigate = useNavigate()
@@ -103,12 +130,12 @@ const Tasks = () => {
     }
   }, [filters, page, searchQuery, searchParams, setSearchParams, view])
 
-  // Fetch tasks
   const loadAssignableUsers = useCallback(async () => {
     try {
       setLoadingUsers(true)
-      const data = await usersAPI.getAssignableUsers()
-      setAssignableUsers(data.users || [])
+      // Use listUsers to surface all junior employees regardless of department/manager
+      const data = await usersAPI.listUsers(null, 'junior', 'active', 0, 500)
+      setAssignableUsers(excludeCurrentUser(data.users || [], user))
     } catch (error) {
       console.error('Error loading users:', error)
       toast.error('Failed to load users')
@@ -147,7 +174,6 @@ const Tasks = () => {
       })
       let filteredTasks = Array.isArray(data.tasks) ? data.tasks : []
       
-      // Apply search filter
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase()
         filteredTasks = filteredTasks.filter(task =>
@@ -156,20 +182,20 @@ const Tasks = () => {
         )
       }
 
-      const dueFrom = filters.due_from ? new Date(filters.due_from) : null
-      const dueTo = filters.due_to ? new Date(filters.due_to) : null
+      const dueFrom = filters.due_from ? timeService.instant(filters.due_from) : null
+      const dueTo = filters.due_to ? timeService.instant(filters.due_to) : null
       if (dueFrom || dueTo) {
         filteredTasks = filteredTasks.filter((task) => {
           if (!task.due_date) return false
-          const dueDate = new Date(task.due_date)
+          const dueDate = timeService.instant(task.due_date)
           if (Number.isNaN(dueDate.getTime())) return false
           if (dueFrom) {
-            const fromStart = new Date(dueFrom)
+            const fromStart = timeService.instant(dueFrom)
             fromStart.setHours(0, 0, 0, 0)
             if (dueDate < fromStart) return false
           }
           if (dueTo) {
-            const toEnd = new Date(dueTo)
+            const toEnd = timeService.instant(dueTo)
             toEnd.setHours(23, 59, 59, 999)
             if (dueDate > toEnd) return false
           }
@@ -198,7 +224,6 @@ const Tasks = () => {
     loadDepartments()
   }, [loadDepartments])
 
-  // Check if we need to open a task from notification
   useEffect(() => {
     const taskId = sessionStorage.getItem('open_task_id')
     if (taskId) {
@@ -218,7 +243,6 @@ const Tasks = () => {
   }, [searchParams, setSearchParams])
 
   useEffect(() => {
-    // Debounce search
     const timer = setTimeout(() => {
       fetchTasks()
     }, 300)
@@ -237,7 +261,6 @@ const Tasks = () => {
     }
   }, [fetchTasks])
 
-  // Get tasks by status
   const getTasksByStatus = (status) => {
     return tasks.filter(task => task.status === status)
   }
@@ -257,6 +280,13 @@ const Tasks = () => {
   const taskGraphUsers = useMemo(() => [user, ...assignableUsers].filter(Boolean), [assignableUsers, user])
   const taskGraphRows = useMemo(() => buildTaskGraphRows(tasks, taskGraphUsers), [taskGraphUsers, tasks])
   const taskGraphSummary = useMemo(() => buildTaskGraphSummary(tasks), [tasks])
+
+  // Calculate stats
+  const totalTasks = tasks.length
+  const activeTasks = tasks.filter(t => t.status !== 'completed').length
+  const completedTasks = tasks.filter(t => t.status === 'completed').length
+  const criticalTasks = tasks.filter(t => t.priority === 'critical').length
+  const highPriorityTasks = tasks.filter(t => t.priority === 'high' || t.priority === 'critical').length
 
   const closeCreateModal = () => {
     if (submitting) return
@@ -288,7 +318,6 @@ const Tasks = () => {
     setSearchParams(writeTaskRouteState(searchParams, { view: nextView, searchQuery, filters, page }), { replace: true })
   }
 
-  // Handle create task
   const handleCreateTask = async (e) => {
     e.preventDefault()
     if (submitting) return
@@ -324,15 +353,15 @@ const Tasks = () => {
           toast.error('Schedule time is required')
           return
         }
-        const runAt = new Date(scheduleRunAt)
-        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+        const runAt = timeService.instant(scheduleRunAt)
+        if (Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
           toast.error('Schedule time must be in the future')
           return
         }
         await scheduledJobsAPI.scheduleJob({
           action_type: 'CREATE_TASK',
           payload: taskData,
-          run_at: runAt.toISOString(),
+          run_at: timeService.toUtcISOString(runAt),
         })
         toast.success('Task scheduled successfully')
         closeCreateModal()
@@ -356,15 +385,15 @@ const Tasks = () => {
         if (filters.department_id && String(createdTaskDepartmentId || '') !== String(filters.department_id)) return false
         if (filters.due_from || filters.due_to) {
           if (!createdTaskDueDate) return false
-          const dueDate = new Date(createdTaskDueDate)
+          const dueDate = timeService.instant(createdTaskDueDate)
           if (Number.isNaN(dueDate.getTime())) return false
           if (filters.due_from) {
-            const fromDate = new Date(filters.due_from)
+            const fromDate = timeService.instant(filters.due_from)
             fromDate.setHours(0, 0, 0, 0)
             if (dueDate < fromDate) return false
           }
           if (filters.due_to) {
-            const toDate = new Date(filters.due_to)
+            const toDate = timeService.instant(filters.due_to)
             toDate.setHours(23, 59, 59, 999)
             if (dueDate > toDate) return false
           }
@@ -406,7 +435,6 @@ const Tasks = () => {
     }
   }
 
-  // Handle task click
   const handleTaskClick = (task) => {
     if (task.project_id) {
       navigate(`/projects/${task.project_id}/tasks/${task.id}`)
@@ -447,39 +475,222 @@ const Tasks = () => {
   }
 
   return (
-    <div className="p-4">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-[var(--color-app-text)]">Tasks</h1>
-          <p className="text-gray-600 text-xs mt-0.5 dark:text-[var(--color-app-text-secondary)]">Track work and priorities.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ViewToggle view={view} onChange={handleViewChange} />
-          <button
-            type="button"
-            onClick={() => fetchTasks({ isRefresh: true })}
-            className="btn btn-secondary inline-flex items-center gap-2"
-            aria-busy={refreshing || undefined}
-          >
-            <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
-          {canManageTasks && (
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-600 via-rose-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
+              <ListTodo className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl">Tasks</h1>
+              <p className="mt-1 text-indigo-100">Track work and priorities across your team</p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
             <button
-              onClick={() => {
-                setSelectedDepartmentId('')
-                setShowCreateModal(true)
-              }}
-              className="btn btn-primary flex items-center justify-center w-full sm:w-auto"
+              type="button"
+              onClick={() => fetchTasks({ isRefresh: true })}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              aria-busy={refreshing || undefined}
             >
-              <Plus className="h-4 w-4 mr-1.5" />
-              New Task
+              <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
             </button>
-          )}
+            {canManageTasks && (
+              <button
+                onClick={() => {
+                  setSelectedDepartmentId('')
+                  setShowCreateModal(true)
+                }}
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              >
+                <Plus className="h-4 w-4" />
+                New Task
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Total Tasks"
+          value={totalTasks}
+          icon={ListTodo}
+          color="indigo"
+          subtitle="All tasks"
+        />
+        <StatCard
+          label="Active"
+          value={activeTasks}
+          icon={Activity}
+          color="emerald"
+          subtitle="In progress"
+        />
+        <StatCard
+          label="Completed"
+          value={completedTasks}
+          icon={CheckCircle2}
+          color="blue"
+          subtitle="Done"
+        />
+        <StatCard
+          label="High Priority"
+          value={highPriorityTasks}
+          icon={Zap}
+          color="rose"
+          subtitle={`${criticalTasks} critical`}
+        />
+      </div>
+
+      {/* Search and Filters */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tasks by title or description..."
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition ${
+                showFilters 
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
+                  : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Filter className="h-4 w-4" />
+              Filters
+            </button>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Reset
+            </button>
+            <ViewToggle view={view} onChange={handleViewChange} />
+          </div>
+        </div>
+
+        {showFilters && (
+          <div className="mt-4 grid grid-cols-1 gap-4 border-t border-gray-200 pt-4 dark:border-gray-700 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Status</label>
+              <select
+                value={filters.status}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Statuses</option>
+                {statuses.map((status) => (
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={status.id} value={status.id}>{status.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Priority</label>
+              <select
+                value={filters.priority}
+                onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Priorities</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="critical">Critical</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Assignee</label>
+              <select
+                value={filters.assigned_to}
+                onChange={(e) => setFilters({ ...filters, assigned_to: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Users</option>
+                {assignableUsers.map((u) => (
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={u.id} value={u.id}>
+                    {u.first_name} {u.last_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {isCompanyAdmin && (
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Department</label>
+                <select
+                  value={filters.department_id}
+                  onChange={(e) => setFilters({ ...filters, department_id: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  disabled={loadingDepartments}
+                >
+                  <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Departments</option>
+                  {departments.map((department) => (
+                    <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Due From</label>
+              <input
+                type="date"
+                value={filters.due_from}
+                onChange={(e) => setFilters({ ...filters, due_from: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Due To</label>
+              <input
+                type="date"
+                value={filters.due_to}
+                onChange={(e) => setFilters({ ...filters, due_to: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+          </div>
+        )}
+        
+        <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          <span>Showing {tasks.length} of {totalCount}</span>
+          <div className="flex items-center gap-2">
+            <button 
+              type="button" 
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700" 
+              disabled={page <= 1} 
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+            >
+              Previous
+            </button>
+            <button 
+              type="button" 
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700" 
+              disabled={page * pageSize >= totalCount} 
+              onClick={() => setPage((value) => value + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Task Graph Panel */}
       <TaskGraphPanel
         rows={taskGraphRows}
         summary={taskGraphSummary}
@@ -488,244 +699,132 @@ const Tasks = () => {
         }}
       />
 
-      {/* Search and Filters */}
-      <div className="card">
-        <div className="flex items-center space-x-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tasks..."
-              className="input pl-10 w-full"
-            />
-          </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'} flex items-center`}
-          >
-            <Filter className="h-4 w-4 mr-2" />
-            Filters
-          </button>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="btn btn-secondary flex items-center"
-          >
-            Reset Filters
-          </button>
-        </div>
-        <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
-          <span>Showing {tasks.length} of {totalCount}</span>
-          <div className="flex items-center gap-2">
-            <button type="button" className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button>
-            <button type="button" className="btn btn-secondary btn-sm" disabled={page * pageSize >= totalCount} onClick={() => setPage((value) => value + 1)}>Next</button>
-          </div>
-        </div>
-
-        {showFilters && (
-          <div className="mt-4 grid grid-cols-1 gap-4 border-t border-surface-border pt-4 dark:border-[var(--color-app-border)] sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Status</label>
-              <select
-                value={filters.status}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="input"
-              >
-                <option value="">All Statuses</option>
-                {statuses.map((status) => (
-                  <option key={status.id} value={status.id}>{status.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Priority</label>
-              <select
-                value={filters.priority}
-                onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-                className="input"
-              >
-                <option value="">All Priorities</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Assignee</label>
-              <select
-                value={filters.assigned_to}
-                onChange={(e) => setFilters({ ...filters, assigned_to: e.target.value })}
-                className="input"
-                >
-                  <option value="">All Users</option>
-                  {assignableUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.first_name} {u.last_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Due From</label>
-              <input
-                type="date"
-                value={filters.due_from}
-                onChange={(e) => setFilters({ ...filters, due_from: e.target.value })}
-                className="input"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Due To</label>
-              <input
-                type="date"
-                value={filters.due_to}
-                onChange={(e) => setFilters({ ...filters, due_to: e.target.value })}
-                className="input"
-              />
-            </div>
-            {isCompanyAdmin && (
-              <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Department</label>
-                <select
-                  value={filters.department_id}
-                  onChange={(e) => setFilters({ ...filters, department_id: e.target.value })}
-                  className="input"
-                  disabled={loadingDepartments}
-                >
-                  <option value="">All Departments</option>
-                  {departments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
+      {/* Tasks View - List or Kanban */}
       {view === 'list' ? (
-        <div className="card overflow-hidden">
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900/50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-[var(--color-app-text-muted)]">Title</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-[var(--color-app-text-muted)]">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-[var(--color-app-text-muted)]">Priority</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 dark:text-[var(--color-app-text-muted)]">Due Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Priority</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Due Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Assignee</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {tasks.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="px-4 py-6 text-center text-sm text-gray-500 dark:text-[var(--color-app-text-muted)]">
+                    <td colSpan="5" className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                       No tasks match the current filters.
                     </td>
                   </tr>
                 ) : (
-                  tasks.map((task) => (
-                    <tr
-                      key={task.id}
-                      onClick={() => handleTaskClick(task)}
-                      className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-[var(--color-app-surface-muted)]"
-                    >
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-[var(--color-app-text)]">{task.title}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">
-                        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium capitalize text-gray-700 dark:bg-[var(--color-app-surface-subtle)] dark:text-[var(--color-app-text-secondary)]">
-                          {String(task.status || '').replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">{priorities[task.priority]?.label || task.priority}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-[var(--color-app-text-secondary)]">
-                        {task.due_date ? format(new Date(task.due_date), 'MMM d') : '—'}
-                      </td>
-                    </tr>
-                  ))
+                  tasks.map((task) => {
+                    const priorityColors = {
+                      low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+                      medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+                      high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+                      critical: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+                    }
+                    const statusColors = {
+                      todo: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+                      in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+                      in_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+                      completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+                    }
+                    const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
+                    return (
+                      <tr
+                        key={task.id}
+                        onClick={() => handleTaskClick(task)}
+                        className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                      >
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{task.title}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[task.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                            {String(task.status || '').replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${priorityColors[task.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                            {priorities[task.priority]?.label || task.priority}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                          {task.due_date ? format(new Date(task.due_date), 'MMM d, yyyy') : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                          {assignedUser ? `${assignedUser.first_name} ${assignedUser.last_name}` : 'Unassigned'}
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
           {statuses.map((status) => {
             const statusTasks = getTasksByStatus(status.id)
             return (
-              <div key={status.id} className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-gray-900 dark:text-[var(--color-app-text)]">{status.label}</h3>
-                  <span className="badge badge-secondary text-xs">
-                    {statusTasks.length}
-                  </span>
+              <div key={status.id} className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <div className="border-b border-gray-200 p-4 dark:border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900 dark:text-white">{status.label}</h3>
+                    <span className="inline-flex h-6 min-w-[24px] items-center justify-center rounded-full bg-indigo-100 px-2 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                      {statusTasks.length}
+                    </span>
+                  </div>
                 </div>
-                <div className="space-y-3 min-h-[200px]">
+                <div className="p-3 space-y-3 min-h-[200px]">
                   {statusTasks.length === 0 ? (
-                    <EmptyState title="No tasks" description="Nothing is currently in this status." />
+                    <div className="flex min-h-[150px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 p-4 text-center dark:border-gray-700">
+                      <ListTodo className="h-8 w-8 text-gray-300 dark:text-gray-600" />
+                      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">No tasks</p>
+                    </div>
                   ) : (
-                    statusTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        onClick={() => handleTaskClick(task)}
-                        className="rounded-xl border border-gray-200 bg-white p-3 cursor-pointer transition-colors hover:border-primary-300 hover:bg-gray-50 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:hover:border-primary-700 dark:hover:bg-[var(--color-app-surface-muted)]"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <p className="font-medium text-gray-900 text-sm flex-1 dark:text-[var(--color-app-text)]">
-                            {task.title}
-                          </p>
-                          <div className="dropdown relative">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                // Handle menu
-                              }}
-                              className="rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-[var(--color-app-surface-subtle)]"
-                            >
-                              <MoreVertical className="h-4 w-4 text-gray-500 dark:text-[var(--color-app-text-muted)]" />
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {task.description && (
-                          <p className="text-xs text-gray-500 mb-2 line-clamp-2 dark:text-[var(--color-app-text-muted)]">
-                            {task.description}
-                          </p>
-                        )}
-                        
-                        <div className="flex items-center justify-between mt-2">
-                          <span className={`badge ${priorities[task.priority]?.color || 'badge-secondary'} text-xs`}>
-                            {priorities[task.priority]?.label || task.priority}
-                          </span>
-                          {task.due_date && (
-                            <div className="flex items-center text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
-                              <Calendar className="h-3 w-3 mr-1" />
-                              {format(new Date(task.due_date), 'MMM d')}
-                            </div>
+                    statusTasks.map((task) => {
+                      const priorityColors = {
+                        low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+                        medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+                        high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+                        critical: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+                      }
+                      const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => handleTaskClick(task)}
+                          className="cursor-pointer rounded-xl border border-gray-200 bg-white p-3 transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700"
+                        >
+                          <p className="font-medium text-gray-900 text-sm dark:text-white">{task.title}</p>
+                          {task.description && (
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{task.description}</p>
                           )}
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[task.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                              {priorities[task.priority]?.label || task.priority}
+                            </span>
+                            {task.due_date && (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                <Calendar className="inline h-3 w-3 mr-1" />
+                                {format(new Date(task.due_date), 'MMM d')}
+                              </span>
+                            )}
+                            {assignedUser && (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                <User className="inline h-3 w-3 mr-1" />
+                                {assignedUser.first_name}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        
-                        {task.assigned_to && (
-                          <div className="flex items-center mt-2 text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
-                            <User className="h-3 w-3 mr-1" />
-                            {(() => {
-                              const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
-                              return assignedUser 
-                                ? `${assignedUser.first_name} ${assignedUser.last_name}`
-                                : 'Assigned'
-                            })()}
-                          </div>
-                        )}
-                        {task.department && (
-                          <div className="mt-2 text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
-                            Department: {task.department}
-                          </div>
-                        )}
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               </div>
@@ -736,30 +835,38 @@ const Tasks = () => {
 
       {/* Create Task Modal */}
       {canManageTasks && showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-surface-border bg-white p-6 shadow-modal dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
-              <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-[var(--color-app-text)]">New task</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">New Task</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Create a new task for your team</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCreateModal}
+                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
             <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                  Title
-                </label>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
                 <input
                   type="text"
                   name="title"
                   required
-                  className="input"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   placeholder="Task title"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                  Details
-                </label>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
                 <textarea
                   name="description"
                   rows="3"
-                  className="input"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   placeholder="Task description"
                 />
               </div>
@@ -769,7 +876,7 @@ const Tasks = () => {
                   label="Assignee"
                   value={selectedAssigneeId}
                   onChange={setSelectedAssigneeId}
-                  className="input"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   disabled={loadingUsers}
                   createLabel="Create user"
                   onCreate={() => setShowQuickEmployeeModal(true)}
@@ -782,16 +889,6 @@ const Tasks = () => {
                     </option>
                   ))}
                 </CreatableSelectField>
-                {loadingUsers && (
-                  <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">Loading users...</p>
-                )}
-                {!loadingUsers && visibleAssignableUsers.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">
-                    {userRole === 'admin' || userRole === 'super_admin'
-                      ? 'No managers, leads, or employees available yet.'
-                      : 'No assignable users available yet.'}
-                  </p>
-                )}
               </div>
               {isCompanyAdmin && (
                 <div>
@@ -800,7 +897,7 @@ const Tasks = () => {
                     label="Department"
                     value={selectedDepartmentId}
                     onChange={setSelectedDepartmentId}
-                    className="input"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     disabled={loadingDepartments}
                     createLabel="Create department"
                     onCreate={() => setShowQuickDepartmentModal(true)}
@@ -813,16 +910,11 @@ const Tasks = () => {
                       </option>
                     ))}
                   </CreatableSelectField>
-                  {loadingDepartments && (
-                    <p className="text-xs text-gray-500 mt-1 dark:text-[var(--color-app-text-muted)]">Loading departments...</p>
-                  )}
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                  Priority
-                </label>
-                <select name="priority" className="input" defaultValue="medium">
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Priority</label>
+                <select name="priority" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" defaultValue="medium">
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -830,20 +922,16 @@ const Tasks = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                  Due date
-                </label>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Due Date</label>
                 <NaturalDateInput
                   value={dueDateValue}
                   onChange={(value) => setDueDateValue(value)}
-                  onDateResolved={(date) => setDueDateValue(date ? date.toISOString() : '')}
+                  onDateResolved={(date) => setDueDateValue(date ? timeService.toUtcISOString(date) : '')}
                 />
                 <input type="hidden" name="due_date" value={dueDateValue} required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">
-                  Estimated hours
-                </label>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Estimated Hours</label>
                 <input
                   type="number"
                   name="estimated_hours"
@@ -852,19 +940,27 @@ const Tasks = () => {
                   required
                   value={estimatedHoursValue}
                   onChange={(event) => setEstimatedHoursValue(event.target.value)}
-                  className="input"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   placeholder="8"
                 />
               </div>
-              <div className="rounded-xl border border-gray-200 p-3 dark:border-[var(--color-app-border)]">
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setCreateMode('now')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${createMode === 'now' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-[var(--color-app-surface-2)] dark:text-[var(--color-app-text)]'}`}>Create now</button>
-                  <button type="button" onClick={() => setCreateMode('schedule')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${createMode === 'schedule' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-[var(--color-app-surface-2)] dark:text-[var(--color-app-text)]'}`}>Schedule</button>
+              <div className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={createMode === 'schedule'}
+                      onChange={(e) => setCreateMode(e.target.checked ? 'schedule' : 'now')}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Schedule task</span>
+                  </label>
+                  <span className="text-xs text-gray-500">(check to set a future run time)</span>
                 </div>
                 {createMode === 'schedule' && (
                   <div className="mt-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-[var(--color-app-text-secondary)]">Schedule for</label>
-                    <input type="datetime-local" value={scheduleRunAt} onChange={(event) => setScheduleRunAt(event.target.value)} required={createMode === 'schedule'} className="input" />
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Schedule for</label>
+                    <input type="datetime-local" value={scheduleRunAt} onChange={(event) => setScheduleRunAt(event.target.value)} required={createMode === 'schedule'} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" />
                   </div>
                 )}
               </div>
@@ -872,15 +968,15 @@ const Tasks = () => {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="btn btn-primary flex-1"
+                  className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {submitting ? (createMode === 'schedule' ? 'Scheduling...' : 'Creating...') : (createMode === 'schedule' ? 'Schedule task' : 'Create task')}
+                  {submitting ? (createMode === 'schedule' ? 'Scheduling...' : 'Creating...') : (createMode === 'schedule' ? 'Schedule Task' : 'Create Task')}
                 </button>
                 <button
                   type="button"
                   onClick={closeCreateModal}
                   disabled={submitting}
-                  className="btn btn-secondary flex-1"
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   Cancel
                 </button>
@@ -913,72 +1009,161 @@ const Tasks = () => {
           setSelectedDepartmentId(created.id || created._id)
         }}
       />
-
     </div>
   )
 }
 
+// Enhanced Task Graph Panel
 function TaskGraphPanel({ rows, summary, onOpenTask }) {
   return (
-    <section className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)]">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-[var(--color-app-border)]">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-[var(--color-app-text)]">Tasks</h2>
-          <span className="flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-500 dark:border-[var(--color-app-border)] dark:text-[var(--color-app-text-muted)]">?</span>
-        </div>
-        <div className="hidden flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-[var(--color-app-text-muted)] sm:flex">
-          {Object.entries(TASK_GRAPH_PRIORITY_COLORS).map(([priority, color]) => (
-            <span key={priority} className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-              {priority.replace(/\b\w/g, (letter) => letter.toUpperCase())}
-            </span>
-          ))}
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
+      {/* Header */}
+      <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+              <LayoutGrid className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-white">Task Overview</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{summary.total} tasks • {summary.active} active</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {Object.entries(TASK_GRAPH_PRIORITY_COLORS).map(([priority, color]) => (
+              <span key={priority} className="inline-flex items-center gap-1">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+                <span className="text-gray-600 dark:text-gray-400 capitalize">{priority}</span>
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="grid border-b border-gray-200 dark:border-[var(--color-app-border)] sm:grid-cols-3">
-        <TaskGraphStat icon={ListTodo} label="Total tasks" value={summary.total} />
-        <TaskGraphStat icon={Calendar} label="Active tasks" value={summary.active} muted />
-        <TaskGraphStat icon={CheckCircle2} label="Completed" value={summary.completed} muted />
+      {/* Summary Stats */}
+      <div className="grid border-b border-gray-200 dark:border-gray-700 sm:grid-cols-3">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="rounded-lg bg-indigo-50 p-2 dark:bg-indigo-900/30">
+            <ListTodo className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+          </div>
+          <div>
+            <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">{summary.total}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Tasks</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 border-t border-gray-200 bg-gray-50/50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/30 sm:border-l sm:border-t-0">
+          <div className="rounded-lg bg-amber-50 p-2 dark:bg-amber-900/30">
+            <Activity className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div>
+            <p className="text-lg font-bold tabular-nums text-gray-600 dark:text-gray-300">{summary.active}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Active Tasks</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 border-t border-gray-200 bg-gray-50/50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/30 sm:border-l sm:border-t-0">
+          <div className="rounded-lg bg-emerald-50 p-2 dark:bg-emerald-900/30">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div>
+            <p className="text-lg font-bold tabular-nums text-gray-600 dark:text-gray-300">{summary.completed}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Completed</p>
+          </div>
+        </div>
       </div>
 
-      <div className="p-3">
+      {/* Task Cards Grid */}
+      <div className="p-4">
         {rows.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {rows.map((task) => (
-              <button
+              <TaskCard
                 key={task.id}
-                type="button"
-                onClick={() => onOpenTask(task)}
-                title={`${task.title}: ${task.statusLabel}, ${task.priorityLabel} priority, ${task.progress}% progress`}
-                className="rounded-xl border border-gray-200 bg-white p-3 text-left transition hover:border-primary-300 hover:bg-gray-50 dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface-muted)] dark:hover:border-primary-700 dark:hover:bg-[var(--color-app-surface-subtle)]"
-              >
-                <div className="flex items-start gap-3">
-                  <TaskProgressRing value={task.progress} color={task.priorityColor} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold leading-5 text-gray-900 dark:text-[var(--color-app-text)]">{task.title}</p>
-                    <p className="truncate text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">{task.assignee}</p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-[var(--color-app-surface-subtle)] dark:text-[var(--color-app-text-muted)]">{task.statusLabel}</span>
-                      <span className="rounded-full px-2 py-0.5 text-xs font-medium text-white" style={{ backgroundColor: task.priorityColor }}>{task.priorityLabel}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-[var(--color-app-text-muted)]">
-                    <span>Status Progress</span>
-                    <span>{task.progress}%</span>
-                  </div>
-                  {/* <TaskStatusBar value={task.progress} color={task.priorityColor} /> */}
-                </div>
-              </button>
+                task={task}
+                onOpen={() => onOpenTask(task)}
+              />
             ))}
           </div>
         ) : (
-          <EmptyState title="No task graph data" description="Tasks will appear here when they match your filters." />
+          <div className="py-8 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
+              <ListTodo className="h-6 w-6 text-gray-400" />
+            </div>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No task graph data</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Tasks will appear here when they match your filters.</p>
+          </div>
         )}
       </div>
-    </section>
+    </div>
+  )
+}
+
+// Enhanced Task Card
+function TaskCard({ task, onOpen }) {
+  const progress = task.progress || 0
+  const priorityColors = {
+    low: 'from-emerald-400 to-emerald-500',
+    medium: 'from-amber-400 to-amber-500',
+    high: 'from-orange-400 to-orange-500',
+    critical: 'from-rose-400 to-rose-500',
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700"
+    >
+      <div className="flex items-start gap-3">
+        <div 
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white font-bold text-sm shadow-lg"
+          style={{ background: `linear-gradient(135deg, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#6366f1'}, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#8b5cf6'})` }}
+        >
+          {task.title?.charAt(0)?.toUpperCase() || 'T'}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+            {task.title}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{task.assignee || 'Unassigned'}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+              {task.statusLabel}
+            </span>
+            <span 
+              className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-white"
+              style={{ backgroundColor: TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#6366f1' }}
+            >
+              {task.priorityLabel}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Progress */}
+      <div className="mt-3">
+        <div className="mb-1.5 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          <span>Progress</span>
+          <span className="font-semibold text-gray-700 dark:text-gray-300">{progress}%</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+          <div 
+            className="h-full rounded-full bg-gradient-to-r transition-all duration-500"
+            style={{ 
+              background: `linear-gradient(to right, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#6366f1'}, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#8b5cf6'})`,
+              width: `${Math.min(progress, 100)}%` 
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Due Date */}
+      {task.dueDate && (
+        <div className="mt-2 flex items-center text-xs text-gray-500 dark:text-gray-400">
+          <Calendar className="h-3 w-3 mr-1" />
+          {format(new Date(task.dueDate), 'MMM d, yyyy')}
+        </div>
+      )}
+    </button>
   )
 }
 
@@ -1004,5 +1189,8 @@ function TaskProgressRing({ value, color }) {
     </div>
   )
 }
+
+// Missing X import
+import { X } from 'lucide-react'
 
 export default Tasks

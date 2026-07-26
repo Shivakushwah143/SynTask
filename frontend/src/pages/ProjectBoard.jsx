@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, UserPlus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -33,6 +33,8 @@ import { canCreateTask, canManageProject, hasCompanyAdminAccess, isLeadRole, nor
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import { getProjectRoleAssignmentIds, getProjectRoleNames, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
+import { timeService } from '../services/timeService'
+import { excludeCurrentUser } from '../utils/userFilters'
 
 const DEFAULT_STATUSES = [
   { id: 'todo', label: 'To Do' },
@@ -69,6 +71,16 @@ const TASK_PRIORITY_SELECT_STYLES = {
   high: 'border-orange-300 text-orange-700 focus:border-orange-500 focus:ring-orange-500/20 dark:border-orange-700 dark:text-orange-300',
   critical: 'border-rose-300 text-rose-700 focus:border-rose-500 focus:ring-rose-500/20 dark:border-rose-700 dark:text-rose-300',
 }
+
+const PROJECT_AGENT_OPERATIONS = [
+  { value: 'project_summary', label: 'Project summary' },
+  { value: 'decompose_scope', label: 'Decompose scope' },
+  { value: 'identify_risks', label: 'Identify risks' },
+  { value: 'execution_guidance', label: 'Execution guidance' },
+  { value: 'review_plan', label: 'Review plan' },
+  { value: 'estimate_work', label: 'Estimate work' },
+  { value: 'comprehensive_project_review', label: 'Full review' },
+]
 
 const normalizeStatusId = (value) => String(value || '').trim().toLowerCase()
 
@@ -136,6 +148,7 @@ export default function ProjectBoard() {
   const [showFilters, setShowFilters] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
+  const [showProjectAgentModal, setShowProjectAgentModal] = useState(false)
   const [showQuickEmployeeModal, setShowQuickEmployeeModal] = useState(false)
   const [assignmentManagerId, setAssignmentManagerId] = useState('')
   const [assignmentLeaderId, setAssignmentLeaderId] = useState('')
@@ -143,9 +156,15 @@ export default function ProjectBoard() {
   const [createTaskPriority, setCreateTaskPriority] = useState('medium')
   const [createMode, setCreateMode] = useState('now')
   const [scheduleRunAt, setScheduleRunAt] = useState('')
+  const [createDueDate, setCreateDueDate] = useState('')
+  const [createEstimatedHours, setCreateEstimatedHours] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('todo')
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES)
   const [submitting, setSubmitting] = useState(false)
+  const [projectAgentSubmitting, setProjectAgentSubmitting] = useState(false)
+  const [projectAgentOperation, setProjectAgentOperation] = useState('project_summary')
+  const [projectAgentRequest, setProjectAgentRequest] = useState('')
+  const [projectAgentRun, setProjectAgentRun] = useState(null)
   const [assigningProject, setAssigningProject] = useState(false)
   const [updatingTaskId, setUpdatingTaskId] = useState(null)
   const [activeTaskId, setActiveTaskId] = useState(null)
@@ -182,12 +201,13 @@ export default function ProjectBoard() {
 
   const loadAssignableUsers = useCallback(async () => {
     try {
-      const [taskAssignableData, projectAssignableData] = await Promise.all([
-        usersAPI.getAssignableUsers(false, projectId),
+      // Prefer showing all junior employees regardless of department/manager
+      const [projectAssignableData, juniorUsersData] = await Promise.all([
         usersAPI.listUsers(null, null, 'active', 0, 500),
+        usersAPI.listUsers(null, 'junior', 'active', 0, 500),
       ])
-      setAssignableUsers(taskAssignableData.users || [])
-      setProjectAssignableUsers(projectAssignableData.users || [])
+      setAssignableUsers(excludeCurrentUser(juniorUsersData.users || [], user))
+      setProjectAssignableUsers(excludeCurrentUser(projectAssignableData.users || [], user))
     } catch (error) {
       setAssignableUsers([])
       setProjectAssignableUsers([])
@@ -295,9 +315,11 @@ export default function ProjectBoard() {
   const handleCreateTask = async (event) => {
     event.preventDefault()
     const formData = new FormData(event.target)
-    const estimatedHours = normalizeEstimatedHours(formData.get('estimated_hours'))
+    // prefer controlled suggestion value when present
+    const estimatedValue = createEstimatedHours || formData.get('estimated_hours')
+    const estimatedHours = normalizeEstimatedHours(estimatedValue)
     if (!estimatedHours) {
-      toast.error('Estimated hours must be greater than 0 and no more than 24')
+      toast.error('Estimated hours must be greater than 0')
       return
     }
     try {
@@ -307,7 +329,7 @@ export default function ProjectBoard() {
         description: formData.get('description') || '',
         priority: formData.get('priority') || createTaskPriority || 'medium',
         assigned_to: taskAssigneeId || null,
-        due_date: formData.get('due_date'),
+        due_date: timeService.zonedInputToUtcISOString(createDueDate || formData.get('due_date')),
         estimated_hours: estimatedHours,
         project_id: projectId,
         status: selectedStatus,
@@ -317,15 +339,15 @@ export default function ProjectBoard() {
           toast.error('Schedule time is required')
           return
         }
-        const runAt = new Date(scheduleRunAt)
-        if (Number.isNaN(runAt.getTime()) || runAt <= new Date()) {
+        const runAt = timeService.parseZonedInput(scheduleRunAt)
+        if (!runAt || Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
           toast.error('Schedule time must be in the future')
           return
         }
         await scheduledJobsAPI.scheduleJob({
           action_type: 'CREATE_TASK',
           payload: taskPayload,
-          run_at: runAt.toISOString(),
+          run_at: timeService.toUtcISOString(runAt),
         })
         toast.success('Task scheduled successfully')
         setShowCreateModal(false)
@@ -359,6 +381,34 @@ export default function ProjectBoard() {
     setShowAssignModal(true)
   }
 
+  // Calculate working hours between two Date objects considering office hours 10:00-19:00
+  function calcWorkingHoursSuggestion(startDate, endDate) {
+    if (!startDate || !endDate || endDate <= startDate) return 0
+    const start = timeService.instant(startDate)
+    const end = timeService.instant(endDate)
+    const MS_PER_HOUR = 1000 * 60 * 60
+    let total = 0
+    let cursor = new Date(start)
+    // iterate day by day
+    while (cursor < end) {
+      const year = cursor.getFullYear()
+      const month = cursor.getMonth()
+      const day = cursor.getDate()
+      const workStart = new Date(year, month, day, 10, 0, 0)
+      const workEnd = new Date(year, month, day, 19, 0, 0)
+      const segmentStart = cursor > workStart ? cursor : workStart
+      const segmentEnd = end < workEnd ? end : workEnd
+      if (segmentEnd > segmentStart) {
+        total += (segmentEnd.getTime() - segmentStart.getTime()) / MS_PER_HOUR
+      }
+      // advance to next day at 00:00
+      cursor = new Date(year, month, day + 1, 0, 0, 0)
+    }
+    // round to nearest 0.25
+    const rounded = Math.round(total * 4) / 4
+    return rounded
+  }
+
   const handleAssignProject = async (event) => {
     event.preventDefault()
     if (assigningProject) return
@@ -379,6 +429,40 @@ export default function ProjectBoard() {
     }
   }
 
+  const handleProjectAgentRun = async (event) => {
+    event.preventDefault()
+    const request = projectAgentRequest.trim()
+    if (!request) {
+      toast.error('Request is required')
+      return
+    }
+    try {
+      setProjectAgentSubmitting(true)
+      const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `project-agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const response = await projectsApi.createProjectAgentRun({
+        schema_version: '1.0',
+        project_id: projectId,
+        task_id: null,
+        operation: projectAgentOperation,
+        user_request: request,
+        requested_focus: null,
+        selected_record_ids: {},
+        preferences: { detail_level: 'standard' },
+        session_id: `project:${projectId}`,
+        conversation_id: `project-agent:${projectId}`,
+        idempotency_key: idempotencyKey,
+      })
+      setProjectAgentRun(response.data)
+      toast.success('Project Agent request started')
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Project Agent unavailable')
+    } finally {
+      setProjectAgentSubmitting(false)
+    }
+  }
+
   const currentTasks = Object.values(filteredBoard).flat()
   const allProjectTasks = Object.values(boardData?.tasks_by_status || {}).flat()
   const completedTasks = allProjectTasks.filter((task) => ['completed', 'done'].includes((task.status || '').toLowerCase())).length
@@ -386,7 +470,7 @@ export default function ProjectBoard() {
   const overdueTasks = allProjectTasks.filter((task) => {
     if (!task.due_date) return false
     try {
-      return new Date(task.due_date).getTime() < Date.now() && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
+      return timeService.instantTime(task.due_date) < timeService.now().getTime() && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
     } catch {
       return false
     }
@@ -394,8 +478,8 @@ export default function ProjectBoard() {
   const dueSoonTasks = allProjectTasks.filter((task) => {
     if (!task.due_date) return false
     try {
-      const dueAt = new Date(task.due_date).getTime()
-      const now = Date.now()
+      const dueAt = timeService.instantTime(task.due_date)
+      const now = timeService.now().getTime()
       const inThreeDays = now + (3 * 24 * 60 * 60 * 1000)
       return dueAt >= now && dueAt <= inThreeDays && !['completed', 'done', 'cancelled'].includes((task.status || '').toLowerCase())
     } catch {
@@ -420,7 +504,7 @@ export default function ProjectBoard() {
   const formatProjectDate = (value) => {
     if (!value) return 'Not set'
     try {
-      return format(new Date(value), 'MMM d, yyyy')
+      return timeService.format(value, { month: 'short', day: 'numeric', year: 'numeric' })
     } catch {
       return 'Not set'
     }
@@ -527,6 +611,10 @@ export default function ProjectBoard() {
               <Filter className="h-4 w-4" />
               Filters
             </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowProjectAgentModal(true)}>
+              <Sparkles className="h-4 w-4" />
+              Project Agent
+            </Button>
             {canCreateProjectTask ? (
               <Button size="sm" onClick={() => { setSelectedStatus('todo'); setShowCreateModal(true) }}>
                 <Plus className="h-4 w-4" />
@@ -628,19 +716,19 @@ export default function ProjectBoard() {
           {showFilters ? (
             <div className="grid gap-3 md:grid-cols-3 lg:flex-1">
               <select className={inputClassName} value={filters.priority} onChange={(event) => setFilters((state) => ({ ...state, priority: event.target.value }))}>
-                <option value="">All priorities</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All priorities</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="critical">Critical</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
               </select>
               <select className={inputClassName} value={filters.assignee} onChange={(event) => setFilters((state) => ({ ...state, assignee: event.target.value }))}>
-                <option value="">All assignees</option>
-                {assignableUsers.map((userItem) => <option key={userItem.id} value={userItem.id}>{userItem.first_name} {userItem.last_name}</option>)}
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All assignees</option>
+                {assignableUsers.map((userItem) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={userItem.id} value={userItem.id}>{userItem.first_name} {userItem.last_name}</option>)}
               </select>
               <select className={inputClassName} value={filters.label} onChange={(event) => setFilters((state) => ({ ...state, label: event.target.value }))}>
-                <option value="">All labels</option>
-                {availableLabels.map((label) => <option key={label} value={label}>{label}</option>)}
+                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All labels</option>
+                {availableLabels.map((label) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={label} value={label}>{label}</option>)}
               </select>
             </div>
           ) : null}
@@ -798,7 +886,7 @@ export default function ProjectBoard() {
               canCreate={canAssignProject}
             >
               <option value="">No leader</option>
-              {leaderAssignmentOptions.map((item) => <option key={item.id} value={item.id}>{getUserDisplayName(item)} ({item.role})</option>)}
+              {leaderAssignmentOptions.map((item) => <option key={item.id || item._id} value={item.id || item._id}>{getUserDisplayName(item)} ({item.role})</option>)}
             </CreatableSelectField>
           </FormField>
           <div className="flex justify-end gap-2 pt-2">
@@ -820,6 +908,88 @@ export default function ProjectBoard() {
           setTaskAssigneeId(created.id)
         }}
       />
+
+      <Modal isOpen={showProjectAgentModal} onClose={() => setShowProjectAgentModal(false)} title="Project Agent" size="xl">
+        <form onSubmit={handleProjectAgentRun} className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Read-only pilot</p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Creates an Agent run scoped to this project. No task or project records are changed.</p>
+          </div>
+          <FormField label="Operation">
+            <select className={inputClassName} value={projectAgentOperation} onChange={(event) => setProjectAgentOperation(event.target.value)}>
+              {PROJECT_AGENT_OPERATIONS.map((operation) => (
+                <option key={operation.value} value={operation.value}>{operation.label}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Request" required>
+            <textarea
+              rows={4}
+              className={inputClassName}
+              value={projectAgentRequest}
+              onChange={(event) => setProjectAgentRequest(event.target.value)}
+              placeholder="Summarize risks, dependencies, and next steps for this project."
+            />
+          </FormField>
+          {projectAgentRun ? (
+            <section className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge label={projectAgentRun.state || 'queued'} colorKey={projectAgentRun.state || 'scheduled'} />
+                <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{projectAgentRun.run_id}</span>
+              </div>
+              {projectAgentRun.error_category ? (
+                <p className="mt-2 text-sm text-rose-600 dark:text-rose-300">{projectAgentRun.error_category}</p>
+              ) : null}
+              {projectAgentRun.sanitized_result?.summary ? (
+                <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{projectAgentRun.sanitized_result.summary}</p>
+              ) : null}
+              {projectAgentRun.sanitized_result?.department_specialist ? (
+                <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200">
+                  <div className="font-semibold">Selected specialist</div>
+                  <div className="mt-1">
+                    {projectAgentRun.sanitized_result.department_specialist.pack_id} / {projectAgentRun.sanitized_result.department_specialist.specialist_id} v{projectAgentRun.sanitized_result.department_specialist.specialist_version}
+                  </div>
+                  <div className="mt-1 text-indigo-700 dark:text-indigo-300">
+                    {projectAgentRun.sanitized_result.department_specialist.selection_reason}
+                  </div>
+                  {projectAgentRun.sanitized_result.department_specialist.fallback_reason ? (
+                    <div className="mt-1 text-amber-700 dark:text-amber-300">
+                      Fallback: {projectAgentRun.sanitized_result.department_specialist.fallback_reason}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {projectAgentRun.sanitized_result?.department_specialist_output ? (
+                <div className="mt-3 grid gap-3 text-xs text-gray-600 dark:text-gray-400">
+                  <div>
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">Guidance: </span>
+                    {(projectAgentRun.sanitized_result.department_specialist_output.task_guidance || []).join(', ') || projectAgentRun.sanitized_result.department_specialist_output.summary}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">Checklist: </span>
+                    {(projectAgentRun.sanitized_result.department_specialist_output.checklist || []).join(', ') || 'No checklist returned'}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">Proposal status: </span>
+                    {projectAgentRun.sanitized_result.department_specialist_output.proposal_only ? 'Proposal only' : 'Read only'}
+                  </div>
+                </div>
+              ) : null}
+              {projectAgentRun.sanitized_result?.warnings?.length ? (
+                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {projectAgentRun.sanitized_result.warnings.join(', ')}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowProjectAgentModal(false)}>Close</Button>
+            <Button type="submit" loading={projectAgentSubmitting} loadingText="Starting">
+              Start run
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal isOpen={canCreateProjectTask && showCreateModal} onClose={() => setShowCreateModal(false)} title="Create task">
         <form onSubmit={handleCreateTask} className="space-y-4">
@@ -844,24 +1014,38 @@ export default function ProjectBoard() {
                 ))}
               </select>
             </FormField>
-            <FormField label="Due date" required>
-              <input type="datetime-local" name="due_date" required className={inputClassName} />
-            </FormField>
-            <FormField label="Estimated hours" required>
-              <input
-                type="number"
-                name="estimated_hours"
-                min="0.25"
-                max="24"
-                step="0.25"
-                required
-                className={inputClassName}
-                placeholder="8"
-                onInput={(event) => {
-                  if (Number(event.currentTarget.value) > 24) event.currentTarget.value = '24'
-                }}
-              />
-            </FormField>
+              <FormField label="Due date" required>
+                <input
+                  type="datetime-local"
+                  name="due_date"
+                  required
+                  className={inputClassName}
+                  value={createDueDate}
+                  onChange={(e) => {
+                    setCreateDueDate(e.target.value)
+                    // compute suggestion
+                    try {
+                      const parsed = timeService.parseZonedInput(e.target.value)
+                      const suggestion = calcWorkingHoursSuggestion(timeService.now(), parsed)
+                      setCreateEstimatedHours(String(suggestion || ''))
+                    } catch (err) {
+                      // ignore
+                    }
+                  }}
+                />
+              </FormField>
+              <FormField label="Estimated hours" required>
+                <input
+                  type="number"
+                  name="estimated_hours"
+                  step="0.25"
+                  required
+                  className={inputClassName}
+                  placeholder="Suggested"
+                  value={createEstimatedHours}
+                  onChange={(e) => setCreateEstimatedHours(e.target.value)}
+                />
+              </FormField>
           </div>
           <FormField label="Assign to">
             <CreatableSelectField
@@ -874,13 +1058,21 @@ export default function ProjectBoard() {
               canCreate={canManageColumns}
             >
               <option value="">Unassigned</option>
-              {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              {assignableUsers.map((item) => <option key={item.id || item._id} value={item.id || item._id}>{getUserDisplayName(item)}</option>)}
             </CreatableSelectField>
           </FormField>
           <div className="rounded-xl border border-gray-200 p-3 dark:border-[var(--color-app-border)]">
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant={createMode === 'now' ? 'primary' : 'secondary'} onClick={() => setCreateMode('now')}>Create now</Button>
-              <Button type="button" variant={createMode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setCreateMode('schedule')}>Schedule</Button>
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={createMode === 'schedule'}
+                  onChange={(e) => setCreateMode(e.target.checked ? 'schedule' : 'now')}
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Schedule task</span>
+              </label>
+              <span className="text-xs text-gray-500">(check to set a future run time)</span>
             </div>
             {createMode === 'schedule' && (
               <FormField label="Schedule for" required>
@@ -983,7 +1175,7 @@ function SortableProjectTaskCard({ task, statuses, statusColor, updatingTaskId, 
         </button>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {task.due_date ? <Badge label={format(new Date(task.due_date), 'MMM d')} colorKey="scheduled" /> : null}
+        {task.due_date ? <Badge label={timeService.format(task.due_date, { month: 'short', day: 'numeric' })} colorKey="scheduled" /> : null}
         {task.assigned_to_name ? <Badge label={task.assigned_to_name} colorKey="scheduled" /> : <Badge label="Unassigned" colorKey="scheduled" />}
       </div>
       <div className="mt-4 flex items-center justify-between gap-2">

@@ -67,3 +67,8 @@ reportlab==4.1.0
 
 # HTTP Requests (legacy smoke scripts only)
 requests==2.31.0
+
+# Central RAG foundation
+openai==1.93.0
+qdrant-client==1.14.3
+pypdf==5.7.0

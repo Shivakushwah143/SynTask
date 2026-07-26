@@ -42,9 +42,12 @@ Data must include two unrelated companies, every role, module on/off, active/ina
 
 For every tenant-owned endpoint/job, attempt list, get, foreign-parent create, update, delete, search, export, file access, and guessed identifiers from another tenant. Verify no data, existence detail, count, file, notification, event, cache, or AI context leaks.
 
+For Super Admin functionality, verify ordinary company users cannot call `/api/v1/superadmin/*`. Verify suspended-company users receive only the `account_suspended` denial and no cross-tenant data. Verify feature flags, usage details, tenant user lists, and invoices are keyed by `company_id`.
+
 ### Domain regression
 
 - Project/task lifecycle, assignment, boards, automation, history.
+- Super Admin platform operations: tenant list user counts, tenant user list, password reset confirmation/email attempt, suspend with reason/notes/notify-admin, suspended-user login/API denial, activate tenant, plan create/edit, tenant plan assignment, invoice generate/list/send, revenue analytics period selector, subscription overview, usage summary/detail expansion, tenant feature toggles, global feature matrix toggles, and audit log entries for each material action.
 - Task list graphs resolve assigned employee names from API `assigned_to_name`, embedded assignee objects, assignable users, or current-user fallback.
 - Task detail UI verifies status tone labels and color-coded selector/indicator states for each task status.
 - Calendar events verify date-window parsing, assigned-only employee task visibility, assigned task event serialization, and project-name resolution from logical project keys such as `PROJ-101`.
@@ -52,6 +55,7 @@ For every tenant-owned endpoint/job, attempt list, get, foreign-parent create, u
 - Scheduled job tests verify future-date validation, timezone normalization, role gates by action type, company-scoped list/action authorization, pending-to-running atomic lock, exactly-once project/task creation, retry/cancel/delete state gates, creator notifications, and activity timeline entries.
 - Project/task role matrix: Admin company-wide list/manage; Manager company-wide list with same-department edit/assign only; Employee assigned-task visibility with project context and no detail edits except progress, comments, and attachments.
 - CRM lifecycle, deduplication, import, conversion.
+- Meta unified inbox: tenant-scoped conversation/message API filters, channel badges, provider traceability, and read-only UI with no send action.
 - Invoice/ledger/MSA states, rounding, signing, payment callbacks.
 - Attendance duplicate sessions, timezone, corrections, leave, reports.
 - Recruitment public fields, files/privacy, transitions.
@@ -93,4 +97,3 @@ Tests cover selected CRM, events, recruitment, semantic isolation, knowledge, se
 ## Release test report
 
 Record commit, environment, scope, pass/fail/blocked counts, requirement coverage, defects, NFR results, scan summaries, UAT, residual risks/waivers, and QA recommendation.
-

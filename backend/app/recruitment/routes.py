@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.core.clock import utc_now
 from app.models.user import User
 from app.recruitment.models import (Candidate, CandidateStatus, CandidateTimeline,
                                     ImportStatus, Interview, JobLifecycleStatus,
@@ -327,7 +328,7 @@ async def update_job_legacy(job_id: str, payload: JobUpdate, user: User = Depend
     if not item: raise HTTPException(status_code=404, detail="Job not found")
     changes = payload.model_dump(exclude_unset=True)
     for key, value in changes.items(): setattr(item, key, value)
-    item.updated_at = datetime.now(); await item.save()
+    item.updated_at = utc_now(); await item.save()
     await record(company(user), "JobUpdated", str(user.id), job_id=job_id, payload=changes)
     return item
 
@@ -336,7 +337,7 @@ async def update_job_legacy(job_id: str, payload: JobUpdate, user: User = Depend
 async def publish_job_legacy(job_id: str, user: User = Depends(require_recruitment_manager)):
     item = await TenantRepository.get(RecruitmentJob, job_id, company(user))
     if not item: raise HTTPException(status_code=404, detail="Job not found")
-    item.status = JobStatus.PUBLISHED; item.updated_at = datetime.now(); await item.save()
+    item.status = JobStatus.PUBLISHED; item.updated_at = utc_now(); await item.save()
     await record(company(user), "JobPublished", str(user.id), job_id=job_id)
     return item
 
@@ -345,7 +346,7 @@ async def publish_job_legacy(job_id: str, user: User = Depends(require_recruitme
 async def archive_job_legacy(job_id: str, user: User = Depends(require_recruitment_manager)):
     item = await TenantRepository.get(RecruitmentJob, job_id, company(user))
     if not item: raise HTTPException(status_code=404, detail="Job not found")
-    item.status = JobStatus.ARCHIVED; item.updated_at = datetime.now(); await item.save()
+    item.status = JobStatus.ARCHIVED; item.updated_at = utc_now(); await item.save()
     await record(company(user), "JobArchived", str(user.id), job_id=job_id)
     return item
 
@@ -783,7 +784,7 @@ async def interview_decision(interview_id: str, payload: InterviewDecisionReques
 @router.post("/offers", status_code=201)
 async def create_offer(payload: OfferCreate, user: User = Depends(require_recruitment_manager)):
     candidate = await get_candidate(payload.candidate_id, user)
-    offer = Offer(company_id=company(user), candidate_id=payload.candidate_id, offered_ctc=payload.offered_ctc, joining_date=payload.joining_date, status="sent" if payload.send else "draft", sent_at=datetime.now() if payload.send else None); await offer.insert()
+    offer = Offer(company_id=company(user), candidate_id=payload.candidate_id, offered_ctc=payload.offered_ctc, joining_date=payload.joining_date, status="sent" if payload.send else "draft", sent_at=utc_now() if payload.send else None); await offer.insert()
     if payload.send:
         candidate = await RecruitmentService.move(candidate, CandidateStatus.OFFER_SENT, str(user.id))
         await record(company(user), "OfferSent", str(user.id), candidate_id=payload.candidate_id, payload={"offer_id": str(offer.id)})
@@ -795,14 +796,14 @@ async def update_offer(offer_id: str, payload: OfferUpdate, user: User = Depends
     item = await TenantRepository.get(Offer, offer_id, company(user))
     if not item: raise HTTPException(status_code=404, detail="Offer not found")
     for key, value in payload.model_dump(exclude_unset=True).items(): setattr(item, key, value)
-    item.updated_at = datetime.now(); await item.save(); return item
+    item.updated_at = utc_now(); await item.save(); return item
 
 
 async def decide_offer(offer_id: str, decision: str, user: User):
     item = await TenantRepository.get(Offer, offer_id, company(user))
     if not item: raise HTTPException(status_code=404, detail="Offer not found")
     if item.status != "sent": raise HTTPException(status_code=409, detail="Only sent offers can be decided")
-    item.status, item.updated_at = decision, datetime.now(); await item.save()
+    item.status, item.updated_at = decision, utc_now(); await item.save()
     target = CandidateStatus.OFFER_ACCEPTED if decision == "accepted" else CandidateStatus.REJECTED
     await RecruitmentService.move(await get_candidate(item.candidate_id, user), target, str(user.id))
     await record(company(user), "OfferAccepted" if decision == "accepted" else "OfferRejected", str(user.id), candidate_id=item.candidate_id, payload={"offer_id": offer_id}); return item
@@ -935,4 +936,3 @@ async def reports(
         "offers": await RecruitmentReportService.offers(company(user), filters),
         "trends": await RecruitmentReportService.trends(company(user), filters),
     }
-

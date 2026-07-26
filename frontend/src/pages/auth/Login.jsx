@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Mail, Lock, Shield } from 'lucide-react'
+import { Mail, Lock, Shield, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { authAPI } from '../../api/auth'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
+import { isSuperAdminRole } from '../../utils/roles'
 import { Button, PasswordInput, inputClassName } from '../../components/ui'
 import GoogleLoginButton from '../../components/auth/GoogleLoginButton'
 
@@ -35,17 +36,35 @@ const Login = () => {
       const response = await authAPI.login(formData.email, formData.password, formData.remember_me)
       setAuth(response.user, response.access_token, response.refresh_token, formData.remember_me)
       toast.success('Login successful!')
-      navigate('/dashboard')
+      navigate(isSuperAdminRole(response.user?.role) ? '/super-admin/dashboard' : '/dashboard')
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Login failed')
+      const detail = error.response?.data?.detail
+      if (detail === 'account_suspended' || detail?.code === 'account_suspended' || detail?.detail === 'account_suspended') {
+        toast.error('Your account has been suspended. Please contact support.')
+      } else {
+        toast.error(detail?.detail || detail || 'Login failed')
+      }
     } finally {
       setLoading(false)
       useUIStore.getState().setLoading(false)
     }
   }
 
+  const handleBack = () => {
+    navigate('/')
+  }
+
   return (
     <div className="space-y-6">
+      {/* Back Button */}
+      <button
+        onClick={handleBack}
+        className="group flex items-center gap-2 text-sm font-medium text-gray-600 transition-all hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400"
+      >
+        <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+        Back to home
+      </button>
+
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600">Welcome back</p>
         <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">Sign in to SynTask</h2>

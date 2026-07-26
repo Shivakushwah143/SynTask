@@ -16,10 +16,12 @@ from app.models.usage_tracking import UsageTracking
 from app.models.company_subscription import CompanySubscription, CompanySubscriptionStatus
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.user import User
+from app.models.company import Company
 from app.models.task import Task
 from app.models.project import Project
 from app.models.ticket import Ticket
 from app.api.dependencies import get_current_super_admin
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -28,20 +30,76 @@ def _to_jsonable(obj):
     """Convert Beanie/Pydantic model to JSON-serializable dict."""
     if obj is None:
         return None
-    d = obj.model_dump() if hasattr(obj, "model_dump") else obj.dict()
-    if hasattr(obj, "id") and obj.id is not None:
-        d["id"] = str(obj.id)
-    for k in list(d.keys()):
-        v = d[k]
-        if v is None:
-            continue
-        if hasattr(v, "isoformat"):
-            d[k] = v.isoformat()
-        elif hasattr(v, "value") and not isinstance(v, (list, dict)):
-            d[k] = v.value
-        elif ObjectId is not type(None) and isinstance(v, ObjectId):
-            d[k] = str(v)
-    return d
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    if hasattr(obj, "value"):
+        return obj.value
+    if ObjectId is not type(None) and isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, list):
+        return [_to_jsonable(item) for item in obj]
+    if isinstance(obj, tuple):
+        return [_to_jsonable(item) for item in obj]
+    if isinstance(obj, dict):
+        return {str(key): _to_jsonable(value) for key, value in obj.items()}
+    if hasattr(obj, "model_dump"):
+        d = obj.model_dump()
+        if hasattr(obj, "id") and obj.id is not None:
+            d["id"] = str(obj.id)
+        return _to_jsonable(d)
+    return str(obj)
+
+
+@router.get("/all-companies-summary", response_model=List[dict])
+async def all_companies_usage_summary(current_user: User = Depends(get_current_super_admin)):
+    companies = await Company.find_all().to_list()
+    result = []
+    for company in companies:
+        company_id = str(company.id)
+        subscription = await CompanySubscription.find_one(CompanySubscription.company_id == company_id)
+        plan = await SubscriptionPlan.get(subscription.plan_id) if subscription and subscription.plan_id else None
+        total_users = await User.find(User.company_id == company_id).count()
+        project_count = await Project.find(Project.company_id == company_id).count()
+        result.append({
+            "company_id": company_id,
+            "company_name": company.name,
+            "status": company.status.value if hasattr(company.status, "value") else company.status,
+            "total_users": total_users,
+            "project_count": project_count,
+            "plan": plan.name if plan else "-",
+            "max_users": company.max_users,
+            "max_storage_gb": company.max_storage_gb,
+        })
+    return result
+
+
+@router.get("/company/{company_id}/detailed", response_model=dict)
+async def get_company_detailed_usage(
+    company_id: str,
+    current_user: User = Depends(get_current_super_admin),
+):
+    now = utc_now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    total_users = await User.find(User.company_id == company_id).count()
+    active_users = await User.find(User.company_id == company_id, User.status == "active").count()
+    monthly_usage = await UsageTracking.find(
+        UsageTracking.company_id == company_id,
+        UsageTracking.created_at >= month_start,
+    ).to_list()
+    project_count = await Project.find(Project.company_id == company_id).count()
+    task_count = await Task.find(Task.company_id == company_id).count()
+    return {
+        "company_id": company_id,
+        "total_users": total_users,
+        "active_users": active_users,
+        "api_requests_this_month": len(monthly_usage),
+        "storage_used_mb": round(sum(getattr(item, "storage_used_gb", 0) or 0 for item in monthly_usage) * 1024, 2),
+        "project_count": project_count,
+        "task_count": task_count,
+        "last_updated": now.isoformat(),
+    }
 
 
 @router.get("/company/{company_id}", response_model=dict)
@@ -53,9 +111,9 @@ async def get_company_usage(
 ):
     """Get usage statistics for a specific company"""
     if not month:
-        month = datetime.now().month
+        month = utc_now().month
     if not year:
-        year = datetime.now().year
+        year = utc_now().year
     
     # Get current usage
     usage = await UsageTracking.find_one(
@@ -141,8 +199,8 @@ async def get_usage_analytics(
     current_user: User = Depends(get_current_super_admin)
 ):
     """Get usage analytics across all companies (real-time from DB when UsageTracking missing)."""
-    current_month = datetime.now().month
-    current_year = datetime.now().year
+    current_month = utc_now().month
+    current_year = utc_now().year
 
     # Get all active subscriptions (Beanie In operator)
     try:
@@ -248,8 +306,6 @@ async def get_usage_analytics(
             continue
 
     return analytics
-
-
 
 
 

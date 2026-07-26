@@ -14,6 +14,7 @@ from app.crm.models import SalesProspect, ProspectStatus
 from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.services.task_service import TaskService
+from app.core.clock import utc_now
 
 
 def _user_label(user: User) -> str:
@@ -33,7 +34,7 @@ async def build_manager_dashboard_metrics(current_user: User) -> Dict[str, Any]:
     overdue_tasks = [
         task
         for task in tasks
-        if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < datetime.now()
+        if task.due_date and task.status != TaskStatus.COMPLETED and task.due_date < utc_now()
     ]
 
     team_workload = []

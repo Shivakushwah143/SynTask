@@ -20,6 +20,7 @@ import {
 import { Link } from 'react-router-dom'
 import { Badge, Button, EmptyState, Modal, Skeleton, inputClassName } from '../../../components/ui'
 import { CRMEmptyState, CRMSection, CRMStatCard } from '../../../components/crm'
+import { timeService } from '@/services/timeService'
 
 export const ACTIVITY_TYPE_OPTIONS = [
   { value: '', label: 'All types' },
@@ -83,7 +84,7 @@ export function getActivityLabel(activityType) {
 export function formatActivityDate(value) {
   if (!value) return 'Soon'
   try {
-    return format(new Date(value), 'MMM d, yyyy - h:mm a')
+    return format(timeService.instant(value), 'MMM d, yyyy - h:mm a')
   } catch {
     return String(value)
   }
@@ -92,7 +93,7 @@ export function formatActivityDate(value) {
 export function formatActivityDay(value) {
   if (!value) return 'Recent'
   try {
-    return format(new Date(value), 'EEEE, MMM d, yyyy')
+    return format(timeService.instant(value), 'EEEE, MMM d, yyyy')
   } catch {
     return String(value)
   }
@@ -111,27 +112,27 @@ export function getActivityTone(activity) {
 
 export function isTaskDueToday(task) {
   if (!task?.due_date) return false
-  const date = new Date(task.due_date)
+  const date = timeService.instant(task.due_date)
   if (Number.isNaN(date.getTime())) return false
-  const now = new Date()
+  const now = timeService.now()
   return date.toDateString() === now.toDateString()
 }
 
 export function isTaskOverdue(task) {
   if (!task?.due_date) return false
-  const date = new Date(task.due_date)
+  const date = timeService.instant(task.due_date)
   if (Number.isNaN(date.getTime())) return false
-  return date.getTime() < Date.now() && String(task.status || '').toLowerCase() !== 'completed'
+  return date.getTime() < timeService.now().getTime() && String(task.status || '').toLowerCase() !== 'completed'
 }
 
 export function isTaskUpcoming(task) {
   if (!task?.due_date) return false
-  const date = new Date(task.due_date)
+  const date = timeService.instant(task.due_date)
   if (Number.isNaN(date.getTime())) return false
-  const now = new Date()
-  const inSevenDays = new Date()
+  const now = timeService.now()
+  const inSevenDays = timeService.now()
   inSevenDays.setDate(now.getDate() + 7)
-  return date.getTime() > Date.now() && date.getTime() <= inSevenDays.getTime()
+  return date.getTime() > timeService.now().getTime() && date.getTime() <= inSevenDays.getTime()
 }
 
 function getPriorityTone(priority) {
@@ -186,23 +187,23 @@ export function ActivityFilters({
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <select className={inputClassName} value={typeValue} onChange={(event) => onTypeChange(event.target.value)}>
             {ACTIVITY_TYPE_OPTIONS.map((option) => (
-              <option key={option.value || 'all'} value={option.value}>{option.label}</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={option.value || 'all'} value={option.value}>{option.label}</option>
             ))}
           </select>
           <select className={inputClassName} value={ownerValue} onChange={(event) => onOwnerChange(event.target.value)}>
-            <option value="">All owners</option>
+            <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All owners</option>
             {ownerOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
           <select className={inputClassName} value={statusValue} onChange={(event) => onStatusChange(event.target.value)}>
             {ACTIVITY_STATUS_OPTIONS.map((option) => (
-              <option key={option.value || 'status-all'} value={option.value}>{option.label}</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={option.value || 'status-all'} value={option.value}>{option.label}</option>
             ))}
           </select>
           <select className={inputClassName} value={priorityValue} onChange={(event) => onPriorityChange(event.target.value)}>
             {ACTIVITY_PRIORITY_OPTIONS.map((option) => (
-              <option key={option.value || 'priority-all'} value={option.value}>{option.label}</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={option.value || 'priority-all'} value={option.value}>{option.label}</option>
             ))}
           </select>
           <select className={inputClassName} value={dateValue} onChange={(event) => onDateChange(event.target.value)}>

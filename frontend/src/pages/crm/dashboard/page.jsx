@@ -1,6 +1,6 @@
 import { useQuery } from 'react-query'
-import { Activity, ArrowRight, Briefcase, CalendarDays, CalendarRange, CheckCircle2, ClipboardList, Clock3, DollarSign, FileCheck2, GitBranch, HeartHandshake, LineChart, Receipt, TimerReset, TrendingUp, UserCheck, UserRoundSearch, Users } from 'lucide-react'
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
+import { Activity, ArrowRight, Briefcase, CalendarDays, CalendarRange, CheckCircle2, ClipboardList, Clock3, DollarSign, FileCheck2, GitBranch, HeartHandshake, LineChart, Receipt, TimerReset, TrendingUp, UserCheck, UserRoundSearch, Users, Zap, Target, Award, PieChart as PieChartIcon, BarChart3, Sparkles, Rocket, TrendingDown } from 'lucide-react'
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend } from 'recharts'
 import { format } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { activityAPI } from '../../../api/activity'
@@ -15,6 +15,7 @@ import { canAccessOwner } from '../../../config/domainOwnership'
 import { useAuthStore } from '../../../store/authStore'
 import { isSuperAdminRole, normalizeRole } from '../../../utils/roles'
 import { formatCurrency } from '../pipeline/utils'
+import { timeService } from '@/services/timeService'
 
 const workflowIcons = {
   lead: UserRoundSearch,
@@ -36,7 +37,7 @@ const workflowIcons = {
 const formatDateTime = (value) => {
   if (!value) return 'Scheduled soon'
   try {
-    return format(new Date(value), 'MMM d, h:mm a')
+    return format(timeService.instant(value), 'MMM d, h:mm a')
   } catch {
     return String(value)
   }
@@ -77,6 +78,8 @@ const compactCurrency = (value, currency = 'INR') => {
   return `${formatCurrency(numericValue / divisor, currency)}${suffix}`
 }
 
+const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#06b6d4', '#8b5cf6']
+
 export default function CRMDashboardPage() {
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)
@@ -101,20 +104,20 @@ export default function CRMDashboardPage() {
   const revenueTrend = buildRevenueTrend(closedVsTarget)
   const stageGraph = buildStageGraph(Array.isArray(pipelineAnalytics.deals_by_stage) ? pipelineAnalytics.deals_by_stage : [])
 
-  const today = new Date()
+  const today = timeService.now()
   const todayActivities = activities.filter((item) => {
     if (!item?.timestamp) return false
-    const timestamp = new Date(item.timestamp)
+    const timestamp = timeService.instant(item.timestamp)
     return !Number.isNaN(timestamp.getTime()) && isSameDay(timestamp, today)
   })
 
   const upcomingMeetings = meetings
     .filter((meeting) => {
       if (!meeting?.meeting_date) return false
-      const meetingDate = new Date(meeting.meeting_date)
+      const meetingDate = timeService.instant(meeting.meeting_date)
       return !Number.isNaN(meetingDate.getTime()) && meetingDate >= today
     })
-    .sort((left, right) => new Date(left.meeting_date) - new Date(right.meeting_date))
+    .sort((left, right) => timeService.instant(left.meeting_date) - timeService.instant(right.meeting_date))
     .slice(0, 5)
 
   const stageBreakdown = dashboard?.sales?.pipeline?.stage_breakdown || []
@@ -125,401 +128,368 @@ export default function CRMDashboardPage() {
     canAccessOwner(step, user, isSuperAdminRole(userRole))
   ))
 
+  // Calculate some metrics for the overview cards
+  const totalLeads = stats.prospect_count ?? 0
+  const pipelineValue = stats.pipeline_value ?? 0
+  const thisMonthRevenue = stats.this_month ?? 0
+  const lastMonthRevenue = stats.last_month ?? 0
+  const monthOverMonth = lastMonthRevenue > 0 ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1) : '0'
+  const winRate = kpis.win_rate ?? 0
+  const totalDeals = kpis.total_deals ?? 0
+  const wonDeals = kpis.won_deals ?? 0
+  const avgDealSize = kpis.average_deal_size ?? 0
+
   return (
     <CRMPage>
-      <WorkflowGuide
-        title="Open the next sales action"
-        description="This CRM dashboard is the control point for the next lead, the next meeting, and the next piece of revenue."
-        nextStep="Review the pipeline, then open the lead or activity that needs attention."
-        primaryAction={{ label: 'View Pipeline', href: '/crm/pipeline' }}
-        secondaryAction={{ label: 'Open Leads', href: '/crm/leads' }}
-        bullets={[
-          { label: 'Where am I?', value: 'CRM dashboard and pipeline overview.' },
-          { label: 'What next?', value: 'Pick the lead or deal that needs movement.' },
-          { label: 'After this?', value: 'Jump into the lead workspace or CRM reports.' },
-        ]}
-      />
-      <CRMSection
-        title="Workflow Shortcuts"
-        description="One-click movement through the business flow. These are shortcuts into existing CRM, project, task, and finance pages."
-      >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-          {workflowShortcuts.map((step, index) => {
+      <section className="relative mb-8 overflow-hidden rounded-[28px] border border-primary-200/70 bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 p-6 text-white shadow-[0_18px_60px_rgba(15,23,42,0.06)] md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-100">CRM</p>
+            <h1 className="mt-2 text-2xl font-semibold md:text-3xl">CRM Dashboard</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100">Welcome back, {user?.first_name || 'User'}! Here's your sales performance overview.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link to="/crm/pipeline" className="inline-flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30">
+              <TrendingUp className="h-4 w-4" />
+              View Pipeline
+            </Link>
+            <Link to="/crm/leads" className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20">
+              <Users className="h-4 w-4" />
+              Manage Leads
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <CRMStatCard icon={Users} label="Leads" value={loading ? '...' : totalLeads} helper="Active prospects" tone="blue" />
+        <CRMStatCard icon={DollarSign} label="Pipeline Value" value={loading ? '...' : formatCurrency(pipelineValue, currency)} helper="Total pipeline" tone="emerald" />
+        <CRMStatCard icon={TrendingUp} label="This Month" value={loading ? '...' : formatCurrency(thisMonthRevenue, currency)} helper={`${Number(monthOverMonth) >= 0 ? '↑' : '↓'} ${Math.abs(Number(monthOverMonth))}% from last month`} tone="blue" />
+        <CRMStatCard icon={Target} label="Win Rate" value={loading ? '...' : `${winRate}%`} helper={`${wonDeals} won out of ${totalDeals} deals`} tone="amber" />
+        <CRMStatCard icon={Award} label="Avg Deal Size" value={loading ? '...' : formatCurrency(avgDealSize, currency)} helper="Average value" tone="slate" />
+        <CRMStatCard icon={ClipboardList} label="Deals" value={loading ? '...' : totalDeals} helper="Total deals" tone="emerald" />
+      </div>
+
+      <div className="mb-6">
+        <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-white">Quick Actions</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {workflowShortcuts.slice(0, 4).map((step, index) => {
             const Icon = workflowIcons[step.key] || CheckCircle2
+            const palette = [
+              'border-indigo-200 bg-indigo-50/70 text-indigo-600 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-300',
+              'border-violet-200 bg-violet-50/70 text-violet-600 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-300',
+              'border-fuchsia-200 bg-fuchsia-50/70 text-fuchsia-600 dark:border-fuchsia-900/50 dark:bg-fuchsia-950/30 dark:text-fuchsia-300',
+              'border-sky-200 bg-sky-50/70 text-sky-600 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-300',
+            ]
             return (
               <Link
                 key={step.key}
                 to={step.href}
-                className="group flex min-h-16 items-center justify-between rounded-lg border border-surface-border/80 bg-white px-3 py-3 text-left transition hover:border-primary-300 hover:bg-primary-50/70 dark:border-gray-800 dark:bg-gray-950 dark:hover:border-primary-700 dark:hover:bg-primary-950/30"
+                className="group relative overflow-hidden rounded-[22px] border border-primary-200/70 bg-white/90 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-[#5a4635] dark:bg-[rgb(29_24_19_/_0.88)]"
               >
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700 transition group-hover:bg-primary-100 group-hover:text-primary-700 dark:bg-gray-900 dark:text-gray-200 dark:group-hover:bg-primary-900/50 dark:group-hover:text-primary-200">
+                <div className="relative z-10 flex items-start gap-3">
+                  <div className={`rounded-2xl border p-2.5 ${palette[index % palette.length]}`}>
                     <Icon className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{step.label}</span>
-                    <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">Step {index + 1}</span>
-                  </span>
-                </span>
-                <ArrowRight className="h-4 w-4 shrink-0 text-gray-400 transition group-hover:translate-x-0.5 group-hover:text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{step.label}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Step {index + 1}</p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-gray-400 transition group-hover:translate-x-1 group-hover:text-primary-600" />
+                </div>
               </Link>
             )
           })}
         </div>
-      </CRMSection>
-      <CRMSection
-        title="Overview"
-        description="Sales-derived signal for the CRM workspace foundation."
-        actions={
-          <>
-            <Link className="btn btn-secondary" to="/crm/contacts">
-              Open Contacts
-            </Link>
-            <Link className="btn btn-primary" to="/crm/pipeline">
-              View Pipeline
-            </Link>
-          </>
-        }
-      >
-        {hasDashboardError ? (
-          <CRMEmptyState
-            icon={Activity}
-            title="CRM dashboard data could not load"
-            description="Refresh the page or check the CRM, activity, and meetings APIs before using these dashboard metrics."
-          />
-        ) : loading ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="rounded-2xl border border-surface-border/80 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">
-                <Skeleton className="h-5 w-10" />
-                <Skeleton className="mt-3 h-8 w-32" />
-                <Skeleton className="mt-3 h-4 w-40" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <CRMStatCard
-              icon={Users}
-              label="Leads"
-              value={stats.prospect_count ?? 0}
-              helper="Live count from the sales domain."
-              tone="blue"
-            />
-            <CRMStatCard
-              icon={TrendingUp}
-              label="Pipeline Value"
-              value={formatCurrency(stats.pipeline_value ?? 0, currency)}
-              helper="Active lead value only."
-              tone="emerald"
-            />
-            <CRMStatCard
-              icon={CalendarDays}
-              label="This Month"
-              value={formatCurrency(stats.this_month ?? 0, currency)}
-              helper="Closed business this month."
-              tone="amber"
-            />
-            <CRMStatCard
-              icon={Clock3}
-              label="Last Month"
-              value={formatCurrency(stats.last_month ?? 0, currency)}
-              helper="Closed business last month."
-              tone="slate"
-            />
-          </div>
-        )}
-      </CRMSection>
+      </div>
 
-      <CRMSection title="Sales Analytics" description="Revenue, KPI and pipeline intelligence from CRM deals and proposals.">
-        {loading ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {[1, 2, 3, 4].map((item) => (
-              <div key={item} className="rounded-2xl border border-surface-border/80 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/60">
-                <Skeleton className="h-5 w-10" />
-                <Skeleton className="mt-3 h-8 w-32" />
-                <Skeleton className="mt-3 h-4 w-40" />
-              </div>
-            ))}
+      {/* Charts Section - 3 columns */}
+      <div className="mb-6 grid gap-6 lg:grid-cols-3">
+        {/* Revenue Chart */}
+        <div className="lg:col-span-2 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Revenue vs Target</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Monthly performance tracking</p>
+            </div>
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+              12 Months
+            </span>
           </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-              <div className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Closed vs Target</p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Monthly revenue movement from live CRM data.</p>
-                  </div>
-                  <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 dark:bg-primary-950/60 dark:text-primary-200">
-                    12 months
-                  </span>
-                </div>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={revenueTrend} margin={{ left: -18, right: 10, top: 8, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="crmClosedFill" x1="0" x2="0" y1="0" y2="1">
-                          <stop offset="0%" stopColor="#2563eb" stopOpacity={0.22} />
-                          <stop offset="100%" stopColor="#2563eb" stopOpacity={0.02} />
-                        </linearGradient>
-                        <linearGradient id="crmTargetFill" x1="0" x2="0" y1="0" y2="1">
-                          <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.18} />
-                          <stop offset="100%" stopColor="#14b8a6" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.16} />
-                      <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                      <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(value) => compactCurrency(value, currency)} />
-                      <ChartTooltip valueFormatter={(value) => formatCurrency(value, currency)} />
-                      <Area type="monotone" dataKey="target" name="Target" stroke="#14b8a6" strokeWidth={2.5} fill="url(#crmTargetFill)" activeDot={{ r: 5, fill: '#14b8a6' }} />
-                      <Area type="monotone" dataKey="closed" name="Closed" stroke="#2563eb" strokeWidth={3} fill="url(#crmClosedFill)" activeDot={{ r: 6, fill: '#2563eb' }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/80">
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Pipeline Stage Value</p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Deal count and value by active stage.</p>
-                  </div>
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200">
-                    {stageGraph.length} stages
-                  </span>
-                </div>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stageGraph} barCategoryGap="30%" margin={{ left: -18, right: 8, top: 8, bottom: 0 }}>
-                      <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.16} />
-                      <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                      <YAxis yAxisId="left" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                      <YAxis yAxisId="right" orientation="right" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(value) => compactCurrency(value, currency)} />
-                      <ChartTooltip valueFormatter={(value, key) => key === 'value' ? formatCurrency(value, currency) : value} />
-                      <Bar yAxisId="left" dataKey="count" name="Deals" fill="#6366f1" radius={[6, 6, 0, 0]} maxBarSize={36} />
-                      <Bar yAxisId="right" dataKey="value" name="Value" fill="#38bdf8" radius={[6, 6, 0, 0]} maxBarSize={36} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <CRMStatCard icon={TrendingUp} label="Total Revenue" value={formatCurrency(revenue.total_revenue ?? 0, currency)} tone="blue" />
-              <CRMStatCard icon={TrendingUp} label="Monthly Revenue" value={formatCurrency(revenue.monthly_revenue ?? 0, currency)} tone="emerald" />
-              <CRMStatCard icon={TrendingUp} label="Forecast Revenue" value={formatCurrency(revenue.forecast_revenue ?? 0, currency)} tone="amber" />
-              <CRMStatCard icon={TrendingUp} label="Weighted Pipeline" value={formatCurrency(revenue.weighted_pipeline_value ?? 0, currency)} tone="slate" />
-            </div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <CRMStatCard icon={LineChart} label="Total Deals" value={String(kpis.total_deals ?? 0)} tone="blue" />
-              <CRMStatCard icon={LineChart} label="Won Deals" value={String(kpis.won_deals ?? 0)} tone="emerald" />
-              <CRMStatCard icon={LineChart} label="Win Rate" value={`${kpis.win_rate ?? 0}%`} tone="amber" />
-              <CRMStatCard icon={LineChart} label="Avg Deal Size" value={formatCurrency(kpis.average_deal_size ?? 0, currency)} tone="slate" />
-            </div>
-            <div className="grid gap-6 xl:grid-cols-2">
-              <CRMSection title="Pipeline Analytics" description="Value, stuck deals, and closing pressure.">
-                <div className="space-y-3">
-                  <p className="text-sm text-gray-600 dark:text-gray-300">Pipeline Value: {formatCurrency(pipelineAnalytics.pipeline_value ?? 0, currency)}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">Stuck Deals: {pipelineAnalytics.stuck_deals ?? 0}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">Expected Close This Month: {pipelineAnalytics.expected_close_this_month ?? 0}</p>
-                  <div className="space-y-2">
-                    {(Array.isArray(pipelineAnalytics.deals_by_stage) ? pipelineAnalytics.deals_by_stage : []).map((stage) => (
-                      <div key={stage.stage} className="flex items-center justify-between rounded-xl border border-surface-border/80 p-3">
-                        <span className="text-sm font-medium">{stage.stage}</span>
-                        <span className="text-xs text-gray-500">{stage.count} · {formatCurrency(stage.value || 0, currency)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CRMSection>
-              <CRMSection title="Leaderboards" description="Salesperson performance from closed deals.">
-                <div className="space-y-2">
-                  {leaderboards.length ? leaderboards.map((row) => (
-                    <article key={row.salesperson} className="rounded-xl border border-surface-border/80 p-3">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{row.salesperson}</p>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Revenue {formatCurrency(row.revenue || 0, currency)} · Wins {row.deals_closed || 0} · Win Rate {row.win_rate || 0}%
-                      </p>
-                    </article>
-                  )) : (
-                    <CRMEmptyState icon={LineChart} title="No leaderboard data" description="Closed deals will populate this list." />
-                  )}
-                </div>
-              </CRMSection>
-            </div>
-            <CRMSection title="Revenue by Client" description="Closed revenue by client.">
-              <div className="space-y-2">
-                {clientRevenue.length ? clientRevenue.map((row) => (
-                  <div key={row.client} className="flex items-center justify-between rounded-xl border border-surface-border/80 p-3">
-                    <span className="text-sm">{row.client}</span>
-                    <span className="text-xs text-gray-500">{formatCurrency(row.revenue || 0, currency)}</span>
-                  </div>
-                )) : (
-                  <CRMEmptyState icon={Users} title="No client revenue yet" description="Won deals will appear here." />
-                )}
-              </div>
-            </CRMSection>
-            <CRMSection title="Stage Conversion" description="Conversion percentage between pipeline stages.">
-              <div className="space-y-2">
-                {stageConversion.length ? stageConversion.map((item) => (
-                  <div key={`${item.from}-${item.to}`} className="flex items-center justify-between rounded-xl border border-surface-border/80 p-3">
-                    <span className="text-sm">{item.from} → {item.to}</span>
-                    <span className="text-xs text-gray-500">{item.conversion_percent}%</span>
-                  </div>
-                )) : (
-                  <CRMEmptyState icon={LineChart} title="No conversion data yet" description="Stage movement data will appear as deals progress." />
-                )}
-              </div>
-            </CRMSection>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={revenueTrend} margin={{ left: -20, right: 10, top: 5, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="crmClosedFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="crmTargetFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.2} />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.1} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(value) => compactCurrency(value, currency)} />
+                <ChartTooltip valueFormatter={(value) => formatCurrency(value, currency)} />
+                <Area type="monotone" dataKey="target" name="Target" stroke="#10b981" strokeWidth={2} fill="url(#crmTargetFill)" activeDot={{ r: 4, fill: '#10b981' }} />
+                <Area type="monotone" dataKey="closed" name="Closed" stroke="#6366f1" strokeWidth={2.5} fill="url(#crmClosedFill)" activeDot={{ r: 5, fill: '#6366f1' }} />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-        )}
-      </CRMSection>
+        </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <CRMSection title="Pipeline Summary" description="Stage mix derived from existing sales data.">
+        {/* Pipeline Stage Value */}
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Pipeline Value</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">By stage</p>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+              {stageGraph.length} stages
+            </span>
+          </div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stageGraph} barCategoryGap="25%" margin={{ left: -20, right: 10, top: 5, bottom: 5 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.1} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} tickFormatter={(value) => compactCurrency(value, currency)} />
+                <ChartTooltip valueFormatter={(value) => formatCurrency(value, currency)} />
+                <Bar dataKey="value" name="Value" fill="#8b5cf6" radius={[6, 6, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Middle Section - 2 columns */}
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        {/* Revenue by Client */}
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Top Clients</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Revenue by client</p>
+            </div>
+            <Users className="h-5 w-5 text-gray-400" />
+          </div>
           {loading ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {[1, 2, 3, 4].map((item) => (
-                <div key={item} className="rounded-2xl border border-surface-border/80 p-4">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="mt-3 h-8 w-16" />
-                  <Skeleton className="mt-2 h-4 w-28" />
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : clientRevenue.length ? (
+            <div className="space-y-2">
+              {clientRevenue.slice(0, 5).map((row, index) => (
+                <div key={row.client} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-700/50">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400">
+                      {row.client?.charAt(0) || '?'}
+                    </span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{row.client}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">{formatCurrency(row.revenue || 0, currency)}</span>
                 </div>
+              ))}
+            </div>
+          ) : (
+            <CRMEmptyState icon={Users} title="No client revenue yet" description="Won deals will appear here." />
+          )}
+        </div>
+
+        {/* Stage Conversion */}
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Stage Conversion</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Conversion between stages</p>
+            </div>
+            <PieChart className="h-5 w-5 text-gray-400" />
+          </div>
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : stageConversion.length ? (
+            <div className="space-y-2">
+              {stageConversion.slice(0, 5).map((item, index) => (
+                <div key={`${item.from}-${item.to}`} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-700/50">
+                  <div className="flex items-center gap-2">
+                    <div className={`h-2 w-2 rounded-full bg-${COLORS[index % COLORS.length]}`}></div>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{item.from} → {item.to}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600">
+                      <div className={`h-full rounded-full bg-${COLORS[index % COLORS.length]}`} style={{ width: `${item.conversion_percent}%` }}></div>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{item.conversion_percent}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <CRMEmptyState icon={LineChart} title="No conversion data yet" description="Stage movement data will appear as deals progress." />
+          )}
+        </div>
+      </div>
+
+      {/* Leaderboards and Pipeline Summary */}
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        {/* Leaderboards */}
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Top Performers</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Sales leaderboard</p>
+            </div>
+            <Award className="h-5 w-5 text-gray-400" />
+          </div>
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : leaderboards.length ? (
+            <div className="space-y-3">
+              {leaderboards.slice(0, 4).map((row, index) => (
+                <div key={row.salesperson} className="flex items-center justify-between rounded-lg bg-gray-50 p-4 dark:bg-gray-700/50">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${index === 0 ? 'bg-amber-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-indigo-600'}`}>
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{row.salesperson}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{row.deals_closed || 0} deals · {row.win_rate || 0}% win rate</p>
+                    </div>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">{formatCurrency(row.revenue || 0, currency)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <CRMEmptyState icon={LineChart} title="No leaderboard data" description="Closed deals will populate this list." />
+          )}
+        </div>
+
+        {/* Pipeline Summary */}
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Pipeline Breakdown</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Stage distribution</p>
+            </div>
+            <BarChart3 className="h-5 w-5 text-gray-400" />
+          </div>
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
           ) : stageBreakdown.length ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {stageBreakdown.map((stage) => (
-                <article
-                  key={stage.stage}
-                  className="rounded-2xl border border-surface-border/80 bg-gradient-to-br from-slate-50 to-white p-4 dark:border-gray-800 dark:from-gray-900 dark:to-gray-900"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Stage</p>
-                      <h3 className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">
-                        {stage.stage}
-                      </h3>
-                    </div>
-                    <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 dark:bg-primary-950/60 dark:text-primary-200">
-                      {stage.count}
-                    </span>
+            <div className="space-y-2">
+              {stageBreakdown.slice(0, 6).map((stage, index) => (
+                <div key={stage.stage} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-700/50">
+                  <div className="flex items-center gap-3">
+                    <div className={`h-2 w-2 rounded-full bg-${COLORS[index % COLORS.length]}`}></div>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{stage.stage}</span>
                   </div>
-                  <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-                    Value: {formatCurrency(stage.value || 0, currency)}
-                  </p>
-                </article>
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{stage.count} deals</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{formatCurrency(stage.value || 0, currency)}</span>
+                  </div>
+                </div>
               ))}
             </div>
           ) : (
-            <CRMEmptyState
-              icon={TrendingUp}
-              title="No pipeline activity yet"
-              description="Add leads to populate the CRM pipeline summary."
-            />
+            <CRMEmptyState icon={TrendingUp} title="No pipeline activity yet" description="Add leads to populate the CRM pipeline summary." />
           )}
-        </CRMSection>
-
-        <CRMSection title="Quick Actions" description="Fast paths into the workspace while later phases are built.">
-          <div className="grid gap-3">
-            <Link className="btn btn-primary justify-between" to="/crm/contacts">
-              <span>Open Contacts</span>
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link className="btn btn-secondary justify-between" to="/crm/activities">
-              <span>Review Activities</span>
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link className="btn btn-secondary justify-between" to="/crm/calendar">
-              <span>Check Calendar</span>
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link className="btn btn-secondary justify-between" to="/sales/contacts">
-              <span>Legacy Sales Contacts</span>
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </CRMSection>
+        </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <CRMSection title="Today's Activities" description="Current-day activity from the shared timeline.">
+      {/* Bottom Section - Activities and Meetings */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Today's Activities */}
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Today's Activity</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Recent timeline events</p>
+            </div>
+            <Activity className="h-5 w-5 text-gray-400" />
+          </div>
           {loading ? (
             <div className="space-y-3">
-              {[1, 2, 3].map((item) => (
-                <div key={item} className="rounded-2xl border border-surface-border/80 p-4">
-                  <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="mt-2 h-4 w-24" />
-                </div>
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
           ) : todayActivities.length ? (
-            <div className="space-y-3">
-              {todayActivities.map((activity) => (
-                <article
-                  key={`${activity.entity_type}-${activity.id}`}
-                  className="rounded-2xl border border-surface-border/80 p-4 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/60"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 rounded-2xl bg-primary-50 p-2 text-primary-600 dark:bg-primary-950/60 dark:text-primary-300">
-                      <Activity className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {activity.title}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {activity.user_name || 'System'} | {formatDateTime(activity.timestamp)}
-                      </p>
-                    </div>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {todayActivities.slice(0, 5).map((activity) => (
+                <div key={`${activity.entity_type}-${activity.id}`} className="flex items-start gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
+                  <div className="mt-1 rounded-lg bg-indigo-100 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                    <Activity className="h-4 w-4" />
                   </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <CRMEmptyState
-              icon={Activity}
-              title="No activity today"
-              description="The existing activity timeline has nothing new for today."
-            />
-          )}
-        </CRMSection>
-
-        <CRMSection title="Upcoming Meetings" description="Data from the existing meetings API.">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((item) => (
-                <div key={item} className="rounded-2xl border border-surface-border/80 p-4">
-                  <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="mt-2 h-4 w-1/2" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{activity.title}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{activity.user_name || 'System'} · {formatDateTime(activity.timestamp)}</p>
+                  </div>
                 </div>
               ))}
             </div>
-          ) : upcomingMeetings.length ? (
+          ) : (
+            <CRMEmptyState icon={Activity} title="No activity today" description="The existing activity timeline has nothing new for today." />
+          )}
+        </div>
+
+        {/* Upcoming Meetings */}
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Upcoming Meetings</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Scheduled appointments</p>
+            </div>
+            <CalendarDays className="h-5 w-5 text-gray-400" />
+          </div>
+          {loading ? (
             <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : upcomingMeetings.length ? (
+            <div className="space-y-3 max-h-80 overflow-y-auto">
               {upcomingMeetings.map((meeting) => (
-                <article
-                  key={meeting.id}
-                  className="rounded-2xl border border-surface-border/80 p-4 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/60"
-                >
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {meeting.title}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {formatDateTime(meeting.meeting_date)}
-                  </p>
-                </article>
+                <div key={meeting.id} className="flex items-center gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
+                  <div className="flex min-w-[50px] flex-col items-center rounded-lg bg-indigo-50 px-3 py-2 dark:bg-indigo-900/30">
+                    <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
+                      {format(new Date(meeting.meeting_date), 'd')}
+                    </span>
+                    <span className="text-xs text-indigo-500 dark:text-indigo-300">
+                      {format(new Date(meeting.meeting_date), 'MMM')}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{meeting.title}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{format(new Date(meeting.meeting_date), 'h:mm a')}</p>
+                  </div>
+                </div>
               ))}
             </div>
           ) : (
-            <CRMEmptyState
-              icon={CalendarDays}
-              title="No upcoming meetings"
-              description="Use the existing meetings module to schedule the next client touchpoint."
-            />
+            <CRMEmptyState icon={CalendarDays} title="No upcoming meetings" description="Use the existing meetings module to schedule the next client touchpoint." />
           )}
-        </CRMSection>
+        </div>
       </div>
     </CRMPage>
   )

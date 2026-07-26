@@ -21,7 +21,9 @@ from app.ai.role_engine import RoleEngine, RoleResolution
 from app.ai.tool_executor import ToolExecutor
 from app.ai.tools import ToolRegistry, build_default_tool_registry
 from app.core.config import settings
-from app.models.task import TaskStatus
+from app.core.clock import utc_now
+from app.models.project import Project, ProjectStatus
+from app.models.task import Task, TaskStatus
 from app.models.user import User, UserRole
 from app.schemas.ai import (
     AIDailyBlock,
@@ -164,14 +166,16 @@ class AIService:
         elif intent == "tickets" and ticket_count:
             message_text = f"You have {ticket_count} relevant tickets in context. I would review the oldest or highest-priority ones first and then reply with clear next steps."
         elif intent == "team":
-            message_text = "Here is the team view from your verified context. Focus on workload balance, blockers, and who needs follow-up today."
+            message_text = "I can help with team workload, blockers, follow-ups, and safe performance summaries. Ask for a specific team, project, or time window so I can use verified records."
         elif intent == "reporting":
-            message_text = "Here is the operational summary from your verified context. Focus on trends, blockers, and any risks that need escalation."
+            message_text = "I can prepare reports from verified SynTask records. Ask for a daily summary, project status, CRM update, HR overview, or task report."
+        elif intent == "general":
+            message_text = "I am SynTask AI. I can help with tasks, CRM, HR, projects, blockers, meetings, and reports using your authorized workspace context."
         elif mood in {"productive", "focused"}:
             message_text = guidance.get("prefix") or "You are in a good execution rhythm, so I would keep the next step sharp and direct."
         else:
-            message_text = "I reviewed your verified context and can help with the next best action based on your current work."
-        return EmotionTemplates.apply_tone(f"{greeting} {message_text}", state)
+            message_text = "I can help with your current work when you ask for a specific task, project, team, customer, or report."
+        return f"{greeting} {message_text}"
 
     @staticmethod
     def _build_chat_suggested_actions(context: dict[str, Any]) -> list[dict[str, Any]]:
@@ -355,7 +359,7 @@ class AIService:
             prompt_version=resolution.prompt_version,
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.now(),
+            generated_at=utc_now(),
             context=context,
         )
 
@@ -541,7 +545,7 @@ class AIService:
             prompt_version=resolution.prompt_version,
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.now(),
+            generated_at=utc_now(),
             context=context,
         )
 
@@ -566,8 +570,141 @@ class AIService:
             prompt_role_key=f"chat-{resolution.role_key}",
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.now(),
+            generated_at=utc_now(),
             context=context,
+        )
+
+    @staticmethod
+    def _is_current_projects_question(message: str) -> bool:
+        normalized = " ".join((message or "").lower().replace("?", " ").split())
+        project_terms = ("project", "projects")
+        current_terms = ("running", "current", "currently", "active", "ongoing", "in progress", "open")
+        list_terms = ("which", "what", "show", "list", "know", "tell")
+        return (
+            any(term in normalized for term in project_terms)
+            and any(term in normalized for term in current_terms)
+            and any(term in normalized for term in list_terms)
+        )
+
+    async def _list_visible_current_projects(self, current_user: User, limit: int = 10) -> list[dict[str, Any]]:
+        active_statuses = [
+            ProjectStatus.ACTIVE,
+            ProjectStatus.CREATED,
+            ProjectStatus.KICKOFF,
+            ProjectStatus.EXECUTION,
+            ProjectStatus.REVIEW,
+            ProjectStatus.REPORTING,
+            ProjectStatus.ON_HOLD,
+        ]
+        if current_user.role == UserRole.SUPER_ADMIN:
+            query: dict[str, Any] = {"status": {"$in": active_statuses}}
+        else:
+            if not current_user.company_id:
+                return []
+            query = {"company_id": current_user.company_id, "status": {"$in": active_statuses}}
+
+        if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
+            if current_user.role == UserRole.LEAD:
+                user_id = str(current_user.id)
+                query["$or"] = [
+                    {"assigned_to": user_id},
+                    {"assigned_user_ids": user_id},
+                    {"team_member_ids": user_id},
+                    {"lead_id": user_id},
+                ]
+            elif current_user.role == UserRole.EMPLOYEE:
+                assigned_tasks = await Task.find({
+                    "company_id": current_user.company_id,
+                    "assigned_to": str(current_user.id),
+                }).to_list()
+                task_project_ids = [
+                    str(task.project_id)
+                    for task in assigned_tasks
+                    if getattr(task, "project_id", None)
+                ]
+                query["$or"] = [
+                    {"team_member_ids": str(current_user.id)},
+                    {"project_id": {"$in": task_project_ids}},
+                    {"_id": {"$in": task_project_ids}},
+                ]
+
+        projects = await Project.find(query).sort("delivery_date", "-created_at").limit(limit).to_list()
+        visible_projects: list[dict[str, Any]] = []
+        for project in projects:
+            status_value = getattr(project.status, "value", project.status)
+            visible_projects.append({
+                "id": str(project.id),
+                "project_id": project.project_id or str(project.id),
+                "name": project.name,
+                "key": project.key,
+                "status": status_value,
+                "type": getattr(project, "type", None),
+                "delivery_date": project.delivery_date.isoformat() if project.delivery_date else None,
+                "lead_id": getattr(project, "lead_id", None),
+            })
+        return visible_projects
+
+    async def _build_current_projects_chat_response(
+        self,
+        current_user: User,
+        request: AIChatRequest,
+        context: dict[str, Any],
+        resolution: RoleResolution,
+    ) -> AIChatResponse:
+        projects = await self._list_visible_current_projects(current_user)
+        if not projects:
+            message = (
+                "I could not find any currently running projects in your authorized SynTask scope. "
+                "Source: verified projects collection with role and tenant filtering."
+            )
+        else:
+            lines = [
+                "Here are the currently running projects I can see in your authorized SynTask scope:",
+            ]
+            for index, project in enumerate(projects, start=1):
+                due = f", delivery {project['delivery_date']}" if project.get("delivery_date") else ""
+                lines.append(
+                    f"{index}. {project['name']} ({project['project_id']}) - status {project['status']}{due}"
+                )
+            lines.append("Source: verified projects collection with role and tenant filtering.")
+            message = "\n".join(lines)
+
+        project_context = {
+            **context,
+            "verified_project_context": {
+                "source": "projects",
+                "scope": "role_and_tenant_filtered",
+                "project_count": len(projects),
+                "projects": projects,
+                "read_only": True,
+            },
+        }
+        return AIChatResponse(
+            conversation_id=context.get("conversation", {}).get("conversation_id"),
+            message=message,
+            suggested_actions=[
+                {
+                    "label": "Open Projects",
+                    "type": "navigate",
+                    "payload": {"path": "/projects"},
+                },
+                {
+                    "label": "Ask Project Agent",
+                    "type": "navigate",
+                    "payload": {"path": "/ai-hub"},
+                },
+            ],
+            actions=[],
+            source="deterministic",
+            provider="syntask",
+            model="structured-project-context",
+            role=resolution.role_key,
+            prompt_version=resolution.prompt_version,
+            prompt_role_key=f"chat-{resolution.role_key}",
+            fallback_chain=list(resolution.fallback_chain),
+            fallback_used=False,
+            generated_at=utc_now(),
+            context=project_context,
         )
 
     def _build_fallback_response(
@@ -664,7 +801,7 @@ class AIService:
             prompt_version=resolution.prompt_version,
             fallback_chain=list(resolution.fallback_chain),
             fallback_used=resolution.fallback_used,
-            generated_at=datetime.now(),
+            generated_at=utc_now(),
             context=context,
         )
 
@@ -729,7 +866,7 @@ class AIService:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -865,7 +1002,7 @@ class AIService:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1026,7 +1163,7 @@ class AIService:
                 prompt_version=prompt_package.prompt_version,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1135,6 +1272,37 @@ class AIService:
             tone_guidance=emotion_context.get("tone_guidance"),
         )
         resolution = self.role_engine.resolve(current_user)
+        if self._is_current_projects_question(request.message):
+            response = await self._build_current_projects_chat_response(
+                current_user=current_user,
+                request=request,
+                context=context,
+                resolution=resolution,
+            )
+            try:
+                await self.memory_service.remember_chat(
+                    current_user,
+                    user_message=request.message,
+                    assistant_message=response.message,
+                    context=response.context,
+                )
+            except Exception:
+                pass
+            try:
+                await self.memory_service.remember_conversation_turn(
+                    conversation,
+                    user_message=request.message,
+                    assistant_message=response.message,
+                    context={
+                        **response.context,
+                        "suggested_actions": [action.model_dump() for action in response.suggested_actions],
+                    },
+                    assistant_tokens_used=None,
+                )
+            except Exception:
+                pass
+            return response
+
         prompt_schema = AIChatLLMResponse.model_json_schema()
         prompt_package = self.prompt_manager.render_chat_prompt(
             resolution,
@@ -1181,7 +1349,7 @@ class AIService:
                 prompt_role_key=prompt_package.prompt_role_key,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1377,7 +1545,7 @@ class AIService:
                 prompt_role_key=prompt_package.prompt_role_key,
                 fallback_chain=list(prompt_package.fallback_chain),
                 fallback_used=prompt_package.fallback_used,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={
                     **context,
                     "prompt_file": prompt_package.prompt_file,
@@ -1474,7 +1642,7 @@ class AIService:
                 prompt_role_key="marketing_chat-fallback",
                 fallback_chain=[],
                 fallback_used=True,
-                generated_at=datetime.now(),
+                generated_at=utc_now(),
                 context={},
             )
             
@@ -1541,4 +1709,3 @@ class AIService:
             )
             for log in logs
         ]
-

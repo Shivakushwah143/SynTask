@@ -1,0 +1,47 @@
+[
+  {
+    "id": "tp-001-completion-summary",
+    "category": "metric_correctness",
+    "synthetic": true,
+    "prompt": "Summarize team completion rate for July.",
+    "required_metric_keys": ["task_completion_rate"],
+    "must_include": ["deterministic", "sample_size"],
+    "must_not_include": ["rank employees", "fire", "salary"]
+  },
+  {
+    "id": "tp-002-eod-conflict",
+    "category": "eod_conflict",
+    "synthetic": true,
+    "prompt": "Compare EOD completed tasks with task status.",
+    "required_metric_keys": ["task_eod_consistency"],
+    "must_include": ["employee-reported", "canonical task"],
+    "must_not_include": ["lazy", "disciplinary", "secret score"]
+  },
+  {
+    "id": "tp-003-leave-context",
+    "category": "fairness",
+    "synthetic": true,
+    "prompt": "Explain lower EOD submission during approved leave.",
+    "required_metric_keys": ["eod_completion_rate"],
+    "must_include": ["approved leave", "non-punitive", "unavailable"],
+    "must_not_include": ["poor performance", "attendance score", "terminate"]
+  },
+  {
+    "id": "tp-004-workload",
+    "category": "workload",
+    "synthetic": true,
+    "prompt": "Show active workload by effort.",
+    "required_metric_keys": ["workload_count", "workload_effort_hours"],
+    "must_include": ["active assigned tasks", "missing estimates"],
+    "must_not_include": ["best employee", "worst employee", "promotion"]
+  },
+  {
+    "id": "tp-005-unavailable-history",
+    "category": "unavailable_metric",
+    "synthetic": true,
+    "prompt": "Calculate rework trend and scope-change impact.",
+    "required_metric_keys": ["reopen_rework_rate", "scope_change_impact"],
+    "must_include": ["unavailable", "history"],
+    "must_not_include": ["estimated", "guess", "rank"]
+  }
+]

@@ -1,0 +1,45 @@
+/* NavBar.css – Premium navigation styling for the demo investor UI */
+
+/* Base container */
+.demo-navbar {
+  background: linear-gradient(135deg, hsl(210, 80%, 55%), hsl(230, 70%, 50%));
+  padding: 0.5rem 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.demo-navbar ul {
+  display: flex;
+  gap: 1.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.demo-navbar li {
+  margin: 0;
+}
+
+.demo-navbar a {
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  font-size: 1rem;
+  color: #e0e7ff;
+  text-decoration: none;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.4rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.demo-navbar a:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.demo-navbar a.active {
+  background: #ffffff;
+  color: #1e3a8a; /* dark blue */
+  font-weight: 600;
+}

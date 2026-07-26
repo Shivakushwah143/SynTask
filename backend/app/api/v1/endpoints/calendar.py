@@ -12,6 +12,7 @@ from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, check_company_access
 from app.services.project_service import ProjectService
 from app.services.reminder_service import calendar_due_tone
+from app.core.clock import parse_to_utc, utc_now
 
 router = APIRouter()
 
@@ -25,9 +26,11 @@ def valid_object_ids(values: list[Any]) -> list[Any]:
 def is_past_calendar_datetime(value: datetime | date | None, now: Optional[datetime] = None) -> bool:
     if not value:
         return False
-    today = (now or datetime.utcnow()).date()
+    today = (now or utc_now()).date()
     value_date = value.date() if isinstance(value, datetime) else value
-    return value_date < today or (value_date == today and isinstance(value, datetime) and value.replace(tzinfo=None) < (now or datetime.utcnow()).replace(tzinfo=None))
+    current = parse_to_utc(now) or utc_now()
+    candidate = parse_to_utc(value) if isinstance(value, datetime) else None
+    return value_date < today or (value_date == today and candidate is not None and candidate < current)
 
 
 def calendar_error_detail(exc: Exception) -> str:

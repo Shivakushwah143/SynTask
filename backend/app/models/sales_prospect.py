@@ -54,6 +54,17 @@ class SalesProspect(Document):
     channel: Optional[str] = None
     source: str = "bulk_upload"
 
+    # Optional Meta Lead Ads attribution. These are additive so existing leads
+    # retain their current CRM contract when the integration is disabled.
+    meta_lead_id: Optional[str] = None
+    meta_campaign_id: Optional[str] = None
+    meta_adset_id: Optional[str] = None
+    meta_ad_id: Optional[str] = None
+    meta_form_id: Optional[str] = None
+    meta_created_time: Optional[datetime] = None
+    meta_consent: Optional[bool] = None
+    meta_attribution: Dict[str, Any] = Field(default_factory=dict)
+
     # Additional Information (from Contact or new)
     designation: Optional[str] = None
     nationality: Optional[List[str]] = Field(default_factory=list)
@@ -101,6 +112,11 @@ class SalesProspect(Document):
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("assigned_to", ASCENDING), ("updated_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("crm_company_id", ASCENDING), ("updated_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("deleted", ASCENDING), ("country_code", ASCENDING), ("phone", ASCENDING)]),
+            IndexModel(
+                [("company_id", ASCENDING), ("meta_lead_id", ASCENDING)],
+                unique=True,
+                partialFilterExpression={"meta_lead_id": {"$type": "string"}},
+            ),
             IndexModel([
                 ("company_id", ASCENDING),
                 ("email", ASCENDING),

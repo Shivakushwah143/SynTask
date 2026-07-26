@@ -9,6 +9,7 @@ from app.models.webhook import Webhook, WebhookDelivery, WebhookEvent
 from app.models.user import User
 from app.api.dependencies import get_current_user, get_current_company_admin, check_company_access
 from app.api.deps import Pagination50, PaginationParams
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -146,7 +147,7 @@ async def toggle_webhook(
     check_company_access(current_user, webhook.company_id)
     
     webhook.is_active = not webhook.is_active
-    webhook.updated_at = datetime.now()
+    webhook.updated_at = utc_now()
     await webhook.save()
     
     return {

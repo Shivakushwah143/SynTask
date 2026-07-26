@@ -94,6 +94,11 @@ export const projectsApi = {
   getProjectSummary: (projectId, days = 7) => {
     return api.get(`/projects/${projectId}/summary`, { params: { days } })
   },
+
+  createProjectAgentRun: async (data) => {
+    const response = await api.post('/agents/project/runs', data)
+    return response.data
+  },
   
   // Project Files
   getProjectFiles: (projectId) => {

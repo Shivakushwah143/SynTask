@@ -33,6 +33,9 @@ axiosInstance.interceptors.request.use(
         } else {
           config.headers.Authorization = `Bearer ${token}`
         }
+      } else if (!config.allowUnauthenticated) {
+        // Mark this for suppression of auth errors if no token available
+        config._unauthenticated = true
       }
     }
     
@@ -100,13 +103,19 @@ axiosInstance.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    // If the error is 401 and we haven't retried yet
+    // If the error is 401 and we haven't retried yet, try to refresh
     if (
       error.response?.status === 401 &&
       !originalRequest?._retry &&
       !originalRequest?.skipAuthRefresh &&
       !useAuthStore.getState().isLoggingOut
     ) {
+      // Skip retry if request was made without token (auth still initializing)
+      if (originalRequest?._unauthenticated) {
+        // Silently reject - don't show errors for requests made before auth initialized
+        return Promise.reject(error)
+      }
+
       originalRequest._retry = true
 
       try {
@@ -182,7 +191,13 @@ axiosInstance.interceptors.response.use(
       error.response?.data
     )
 
-    if (![401, 403].includes(error.response?.status)) {
+    // Handle other errors - suppress toasts for 401/403 and unauthenticated requests
+    if (![401, 403].includes(error.response?.status) && !originalRequest?._unauthenticated) {
+      const errorMessage = extractErrorMessage(
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.response?.data
+      )
       toast.error(errorMessage)
     }
 

@@ -44,4 +44,9 @@ class UserResponse(BaseModel):
     modules: List[str]
     active_module: Optional[str] = None
     avatar: Optional[str] = None
+    timezone: Optional[str] = None
+    automatic_time: bool = True
+    manual_time: Optional[str] = None
+    hour_format: str = "12"
+    show_seconds: bool = False
 

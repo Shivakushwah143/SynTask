@@ -16,6 +16,7 @@ from app.projects.models import Project
 from app.tasks.models import Task
 from app.models.user import User, UserRole
 from app.services.reminder_service import calendar_due_tone
+from app.core.clock import utc_now
 
 
 CONTENT_STATUS_FLOW = [
@@ -220,7 +221,7 @@ class ContentCalendarService:
             grouped[item.project_id].append(_serialize_item(item))
 
         published = sum(1 for item in items if item.status == ContentItemStatus.PUBLISHED)
-        delayed = sum(1 for item in items if item.due_date and item.due_date < datetime.now() and item.status != ContentItemStatus.PUBLISHED)
+        delayed = sum(1 for item in items if item.due_date and item.due_date < utc_now() and item.status != ContentItemStatus.PUBLISHED)
         shoot_days = sum(1 for item in items if item.content_type == ContentItemType.SHOOT_DAY)
         return {
             "items": [_serialize_item(item) for item in items],
@@ -229,7 +230,7 @@ class ContentCalendarService:
                 "completed": published,
                 "remaining": max(len(items) - published, 0),
                 "delayed": delayed,
-                "upcoming": sum(1 for item in items if item.publish_date and item.publish_date >= datetime.now() and item.status != ContentItemStatus.PUBLISHED),
+                "upcoming": sum(1 for item in items if item.publish_date and item.publish_date >= utc_now() and item.status != ContentItemStatus.PUBLISHED),
                 "monthly_targets": [],
             },
             "summary": {
@@ -250,7 +251,7 @@ class ContentCalendarService:
     @staticmethod
     async def create_item(current_user: User, payload: Dict[str, Any]) -> Dict[str, Any]:
         project = await _load_project(current_user, str(payload.get("project_id") or ""))
-        now = datetime.now()
+        now = utc_now()
         item = ContentCalendarItem(
             company_id=str(project.company_id),
             project_id=str(project.id),
@@ -320,7 +321,7 @@ class ContentCalendarService:
                         {"relationship_type": "project", "entity_type": "project", "entity_id": str(project.project_id or project.id)},
                     ],
                     "content": item.notes or item.title,
-                    "version_marker": str(item.updated_at or item.created_at or datetime.now()),
+                    "version_marker": str(item.updated_at or item.created_at or utc_now()),
                 },
                 metadata={"module": "content_calendar"},
             )
@@ -333,7 +334,7 @@ class ContentCalendarService:
         if not item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content item not found")
         project = await _load_project(current_user, str(item.project_id))
-        now = datetime.now()
+        now = utc_now()
         if "title" in payload:
             item.title = str(payload.get("title") or item.title).strip()
         if "content_type" in payload:

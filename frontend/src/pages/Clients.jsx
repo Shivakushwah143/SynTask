@@ -11,6 +11,7 @@ import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { timeService } from '@/services/timeService'
 
 const Clients = () => {
   const { user } = useAuthStore()
@@ -111,12 +112,24 @@ const Clients = () => {
     }
   }, [])
 
+  const loadAssignableUsers = useCallback(async () => {
+    try {
+      const data = await usersAPI.getAssignableUsersWithJuniors()
+      const users = data.users || []
+      setAssignableUsers(users.filter((u) => String(u.id || u._id) !== String(user.id || user._id)))
+    } catch (error) {
+      console.error('Error loading assignable users:', error)
+      setAssignableUsers([])
+    }
+  }, [user])
+
   const { isAuthenticated } = useAuthStore()
 
   useEffect(() => {
     if (!isAuthenticated) return
     loadClients()
     loadLeads()
+    loadAssignableUsers()
   }, [isAuthenticated, loadClients, loadLeads])
 
   const handleCreateClient = async (e) => {
@@ -237,21 +250,7 @@ const Clients = () => {
     setShowCreateModal(true)
   }
 
-  const loadAssignableUsers = async () => {
-    try {
-      const response = await usersAPI.getAssignableUsers()
-      const users = response.users || []
-      const uniqueUsersMap = new Map()
-      users.forEach(user => {
-        if (user && user.id && !uniqueUsersMap.has(user.id)) {
-          uniqueUsersMap.set(user.id, user)
-        }
-      })
-      setAssignableUsers(Array.from(uniqueUsersMap.values()))
-    } catch (error) {
-      console.error('Error loading assignable users:', error)
-    }
-  }
+  
 
   const handleCreateProject = async (e) => {
     e.preventDefault()
@@ -273,10 +272,10 @@ const Clients = () => {
       
       // Convert dates to ISO format
       if (projectForm.start_date) {
-        projectData.start_date = new Date(projectForm.start_date).toISOString()
+        projectData.start_date = timeService.toUtcISOString(projectForm.start_date)
       }
       if (projectForm.delivery_date) {
-        projectData.delivery_date = new Date(projectForm.delivery_date).toISOString()
+        projectData.delivery_date = timeService.toUtcISOString(projectForm.delivery_date)
       }
 
       const projectResponse = await projectsApi.createProject(projectData)
@@ -291,8 +290,8 @@ const Clients = () => {
         selectedClient.id,
         projectId,
         projectForm.budget ? parseFloat(projectForm.budget) : null,
-        projectForm.start_date ? new Date(projectForm.start_date).toISOString() : null,
-        projectForm.delivery_date ? new Date(projectForm.delivery_date).toISOString() : null
+        projectForm.start_date ? timeService.toUtcISOString(projectForm.start_date) : null,
+        projectForm.delivery_date ? timeService.toUtcISOString(projectForm.delivery_date) : null
       )
 
       toast.success('Project created and linked to client successfully')
@@ -486,7 +485,7 @@ const Clients = () => {
         .filter(date => date != null && date !== undefined)
         .map(date => {
           try {
-            const d = new Date(date)
+            const d = timeService.instant(date)
             return isNaN(d.getTime()) ? null : d
           } catch (e) {
             return null
@@ -495,7 +494,7 @@ const Clients = () => {
         .filter(date => date !== null)
       
       if (dates.length > 0) {
-        return new Date(Math.min(...dates.map(d => d.getTime())))
+        return timeService.instant(Math.min(...dates.map(d => d.getTime())))
       }
     }
     return null
@@ -508,7 +507,7 @@ const Clients = () => {
         .filter(date => date != null && date !== undefined)
         .map(date => {
           try {
-            const d = new Date(date)
+            const d = timeService.instant(date)
             return isNaN(d.getTime()) ? null : d
           } catch (e) {
             return null
@@ -517,7 +516,7 @@ const Clients = () => {
         .filter(date => date !== null)
       
       if (dates.length > 0) {
-        return new Date(Math.max(...dates.map(d => d.getTime())))
+        return timeService.instant(Math.max(...dates.map(d => d.getTime())))
       }
     }
     return null
@@ -570,10 +569,10 @@ const Clients = () => {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="input"
         >
-          <option value="">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="archived">Archived</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Status</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="active">Active</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="inactive">Inactive</option>
+          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="archived">Archived</option>
         </select>
       </div>
 
@@ -1048,13 +1047,13 @@ const Clients = () => {
                           {project.start_date && (
                             <div className="flex items-center">
                               <Calendar className="h-3 w-3 mr-1" />
-                              <span>Start: {format(new Date(project.start_date), 'MMM d, yyyy')}</span>
+                              <span>Start: {format(timeService.instant(project.start_date), 'MMM d, yyyy')}</span>
                             </div>
                           )}
                           {project.delivery_date && (
                             <div className="flex items-center">
                               <Calendar className="h-3 w-3 mr-1" />
-                              <span>Delivery: {format(new Date(project.delivery_date), 'MMM d, yyyy')}</span>
+                              <span>Delivery: {format(timeService.instant(project.delivery_date), 'MMM d, yyyy')}</span>
                             </div>
                           )}
                         </div>

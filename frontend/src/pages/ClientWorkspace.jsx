@@ -8,6 +8,7 @@ import { Button, EmptyState, Skeleton } from '../components/ui'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../components/crm'
 import { CompanyTimeline } from './crm/companies/components'
 import { formatCurrency } from './crm/pipeline/utils'
+import { timeService } from '@/services/timeService'
 
 const TAB_KEY = 'tab'
 const TABS = [
@@ -23,14 +24,14 @@ const TABS = [
 
 function formatDate(value) {
   if (!value) return 'N/A'
-  const parsed = new Date(value)
+  const parsed = timeService.instant(value)
   if (Number.isNaN(parsed.getTime())) return 'N/A'
   return format(parsed, 'MMM d, yyyy')
 }
 
 function formatDateTime(value) {
   if (!value) return 'N/A'
-  const parsed = new Date(value)
+  const parsed = timeService.instant(value)
   if (Number.isNaN(parsed.getTime())) return 'N/A'
   return format(parsed, 'MMM d, yyyy h:mm a')
 }

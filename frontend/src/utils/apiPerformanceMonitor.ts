@@ -1,4 +1,5 @@
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
+import { timeService } from '@/services/timeService'
 
 export type ApiRequestSource = 'axios' | 'fetch'
 
@@ -172,7 +173,7 @@ const startPendingRequest = (
   const state = getState()
   const normalizedMethod = normalizeMethod(method)
   const requestKey = requestKeyOverride || buildRequestKey(normalizedMethod, endpoint, data)
-  const startTime = Date.now()
+  const startTime = timeService.now().getTime()
   const startPerf = typeof performance !== 'undefined' ? performance.now() : startTime
   const lastSeen = state.lastSeenAt.get(requestKey)
   const duplicate = Boolean(
@@ -204,7 +205,7 @@ const finishPendingRequest = (
   },
 ) => {
   const state = getState()
-  const elapsedMs = typeof performance !== 'undefined' ? performance.now() - pending.startPerf : Date.now() - pending.startTime
+  const elapsedMs = typeof performance !== 'undefined' ? performance.now() - pending.startPerf : timeService.now().getTime() - pending.startTime
   const currentCount = state.inFlight.get(pending.requestKey) || 0
   if (currentCount <= 1) {
     state.inFlight.delete(pending.requestKey)

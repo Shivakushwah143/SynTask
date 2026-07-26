@@ -7,6 +7,7 @@ from app.models.project import Project
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 import logging
+from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ async def check_approaching_deadlines():
     """Check projects with deadlines approaching (2 days) and send notifications"""
     try:
         # Get all active projects with delivery dates
-        now = datetime.now()
+        now = utc_now()
         two_days_from_now = now + timedelta(days=2)
         
         # Find projects with delivery dates between now and 2 days from now

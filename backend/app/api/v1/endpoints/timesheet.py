@@ -10,6 +10,7 @@ from app.models.task import Task
 from app.models.project import Project
 from app.models.user import User, UserRole, Employee, Lead
 from app.api.dependencies import get_current_user, check_company_access
+from app.core.clock import utc_now
 
 router = APIRouter()
 
@@ -100,7 +101,7 @@ async def create_timesheet_entry(
         existing_entry.meeting_title = meeting_title
         existing_entry.miscellaneous_description = miscellaneous_description
         existing_entry.notification_manager_id = notification_manager_id
-        existing_entry.updated_at = datetime.now()
+        existing_entry.updated_at = utc_now()
         await existing_entry.save()
         entry = existing_entry
     else:
@@ -481,7 +482,7 @@ async def update_timesheet_summary(company_id: str, user_id: str, entry_date: da
         summary.total_hours = total_hours
         summary.total_entries = len(entries)
         summary.status = status
-        summary.updated_at = datetime.now()
+        summary.updated_at = utc_now()
         await summary.save()
     else:
         summary = TimesheetSummary(

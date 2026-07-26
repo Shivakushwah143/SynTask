@@ -22,6 +22,7 @@ from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
 from app.models.user import User, UserRole, UserStatus
 from app.core.rbac_visibility import require_owned_record_access, visible_user_ids
+from app.core.clock import utc_now
 
 
 CSV_EMAIL_ALIASES = {"email_address", "email_id", "e_mail"}
@@ -57,7 +58,7 @@ DEFAULT_STAGE_LOOKUP = {
 
 
 def _now() -> datetime:
-    return datetime.now()
+    return utc_now()
 
 
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
@@ -578,6 +579,14 @@ class LeadEngine:
             relationship_type=normalized.get("relationship_type"),
             channel=normalized.get("channel"),
             source=normalized.get("source") or "manual",
+            meta_lead_id=normalized.get("meta_lead_id"),
+            meta_campaign_id=normalized.get("meta_campaign_id"),
+            meta_adset_id=normalized.get("meta_adset_id"),
+            meta_ad_id=normalized.get("meta_ad_id"),
+            meta_form_id=normalized.get("meta_form_id"),
+            meta_created_time=normalized.get("meta_created_time"),
+            meta_consent=normalized.get("meta_consent"),
+            meta_attribution=dict(normalized.get("meta_attribution") or {}),
             designation=normalized.get("designation"),
             nationality=list(normalized.get("nationality") or []),
             language=list(normalized.get("language") or []),
@@ -644,6 +653,14 @@ class LeadEngine:
             "stage_last_changed_at": prospect.stage_last_changed_at,
             "days_in_stage": prospect.days_in_stage,
             "department_id": getattr(prospect, "department_id", None),
+            "meta_lead_id": getattr(prospect, "meta_lead_id", None),
+            "meta_campaign_id": getattr(prospect, "meta_campaign_id", None),
+            "meta_adset_id": getattr(prospect, "meta_adset_id", None),
+            "meta_ad_id": getattr(prospect, "meta_ad_id", None),
+            "meta_form_id": getattr(prospect, "meta_form_id", None),
+            "meta_created_time": getattr(prospect, "meta_created_time", None),
+            "meta_consent": getattr(prospect, "meta_consent", None),
+            "meta_attribution": getattr(prospect, "meta_attribution", None) or {},
         }
 
     @staticmethod

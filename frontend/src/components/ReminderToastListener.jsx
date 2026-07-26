@@ -118,7 +118,8 @@ const ReminderToastListener = () => {
       const notifications = filterNewReminderToasts(data?.notifications || [], shownIdsRef.current)
       notifications.forEach(showReminderToast)
     } catch (error) {
-      if (!['ERR_NETWORK', 'ERR_CONNECTION_REFUSED'].includes(error?.code)) {
+      // Suppress expected 401 (auth still initializing) and network errors
+      if (!['ERR_NETWORK', 'ERR_CONNECTION_REFUSED'].includes(error?.code) && error?.response?.status !== 401) {
         console.error('Failed to load reminder toasts:', error)
       }
     } finally {
