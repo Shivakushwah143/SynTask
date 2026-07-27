@@ -3,7 +3,8 @@ Dashboard & Analytics Endpoints
 """
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from app.core.config import settings
 from app.models.user import User, UserRole
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.ticket import Ticket
@@ -185,12 +186,13 @@ async def _build_company_dashboard_metrics(current_user: User) -> dict:
 
 @router.get("/stats")
 async def get_dashboard_stats(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    fresh: bool = Query(False)
 ):
     """Get dashboard statistics with hierarchical RBAC"""
     cache_key = dashboard_cache_key(str(current_user.id), current_user.role.value, current_user.company_id)
     cached = await cache_get(cache_key)
-    if cached:
+    if not fresh and cached:
         return cached
 
     if current_user.role == UserRole.SUPER_ADMIN:
@@ -207,17 +209,18 @@ async def get_dashboard_stats(
             "pending_companies": pending_companies,
             "total_subscriptions": total_subscriptions,
         }
-        await cache_set(cache_key, data, ttl=300)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
 
 @router.get("/metrics")
 async def get_dashboard_metrics(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    fresh: bool = Query(False)
 ):
     cache_key = f"dashboard:metrics:{current_user.id}:{current_user.role.value}:{current_user.company_id}"
     cached = await cache_get(cache_key)
-    if cached:
+    if not fresh and cached:
         return cached
 
     base_query = {"company_id": current_user.company_id} if current_user.company_id else {}
@@ -230,18 +233,18 @@ async def get_dashboard_metrics(
             "pending_companies": await Company.find({"status": "pending"}).count(),
             "total_subscriptions": await Subscription.find().count(),
         }
-        await cache_set(cache_key, data, ttl=120)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
     if role == UserRole.ADMIN:
         data = await _build_company_dashboard_metrics(current_user)
-        await cache_set(cache_key, data, ttl=120)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
     if role == UserRole.MANAGER:
         manager_metrics = await build_manager_dashboard_metrics(current_user)
         data = {**await _build_company_dashboard_metrics(current_user), **manager_metrics}
-        await cache_set(cache_key, data, ttl=120)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
     if role == UserRole.LEAD:
@@ -249,7 +252,7 @@ async def get_dashboard_metrics(
         employee_ids = [str(emp.id) for emp in employees] + [str(current_user.id)]
         data = await _build_company_dashboard_metrics(current_user)
         data["tasks_due_today"] = await Task.find({"company_id": current_user.company_id, "assigned_to": {"$in": employee_ids}}).count()
-        await cache_set(cache_key, data, ttl=120)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
     company_metrics = await _build_company_dashboard_metrics(current_user) if current_user.company_id else {}
@@ -263,7 +266,7 @@ async def get_dashboard_metrics(
         "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": utc_now()}}).count(),
         "tasks_due_today": await Task.find({**base_query, "assigned_to": str(current_user.id)}).count(),
     }
-    await cache_set(cache_key, data, ttl=120)
+    await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
     return data
 
 
