@@ -7,6 +7,7 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.core.file_validation import detect_mime_type
+from app.services.cloudinary_storage import CloudinaryStorage
 
 
 def _validate_uploaded_file(filename: str, file_content: bytes) -> str:
@@ -64,6 +65,8 @@ class FileService:
         *,
         upload_dir: Path,
         url_prefix: str,
+        scope: str = "files",
+        sensitive: bool = True,
     ) -> dict:
         file_content = await file.read()
         file_size = len(file_content)
@@ -75,6 +78,28 @@ class FileService:
             )
 
         file_ext = _validate_uploaded_file(file.filename or "", file_content)
+        detected_mime = detect_mime_type(file_content, file.filename or "")
+        if CloudinaryStorage.enabled():
+            stored = CloudinaryStorage.upload(
+                content=file_content,
+                filename=file.filename or f"upload{file_ext}",
+                mime_type=detected_mime,
+                scope=scope,
+                sensitive=sensitive,
+            )
+            return {
+                "file_path": None,
+                "file_url": stored["file_url"],
+                "cloudinary_public_id": stored["public_id"],
+                "cloudinary_resource_type": stored["resource_type"],
+                "cloudinary_delivery_type": stored["delivery_type"],
+                "filename": file.filename,
+                "size": file_size,
+                "type": detected_mime,
+                "extension": file_ext,
+                "unique_filename": Path(stored["public_id"]).name,
+            }
+
         unique_filename = f"{uuid.uuid4()}{file_ext}"
         upload_dir.mkdir(parents=True, exist_ok=True)
         file_path = upload_dir / unique_filename

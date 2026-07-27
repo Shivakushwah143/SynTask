@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from bson import ObjectId
 import logging
 from pathlib import Path
-import uuid
 import secrets
 
 logger = logging.getLogger(__name__)
@@ -23,6 +22,7 @@ from app.api.dependencies import (
 )
 from app.core.config import settings
 from app.core.clock import utc_now
+from app.services.file_service import FileService
 
 router = APIRouter()
 
@@ -42,6 +42,16 @@ def generate_msa_number(company_id: str) -> str:
 def generate_signature_token() -> str:
     """Generate unique signature token for client access"""
     return secrets.token_urlsafe(32)
+
+
+async def _upload_msa_file(file: UploadFile) -> dict:
+    return await FileService.store_uploaded_file(
+        file,
+        upload_dir=MSA_UPLOAD_DIR,
+        url_prefix="/api/v1/files/msa",
+        scope="msa",
+        sensitive=True,
+    )
 
 
 @router.post("/")
@@ -105,35 +115,26 @@ async def create_msa(
         # Handle file uploads (MSA_UPLOAD_DIR is already defined at module level)
         
         company_logo_url = None
+        company_logo_public_id = None
         company_signature_file_url = None
+        company_signature_public_id = None
         stamp_image_url = None
+        stamp_image_public_id = None
         
         if company_logo:
-            file_content = await company_logo.read()
-            file_ext = Path(company_logo.filename).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = MSA_UPLOAD_DIR / unique_filename
-            with open(file_path, "wb") as f:
-                f.write(file_content)
-            company_logo_url = f"/api/v1/files/msa/{unique_filename}"
+            stored = await _upload_msa_file(company_logo)
+            company_logo_url = stored["file_url"]
+            company_logo_public_id = stored.get("cloudinary_public_id")
         
         if company_signature:
-            file_content = await company_signature.read()
-            file_ext = Path(company_signature.filename).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = MSA_UPLOAD_DIR / unique_filename
-            with open(file_path, "wb") as f:
-                f.write(file_content)
-            company_signature_file_url = f"/api/v1/files/msa/{unique_filename}"
+            stored = await _upload_msa_file(company_signature)
+            company_signature_file_url = stored["file_url"]
+            company_signature_public_id = stored.get("cloudinary_public_id")
         
         if company_stamp:
-            file_content = await company_stamp.read()
-            file_ext = Path(company_stamp.filename).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = MSA_UPLOAD_DIR / unique_filename
-            with open(file_path, "wb") as f:
-                f.write(file_content)
-            stamp_image_url = f"/api/v1/files/msa/{unique_filename}"
+            stored = await _upload_msa_file(company_stamp)
+            stamp_image_url = stored["file_url"]
+            stamp_image_public_id = stored.get("cloudinary_public_id")
         
         # Create MSA
         msa = MSA(
@@ -150,11 +151,14 @@ async def create_msa(
             company_zip_code=company.zip_code,
             company_cin=gst_cin or getattr(company, 'registration_number', None),
             company_logo_url=company_logo_url,
+            company_logo_public_id=company_logo_public_id,
             header_background_color=header_background_color or "#1F2937",
             company_signatory_name=signer_name,
             company_signatory_email=signer_email,
             company_signature_file_url=company_signature_file_url,
+            company_signature_public_id=company_signature_public_id,
             stamp_image_url=stamp_image_url,
+            stamp_image_public_id=stamp_image_public_id,
             client_name=client_name,
             client_email=client_email,
             content=content or "",
@@ -504,16 +508,12 @@ async def upload_stamp(
                 detail=f"File type not allowed. Allowed types: {', '.join(allowed_image_extensions)}"
             )
         
-        # Generate unique filename
-        unique_filename = f"{uuid.uuid4()}{file_ext}"
-        file_path = MSA_UPLOAD_DIR / unique_filename
-        
-        # Save file
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-        
+        await file.seek(0)
+        stored = await _upload_msa_file(file)
+
         # Update MSA
-        msa.stamp_image_url = f"/api/v1/files/msa/{unique_filename}"
+        msa.stamp_image_url = stored["file_url"]
+        msa.stamp_image_public_id = stored.get("cloudinary_public_id")
         msa.updated_at = utc_now()
         await msa.save()
         
@@ -630,31 +630,19 @@ async def send_msa(
         
         # Handle file uploads
         if company_logo:
-            file_content = await company_logo.read()
-            file_ext = Path(company_logo.filename).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = MSA_UPLOAD_DIR / unique_filename
-            with open(file_path, "wb") as f:
-                f.write(file_content)
-            msa.company_logo_url = f"/api/v1/files/msa/{unique_filename}"
+            stored = await _upload_msa_file(company_logo)
+            msa.company_logo_url = stored["file_url"]
+            msa.company_logo_public_id = stored.get("cloudinary_public_id")
         
         if company_signature:
-            file_content = await company_signature.read()
-            file_ext = Path(company_signature.filename).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = MSA_UPLOAD_DIR / unique_filename
-            with open(file_path, "wb") as f:
-                f.write(file_content)
-            msa.company_signature_file_url = f"/api/v1/files/msa/{unique_filename}"
+            stored = await _upload_msa_file(company_signature)
+            msa.company_signature_file_url = stored["file_url"]
+            msa.company_signature_public_id = stored.get("cloudinary_public_id")
         
         if company_stamp:
-            file_content = await company_stamp.read()
-            file_ext = Path(company_stamp.filename).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = MSA_UPLOAD_DIR / unique_filename
-            with open(file_path, "wb") as f:
-                f.write(file_content)
-            msa.stamp_image_url = f"/api/v1/files/msa/{unique_filename}"
+            stored = await _upload_msa_file(company_stamp)
+            msa.stamp_image_url = stored["file_url"]
+            msa.stamp_image_public_id = stored.get("cloudinary_public_id")
         
         # Generate signature token
         msa.signature_token = generate_signature_token()
@@ -725,11 +713,14 @@ async def save_as_template(
             company_zip_code=msa.company_zip_code,
             company_cin=msa.company_cin,
             company_logo_url=msa.company_logo_url,
+            company_logo_public_id=msa.company_logo_public_id,
             header_background_color=msa.header_background_color,
             company_signatory_name=msa.company_signatory_name,
             company_signatory_email=msa.company_signatory_email,
             company_signature_file_url=msa.company_signature_file_url,
+            company_signature_public_id=msa.company_signature_public_id,
             stamp_image_url=msa.stamp_image_url,
+            stamp_image_public_id=msa.stamp_image_public_id,
             is_template=True,
             template_name=template_name or f"Template - {msa.agreement_title or 'Untitled'}",
             msa_type=msa.msa_type,
@@ -945,14 +936,10 @@ async def client_sign_msa(
         # Handle client stamp upload
         client_stamp_url = None
         if client_stamp:
-            file_content = await client_stamp.read()
-            file_ext = Path(client_stamp.filename).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = MSA_UPLOAD_DIR / unique_filename
-            with open(file_path, "wb") as f:
-                f.write(file_content)
-            client_stamp_url = f"/api/v1/files/msa/{unique_filename}"
+            stored = await _upload_msa_file(client_stamp)
+            client_stamp_url = stored["file_url"]
             msa.client_stamp_url = client_stamp_url
+            msa.client_stamp_public_id = stored.get("cloudinary_public_id")
         
         # Save client signature
         msa.client_signature = {
@@ -994,4 +981,3 @@ async def client_sign_msa(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to sign MSA: {str(e)}"
         )
-

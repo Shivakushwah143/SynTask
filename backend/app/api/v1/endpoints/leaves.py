@@ -4,7 +4,6 @@ Leave management endpoints.
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 
@@ -32,6 +31,7 @@ from app.services.leave_service import (
 )
 from app.services.timeline_service import create_timeline_event
 from app.core.clock import utc_now
+from app.services.file_service import FileService
 
 router = APIRouter()
 UPLOAD_DIR = Path(__file__).resolve().parents[4] / settings.UPLOAD_DIR / "leaves"
@@ -60,7 +60,7 @@ async def create_leave_request(
     if not pending_with_user_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No leave approver found")
 
-    attachment_url = await _save_attachment(attachment) if attachment else None
+    stored_attachment = await _save_attachment(attachment) if attachment else None
     leave = LeaveRequest(
         employee_id=str(current_user.id),
         employee_role=current_user.role.value,
@@ -69,7 +69,8 @@ async def create_leave_request(
         start_date=start,
         end_date=end,
         reason=reason.strip(),
-        attachment_url=attachment_url,
+        attachment_url=stored_attachment["file_url"] if stored_attachment else None,
+        attachment_public_id=stored_attachment.get("cloudinary_public_id") if stored_attachment else None,
         requested_by=str(current_user.id),
         pending_with_user_ids=pending_with_user_ids,
         approval_history=[
@@ -412,16 +413,11 @@ async def _notify_reviewers(leave: LeaveRequest, employee: User, reviewer_ids: l
         )
 
 
-async def _save_attachment(file: UploadFile) -> str:
-    file_ext = Path(file.filename or "").suffix.lower()
-    if file_ext and file_ext not in settings.ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File type not allowed")
-    content = await file.read()
-    if len(content) > settings.MAX_UPLOAD_SIZE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File too large")
-    filename = f"{uuid.uuid4()}{file_ext}"
-    path = UPLOAD_DIR / filename
-    with open(path, "wb") as handle:
-        handle.write(content)
-    return f"/api/v1/files/leaves/{filename}"
-
+async def _save_attachment(file: UploadFile) -> dict:
+    return await FileService.store_uploaded_file(
+        file,
+        upload_dir=UPLOAD_DIR,
+        url_prefix="/api/v1/files/leaves",
+        scope="leaves",
+        sensitive=True,
+    )

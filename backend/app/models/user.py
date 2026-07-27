@@ -58,6 +58,7 @@ class User(Document):
     active_module: Optional[str] = Field(default="task")
     phone: Optional[str] = None
     avatar: Optional[str] = None
+    avatar_public_id: Optional[str] = None
     company_id: Optional[str] = None  # For company users
     department_id: Optional[str] = None  # Company Department document ID
     

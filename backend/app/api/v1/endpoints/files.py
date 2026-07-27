@@ -6,7 +6,6 @@ from fastapi.responses import FileResponse
 import mimetypes
 import logging
 from pathlib import Path
-import uuid
 import re
 
 from app.models.user import User
@@ -128,32 +127,20 @@ async def upload_avatar(
                 detail="File size must be 5 MB or smaller"
             )
         
-        # Reset file position
         await file.seek(0)
-        
-        # Get avatars directory
-        avatar_dir = UPLOAD_DIR / "avatars"
-        avatar_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Generate unique filename
-        file_extension = Path(file.filename).suffix
-        unique_filename = f"{uuid.uuid4()}{file_extension}"
-        file_path = avatar_dir / unique_filename
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
-        
-        # Reset file position
-        await file.seek(0)
-        
-        # ✅ Return the correct URL format
-        avatar_url = f"/uploads/avatars/{unique_filename}"
+        stored = await FileService.store_uploaded_file(
+            file,
+            upload_dir=UPLOAD_DIR / "avatars",
+            url_prefix="/uploads/avatars",
+            scope="avatars",
+            sensitive=False,
+        )
+        avatar_url = stored["file_url"]
         
         # Save to database
         from app.core.clock import utc_now
         current_user.avatar = avatar_url
+        current_user.avatar_public_id = stored.get("cloudinary_public_id")
         current_user.updated_at = utc_now()
         await current_user.save()
         
@@ -161,7 +148,8 @@ async def upload_avatar(
         
         return {
             "avatar_url": avatar_url,
-            "filename": unique_filename,
+            "public_id": stored.get("cloudinary_public_id"),
+            "filename": stored["filename"],
             "size": file_size,
         }
         
@@ -188,6 +176,10 @@ async def delete_avatar(
                 detail="No avatar found to delete"
             )
         
+        from app.services.cloudinary_storage import CloudinaryStorage
+        if getattr(current_user, "avatar_public_id", None):
+            CloudinaryStorage.delete(current_user.avatar_public_id, "image", "upload")
+
         # Extract filename from URL
         match = re.search(r'/uploads/avatars/([^?]+)', avatar_path)
         if match:
@@ -205,6 +197,7 @@ async def delete_avatar(
         # Save to database
         from app.core.clock import utc_now
         current_user.avatar = None
+        current_user.avatar_public_id = None
         current_user.updated_at = utc_now()
         await current_user.save()
         
@@ -244,12 +237,15 @@ async def upload_file(
         stored = await FileService.store_uploaded_file(
             file, 
             upload_dir=UPLOAD_DIR, 
-            url_prefix="/uploads"
+            url_prefix="/uploads",
+            scope="files",
+            sensitive=True,
         )
         logger.info(f"📤 File uploaded: {stored['filename']}, user: {current_user.email}")
         return {
             "message": "File uploaded successfully",
             "file_url": stored["file_url"],
+            "public_id": stored.get("cloudinary_public_id"),
             "filename": stored["filename"],
             "size": stored["size"],
             "type": stored["type"],
