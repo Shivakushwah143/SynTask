@@ -8,7 +8,7 @@ from fastapi import HTTPException, status as http_status
 from app.models.notification import Notification, NotificationType
 from app.models.project import Project, ProjectStatus
 from app.models.task import Task
-from app.models.user import Employee, Lead, User, UserRole, UserStatus
+from app.models.user import Employee, User, UserRole, UserStatus
 from app.core.clock import utc_now
 
 logger = logging.getLogger(__name__)
@@ -36,42 +36,13 @@ class ProjectService:
 
     @staticmethod
     async def _get_lead_team(company_id: str, lead_id: str) -> list[Employee]:
-        lead_id_str = str(lead_id)
-        employees_by_lead_id = await Employee.find(
+        return await Employee.find(
             {
                 "company_id": company_id,
                 "status": UserStatus.ACTIVE,
-                "lead_id": lead_id_str,
+                "lead_id": str(lead_id),
             }
         ).to_list()
-
-        employees_by_managed = []
-        old_lead = await Lead.get(lead_id)
-        managed_ids = getattr(old_lead, "managed_employee_ids", []) if old_lead else []
-        if managed_ids:
-            try:
-                managed_object_ids = [
-                    ObjectId(mid) if isinstance(mid, str) and ObjectId.is_valid(mid) else mid
-                    for mid in managed_ids
-                ]
-                employees_by_managed = await Employee.find(
-                    {
-                        "company_id": company_id,
-                        "status": UserStatus.ACTIVE,
-                        "_id": {"$in": managed_object_ids},
-                    }
-                ).to_list()
-            except Exception as exc:
-                logger.error("Error fetching employees by managed_employee_ids: %s", exc)
-
-        seen_ids: set[str] = set()
-        team: list[Employee] = []
-        for employee in employees_by_lead_id + employees_by_managed:
-            employee_id = str(employee.id)
-            if employee_id not in seen_ids:
-                seen_ids.add(employee_id)
-                team.append(employee)
-        return team
 
     @staticmethod
     async def _filter_team_for_project(project: Project, company_id: str, employees: list[Employee]) -> list[Employee]:
@@ -112,20 +83,10 @@ class ProjectService:
         if not old_lead_id or not new_lead_id or str(old_lead_id) == str(new_lead_id):
             return 0
 
-        old_lead = await Lead.get(old_lead_id)
-        new_lead = await Lead.get(new_lead_id)
-        if not old_lead or not new_lead:
-            logger.warning("Cannot transfer project team; old or new lead missing")
-            return 0
-
         team = await ProjectService._get_lead_team(company_id, old_lead_id)
         project_team = await ProjectService._filter_team_for_project(project, company_id, team)
         if not project_team:
             return 0
-
-        new_managed_ids = getattr(new_lead, "managed_employee_ids", []) or []
-        if not isinstance(new_managed_ids, list):
-            new_managed_ids = []
 
         transferred_ids: set[str] = set()
         for employee in project_team:
@@ -134,18 +95,6 @@ class ProjectService:
 
             employee_id = str(employee.id)
             transferred_ids.add(employee_id)
-            if employee_id not in new_managed_ids:
-                new_managed_ids.append(employee_id)
-
-        new_lead.managed_employee_ids = new_managed_ids
-        await new_lead.save()
-
-        old_managed_ids = getattr(old_lead, "managed_employee_ids", []) or []
-        if isinstance(old_managed_ids, list):
-            old_lead.managed_employee_ids = [
-                employee_id for employee_id in old_managed_ids if str(employee_id) not in transferred_ids
-            ]
-            await old_lead.save()
 
         logger.info(
             "Transferred %s employees from lead %s to %s for project %s (%s)",
@@ -174,8 +123,8 @@ class ProjectService:
         lead = await User.get(lead_id)
         if not lead or lead.company_id != company_id:
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid lead")
-        if lead.role != UserRole.LEAD:
-            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Lead must be a Lead role")
+        if lead.role not in [UserRole.MANAGER, UserRole.EMPLOYEE]:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project lead must be a Manager or Employee")
         return lead
 
     @staticmethod
@@ -183,10 +132,10 @@ class ProjectService:
         user = await User.get(user_id)
         if not user or user.company_id != company_id:
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid assigned user")
-        if user.role not in [UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE]:
+        if user.role not in [UserRole.MANAGER, UserRole.EMPLOYEE]:
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Can only assign projects to Managers, Leads, or Employees",
+                detail="Can only assign projects to Managers or Employees",
             )
         return user
 
@@ -246,22 +195,9 @@ class ProjectService:
             old_assigned_to = project.assigned_to
             if assigned_to:
                 assigned_user = await ProjectService._validate_assignee(assigned_to, current_user.company_id)
-                if assigned_user.role == UserRole.LEAD and old_assigned_to and old_assigned_to != assigned_to:
-                    old_assigned_user = await User.get(old_assigned_to)
-                    if old_assigned_user and old_assigned_user.role == UserRole.LEAD:
-                        await ProjectService.transfer_project_team_between_leads(
-                            project=project,
-                            company_id=current_user.company_id,
-                            old_lead_id=old_assigned_to,
-                            new_lead_id=assigned_to,
-                            reason="assigned_to change",
-                        )
-
                 project.assigned_to = assigned_to
                 project.assigned_by = str(current_user.id)
                 project.assigned_at = utc_now()
-                if assigned_user.role == UserRole.LEAD:
-                    project.lead_id = assigned_to
                 if old_assigned_to != assigned_to:
                     await ProjectService._notify_project_assignment(project, assigned_to, current_user.company_id)
             else:
@@ -526,5 +462,3 @@ class ProjectService:
             "key": project.key,
             "warnings": background_warnings
         }
-
-

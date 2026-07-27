@@ -132,7 +132,7 @@ export default function Projects() {
     loadStoredProjectTypes().forEach((item) => merged.set(item.value, item))
     return Array.from(merged.values())
   })
-  const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+  const [formData, setFormData] = useState({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', start_date: '', delivery_date: '' })
   const [formErrors, setFormErrors] = useState({})
 
   const loadProjects = useCallback(async () => {
@@ -206,8 +206,7 @@ export default function Projects() {
   const projectAssigneeOptions = useMemo(
     () => uniqueAssignableUsers.filter((item) => {
       const role = normalizeRole(item.role)
-      if (userRole === 'manager') return role === 'lead'
-      return role === 'manager' || role === 'lead'
+      return role === 'manager' || role === 'employee'
     }),
     [uniqueAssignableUsers, userRole],
   )
@@ -276,7 +275,7 @@ export default function Projects() {
 
   const openAssignmentModal = (project) => {
     setAssignmentProject(project)
-    setAssignmentUserId(project.assigned_to || project.lead_id || '')
+    setAssignmentUserId(project.lead_id || '')
   }
 
   const handleProjectAssignment = async (event) => {
@@ -284,8 +283,8 @@ export default function Projects() {
     if (!assignmentProject || assigningProject) return
     try {
       setAssigningProject(true)
-      await projectsApi.updateProject(assignmentProject.id, { assigned_to: assignmentUserId })
-      toast.success(assignmentUserId ? 'Project assigned' : 'Project unassigned')
+      await projectsApi.updateProject(assignmentProject.id, { lead_id: assignmentUserId })
+      toast.success(assignmentUserId ? 'Project lead assigned' : 'Project lead cleared')
       setAssignmentProject(null)
       setAssignmentUserId('')
       await loadProjects()
@@ -333,7 +332,7 @@ export default function Projects() {
           run_at: timeService.toUtcISOString(runAt),
         })
         toast.success('Project scheduled successfully')
-        setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+        setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', start_date: '', delivery_date: '' })
         setCreateMode('now')
         setScheduleRunAt('')
         setShowCreateModal(false)
@@ -343,7 +342,7 @@ export default function Projects() {
       const response = await projectsApi.createProject(payload)
       toast.success('Project created successfully')
       
-      setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', assigned_to: '', start_date: '', delivery_date: '' })
+      setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', start_date: '', delivery_date: '' })
       setCreateMode('now')
       setScheduleRunAt('')
       setShowCreateModal(false)
@@ -572,16 +571,16 @@ export default function Projects() {
                 {projectTypeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </CreatableSelectField>
             </FormField>
-            <FormField label="Assigned to">
+            <FormField label="Project lead">
               <CreatableSelectField
-                value={formData.assigned_to}
-                onChange={(value) => setFormData((state) => ({ ...state, assigned_to: value }))}
+                value={formData.lead_id}
+                onChange={(value) => setFormData((state) => ({ ...state, lead_id: value }))}
                 className={inputClassName}
                 createLabel="Create user"
                 onCreate={() => setShowQuickEmployeeModal(true)}
                 canCreate={canCreateProjects}
               >
-                <option value="">Select manager or lead</option>
+                <option value="">Select manager or employee</option>
                 {projectAssigneeOptions.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name} ({item.role})</option>)}
               </CreatableSelectField>
             </FormField>
@@ -639,13 +638,13 @@ export default function Projects() {
         </form>
       </Modal>
 
-      <Modal isOpen={Boolean(assignmentProject)} onClose={() => setAssignmentProject(null)} title="Assign project">
+      <Modal isOpen={Boolean(assignmentProject)} onClose={() => setAssignmentProject(null)} title="Assign project lead">
         <form onSubmit={handleProjectAssignment} className="space-y-4">
           <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Project</p>
             <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{assignmentProject?.name}</p>
           </div>
-          <FormField label="Assigned to">
+          <FormField label="Project lead">
             <CreatableSelectField
               value={assignmentUserId}
               onChange={setAssignmentUserId}
@@ -669,12 +668,12 @@ export default function Projects() {
         isOpen={showQuickEmployeeModal}
         onClose={() => setShowQuickEmployeeModal(false)}
         existing={assignableUsers}
-        leads={uniqueAssignableUsers.filter((item) => item.role === 'lead')}
-        canCreateLead={userRole !== 'manager'}
+        leads={[]}
+        canCreateLead={false}
         onCreated={async (created) => {
           await loadAssignableUsers()
           setAssignmentUserId(created.id)
-          setFormData((state) => ({ ...state, assigned_to: created.id }))
+          setFormData((state) => ({ ...state, lead_id: created.id }))
         }}
       />
     </div>
@@ -837,7 +836,7 @@ function ProjectCard({ project, onOpen, canAssign, onAssign }) {
         {canAssign && (
           <Button variant="secondary" size="sm" onClick={onAssign} className="gap-1.5">
             <UserPlus className="h-3.5 w-3.5" />
-            {project.assigned_to ? 'Change' : 'Assign'}
+            {project.lead_id ? 'Change lead' : 'Assign lead'}
           </Button>
         )}
         <Button variant="secondary" size="sm" onClick={onOpen} className="ml-auto gap-1.5">

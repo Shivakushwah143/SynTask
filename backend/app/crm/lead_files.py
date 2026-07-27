@@ -11,6 +11,7 @@ from app.models.sales_lead_file import SalesLeadFile
 from app.crm.models import SalesProspect
 from app.models.user import User, UserRole
 from app.services.file_service import FileService
+from app.services.cloudinary_storage import CloudinaryStorage
 from app.core.clock import utc_now
 
 
@@ -50,6 +51,7 @@ def _file_metadata(file_record: SalesLeadFile) -> Dict[str, Any]:
         "company_id": file_record.company_id,
         "file_url": file_record.file_url,
         "download_url": file_record.file_url,
+        "file_public_id": file_record.file_public_id,
         "file_name": file_record.file_name,
         "original_name": file_record.original_name,
         "file_type": file_record.file_type,
@@ -73,6 +75,17 @@ def _safe_delete_file(file_url: str) -> None:
     file_path = FileService.resolve_upload_path(filename)
     if file_path.exists():
         file_path.unlink()
+
+
+def _delete_stored_file(file_record: SalesLeadFile) -> None:
+    if file_record.file_public_id:
+        CloudinaryStorage.delete(
+            file_record.file_public_id,
+            file_record.file_resource_type or "auto",
+            file_record.file_delivery_type or "authenticated",
+        )
+        return
+    _safe_delete_file(file_record.file_url)
 
 
 class CRMLeadFilesService:
@@ -102,6 +115,9 @@ class CRMLeadFilesService:
             lead_id=str(prospect.id),
             company_id=str(prospect.company_id),
             file_url=stored["file_url"],
+            file_public_id=stored.get("cloudinary_public_id"),
+            file_resource_type=stored.get("cloudinary_resource_type"),
+            file_delivery_type=stored.get("cloudinary_delivery_type"),
             file_name=stored["filename"] or Path(stored["file_url"]).name,
             original_name=stored["filename"],
             file_type=stored["extension"].lstrip(".") if stored.get("extension") else None,
@@ -115,7 +131,14 @@ class CRMLeadFilesService:
         try:
             await file_record.insert()
         except Exception:
-            _safe_delete_file(stored["file_url"])
+            if stored.get("cloudinary_public_id"):
+                CloudinaryStorage.delete(
+                    stored.get("cloudinary_public_id"),
+                    stored.get("cloudinary_resource_type") or "auto",
+                    stored.get("cloudinary_delivery_type") or "authenticated",
+                )
+            else:
+                _safe_delete_file(stored["file_url"])
             raise
 
         await publish_crm_timeline_event(
@@ -160,7 +183,7 @@ class CRMLeadFilesService:
         file_record.updated_at = now
         await file_record.save()
 
-        _safe_delete_file(file_record.file_url)
+        _delete_stored_file(file_record)
 
         await publish_crm_timeline_event(
             event_name="FileDeleted",
@@ -186,4 +209,3 @@ class CRMLeadFilesService:
             "message": "File deleted successfully",
             "file": _file_metadata(file_record),
         }
-

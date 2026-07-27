@@ -15,6 +15,12 @@ const parseChatTimestamp = (value) => {
   return new Date(hasTimezone ? timestamp : `${timestamp}Z`)
 }
 
+const chatFileUrl = (url) => {
+  if (!url) return ''
+  if (/^https?:\/\//i.test(url)) return url
+  return `${import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${url}`
+}
+
 const Chat = () => {
   const { user } = useAuthStore()
   const [conversations, setConversations] = useState([])
@@ -565,7 +571,7 @@ const Chat = () => {
                           {message.message_type === 'file' && (
                             <div className="mb-2">
                               <a
-                                href={`${import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${message.file_url}`}
+                                href={chatFileUrl(message.file_url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center space-x-2 text-sm hover:underline"
@@ -581,7 +587,7 @@ const Chat = () => {
                           {message.message_type === 'image' && (
                             <div className="mb-2">
                               <img
-                                src={`${import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${message.file_url}`}
+                                src={chatFileUrl(message.file_url)}
                                 alt={message.file_name}
                                 className="max-w-full rounded-lg"
                                 style={{ maxHeight: '300px' }}

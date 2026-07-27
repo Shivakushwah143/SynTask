@@ -5,6 +5,8 @@ from app.events import publish_event
 from app.events.factories import build_domain_event
 from app.creative.service import CreativeReviewService
 from app.core.clock import utc_now
+from app.services.file_service import FileService
+from app.services.cloudinary_storage import CloudinaryStorage
 
 creative_review_service = CreativeReviewService()
 
@@ -43,35 +45,25 @@ async def upload_project_file(
         )
     await ensure_project_access_for_user(project, current_user)
     
-    file_content = await file.read()
-    file_size = len(file_content)
-    
-    if file_size > settings.MAX_UPLOAD_SIZE:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=f"File size exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE / 1024 / 1024}MB"
-        )
-    
-    file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in settings.ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=f"File type not allowed. Allowed types: {', '.join(settings.ALLOWED_EXTENSIONS)}"
-        )
-    
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
-    file_path = PROJECT_UPLOAD_DIR / unique_filename
-    
-    with open(file_path, "wb") as f:
-        f.write(file_content)
-    
-    file_url = f"/api/v1/files/projects/{unique_filename}"
+    stored = await FileService.store_uploaded_file(
+        file,
+        upload_dir=PROJECT_UPLOAD_DIR,
+        url_prefix="/api/v1/files/projects",
+        scope="projects",
+        sensitive=True,
+    )
+    file_size = stored["size"]
+    file_ext = stored["extension"]
+    file_url = stored["file_url"]
     
     file_record = {
         "id": uuid.uuid4().hex,
         "name": file.filename,
         "original_name": file.filename,
         "url": file_url,
+        "public_id": stored.get("cloudinary_public_id"),
+        "resource_type": stored.get("cloudinary_resource_type"),
+        "delivery_type": stored.get("cloudinary_delivery_type"),
         "type": file_ext[1:] if file_ext else "unknown",
         "size": file_size,
         "uploaded_at": utc_now().isoformat(),
@@ -85,6 +77,13 @@ async def upload_project_file(
     project.updated_at = utc_now()
     
     await project.save()
+
+    if removed_file.get("public_id"):
+        CloudinaryStorage.delete(
+            removed_file.get("public_id"),
+            removed_file.get("resource_type") or "auto",
+            removed_file.get("delivery_type") or "authenticated",
+        )
 
     try:
         asset = await creative_review_service.orchestrator.create_asset_metadata(
@@ -179,4 +178,3 @@ async def delete_project_file(
         "message": "File deleted successfully",
         "file": removed_file,
     }
-

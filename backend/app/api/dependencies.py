@@ -100,7 +100,8 @@ def require_module(module_name: str):
     """Dependency factory to ensure the current user has access to a specific module."""
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
         current_role = _normalize_role(getattr(current_user, "role", None))
-        if current_role == UserRole.SUPER_ADMIN:
+        # Super Admin and Admin have full access to all modules
+        if current_role == UserRole.SUPER_ADMIN or current_role == UserRole.ADMIN:
             return current_user
         if module_name in {"sales", "sales_crm"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user
@@ -121,6 +122,8 @@ def require_capability(capability: str):
         if current_role == UserRole.SUPER_ADMIN:
             return current_user
         if current_role == UserRole.ADMIN:
+            return current_user
+        if current_role == UserRole.SUB_ADMIN and _module_access_allowed("tasks_projects", getattr(current_user, "modules", []) or []):
             return current_user
         department_id = getattr(current_user, "department_id", None)
         if not department_id:
@@ -166,7 +169,7 @@ async def get_current_company_admin(
 ) -> User:
     """Require Admin role or Super Admin"""
     current_role = _normalize_role(getattr(current_user, "role", None))
-    if current_role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+    if current_role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
@@ -192,7 +195,7 @@ async def get_current_company_admin_or_lead(
     current_user: User = Depends(get_current_user)
 ) -> User:
     """Require Admin, Manager, Lead, or Super Admin role"""
-    allowed_roles = {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
+    allowed_roles = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
     current_role = _normalize_role(getattr(current_user, "role", None))
     if current_role not in allowed_roles:
         raise HTTPException(

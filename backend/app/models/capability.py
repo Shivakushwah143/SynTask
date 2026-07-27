@@ -27,6 +27,13 @@ class RoleCapability(Document):
 
 
 DEFAULT_CAPABILITIES: dict[Tuple[DepartmentType, UserRole], List[str]] = {
+    (DepartmentType.SALES, UserRole.SUB_ADMIN): [
+        "import_leads",
+        "assign_leads",
+        "view_team_pipeline",
+        "reassign_leads",
+        "team_analytics",
+    ],
     (DepartmentType.SALES, UserRole.MANAGER): [
         "import_leads",
         "assign_leads",
@@ -41,6 +48,19 @@ DEFAULT_CAPABILITIES: dict[Tuple[DepartmentType, UserRole], List[str]] = {
     (DepartmentType.SALES, UserRole.EMPLOYEE): [
         "own_lead_workspace",
         "advance_own_pipeline",
+    ],
+    (DepartmentType.HR, UserRole.SUB_ADMIN): [
+        "hire", "attendance", "performance", "recruitment.view",
+        "recruitment.jobs.view", "recruitment.jobs.create", "recruitment.jobs.update",
+        "recruitment.jobs.publish", "recruitment.jobs.archive",
+        "recruitment.jobs.manage", "recruitment.jobs.duplicate",
+        "recruitment.candidates.view",
+        "recruitment.candidates.manage", "recruitment.candidates.assign",
+        "recruitment.resume_pool.view",
+        "recruitment.interviews.view",
+        "recruitment.interviews.manage", "recruitment.offers.manage",
+        "recruitment.offers.approve", "recruitment.convert_employee",
+        "recruitment.reports.view", "recruitment.inbox.manage",
     ],
     (DepartmentType.HR, UserRole.MANAGER): [
         "hire", "attendance", "performance", "recruitment.view",
@@ -66,8 +86,11 @@ DEFAULT_CAPABILITIES: dict[Tuple[DepartmentType, UserRole], List[str]] = {
         "recruitment.resume_pool.view", "recruitment.interviews.view",
         "recruitment.interviews.feedback",
     ],
+    (DepartmentType.FINANCE, UserRole.SUB_ADMIN): ["billing", "ledger", "reports"],
     (DepartmentType.FINANCE, UserRole.MANAGER): ["billing", "ledger", "reports"],
+    (DepartmentType.SUPPORT, UserRole.SUB_ADMIN): ["manage_tickets", "team_support"],
     (DepartmentType.SUPPORT, UserRole.MANAGER): ["manage_tickets", "team_support"],
+    (DepartmentType.OPERATIONS, UserRole.SUB_ADMIN): ["own_client_account", "manage_delivery"],
     (DepartmentType.OPERATIONS, UserRole.MANAGER): ["own_client_account", "manage_delivery"],
 }
 

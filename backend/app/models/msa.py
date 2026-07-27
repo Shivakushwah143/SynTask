@@ -40,12 +40,14 @@ class MSA(Document):
     
     # Header Customization
     company_logo_url: Optional[str] = None  # Company logo for header
+    company_logo_public_id: Optional[str] = None
     header_background_color: Optional[str] = None  # Hex color code (e.g., "#1F2937")
     
     # Company Signatory Details
     company_signatory_name: Optional[str] = None  # Authorized signatory name
     company_signatory_email: Optional[EmailStr] = None  # Signatory email
     company_signature_file_url: Optional[str] = None  # Company signature file (separate from stamp)
+    company_signature_public_id: Optional[str] = None
     
     # Client Details (from Client model)
     client_name: str
@@ -68,7 +70,9 @@ class MSA(Document):
     
     # Stamp
     stamp_image_url: Optional[str] = None  # URL to stamp image (company stamp)
+    stamp_image_public_id: Optional[str] = None
     client_stamp_url: Optional[str] = None  # URL to client stamp image
+    client_stamp_public_id: Optional[str] = None
     
     # Status
     status: MSAStatus = MSAStatus.DRAFT
@@ -109,4 +113,3 @@ class MSA(Document):
             "signature_token",
             "created_by",
         ]
-

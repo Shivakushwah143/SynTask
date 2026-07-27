@@ -25,6 +25,8 @@ from app.api.dependencies import (
 from app.core.config import settings
 from app.api.deps import Pagination50, PaginationParams
 from app.core.clock import utc_now
+from app.services.file_service import FileService
+from app.services.cloudinary_storage import CloudinaryStorage
 
 router = APIRouter()
 
@@ -492,40 +494,25 @@ async def upload_client_document(
     
     check_company_access(current_user, client.company_id)
     
-    # Validate file size
-    file_content = await file.read()
-    file_size = len(file_content)
-    
-    if file_size > settings.MAX_UPLOAD_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE / 1024 / 1024}MB"
-        )
-    
-    # Validate file extension
-    file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in settings.ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File type not allowed. Allowed types: {', '.join(settings.ALLOWED_EXTENSIONS)}"
-        )
-    
-    # Generate unique filename
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
-    file_path = UPLOAD_DIR / unique_filename
-    
-    # Save file
-    with open(file_path, "wb") as f:
-        f.write(file_content)
-    
-    # File URL
-    file_url = f"/api/v1/files/clients/{unique_filename}"
+    stored = await FileService.store_uploaded_file(
+        file,
+        upload_dir=UPLOAD_DIR,
+        url_prefix="/api/v1/files/clients",
+        scope="clients",
+        sensitive=True,
+    )
+    file_ext = stored["extension"]
+    file_size = stored["size"]
+    file_url = stored["file_url"]
     
     # Add document to client
     document_data = {
         "name": document_name or file.filename,
         "original_name": file.filename,
         "url": file_url,
+        "public_id": stored.get("cloudinary_public_id"),
+        "resource_type": stored.get("cloudinary_resource_type"),
+        "delivery_type": stored.get("cloudinary_delivery_type"),
         "type": file_ext[1:] if file_ext else "unknown",
         "size": file_size,
         "uploaded_at": utc_now().isoformat(),
@@ -543,17 +530,14 @@ async def upload_client_document(
             if not project or project.company_id != client.company_id:
                 continue
             
-            # Save a copy in project uploads
-            project_filename = f"{uuid.uuid4()}{file_ext}"
-            project_file_path = PROJECT_UPLOAD_DIR / project_filename
-            with open(project_file_path, "wb") as pf:
-                pf.write(file_content)
-            
             project_file = {
                 "id": uuid.uuid4().hex,
                 "name": document_data["name"],
                 "original_name": document_data["original_name"],
-                "url": f"/api/v1/files/projects/{project_filename}",
+                "url": document_data["url"],
+                "public_id": document_data.get("public_id"),
+                "resource_type": document_data.get("resource_type"),
+                "delivery_type": document_data.get("delivery_type"),
                 "type": document_data["type"],
                 "size": document_data["size"],
                 "uploaded_at": utc_now().isoformat(),
@@ -600,7 +584,14 @@ async def delete_client_document(
     # Remove document
     document = client.documents.pop(document_index)
     
-    # Try to delete file from disk
+    if document.get("public_id"):
+        CloudinaryStorage.delete(
+            document.get("public_id"),
+            document.get("resource_type") or "auto",
+            document.get("delivery_type") or "authenticated",
+        )
+
+    # Try to delete legacy local file from disk
     try:
         filename = Path(document.get("url", "")).name
         file_path = UPLOAD_DIR / filename
@@ -634,8 +625,15 @@ async def delete_client(
     
     check_company_access(current_user, client.company_id)
     
-    # Delete associated documents from disk
+    # Delete associated documents from Cloudinary or legacy local disk
     for document in client.documents:
+        if document.get("public_id"):
+            CloudinaryStorage.delete(
+                document.get("public_id"),
+                document.get("resource_type") or "auto",
+                document.get("delivery_type") or "authenticated",
+            )
+            continue
         try:
             filename = Path(document.get("url", "")).name
             file_path = UPLOAD_DIR / filename
@@ -649,4 +647,3 @@ async def delete_client(
     return {
         "message": "Client deleted successfully",
     }
-

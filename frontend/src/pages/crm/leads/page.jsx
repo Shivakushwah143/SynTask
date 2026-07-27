@@ -1094,28 +1094,26 @@ export default function CRMLeadsPage() {
                 tag: createForm.tag.trim(),
               }
 
-              if (!payload.first_name || !payload.last_name || !payload.phone) {
-                toast.error('First name, last name, and phone are required')
+              // Only phone is required - all other fields are optional for partial lead creation
+              if (!payload.phone) {
+                toast.error('Phone number is required')
                 return
               }
               if (!/^\+\d{1,4}$/.test(String(payload.country_code || '')) || !/^\d{10}$/.test(payload.phone)) {
                 toast.error('Use a + country code and exactly 10 phone digits')
                 return
               }
-              if (!payload.assigned_to) {
-                toast.error('No valid owner found for this company')
-                return
-              }
+              // Owner assignment is handled automatically by backend if not provided
               createLeadMutation.mutate(payload)
             }}
           >
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1">
-                <span className="text-xs font-medium text-text-muted">First name *</span>
+                <span className="text-xs font-medium text-text-muted">First name</span>
                 <input className={inputClassName} placeholder="First name" value={createForm.first_name} onChange={(e) => setCreateForm((state) => ({ ...state, first_name: e.target.value }))} />
               </label>
               <label className="space-y-1">
-                <span className="text-xs font-medium text-text-muted">Last name *</span>
+                <span className="text-xs font-medium text-text-muted">Last name</span>
                 <input className={inputClassName} placeholder="Last name" value={createForm.last_name} onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))} />
               </label>
               <label className="space-y-1 md:col-span-2">
@@ -1139,7 +1137,7 @@ export default function CRMLeadsPage() {
               <label className="space-y-1">
                   <span className="flex items-center justify-between gap-2 text-xs font-medium text-text-muted">
                   <span>Category</span>
-                  <button type="button" className={`text-primary-600 hover:underline ${!canCreateCategory ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => { if (!canCreateCategory) { toast.error('You do not have permission to create categories'); return } setCreateCategoryOpen(true) }} disabled={!canCreateCategory}>+ New category</button>
+                  <button type="button" className={`text-primary-600 hover:underline ${canCreateCategory ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => { if (canCreateCategory) { toast.error('You do not have permission to create categories'); return } setCreateCategoryOpen(true) }} >+ New category</button>
                 </span>
                 <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
                   <option value="">Select category</option>
