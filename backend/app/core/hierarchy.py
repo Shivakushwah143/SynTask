@@ -17,7 +17,7 @@ def _can_role_report_to_role(target_role: UserRole, manager_role: UserRole) -> b
     
     # Manager can report to Admin or another Manager
     if target_role == UserRole.MANAGER:
-        return manager_role in [UserRole.ADMIN, UserRole.MANAGER]
+        return manager_role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER]
     
     # Lead can report only to Manager
     if target_role == UserRole.LEAD:
@@ -25,7 +25,7 @@ def _can_role_report_to_role(target_role: UserRole, manager_role: UserRole) -> b
     
     # Employee can report only to Lead
     if target_role == UserRole.EMPLOYEE:
-        return manager_role == UserRole.LEAD
+        return manager_role in [UserRole.MANAGER, UserRole.SUB_ADMIN, UserRole.ADMIN]
     
     return False
 
@@ -45,7 +45,7 @@ async def validate_hierarchy_creation(
         return False, f"{creator.role.value} cannot create {target_role.value}"
     
     # Super Admin and Admin don't report to anyone
-    if target_role in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
+    if target_role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN]:
         if reports_to_id:
             return False, f"{target_role.value} cannot report to anyone"
         return True, None
@@ -116,7 +116,7 @@ async def get_available_reporting_options(
     options = []
     
     # Super Admin and Admin don't report to anyone
-    if target_role in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
+    if target_role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN]:
         return []
     
     # Manager can report to Admin or Manager
@@ -274,9 +274,11 @@ async def get_creatable_roles(creator: User) -> List[str]:
     if creator.role == UserRole.SUPER_ADMIN:
         roles.append(UserRole.ADMIN.value)
     elif creator.role == UserRole.ADMIN:
-        roles.extend([UserRole.MANAGER.value, UserRole.LEAD.value, UserRole.EMPLOYEE.value])
+        roles.extend([UserRole.SUB_ADMIN.value, UserRole.MANAGER.value, UserRole.EMPLOYEE.value])
+    elif creator.role == UserRole.SUB_ADMIN:
+        roles.extend([UserRole.MANAGER.value, UserRole.EMPLOYEE.value])
     elif creator.role == UserRole.MANAGER:
-        roles.extend([UserRole.LEAD.value, UserRole.EMPLOYEE.value])
+        roles.append(UserRole.EMPLOYEE.value)
     elif creator.role == UserRole.LEAD:
         roles.append(UserRole.EMPLOYEE.value)
     
@@ -290,5 +292,3 @@ async def get_team_member_ids(user: User) -> List[str]:
     """
     from app.services.user_service import UserService
     return await UserService.get_all_subordinates_ids(str(user.id), user.company_id)
-
-

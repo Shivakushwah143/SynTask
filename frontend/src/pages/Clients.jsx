@@ -1211,7 +1211,7 @@ const Clients = () => {
         onClose={() => setShowQuickEmployeeModal(false)}
         existing={[...leads, ...assignableUsers]}
         leads={leads}
-        canCreateLead={isCompanyAdmin}
+        canCreateLead={false}
         onCreated={async (created) => {
           await Promise.all([loadLeads(), loadAssignableUsers()])
           setFormData((state) => ({ ...state, assigned_to: created.id }))

@@ -9,8 +9,20 @@ import { hasCompanyAdminAccess, isLeadRole, normalizeRole, getRoleLabel } from '
 import { EmptyState, Modal, PasswordInput, PhoneInput, phoneValidationMessage } from '../components/ui'
 import toast from 'react-hot-toast'
 
-const BULK_HEADERS = ['role', 'first_name', 'last_name', 'email', 'password', 'phone', 'department', 'designation', 'team_name', 'lead_email']
+const BULK_HEADERS = ['role', 'first_name', 'last_name', 'email', 'password', 'phone', 'department', 'designation']
 const makeTempPassword = () => `SynTask@${Math.random().toString(36).slice(2, 8)}1`
+const SUB_ADMIN_MODULE_OPTIONS = [
+  { id: 'tasks_projects', label: 'Tasks & Projects' },
+  { id: 'tickets', label: 'Tickets' },
+  { id: 'chat', label: 'Chat' },
+  { id: 'meetings_calendar', label: 'Meetings & Calendar' },
+  { id: 'invoicing_ledger', label: 'Invoicing & Ledger' },
+  { id: 'sales_crm', label: 'Sales & CRM' },
+  { id: 'attendance_leaves', label: 'Attendance & Leaves' },
+  { id: 'recruitment', label: 'Recruitment' },
+  { id: 'reports', label: 'Reports' },
+  { id: 'ai_agents', label: 'AI & Agents' },
+]
 const DESIGNATION_OPTIONS = [
   'Software Developer',
   'Frontend Developer',
@@ -104,24 +116,25 @@ const Users = () => {
   const [bulkRows, setBulkRows] = useState([])
   const [bulkErrors, setBulkErrors] = useState([])
   const [bulkImporting, setBulkImporting] = useState(false)
-  
+  const [selectedSubAdminModules, setSelectedSubAdminModules] = useState(['tasks_projects'])
+
   const isLead = isLeadRole(user?.role)
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
-  const isManager = normalizeRole(user?.role) === 'manager'
-  const isEmployee = normalizeRole(user?.role) === 'employee'
+  const normalizedCurrentRole = normalizeRole(user?.role)
+  const isFullCompanyAdmin = normalizedCurrentRole === 'admin'
+  const isSubAdmin = normalizedCurrentRole === 'sub_admin'
+  const isManager = normalizedCurrentRole === 'manager'
+  const isEmployee = normalizedCurrentRole === 'employee'
   const canReadDepartments = isCompanyAdmin || isManager || isLead
   const allowedBulkRoles = useMemo(() => {
-    if (isCompanyAdmin) return ['manager', 'lead', 'employee']
-    if (isManager) return ['lead', 'employee']
+    if (isFullCompanyAdmin) return ['sub_admin', 'manager', 'employee']
+    if (isSubAdmin) return ['manager', 'employee']
+    if (isManager) return ['employee']
     if (isLead) return ['employee']
     return []
-  }, [isCompanyAdmin, isLead, isManager])
+  }, [isFullCompanyAdmin, isLead, isManager, isSubAdmin])
   const managerOptions = useMemo(
     () => users.filter((item) => item.status === 'active'),
-    [users],
-  )
-  const leadOptions = useMemo(
-    () => users.filter((item) => normalizeRole(item.role) === 'lead' && item.status === 'active'),
     [users],
   )
   const designationOptions = useMemo(() => {
@@ -144,7 +157,7 @@ const Users = () => {
   const totalUsers = users.length
   const activeUsers = users.filter(u => u.status === 'active').length
   const managers = users.filter(u => normalizeRole(u.role) === 'manager').length
-  const leads = users.filter(u => normalizeRole(u.role) === 'lead').length
+  const subAdmins = users.filter(u => normalizeRole(u.role) === 'sub_admin').length
   const employees = users.filter(u => normalizeRole(u.role) === 'employee').length
 
   const fetchUsers = useCallback(async () => {
@@ -152,7 +165,7 @@ const Users = () => {
       setLoading(true)
       setError(null)
       const data = await usersAPI.listUsers()
-      
+
       if (data && Array.isArray(data.users)) {
         setUsers(data.users)
       } else {
@@ -201,21 +214,21 @@ const Users = () => {
 
   const validateForm = (formData) => {
     const errors = {}
-    
+
     const firstName = formData.get('first_name')?.trim()
     if (!firstName) {
       errors.first_name = 'First name is required'
     } else if (firstName.length < 2) {
       errors.first_name = 'First name must be at least 2 characters'
     }
-    
+
     const lastName = formData.get('last_name')?.trim()
     if (!lastName) {
       errors.last_name = 'Last name is required'
     } else if (lastName.length < 2) {
       errors.last_name = 'Last name must be at least 2 characters'
     }
-    
+
     const email = formData.get('email')?.trim()
     if (!email) {
       errors.email = 'Email is required'
@@ -225,7 +238,7 @@ const Users = () => {
         errors.email = 'Please enter a valid email address'
       }
     }
-    
+
     const password = formData.get('password')
     if (!password) {
       errors.password = 'Password is required'
@@ -236,18 +249,18 @@ const Users = () => {
     } else if (!/(?=.*\d)/.test(password)) {
       errors.password = 'Password must contain at least one number'
     }
-    
+
     const phone = formData.get('phone')?.trim()
     if (phone) {
       const phoneError = phoneValidationMessage(phone)
       if (phoneError) errors.phone = phoneError
     }
-    
+
     const leadId = formData.get('lead_id')?.trim()
     if (leadId && !/^[0-9a-fA-F]{24}$/.test(leadId)) {
       errors.lead_id = 'Please enter a valid Lead ID'
     }
-    
+
     return errors
   }
 
@@ -256,18 +269,18 @@ const Users = () => {
     if (submitting) return
 
     const formData = new FormData(e.target)
-    
+
     const errors = validateForm(formData)
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
       return
     }
-    
+
     setFormErrors({})
-    
+
     try {
       setSubmitting(true)
-      
+
       const userData = {
         email: formData.get('email')?.trim(),
         password: formData.get('password'),
@@ -285,29 +298,27 @@ const Users = () => {
         userData.department = formData.get('department')?.trim() || ''
       }
 
-      if (userType === 'manager') {
+      if (userType === 'sub_admin') {
+        userData.role = 'sub_admin'
+        userData.modules = selectedSubAdminModules.join(',')
+        await usersAPI.createUser(userData)
+      } else if (userType === 'manager') {
         userData.role = 'manager'
         userData.reports_to = String(user.id)
         await usersAPI.createUser(userData)
-      } else if (userType === 'lead') {
-        userData.team_name = formData.get('team_name') || ''
-        await usersAPI.createLead(userData)
       } else {
-        if (isCompanyAdmin || isManager) {
-          userData.lead_id = formData.get('lead_id') || ''
-        }
         userData.designation = formData.get('designation') || ''
         await usersAPI.createEmployee(userData)
       }
-      
-      toast.success(`✅ ${userType === 'manager' ? 'Manager' : userType === 'lead' ? 'Lead' : 'Employee'} created successfully!`)
+
+      toast.success(`✅ ${userType === 'manager' ? 'Manager' : 'Employee'} created successfully!`)
       closeUserModal()
       await fetchUsers()
-      
+
       e.target.reset()
     } catch (error) {
       console.error('Error creating user:', error)
-      
+
       let errorMessage = `Failed to create ${userType}`
       if (error.response?.status === 422 && error.response?.data?.detail) {
         const detail = error.response.data.detail
@@ -322,7 +333,7 @@ const Users = () => {
       } else if (error.response?.data?.detail) {
         errorMessage = String(error.response.data.detail)
       }
-      
+
       toast.error(errorMessage, { duration: 6000 })
     } finally {
       setSubmitting(false)
@@ -341,7 +352,7 @@ const Users = () => {
     setNewDesignationName('')
     setDesignationError('')
     const normalizedRole = normalizeRole(userToEdit.role)
-    setUserType(normalizedRole === 'manager' ? 'manager' : normalizedRole === 'lead' ? 'lead' : 'employee')
+    setUserType(normalizedRole === 'sub_admin' ? 'sub_admin' : normalizedRole === 'manager' ? 'manager' : 'employee')
     setShowAddModal(true)
   }
 
@@ -349,6 +360,7 @@ const Users = () => {
     setShowAddModal(false)
     setEditingUser(null)
     setUserType('employee')
+    setSelectedSubAdminModules(['tasks_projects'])
     setFormErrors({})
     setSelectedDepartmentId('')
     setShowDepartmentCreate(false)
@@ -440,9 +452,7 @@ const Users = () => {
       updateData.department = formData.get('department') || ''
     }
 
-    if (editingUser.role === 'lead' && formData.get('team_name')) {
-      updateData.team_name = formData.get('team_name')
-    } else if (editingUser.role === 'employee') {
+    if (editingUser.role === 'employee') {
       if (formData.get('designation')) {
         updateData.designation = formData.get('designation')
       }
@@ -478,7 +488,7 @@ const Users = () => {
       isDangerous: true,
     })
     if (!confirmed) return
-    
+
     try {
       await usersAPI.deleteUser(userId)
       toast.success('User deleted successfully')
@@ -510,9 +520,6 @@ const Users = () => {
       const phoneError = phoneValidationMessage(phone)
       if (phoneError) errors.push(phoneError)
     }
-    if (row.lead_email && !users.some((item) => String(item.email || '').toLowerCase() === String(row.lead_email || '').trim().toLowerCase())) {
-      errors.push('lead_email not found')
-    }
 
     return {
       rowNumber: index + 2,
@@ -527,8 +534,6 @@ const Users = () => {
         phone,
         department: String(row.department || '').trim(),
         designation: String(row.designation || '').trim(),
-        team_name: String(row.team_name || '').trim(),
-        lead_email: String(row.lead_email || '').trim().toLowerCase(),
       },
     }
   }
@@ -571,15 +576,13 @@ const Users = () => {
     const sampleRole = allowedBulkRoles[0] || 'employee'
     const sample = {
       role: sampleRole,
-      first_name: sampleRole === 'manager' ? 'Amit' : sampleRole === 'lead' ? 'Neha' : 'Ravi',
-      last_name: sampleRole === 'manager' ? 'Sharma' : sampleRole === 'lead' ? 'Verma' : 'Patel',
+      first_name: sampleRole === 'sub_admin' ? 'Isha' : sampleRole === 'manager' ? 'Amit' : 'Ravi',
+      last_name: sampleRole === 'sub_admin' ? 'Mehta' : sampleRole === 'manager' ? 'Sharma' : 'Patel',
       email: `${sampleRole}@example.com`,
       password: 'SynTask@123',
       phone: '+919876543210',
       department: 'Engineering',
       designation: sampleRole === 'employee' ? 'Developer' : '',
-      team_name: sampleRole === 'lead' ? 'Product Team' : '',
-      lead_email: sampleRole === 'employee' && isCompanyAdmin ? 'lead@example.com' : '',
     }
     const rows = [
       BULK_HEADERS.join(','),
@@ -604,7 +607,6 @@ const Users = () => {
       setBulkImporting(true)
       for (const row of validRows) {
         const department = departments.find((item) => String(item.name || '').toLowerCase() === row.data.department.toLowerCase())
-        const lead = users.find((item) => String(item.email || '').toLowerCase() === row.data.lead_email)
         const userData = {
           email: row.data.email,
           password: row.data.password,
@@ -615,16 +617,17 @@ const Users = () => {
           department_id: department?.id || '',
         }
 
-        if (row.data.role === 'manager') {
+        if (row.data.role === 'sub_admin') {
+          await usersAPI.createUser({
+            ...userData,
+            role: 'sub_admin',
+            modules: 'tasks_projects',
+          })
+        } else if (row.data.role === 'manager') {
           await usersAPI.createUser({
             ...userData,
             role: 'manager',
             reports_to: String(user.id),
-          })
-        } else if (row.data.role === 'lead') {
-          await usersAPI.createLead({
-            ...userData,
-            team_name: row.data.team_name,
           })
         } else {
           await usersAPI.createEmployee({
@@ -718,8 +721,10 @@ const Users = () => {
                     setDesignationError('')
                     if (isLead) {
                       setUserType('employee')
+                    } else if (isSubAdmin) {
+                      setUserType('manager')
                     } else if (isManager) {
-                      setUserType('lead')
+                      setUserType('employee')
                     }
                   }}
                   className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
@@ -757,11 +762,11 @@ const Users = () => {
           subtitle="Company managers"
         />
         <StatCard
-          label="Leads"
-          value={leads}
+          label="Sub Admins"
+          value={subAdmins}
           icon={Briefcase}
           color="amber"
-          subtitle={`${employees} employees`}
+          subtitle="Delegated admins"
         />
       </div>
 
@@ -834,7 +839,7 @@ const Users = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        normalizeRole(user.role) === 'manager' 
+                        normalizeRole(user.role) === 'manager'
                           ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
                           : normalizeRole(user.role) === 'lead'
                           ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
@@ -1039,13 +1044,26 @@ const Users = () => {
             </div>
             <div className="overflow-y-auto px-6 py-5 dark:bg-gray-900">
               {/* User Type Selection - follows role hierarchy */}
-              {(isCompanyAdmin || isManager) && !editingUser && (
+              {(isFullCompanyAdmin || isSubAdmin || isManager) && !editingUser && (
                 <div className="mb-5 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
                   <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
                     User Type
                   </label>
-                  <div className={`grid gap-2 ${isCompanyAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                    {isCompanyAdmin && (
+                  <div className={`grid gap-2 ${isFullCompanyAdmin ? 'grid-cols-3' : (isSubAdmin ? 'grid-cols-2' : 'grid-cols-1')}`}>
+                    {isFullCompanyAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setUserType('sub_admin')}
+                        className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                          userType === 'sub_admin'
+                            ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-indigo-950/30'
+                        }`}
+                      >
+                        Sub Admin
+                      </button>
+                    )}
+                    {(isFullCompanyAdmin || isSubAdmin) && (
                       <button
                         type="button"
                         onClick={() => setUserType('manager')}
@@ -1060,17 +1078,6 @@ const Users = () => {
                     )}
                     <button
                       type="button"
-                      onClick={() => setUserType('lead')}
-                      className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                        userType === 'lead'
-                          ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm dark:bg-indigo-500'
-                          : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-indigo-950/30'
-                      }`}
-                    >
-                      Lead
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setUserType('employee')}
                       className={`min-h-11 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
                         userType === 'employee'
@@ -1083,7 +1090,7 @@ const Users = () => {
                   </div>
                 </div>
               )}
-               
+
               {/* Info message for Leads */}
               {isLead && !editingUser && (
                 <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3 dark:border-sky-500/25 dark:bg-sky-500/10">
@@ -1222,7 +1229,7 @@ const Users = () => {
                     ))}
                     {isCompanyAdmin ? <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="__create_department__">+ Create new department</option> : null}
                   </select>
-                  {isCompanyAdmin && (
+                  {isFullCompanyAdmin && (
                     <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-indigo-200/70 bg-indigo-50/80 px-3 py-2.5 text-xs text-indigo-800 shadow-sm dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-200">
                       <span className="font-medium">Missing department?</span>
                       <button
@@ -1240,20 +1247,30 @@ const Users = () => {
                   )}
                 </div>
 
-                {/* Lead-specific fields */}
-                {userType === 'lead' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Team Name</label>
-                    <input
-                      type="text"
-                      name="team_name"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                      defaultValue={editingUser?.team_name || ''}
-                      placeholder="Development Team"
-                    />
+                {userType === 'sub_admin' && (
+                  <div className="sm:col-span-2 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-500/25 dark:bg-indigo-500/10">
+                    <label className="block text-sm font-semibold text-gray-800 dark:text-gray-100">Sub-admin authority</label>
+                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">Select modules this sub-admin can manage. They cannot grant authority outside this list.</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {SUB_ADMIN_MODULE_OPTIONS.map((module) => {
+                        const checked = selectedSubAdminModules.includes(module.id)
+                        return (
+                          <label key={module.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${checked ? 'border-indigo-400 bg-white text-indigo-800 dark:bg-gray-800 dark:text-indigo-200' : 'border-gray-200 bg-white/70 text-gray-700 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300'}`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setSelectedSubAdminModules((current) => {
+                                if (current.includes(module.id)) return current.filter((item) => item !== module.id)
+                                return [...current, module.id]
+                              })}
+                            />
+                            {module.label}
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
-
                 {/* Employee-specific fields */}
                 {userType === 'employee' && (
                   <>
@@ -1310,37 +1327,6 @@ const Users = () => {
                         </div>
                       )}
                     </div>
-                    {(isCompanyAdmin || isManager) && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">
-                          Lead {isManager ? '*' : '(Optional)'}
-                        </label>
-                        <select
-                          name="lead_id"
-                          required={isManager}
-                          autoComplete="off"
-                          className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white ${formErrors.lead_id ? 'border-red-500' : ''}`}
-                          onChange={() => {
-                            if (formErrors.lead_id) {
-                              setFormErrors({ ...formErrors, lead_id: '' })
-                            }
-                          }}
-                        >
-                          <option value="">Select lead</option>
-                          {leadOptions.map((lead) => (
-                            <option key={lead.id} value={lead.id}>
-                              {lead.first_name} {lead.last_name}
-                            </option>
-                          ))}
-                        </select>
-                        {formErrors.lead_id && (
-                          <p className="text-red-500 text-xs mt-1">{formErrors.lead_id}</p>
-                        )}
-                        {isManager && leadOptions.length === 0 && (
-                          <p className="mt-1 text-xs text-amber-600 dark:text-amber-200">Create a lead before adding employees.</p>
-                        )}
-                      </div>
-                    )}
                   </>
                 )}
 
@@ -1350,11 +1336,11 @@ const Users = () => {
                     disabled={submitting}
                     className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    {submitting 
-                      ? (editingUser ? 'Updating...' : 'Creating...') 
-                      : editingUser 
-                        ? 'Update User' 
-                        : `Create ${userType === 'manager' ? 'Manager' : userType === 'lead' ? 'Lead' : 'Employee'}`}
+                    {submitting
+                      ? (editingUser ? 'Updating...' : 'Creating...')
+                      : editingUser
+                        ? 'Update User'
+                        : `Create ${userType === 'manager' ? 'Manager' : 'Employee'}`}
                   </button>
                   <button
                     type="button"

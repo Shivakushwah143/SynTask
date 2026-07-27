@@ -98,9 +98,9 @@ async def validate_project_assignees(
         if not assignee or assignee.company_id != company_id:
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project assignee")
         if current_user.role in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
-            allowed_roles = {UserRole.MANAGER, UserRole.LEAD}
+            allowed_roles = {UserRole.MANAGER, UserRole.EMPLOYEE}
             if assignee.role not in allowed_roles:
-                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Projects can be assigned to Managers or Leads")
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project lead must be a Manager or Employee")
         else:
             raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Cannot assign projects")
         users.append(assignee)
@@ -145,5 +145,3 @@ async def ensure_project_access_for_user(project: Project, current_user: User):
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this project"
         )
-
-

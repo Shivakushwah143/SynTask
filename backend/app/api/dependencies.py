@@ -118,6 +118,8 @@ def require_capability(capability: str):
             return current_user
         if current_role == UserRole.ADMIN:
             return current_user
+        if current_role == UserRole.SUB_ADMIN and _module_access_allowed("tasks_projects", getattr(current_user, "modules", []) or []):
+            return current_user
         department_id = getattr(current_user, "department_id", None)
         if not department_id:
             raise HTTPException(
@@ -162,7 +164,7 @@ async def get_current_company_admin(
 ) -> User:
     """Require Admin role or Super Admin"""
     current_role = _normalize_role(getattr(current_user, "role", None))
-    if current_role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+    if current_role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
@@ -188,7 +190,7 @@ async def get_current_company_admin_or_lead(
     current_user: User = Depends(get_current_user)
 ) -> User:
     """Require Admin, Manager, Lead, or Super Admin role"""
-    allowed_roles = {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
+    allowed_roles = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
     current_role = _normalize_role(getattr(current_user, "role", None))
     if current_role not in allowed_roles:
         raise HTTPException(
