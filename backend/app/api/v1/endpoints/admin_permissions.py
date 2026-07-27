@@ -43,11 +43,25 @@ def _role_value(role: Any) -> str | None:
 
 async def _require_admin_company_scope(current_user: User) -> User:
     current_role = _normalize_role(getattr(current_user, "role", None))
-    if current_role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+    if current_role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     if not current_user.company_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User must belong to a company")
     return current_user
+
+
+
+def _cap_modules_for_actor(actor: User, modules: list[str]) -> list[str]:
+    normalized = normalize_modules(modules)
+    if _normalize_role(getattr(actor, "role", None)) in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+        return normalized
+    allowed = set(getattr(actor, "modules", []) or [])
+    return [module for module in normalized if module in allowed]
+
+
+def _ensure_full_admin(actor: User) -> None:
+    if _normalize_role(getattr(actor, "role", None)) != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company admin access required")
 
 
 async def _get_tenant_target_user(user_id: str, company_id: str) -> User | None:
@@ -96,7 +110,7 @@ async def get_admin_permissions_overview(current_user: User = Depends(get_curren
 
     employee_query = {
         "company_id": current_user.company_id,
-        "role": {"$in": [UserRole.MANAGER.value, UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+        "role": {"$in": [UserRole.SUB_ADMIN.value, UserRole.MANAGER.value, UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
     }
     employees = await User.find(employee_query).to_list()
     employee_payload = [
@@ -110,7 +124,7 @@ async def get_admin_permissions_overview(current_user: User = Depends(get_curren
         for user in employees
     ]
 
-    admin_query = {"company_id": current_user.company_id, "role": UserRole.ADMIN.value}
+    admin_query = {"company_id": current_user.company_id, "role": {"$in": [UserRole.ADMIN.value, UserRole.SUB_ADMIN.value]}}
     admins = await User.find(admin_query).to_list()
     admin_payload = [
         {
@@ -136,7 +150,7 @@ async def update_department_modules(department_id: str, payload: ModuleUpdateReq
     if not department or department.company_id != current_user.company_id or department.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
 
-    normalized_modules = normalize_modules(payload.modules)
+    normalized_modules = _cap_modules_for_actor(current_user, payload.modules)
     department.enabled_modules = normalized_modules
     department.updated_at = datetime.utcnow()
     await department.save()
@@ -151,7 +165,7 @@ async def apply_department_modules(department_id: str, current_user: User = Depe
     if not department or department.company_id != current_user.company_id or department.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
 
-    target_modules = normalize_modules(list(getattr(department, "enabled_modules", []) or []))
+    target_modules = _cap_modules_for_actor(current_user, list(getattr(department, "enabled_modules", []) or []))
     matched_users = await User.find({
         "company_id": current_user.company_id,
         "department_id": department_id,
@@ -170,10 +184,12 @@ async def update_user_modules(user_id: str, payload: ModuleUpdateRequest, curren
     target_user = await _get_tenant_target_user(user_id, current_user.company_id)
     if not target_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if _normalize_role(getattr(target_user, "role", None)) == UserRole.ADMIN:
+    target_role = _normalize_role(getattr(target_user, "role", None))
+    current_role = _normalize_role(getattr(current_user, "role", None))
+    if target_role == UserRole.ADMIN or (target_role == UserRole.SUB_ADMIN and current_role != UserRole.ADMIN):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin modules cannot be changed here")
 
-    normalized_modules = normalize_modules(payload.modules)
+    normalized_modules = _cap_modules_for_actor(current_user, payload.modules)
     target_user.modules = normalized_modules
     target_user.updated_at = datetime.utcnow()
     await target_user.save()
@@ -184,6 +200,7 @@ async def update_user_modules(user_id: str, payload: ModuleUpdateRequest, curren
 @router.post("/users/{user_id}/promote")
 async def promote_user_to_admin(user_id: str, current_user: User = Depends(get_current_user)):
     current_user = await _require_admin_company_scope(current_user)
+    _ensure_full_admin(current_user)
     target_user = await _get_tenant_target_user(user_id, current_user.company_id)
     if not target_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -193,31 +210,34 @@ async def promote_user_to_admin(user_id: str, current_user: User = Depends(get_c
 
     previous_role = current_target_role
     target_user.previous_role = previous_role
-    target_user.role = UserRole.ADMIN
+    target_user.role = UserRole.SUB_ADMIN
     target_user.updated_at = datetime.utcnow()
     await target_user.save()
-    await _record_admin_action(current_user, target_user, "user_promoted", before={"role": _role_value(previous_role)}, after={"role": UserRole.ADMIN.value}, target_type="user")
-    return {"message": "User promoted to admin", "previous_role": _role_value(previous_role)}
+    await _record_admin_action(current_user, target_user, "user_promoted", before={"role": _role_value(previous_role)}, after={"role": UserRole.SUB_ADMIN.value}, target_type="user")
+    return {"message": "User promoted to sub-admin", "previous_role": _role_value(previous_role)}
 
 
 @router.post("/users/{user_id}/demote")
 async def demote_user_to_previous_role(user_id: str, current_user: User = Depends(get_current_user)):
     current_user = await _require_admin_company_scope(current_user)
+    _ensure_full_admin(current_user)
     target_user = await _get_tenant_target_user(user_id, current_user.company_id)
     if not target_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if _normalize_role(getattr(target_user, "role", None)) != UserRole.ADMIN:
+    if _normalize_role(getattr(target_user, "role", None)) not in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only admins can be demoted")
 
-    admin_query = User.find({"company_id": current_user.company_id, "role": UserRole.ADMIN.value})
-    admin_count = await admin_query.count()
-    if admin_count <= 1:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot demote the last admin")
+    demoted_from = _normalize_role(getattr(target_user, "role", None))
+    if demoted_from == UserRole.ADMIN:
+        admin_query = User.find({"company_id": current_user.company_id, "role": UserRole.ADMIN.value})
+        admin_count = await admin_query.count()
+        if admin_count <= 1:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot demote the last admin")
 
     previous_role = _normalize_role(getattr(target_user, "previous_role", None)) or UserRole.EMPLOYEE
     target_user.role = previous_role
     target_user.previous_role = None
     target_user.updated_at = datetime.utcnow()
     await target_user.save()
-    await _record_admin_action(current_user, target_user, "user_demoted", before={"role": UserRole.ADMIN.value}, after={"role": _role_value(previous_role)}, target_type="user")
+    await _record_admin_action(current_user, target_user, "user_demoted", before={"role": _role_value(demoted_from)}, after={"role": _role_value(previous_role)}, target_type="user")
     return {"message": "User demoted", "role": _role_value(previous_role)}

@@ -62,9 +62,9 @@ const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { user } = useAuthStore();
   const userRole = normalizeRole(user?.role);
-  const canSeeDepartments = hasCompanyAdminAccess(user?.role) || isSuperAdminRole(userRole);
   const hasModule = (module) =>
     !module || user?.modules?.includes(module) || isSuperAdminRole(userRole);
+  const canSeeDepartments = (hasCompanyAdminAccess(user?.role) && hasModule("tasks_projects")) || isSuperAdminRole(userRole);
   const userCapabilities = new Set(user?.capabilities || user?.permissions || []);
   const userDepartment = String(user?.department || user?.department_key || '').toLowerCase();
   const hasCapability = (capability) =>
@@ -445,9 +445,10 @@ const Sidebar = ({ isOpen, onClose }) => {
     },
   ];
 
-  const filteredNavigation = navigation.filter(
-    (item) => item.roles.includes(userRole) && hasModule(item.module) && hasCapability(item.capability) && hasDepartment(item.department),
-  );
+  const filteredNavigation = navigation.filter((item) => {
+    const roleAllowed = item.roles.includes(userRole) || (userRole === ROLE.SUB_ADMIN && item.roles.includes(ROLE.ADMIN))
+    return roleAllowed && hasModule(item.module) && hasCapability(item.capability) && hasDepartment(item.department)
+  });
   const departmentItems = useMemo(() => orgDepartments.map((department) => ({
     name: department.name,
     href: `/admin-permissions?department=${encodeURIComponent(department.id)}`,
