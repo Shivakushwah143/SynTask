@@ -290,7 +290,7 @@ export default function WorkspaceCalendar() {
       }
     } else if (isProject) {
       if (dbId) {
-        navigate(`/projects/${dbId}`)
+        navigate(`/projects/${dbId}/board`)
       }
     }
   }
