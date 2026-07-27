@@ -190,10 +190,11 @@ async def update_user_modules(user_id: str, payload: ModuleUpdateRequest, curren
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin modules cannot be changed here")
 
     normalized_modules = _cap_modules_for_actor(current_user, payload.modules)
+    before_modules = list(getattr(target_user, "modules", []) or [])
     target_user.modules = normalized_modules
     target_user.updated_at = datetime.utcnow()
     await target_user.save()
-    await _record_admin_action(current_user, target_user, "user_modules_updated", before={"modules": list(getattr(target_user, "modules", []) or [])}, after={"modules": normalized_modules}, target_type="user")
+    await _record_admin_action(current_user, target_user, "user_modules_updated", before={"modules": before_modules}, after={"modules": normalized_modules}, target_type="user")
     return {"modules": normalized_modules}
 
 
