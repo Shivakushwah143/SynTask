@@ -28,7 +28,7 @@ export const buildTaskAssignmentOptions = (users = [], currentUser = null) => {
 export const getProjectLeadName = (project = {}, users = [], currentUser = null) => {
   const safeProject = project || {}
   const assignedUsers = Array.isArray(safeProject.assigned_users) ? safeProject.assigned_users : []
-  const leadFromProject = assignedUsers.find((item) => normalizeRole(item.role) === 'lead')
+  const leadFromProject = assignedUsers.find((item) => ['employee', 'lead'].includes(normalizeRole(item.role)))
   if (leadFromProject) return getUserDisplayName(leadFromProject)
 
   const leadIds = [
@@ -36,7 +36,7 @@ export const getProjectLeadName = (project = {}, users = [], currentUser = null)
     ...(Array.isArray(safeProject.assigned_user_ids) ? safeProject.assigned_user_ids : []),
   ].filter(Boolean).map(String)
   const candidates = [...users, currentUser].filter(Boolean)
-  const lead = candidates.find((item) => leadIds.includes(getUserId(item)) && normalizeRole(item.role) === 'lead')
+  const lead = candidates.find((item) => leadIds.includes(getUserId(item)) && ['employee', 'lead'].includes(normalizeRole(item.role)))
   return getUserDisplayName(lead) || 'No leader assigned'
 }
 

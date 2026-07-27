@@ -28,7 +28,7 @@ export const getTaskAssigneeUsers = (users = [], currentUser = null) => {
 
 export const getProjectRoleNames = (projectRecord = {}, assignableUsers = [], currentUser = null) => {
   const assignedProjectUsers = Array.isArray(projectRecord.assigned_users) ? projectRecord.assigned_users : []
-  const assignedProjectIds = projectRecord.assigned_user_ids || (projectRecord.assigned_to ? [projectRecord.assigned_to] : [])
+  const assignedProjectIds = projectRecord.assigned_user_ids || [projectRecord.assigned_to, projectRecord.lead_id].filter(Boolean)
   const usersById = new Map()
   assignableUsers.forEach((item) => {
     usersById.set(String(item.id || item._id), item)
@@ -39,7 +39,8 @@ export const getProjectRoleNames = (projectRecord = {}, assignableUsers = [], cu
 
   const namesByRole = { manager: [], lead: [] }
   const addName = (role, name) => {
-    const normalizedRole = normalizeRole(role)
+    let normalizedRole = normalizeRole(role)
+    if (normalizedRole === 'employee') normalizedRole = 'lead'
     const displayName = String(name || '').trim()
     if (!displayName || !namesByRole[normalizedRole]) return
     if (!namesByRole[normalizedRole].includes(displayName)) namesByRole[normalizedRole].push(displayName)
@@ -64,7 +65,7 @@ export const getProjectRoleNames = (projectRecord = {}, assignableUsers = [], cu
 
 export const getProjectRoleAssignmentIds = (projectRecord = {}, assignableUsers = [], currentUser = null) => {
   const assignedProjectUsers = Array.isArray(projectRecord.assigned_users) ? projectRecord.assigned_users : []
-  const assignedProjectIds = projectRecord.assigned_user_ids || (projectRecord.assigned_to ? [projectRecord.assigned_to] : [])
+  const assignedProjectIds = projectRecord.assigned_user_ids || [projectRecord.assigned_to, projectRecord.lead_id].filter(Boolean)
   const rolesById = new Map()
   assignableUsers.forEach((item) => {
     rolesById.set(String(item.id || item._id), normalizeRole(item.role))
@@ -78,7 +79,8 @@ export const getProjectRoleAssignmentIds = (projectRecord = {}, assignableUsers 
 
   return assignedProjectIds.reduce((result, id) => {
     const role = rolesById.get(String(id))
-    if ((role === 'manager' || role === 'lead') && !result[role]) result[role] = String(id)
+    if (role === 'manager' && !result.manager) result.manager = String(id)
+    if ((role === 'employee' || role === 'lead') && !result.lead) result.lead = String(id)
     return result
   }, { manager: '', lead: '' })
 }

@@ -6,7 +6,7 @@ from fastapi import status as http_status
 from typing import List, Optional
 from datetime import datetime
 
-from app.models.user import User, UserRole, UserStatus, Admin, Manager, Lead, Employee, CompanyAdmin
+from app.models.user import User, UserRole, UserStatus, Admin, SubAdmin, Manager, Lead, Employee, CompanyAdmin
 from app.models.project import Project
 from app.models.department import Department
 from app.models.notification import Notification, NotificationType
@@ -180,286 +180,110 @@ async def list_users(
     pagination: PaginationParams = Pagination20,
     current_user: User = Depends(get_current_user)
 ):
-    """List users with hierarchical RBAC filtering"""
+    """List users with hierarchical RBAC filtering."""
     skip, limit = pagination.skip, pagination.limit
-    # Super Admin can see all users
     if current_user.role == UserRole.SUPER_ADMIN:
         query = {}
         if company_id:
             query["company_id"] = company_id
+    elif current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN]:
+        query = {"company_id": current_user.company_id}
+    elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
+        subordinates = await current_user.get_all_subordinates()
+        visible_ids = {str(current_user.id), *[str(user.id) for user in subordinates]}
+        all_users = await User.find({"company_id": current_user.company_id}).to_list()
+        filtered_users = [user for user in all_users if str(user.id) in visible_ids]
         if role:
-            query["role"] = role
+            filtered_users = [user for user in filtered_users if user.role.value == role]
         if status_filter:
-            query["status"] = status_filter
-        
-        users = await User.find(query).skip(skip).limit(limit).to_list()
-        total = await User.find(query).count()
+            filtered_users = [user for user in filtered_users if user.status.value == status_filter]
+        users = filtered_users[skip:skip + limit]
+        total = len(filtered_users)
+        department_name_map = await _build_department_name_map(current_user.company_id, users)
+        return {
+            "users": [_serialize_user_for_list(user, department_name_map) for user in users],
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+        }
+    elif current_user.role == UserRole.EMPLOYEE:
+        users = [current_user] if not status_filter or current_user.status.value == status_filter else []
+        department_name_map = await _build_department_name_map(current_user.company_id, users)
+        return {
+            "users": [_serialize_user_for_list(user, department_name_map) for user in users],
+            "total": len(users),
+            "skip": skip,
+            "limit": limit,
+        }
     else:
-        # Admin: See all users in their company
-        is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
-        
-        if is_admin:
-            query = {"company_id": current_user.company_id}
-            if role:
-                query["role"] = role
-            if status_filter:
-                query["status"] = status_filter
-            
-            users = await User.find(query).skip(skip).limit(limit).to_list()
-            total = await User.find(query).count()
-        
-        # Manager: See all subordinates (recursive)
-        elif current_user.role == UserRole.MANAGER:
-            subordinates = await current_user.get_all_subordinates()
-            subordinate_ids = [str(sub.id) for sub in subordinates]
-            subordinate_ids.append(str(current_user.id))  # Include self
-            
-            query = {
-                "company_id": current_user.company_id,
-                "_id": {"$in": [sub.id for sub in subordinates] + [current_user.id]}
-            }
-            if role:
-                query["role"] = role
-            if status_filter:
-                query["status"] = status_filter
-            
-            # Filter in Python since Beanie doesn't support $in with ObjectId easily
-            all_users = await User.find({
-                "company_id": current_user.company_id
-            }).to_list()
-            
-            filtered_users = [u for u in all_users if str(u.id) in subordinate_ids]
-            if role:
-                filtered_users = [u for u in filtered_users if u.role.value == role]
-            if status_filter:
-                filtered_users = [u for u in filtered_users if u.status.value == status_filter]
-            
-            users = filtered_users[skip:skip+limit]
-            total = len(filtered_users)
-        
-        # Lead: See only their employees
-        elif current_user.role == UserRole.LEAD:
-            # Get employees that report to this Lead
-            employees = await User.find(
-                User.reports_to == str(current_user.id),
-                User.role == UserRole.EMPLOYEE
-            ).to_list()
-            
-            employee_ids = [str(emp.id) for emp in employees]
-            employee_ids.append(str(current_user.id))  # Include self
-            
-            all_users = await User.find({
-                "company_id": current_user.company_id
-            }).to_list()
-            
-            filtered_users = [u for u in all_users if str(u.id) in employee_ids]
-            if role:
-                filtered_users = [u for u in filtered_users if u.role.value == role]
-            if status_filter:
-                filtered_users = [u for u in filtered_users if u.status.value == status_filter]
-            
-            users = filtered_users[skip:skip+limit]
-            total = len(filtered_users)
-        
-        # Employee: See only themselves
-        elif current_user.role == UserRole.EMPLOYEE:
-            query = {"_id": current_user.id}
-            if status_filter:
-                query["status"] = status_filter
-            
-            users = [current_user] if (not status_filter or current_user.status.value == status_filter) else []
-            total = len(users)
-        else:
-            raise HTTPException(
-                status_code=http_status.HTTP_403_FORBIDDEN,
-                detail="Access denied"
-            )
-    
-    department_name_map = await _build_department_name_map(current_user.company_id if current_user.role != UserRole.SUPER_ADMIN else (company_id or current_user.company_id), users)
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Access denied")
 
+    if role:
+        query["role"] = role
+    if status_filter:
+        query["status"] = status_filter
+    users = await User.find(query).skip(skip).limit(limit).to_list()
+    total = await User.find(query).count()
+    department_name_map = await _build_department_name_map(query.get("company_id"), users)
     return {
-        "users": [
-            {
-                "id": str(user.id),
-                "email": user.email,
-                "first_name": user.first_name,
-                "last_name": user.last_name,
-                "role": user.role.value,
-                "status": user.status.value,
-                "company_id": user.company_id,
-                "reports_to": user.reports_to,
-                "department_id": _department_id_value(user),
-                "department_name": department_name_map.get(_department_id_value(user), None),
-                "modules": getattr(user, "modules", []),
-                "active_module": getattr(user, "active_module", None),
-                "created_at": user.created_at,
-            }
-            for user in users
-        ],
+        "users": [_serialize_user_for_list(user, department_name_map) for user in users],
         "total": total,
         "skip": skip,
-        "limit": limit
+        "limit": limit,
+    }
+
+
+def _serialize_user_for_list(user: User, department_name_map: dict[str, str]) -> dict:
+    department_id = _department_id_value(user)
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "role": user.role.value,
+        "status": user.status.value,
+        "company_id": user.company_id,
+        "reports_to": user.reports_to,
+        "department_id": department_id,
+        "department_name": department_name_map.get(department_id, None),
+        "modules": getattr(user, "modules", []),
+        "active_module": getattr(user, "active_module", None),
+        "created_at": user.created_at,
     }
 
 
 @router.get("/assignable")
 async def get_assignable_users(
     current_user: User = Depends(get_current_user),
-    for_tickets: bool = Query(False, description="If True, Leads can assign to anyone (for ticket assignment)"),
-    project_id: Optional[str] = Query(
-        None,
-        description="Filter assignable users by project (for admin creating tasks based on project team)",
-    ),
+    for_tickets: bool = Query(False, description="If True, include broader ticket assignment options"),
+    project_id: Optional[str] = Query(None, description="Filter assignable users by project"),
 ):
-    """Get users that can be assigned tasks/tickets based on current user role"""
-    users = []
+    """Get users that can be assigned work. Project lead is assignment-level, not a user role."""
+    users: list[User] = []
 
-    # Special case: Admin filtering by project - return only that project's lead and their employees
-    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
-    if project_id and (is_admin or current_user.role == UserRole.SUPER_ADMIN):
-        project = await Project.get(project_id)
-        if not project or project.company_id != current_user.company_id:
-            raise HTTPException(
-                status_code=http_status.HTTP_404_NOT_FOUND,
-                detail="Project not found",
-            )
-
-        # If project has an assigned Lead, return that lead + their employees
-        lead_id = project.assigned_to
-        if lead_id:
-            lead = await Lead.get(str(lead_id))
-            if lead:
-                # Get employees under this Lead (both by lead_id and managed_employee_ids)
-                managed_ids = getattr(lead, "managed_employee_ids", []) or []
-
-                employees_by_lead = await Employee.find({
-                    "company_id": current_user.company_id,
-                    "status": UserStatus.ACTIVE,
-                    "lead_id": str(lead.id),
-                }).to_list()
-
-                employees_by_managed = []
-                if managed_ids:
-                    employees_by_managed = await Employee.find({
-                        "company_id": current_user.company_id,
-                        "status": UserStatus.ACTIVE,
-                        "_id": {"$in": managed_ids},
-                    }).to_list()
-
-                all_employee_ids = set()
-                team_employees = []
-                for emp in employees_by_lead + employees_by_managed:
-                    emp_id_str = str(emp.id)
-                    if emp_id_str not in all_employee_ids:
-                        all_employee_ids.add(emp_id_str)
-                        team_employees.append(emp)
-
-                users = [lead] + team_employees
-
-                return {
-                    "users": [
-                        {
-                            "id": str(user.id),
-                            "email": user.email,
-                            "first_name": user.first_name,
-                            "last_name": user.last_name,
-                            "role": user.role.value,
-                            "status": user.status.value,
-                            "department_id": getattr(user, "department_id", None),
-                            "department": getattr(user, "department", None),
-                        }
-                        for user in users
-                    ]
-                }
-        # If no lead assigned or lead not found, fall back to default admin behaviour below
-
-    # Admin or Super Admin
-    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
-    if is_admin or current_user.role == UserRole.SUPER_ADMIN:
-        # Admin can assign tasks to Managers, Leads, and Employees
-        managers = await Manager.find({
-            "company_id": current_user.company_id,
-            "status": UserStatus.ACTIVE
-        }).to_list()
-        leads = await Lead.find({
-            "company_id": current_user.company_id,
-            "status": UserStatus.ACTIVE
-        }).to_list()
-        employees = await Employee.find({
-            "company_id": current_user.company_id,
-            "status": UserStatus.ACTIVE
-        }).to_list()
-        users = managers + leads + employees
-    
-    elif current_user.role == UserRole.EMPLOYEE:
-        if for_tickets:
-            # For tickets, Employees can assign to Leads and Admins only
-            leads = await Lead.find({
-                "company_id": current_user.company_id,
-                "status": UserStatus.ACTIVE
-            }).to_list()
-            admins = await CompanyAdmin.find({
-                "company_id": current_user.company_id,
-                "status": UserStatus.ACTIVE
-            }).to_list()
-            users = leads + admins
-        else:
-            # Employees cannot assign tasks
-            users = []
-    
-    elif current_user.role == UserRole.LEAD:
-        if for_tickets:
-            # For tickets, Leads can assign to anyone in the company (Leads and Employees)
-            leads = await Lead.find({
-                "company_id": current_user.company_id,
-                "status": UserStatus.ACTIVE
-            }).to_list()
-            employees = await Employee.find({
-                "company_id": current_user.company_id,
-                "status": UserStatus.ACTIVE
-            }).to_list()
-            users = leads + employees
-        else:
-            # For tasks, Lead can assign to Employees (their team members)
-            # Get Lead with managed_employee_ids
-            lead = await Lead.get(str(current_user.id))
-            if lead:
-                # Get employees under this Lead
-                managed_ids = getattr(lead, "managed_employee_ids", []) or []
-                # Get employees by lead_id or managed_employee_ids
-                employees_by_lead = await Employee.find({
-                    "company_id": current_user.company_id,
-                    "status": UserStatus.ACTIVE,
-                    "lead_id": str(current_user.id)
-                }).to_list()
-                
-                # Get employees by managed_employee_ids
-                employees_by_managed = []
-                if managed_ids:
-                    employees_by_managed = await Employee.find({
-                        "company_id": current_user.company_id,
-                        "status": UserStatus.ACTIVE,
-                        "_id": {"$in": managed_ids}
-                    }).to_list()
-                
-                # Combine and remove duplicates
-                all_employee_ids = set()
-                users = []
-                for emp in employees_by_lead + employees_by_managed:
-                    if str(emp.id) not in all_employee_ids:
-                        all_employee_ids.add(str(emp.id))
-                        users.append(emp)
-
+    if current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN]:
+        managers = await Manager.find({"company_id": current_user.company_id, "status": UserStatus.ACTIVE}).to_list()
+        employees = await Employee.find({"company_id": current_user.company_id, "status": UserStatus.ACTIVE}).to_list()
+        users = managers + employees
     elif current_user.role == UserRole.MANAGER:
-        all_users = await User.find({
-            "company_id": current_user.company_id,
-            "status": UserStatus.ACTIVE,
-        }).to_list()
-        users = [
-            item for item in all_users
-            if item.role in [UserRole.LEAD, UserRole.EMPLOYEE]
-        ]
-    
+        employees = await Employee.find({"company_id": current_user.company_id, "status": UserStatus.ACTIVE}).to_list()
+        users = [current_user] + employees
+    elif current_user.role == UserRole.LEAD:
+        employees = await Employee.find({"company_id": current_user.company_id, "status": UserStatus.ACTIVE, "lead_id": str(current_user.id)}).to_list()
+        users = employees if not for_tickets else [current_user] + employees
+    elif current_user.role == UserRole.EMPLOYEE:
+        users = []
+
+    if project_id:
+        project = await Project.get(project_id)
+        if project and project.company_id == current_user.company_id:
+            project_user_ids = set(getattr(project, "team_member_ids", None) or [])
+            project_user_ids.update(str(item) for item in (getattr(project, "assigned_user_ids", None) or []))
+            if getattr(project, "lead_id", None):
+                project_user_ids.add(str(project.lead_id))
+            if project_user_ids:
+                users = [user for user in users if str(user.id) in project_user_ids]
+
     return {
         "users": [
             {
@@ -475,7 +299,6 @@ async def get_assignable_users(
             for user in users
         ]
     }
-
 
 @router.get("/my-team")
 async def get_my_team(
@@ -676,72 +499,11 @@ async def get_user(
 
 
 @router.post("/create-lead")
-async def create_lead(
-    email: str = Form(...),
-    password: str = Form(...),
-    first_name: str = Form(...),
-    last_name: str = Form(...),
-    team_name: Optional[str] = Form(None),
-    department_id: Optional[str] = Form(None),
-    phone: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_company_admin_or_lead)
-):
-    """Create a Lead (Admin or Manager only)."""
-    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Only Admins and Managers can create leads"
-        )
-    # Check if email already exists
-    existing = await User.find_one({"email": email})
-    if existing:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-
-    department_doc = await _resolve_department(current_user.company_id, department_id)
-    
-    # Create Lead
-    lead = Lead(
-        email=email,
-        password_hash=get_password_hash(password),
-        first_name=first_name,
-        last_name=last_name,
-        company_id=current_user.company_id,
-        reports_to=str(current_user.id) if current_user.role == UserRole.MANAGER else None,
-        ancestors=[],
-        team_name=team_name,
-        department_id=department_id if department_doc else None,
-        phone=phone,
-        status=UserStatus.ACTIVE
+async def create_lead_disabled(current_user: User = Depends(get_current_user)):
+    raise HTTPException(
+        status_code=http_status.HTTP_410_GONE,
+        detail="Lead is a project assignment, not a user role"
     )
-    
-    from app.services.user_service import UserService
-    await UserService.update_hierarchy_ancestors(lead)
-    await lead.insert()
-    
-    # Queue welcome email to the new Lead
-    try:
-        from app.worker.tasks.email_tasks import send_welcome_email_task
-        send_welcome_email_task.delay(
-            email,
-            password,
-            first_name,
-            last_name,
-            "LEAD",
-            f"{current_user.first_name} {current_user.last_name}",
-        )
-    except Exception as e:
-        # Log error but don't fail the request
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Failed to send welcome email to {email}: {str(e)}")
-    
-    return {
-        "message": "Lead created successfully",
-        "user_id": str(lead.id)
-    }
 
 
 @router.post("/create-employee")
@@ -781,31 +543,8 @@ async def create_employee(
 
     department_doc = await _resolve_department(current_user.company_id, department_id)
     
-    # If current user is a Lead, automatically assign employee to this Lead.
-    # Managers may create employees, but the employee must sit under one of
-    # their leads so the Manager -> Lead -> Employee hierarchy remains intact.
-    final_lead_id = lead_id
-    if current_user.role == UserRole.LEAD:
-        final_lead_id = str(current_user.id)
-    elif current_user.role == UserRole.MANAGER and not final_lead_id:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Manager must assign employee to a lead"
-        )
-    
-    # Validate lead_id if provided (for Company Admin or Manager)
-    if final_lead_id and current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
-        lead = await User.get(final_lead_id)
-        if not lead or lead.role != UserRole.LEAD or lead.company_id != current_user.company_id:
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="Invalid Lead ID"
-            )
-        if current_user.role == UserRole.MANAGER and str(current_user.id) not in [lead.reports_to, *(lead.ancestors or [])]:
-            raise HTTPException(
-                status_code=http_status.HTTP_403_FORBIDDEN,
-                detail="Manager can assign employees only to their leads"
-            )
+    final_lead_id = None
+    reports_to_id = str(current_user.id) if current_user.role in [UserRole.MANAGER, UserRole.LEAD] else None
     
     # Create Employee
     employee = Employee(
@@ -815,7 +554,7 @@ async def create_employee(
         last_name=last_name,
         company_id=current_user.company_id,
         lead_id=final_lead_id,
-        reports_to=final_lead_id,  # Set reports_to to match final_lead_id
+        reports_to=reports_to_id,
         department_id=department_id if department_doc else None,
         designation=designation,
         phone=phone,
@@ -824,20 +563,6 @@ async def create_employee(
     await UserService.update_hierarchy_ancestors(employee)
     await employee.insert()
     
-    # Add employee to Lead's managed_employee_ids if lead_id is provided
-    if final_lead_id:
-        lead = await Lead.get(final_lead_id)
-        if lead:
-            managed_ids = getattr(lead, "managed_employee_ids", []) or []
-            if not isinstance(managed_ids, list):
-                managed_ids = []
-            
-            employee_id_str = str(employee.id)
-            if employee_id_str not in managed_ids:
-                managed_ids.append(employee_id_str)
-                lead.managed_employee_ids = managed_ids
-                await lead.save()
-
     if department_doc:
         await _notify_department_assignment(
             employee=employee,
@@ -1053,6 +778,11 @@ async def update_user(
     return {"message": "User updated successfully"}
 
 
+
+def _module_allowed_for_user(user: User, module_id: str) -> bool:
+    if user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        return True
+    return module_id in (getattr(user, "modules", []) or [])
 # ==================== CREATE USER ENDPOINT ====================
 
 @router.post("/create-user")
@@ -1079,7 +809,6 @@ async def create_user_hierarchical(
     try:
         target_role = UserRole(role)
     except ValueError:
-        # Legacy support: convert company_admin to admin
         if role == "company_admin":
             target_role = UserRole.ADMIN
         else:
@@ -1087,7 +816,11 @@ async def create_user_hierarchical(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid role: {role}"
             )
-    
+    if target_role == UserRole.LEAD:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Lead is a project assignment, not a user role"
+        )
     # Validate hierarchy
     is_valid, error_msg = await validate_hierarchy_creation(
         creator=current_user,
@@ -1113,6 +846,15 @@ async def create_user_hierarchical(
     company_id = current_user.company_id if current_user.company_id else None
     
     parsed_modules = normalize_modules(modules or [], require_tasks_projects=False)
+    if target_role == UserRole.SUB_ADMIN and not parsed_modules:
+        parsed_modules = normalize_modules(["tasks_projects"], require_tasks_projects=False)
+    if current_user.role == UserRole.SUB_ADMIN:
+        allowed_modules = set(getattr(current_user, "modules", []) or [])
+        parsed_modules = [module for module in parsed_modules if module in allowed_modules]
+        if target_role == UserRole.SUB_ADMIN:
+            raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Sub-admins cannot create other sub-admins")
+        if target_role == UserRole.MANAGER and not _module_allowed_for_user(current_user, "tasks_projects"):
+            raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Missing authority to create managers")
     active_module = parsed_modules[0] if parsed_modules else "task"
 
     department_doc = await _resolve_department(company_id, department_id) if company_id else None
@@ -1135,7 +877,9 @@ async def create_user_hierarchical(
     }
     
     # Role-specific fields
-    if target_role == UserRole.MANAGER:
+    if target_role == UserRole.SUB_ADMIN:
+        user = SubAdmin(**user_data)
+    elif target_role == UserRole.MANAGER:
         user = Manager(**user_data)
         if team_name:
             user.team_name = team_name
@@ -1173,7 +917,9 @@ async def create_user_hierarchical(
         
         # Determine resource type based on role
         resource_type = "users"  # Default
-        if target_role == UserRole.MANAGER:
+        if target_role == UserRole.SUB_ADMIN:
+            resource_type = "users"
+        elif target_role == UserRole.MANAGER:
             resource_type = "managers"
         elif target_role == UserRole.LEAD:
             resource_type = "leads"
@@ -1233,4 +979,3 @@ async def create_user_hierarchical(
         "role": target_role.value,
         "reports_to": reports_to
     }
-

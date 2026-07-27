@@ -412,7 +412,8 @@ export default function ProjectBoard() {
       setAssigningProject(true)
       const assignedUserIds = [assignmentManagerId, assignmentLeaderId].filter(Boolean)
       await projectsApi.updateProject(projectId, {
-        assigned_to: assignmentManagerId || assignmentLeaderId || '',
+        assigned_to: assignmentManagerId || '',
+        lead_id: assignmentLeaderId || '',
         assigned_user_ids: assignedUserIds.join(','),
       })
       toast.success(assignedUserIds.length ? 'Project assignment updated' : 'Project unassigned')
@@ -569,7 +570,7 @@ export default function ProjectBoard() {
     return managers
   }, [projectAssignableUsers, user, userRole])
   const leaderAssignmentOptions = useMemo(
-    () => projectAssignableUsers.filter((item) => normalizeRole(item.role) === 'lead'),
+    () => projectAssignableUsers.filter((item) => ['manager', 'employee'].includes(normalizeRole(item.role))),
     [projectAssignableUsers],
   )
   const { manager: projectManagers, lead: projectLeaders } = getProjectRoleNames(projectRecord, projectAssignableUsers, user)
@@ -852,7 +853,7 @@ export default function ProjectBoard() {
         )
       )}
 
-      <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign project">
+      <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign project lead">
         <form onSubmit={handleAssignProject} className="space-y-4">
           <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Project</p>
@@ -879,7 +880,7 @@ export default function ProjectBoard() {
               value={assignmentLeaderId}
               onChange={setAssignmentLeaderId}
               className={inputClassName}
-              createLabel="Create lead"
+              createLabel="Create employee"
               onCreate={() => setShowQuickEmployeeModal(true)}
               canCreate={canAssignProject}
             >
@@ -898,11 +899,11 @@ export default function ProjectBoard() {
         isOpen={showQuickEmployeeModal}
         onClose={() => setShowQuickEmployeeModal(false)}
         existing={projectAssignableUsers}
-        leads={projectAssignableUsers.filter((item) => item.role === 'lead')}
-        canCreateLead={canAssignProject}
+        leads={[]}
+        canCreateLead={false}
         onCreated={async (created) => {
           await loadAssignableUsers()
-          if (normalizeRole(created.role) === 'lead') setAssignmentLeaderId(created.id)
+          setAssignmentLeaderId(created.id)
           setTaskAssigneeId(created.id)
         }}
       />

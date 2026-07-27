@@ -991,9 +991,9 @@ const Tasks = () => {
         onClose={() => setShowQuickEmployeeModal(false)}
         existing={assignableUsers}
         departments={uniqueDepartments}
-        leads={assignableUsers.filter((item) => item.role === 'lead')}
+        leads={[]}
         departmentId={selectedDepartmentId}
-        canCreateLead={isCompanyAdmin}
+        canCreateLead={false}
         onCreated={async (created) => {
           await loadAssignableUsers()
           setSelectedAssigneeId(created.id)
