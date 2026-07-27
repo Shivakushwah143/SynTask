@@ -33,14 +33,17 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Eye,
-  EyeOff,
-  Plus
+  EyeOff
 } from 'lucide-react'
 import { CRMWorkspace } from '../components/crm'
 import { CRM_NAV_ITEMS, CRM_ROUTE_DESCRIPTIONS, CRM_ROUTE_LABELS } from '../pages/crm/metadata'
+<<<<<<< HEAD
 import { Badge, Button } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isManagerRole } from '../utils/roles'
+=======
+import { Badge } from '../components/ui'
+>>>>>>> f6818fa9c4177f9536029006a76cb3811a869b22
 
 // Enhanced navigation items with icons and colors
 const ENHANCED_NAV_ITEMS = [
@@ -338,10 +341,6 @@ const CRMLayout = () => {
                   className="w-64 rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 />
               </div>
-              <Button variant="primary" size="sm" className="gap-1.5">
-                <Plus className="h-4 w-4" />
-                New
-              </Button>
             </div>
           </div>
 
