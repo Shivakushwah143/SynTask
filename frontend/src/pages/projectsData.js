@@ -21,7 +21,7 @@ const getRoleOwnerLine = (project) => {
     .map(getUserDisplayName)
     .filter(Boolean)
   const leadNames = assignedUsers
-    .filter((user) => String(user.role || '').toLowerCase() === 'lead')
+    .filter((user) => ['employee', 'lead'].includes(String(user.role || '').toLowerCase()))
     .map(getUserDisplayName)
     .filter(Boolean)
   const parts = []
