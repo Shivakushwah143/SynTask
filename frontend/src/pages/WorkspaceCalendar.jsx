@@ -259,7 +259,10 @@ export default function WorkspaceCalendar() {
     const rawId = String(event.id || '')
     const idParts = rawId.split('_')
     const type = idParts[0]
-    const dbId = idParts.slice(1).join('_')
+    const dbId = idParts.slice(2).join('_')
+
+    console.log("dbid=",dbId);
+    console.log("rawid=",rawId,"id=",idParts);
     
     if (type === 'task' || type === 'task_start' || type === 'task_due') {
       if (event.project_id) {
