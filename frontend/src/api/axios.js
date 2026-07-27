@@ -68,6 +68,9 @@ const withDataCompatibility = (payload) => {
 
 const extractErrorMessage = (value) => {
   if (!value) return 'An error occurred'
+  if (typeof value === 'string' && /<html[\s>]/i.test(value)) {
+    return 'Server temporarily unavailable. Please try again.'
+  }
   if (typeof value === 'string') return value
   if (Array.isArray(value)) {
     return value
@@ -176,10 +179,17 @@ axiosInstance.interceptors.response.use(
       }
     }
 
-    // Suppress 404 errors for avatar files (gracefully handle missing avatars)
-    if (error?.response?.status === 404 && error?.config?.url?.includes('/uploads/avatars/')) {
+    // Handle other errors
+    if ([502, 503, 504].includes(error.response?.status)) {
+      toast.error('Server temporarily unavailable. Please try again.')
       return Promise.reject(error)
     }
+
+    const errorMessage = extractErrorMessage(
+      error.response?.data?.detail ||
+      error.response?.data?.message ||
+      error.response?.data
+    )
 
     // Handle other errors - suppress toasts for 401/403 and unauthenticated requests
     if (![401, 403].includes(error.response?.status) && !originalRequest?._unauthenticated) {
