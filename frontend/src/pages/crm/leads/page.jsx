@@ -32,6 +32,7 @@ const getUserId = (item) => String(item?.id || item?._id || item?.user_id || ite
 const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
 const isValidLeadOwner = (item) => ['lead', 'employee'].includes(normalizeRole(item?.role))
 const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || '').trim())
+export const hasSalesCrmModule = (modules = []) => modules.includes('sales_crm') || modules.includes('sales')
 const PRODUCT_LOCATION_OPTIONS = [
   { state: 'Andaman and Nicobar Islands', cities: ['Port Blair', 'Diglipur', 'Mayabunder', 'Rangat'] },
   { state: 'Andhra Pradesh', cities: ['Visakhapatnam', 'Vijayawada', 'Guntur', 'Nellore', 'Kurnool', 'Tirupati'] },
@@ -70,18 +71,6 @@ const PRODUCT_LOCATION_OPTIONS = [
   { state: 'Uttarakhand', cities: ['Dehradun', 'Haridwar', 'Roorkee', 'Haldwani', 'Rishikesh'] },
   { state: 'West Bengal', cities: ['Kolkata', 'Howrah', 'Durgapur', 'Siliguri'] },
 ]
-const getResponseItems = (data, key) => {
-  const direct = data?.[key]
-  const nested = data?.data?.[key]
-  const directItems = data?.items
-  const nestedItems = data?.data?.items
-  if (Array.isArray(direct)) return direct
-  if (Array.isArray(nested)) return nested
-  if (Array.isArray(directItems)) return directItems
-  if (Array.isArray(nestedItems)) return nestedItems
-  if (Array.isArray(data)) return data
-  return []
-}
 
 // Color palette for charts
 const COLORS = ['#2563eb', '#38bdf8', '#818cf8', '#6366f1', '#8b5cf6', '#a855f7']
@@ -94,6 +83,8 @@ export default function CRMLeadsPage() {
   const userRole = normalizeRole(user?.role)
   const isEmployee = isEmployeeRole(userRole)
   const currentUserId = user?.id || user?._id || ''
+  const userModules = user?.modules || []
+  const canCreateCategory = Boolean(user && (userRole === 'admin' || userRole === 'manager' || userRole === 'lead' || userRole === 'super_admin') && hasSalesCrmModule(userModules))
   const [mergeGroup, setMergeGroup] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -314,7 +305,13 @@ export default function CRMLeadsPage() {
         setCategoryForm({ name: '' })
       },
       onError: (error) => {
-        toast.error(error?.response?.data?.detail || 'Unable to create category')
+        if (error?.response?.status === 403) {
+          toast.error(error?.response?.data?.detail || 'You do not have permission to create categories')
+        } else if (error?.response?.status === 400) {
+          toast.error(error?.response?.data?.detail || 'Category already exists or invalid input')
+        } else {
+          toast.error(error?.response?.data?.detail || 'Unable to create category')
+        }
       },
     }
   )
@@ -1140,9 +1137,9 @@ export default function CRMLeadsPage() {
                 <input className={inputClassName} placeholder="Company name" value={createForm.company_name} onChange={(e) => setCreateForm((state) => ({ ...state, company_name: e.target.value }))} />
               </label>
               <label className="space-y-1">
-                <span className="flex items-center justify-between gap-2 text-xs font-medium text-text-muted">
+                  <span className="flex items-center justify-between gap-2 text-xs font-medium text-text-muted">
                   <span>Category</span>
-                  <button type="button" className="text-primary-600 hover:underline" onClick={() => setCreateCategoryOpen(true)}>+ New category</button>
+                  <button type="button" className={`text-primary-600 hover:underline ${!canCreateCategory ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => { if (!canCreateCategory) { toast.error('You do not have permission to create categories'); return } setCreateCategoryOpen(true) }} disabled={!canCreateCategory}>+ New category</button>
                 </span>
                 <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
                   <option value="">Select category</option>
@@ -1326,35 +1323,6 @@ export default function CRMLeadsPage() {
         </div>
       </Modal>
     </CRMPage>
-  )
-}
-
-// Metric Card Component
-function MetricCard({ label, value, icon: Icon, trend, color }) {
-  const colorClasses = {
-    blue: 'bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-900/40',
-    emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/40',
-    purple: 'bg-purple-50 text-purple-600 ring-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-900/40',
-    orange: 'bg-orange-50 text-orange-600 ring-orange-100 dark:bg-orange-950/40 dark:text-orange-300 dark:ring-orange-900/40',
-  }
-
-  return (
-    <div className="group relative overflow-hidden rounded-2xl border border-surface-border/70 bg-gradient-to-br from-white via-primary-50/40 to-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface)] dark:via-[var(--color-app-surface-muted)] dark:to-[var(--color-app-surface)]">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-text-muted">{label}</p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">{value}</p>
-          {trend && (
-            <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-              {trend} from last month
-            </p>
-          )}
-        </div>
-        <div className={`rounded-2xl p-3 ring-1 ring-inset ${colorClasses[color] || colorClasses.blue}`}>
-          <Icon className="h-5 w-5" />
-        </div>
-      </div>
-    </div>
   )
 }
 

@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button, FormField, Modal, PasswordInput, PhoneInput, inputClassName } from '../ui'
 import { usersAPI } from '../../api/users'
 import { departmentsAPI } from '../../api/departments'
 import { projectsApi } from '../../api/projects'
 import { clientsAPI } from '../../api/clients'
+import { getDesignationOptions } from '../../constants/designations'
 
 const tempPassword = () => `SynTask@${Math.random().toString(36).slice(2, 8)}1`
 
@@ -36,7 +38,36 @@ export function QuickCreateEmployeeModal({
     team_name: '',
   })
   const [saving, setSaving] = useState(false)
+  const [customDesignations, setCustomDesignations] = useState([])
+  const [designationSearch, setDesignationSearch] = useState('')
+  const [showDesignationCreate, setShowDesignationCreate] = useState(false)
+  const [newDesignationName, setNewDesignationName] = useState('')
+  const [designationError, setDesignationError] = useState('')
   const update = (key, value) => setForm((state) => ({ ...state, [key]: value }))
+  const designationOptions = useMemo(() => getDesignationOptions(customDesignations, form.designation), [customDesignations, form.designation])
+  const visibleDesignations = useMemo(() => {
+    const query = designationSearch.trim().toLowerCase()
+    if (!query) return designationOptions
+    return designationOptions.filter((item) => item.toLowerCase().includes(query))
+  }, [designationOptions, designationSearch])
+
+  const handleCreateDesignation = () => {
+    const name = newDesignationName.trim()
+    if (!name) {
+      setDesignationError('Designation is required')
+      return
+    }
+    if (designationOptions.some((item) => item.toLowerCase() === name.toLowerCase())) {
+      setDesignationError('Designation already exists')
+      return
+    }
+    setCustomDesignations((current) => [...current, name])
+    update('designation', name)
+    setDesignationSearch('')
+    setNewDesignationName('')
+    setDesignationError('')
+    setShowDesignationCreate(false)
+  }
 
   useEffect(() => {
     if (!isOpen) return
@@ -96,7 +127,7 @@ export function QuickCreateEmployeeModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create user" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title="Create user" size="lg" zIndexClass="z-[70]">
       <form onSubmit={submit} className="space-y-4">
         {canCreateLead && (
           <FormField label="Role" required>
@@ -134,7 +165,58 @@ export function QuickCreateEmployeeModal({
                 </select>
               </FormField>
             )}
-            <FormField label="Designation"><input className={inputClassName} value={form.designation} onChange={(event) => update('designation', event.target.value)} /></FormField>
+            <FormField label="Designation">
+              <div className="space-y-2">
+                <input
+                  className={inputClassName}
+                  value={designationSearch}
+                  onChange={(event) => setDesignationSearch(event.target.value)}
+                  placeholder="Search designation..."
+                  aria-label="Search designation"
+                />
+                <select
+                  className={inputClassName}
+                  value={form.designation}
+                  onChange={(event) => {
+                    if (event.target.value === '__create_designation__') {
+                      setShowDesignationCreate(true)
+                      setDesignationError('')
+                      return
+                    }
+                    update('designation', event.target.value)
+                    setShowDesignationCreate(false)
+                    setDesignationError('')
+                  }}
+                >
+                  <option value="">Select designation</option>
+                  {visibleDesignations.map((designation) => (
+                    <option key={designation} value={designation}>{designation}</option>
+                  ))}
+                  <option value="__create_designation__">+ Add designation</option>
+                </select>
+                {showDesignationCreate && (
+                  <div className="rounded-xl border border-indigo-200/70 bg-indigo-50/80 p-3 dark:border-indigo-500/25 dark:bg-indigo-500/10">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="text"
+                        value={newDesignationName}
+                        onChange={(event) => {
+                          setNewDesignationName(event.target.value)
+                          if (designationError) setDesignationError('')
+                        }}
+                        className={`${inputClassName} flex-1 ${designationError ? 'border-red-500' : ''}`}
+                        placeholder="Enter designation"
+                      />
+                      <Button type="button" onClick={handleCreateDesignation} className="min-h-11 gap-1.5">
+                        <Plus className="h-4 w-4" />
+                        Add
+                      </Button>
+                    </div>
+                    {designationError && <p className="mt-1 text-xs text-red-500">{designationError}</p>}
+                  </div>
+                )}
+              </div>
+            </FormField>
           </div>
         )}
         <FormField label="Phone"><PhoneInput className={inputClassName} value={form.phone} onChange={(event) => update('phone', event.target.value)} /></FormField>

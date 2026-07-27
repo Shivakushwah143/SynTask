@@ -5,12 +5,19 @@ import {
   getProductCities,
   getProductStates,
   getSalesCollection,
+  hasSalesCrmModule,
   mergeSalesCollectionItem,
   normalizeCreatedProduct,
   normalizeCreatedSalesOption,
 } from './page'
 
 describe('CRM leads page helpers', () => {
+  it('treats sales_crm module as sales lead form permission', () => {
+    expect(hasSalesCrmModule(['sales_crm'])).toBe(true)
+    expect(hasSalesCrmModule(['sales'])).toBe(true)
+    expect(hasSalesCrmModule(['task'])).toBe(false)
+  })
+
   it('reads sales collections from backend items response', () => {
     const data = { total: 1, items: [{ id: 'cat-1', name: 'Retail' }] }
 

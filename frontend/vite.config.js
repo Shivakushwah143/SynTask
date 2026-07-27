@@ -13,15 +13,17 @@ export default defineConfig({
       '@': srcPath,
     },
   },
-  server: {
-    port: 3000,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
+server: {
+  host: true,
+  port: 3000,
+  allowedHosts: ["synzent.ai", "www.synzent.ai"],
+  proxy: {
+    '/api': {
+      target: 'http://localhost:8000',
+      changeOrigin: true,
     },
   },
+},
   build: {
     outDir: 'dist',
     sourcemap: false,

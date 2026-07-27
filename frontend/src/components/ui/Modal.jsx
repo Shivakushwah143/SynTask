@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from 'react'
 import { X } from 'lucide-react'
 
-export function Modal({ isOpen, onClose, title, children, size = 'md', description, footer, bodyClassName = '' }) {
+export function Modal({ isOpen, onClose, title, children, size = 'md', description, footer, bodyClassName = '', zIndexClass = 'z-50' }) {
   const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl', full: 'max-w-6xl' }
   const modalRef = useRef(null)
   const previouslyFocusedRef = useRef(null)
@@ -56,7 +56,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', descripti
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex max-w-[100vw] items-center justify-center overflow-x-hidden overflow-y-auto p-3 sm:p-4" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <div className={`fixed inset-0 ${zIndexClass} flex max-w-[100vw] items-center justify-center overflow-x-hidden overflow-y-auto p-3 sm:p-4`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <div className="fixed inset-0 bg-black/60" onClick={() => onCloseRef.current?.()} aria-hidden="true" />
       <div ref={modalRef} className={`relative flex max-h-[calc(100dvh-1.5rem)] min-w-0 w-full flex-col overflow-hidden rounded-2xl border border-surface-border bg-white shadow-modal dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:shadow-lg sm:max-h-[90vh] ${sizes[size]}`}>
         <div className="flex min-w-0 items-start justify-between gap-3 border-b border-gray-200/80 bg-gradient-to-r from-primary-50/80 via-white to-white px-4 py-4 dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface-muted)] dark:via-[var(--color-app-surface)] dark:to-[var(--color-app-surface)] sm:px-6">

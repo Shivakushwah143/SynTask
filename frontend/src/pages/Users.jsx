@@ -7,50 +7,11 @@ import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole, normalizeRole, getRoleLabel } from '../utils/roles'
 import { EmptyState, Modal, PasswordInput, PhoneInput, phoneValidationMessage } from '../components/ui'
+import { getDesignationOptions } from '../constants/designations'
 import toast from 'react-hot-toast'
 
 const BULK_HEADERS = ['role', 'first_name', 'last_name', 'email', 'password', 'phone', 'department', 'designation', 'team_name', 'lead_email']
 const makeTempPassword = () => `SynTask@${Math.random().toString(36).slice(2, 8)}1`
-const DESIGNATION_OPTIONS = [
-  'Software Developer',
-  'Frontend Developer',
-  'Backend Developer',
-  'Full Stack Developer',
-  'Mobile App Developer',
-  'UI/UX Designer',
-  'Graphic Designer',
-  'QA Engineer',
-  'DevOps Engineer',
-  'Project Coordinator',
-  'Business Analyst',
-  'Sales Executive',
-  'Marketing Executive',
-  'Customer Support Executive',
-  'HR Executive',
-  'HR Manager',
-  'Recruiter',
-  'Talent Acquisition Specialist',
-  'Accountant',
-  'Finance Executive',
-  'Finance Manager',
-  'Operations Executive',
-  'Operations Manager',
-  'Data Analyst',
-  'Product Manager',
-  'Project Manager',
-  'Scrum Master',
-  'Team Lead',
-  'Technical Lead',
-  'SEO Specialist',
-  'Social Media Manager',
-  'Digital Marketing Specialist',
-  'Business Development Executive',
-  'Customer Success Executive',
-  'Support Engineer',
-  'Office Administrator',
-  'Content Writer',
-  'Intern',
-]
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -126,12 +87,7 @@ const Users = () => {
     [users],
   )
   const designationOptions = useMemo(() => {
-    const currentDesignation = editingUser?.designation?.trim()
-    const combined = [...customDesignations, ...DESIGNATION_OPTIONS]
-    if (currentDesignation && !combined.includes(currentDesignation)) {
-      combined.unshift(currentDesignation)
-    }
-    return Array.from(new Set(combined)).sort((a, b) => a.localeCompare(b))
+    return getDesignationOptions(customDesignations, editingUser?.designation || '')
   }, [customDesignations, editingUser?.designation])
   const departmentNameById = useMemo(
     () => departments.reduce((lookup, department) => {
