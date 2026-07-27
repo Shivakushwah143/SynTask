@@ -141,7 +141,7 @@ export default function CRMLeadsPage() {
   )
   const assignedLeadsQuery = useQuery(
     ['crm-assigned-leads', currentUserId],
-    () => crmApi.getLeads({ assigned_to: currentUserId, limit: 200, skip: 0 }),
+    () => crmApi.getLeads({ limit: 200, skip: 0 }),
     {
       enabled: isEmployee && Boolean(currentUserId),
       staleTime: 60 * 1000,
@@ -193,12 +193,12 @@ export default function CRMLeadsPage() {
   
   const selectedLeads = useMemo(() => allLeads.filter((lead) => selectedIds.includes(lead.id || lead._id)), [allLeads, selectedIds])
   const employeeLeads = useMemo(() => {
-    const items = assignedLeadsQuery.data?.data?.prospects
-      || assignedLeadsQuery.data?.prospects
-      || assignedLeadsQuery.data?.data?.items
-      || assignedLeadsQuery.data?.items
-      || []
-    return Array.isArray(items) ? items : []
+      const items = assignedLeadsQuery.data?.prospects
+        || assignedLeadsQuery.data?.items
+        || assignedLeadsQuery.data?.data?.prospects
+        || assignedLeadsQuery.data?.data?.items
+        || []
+      return Array.isArray(items) ? items : []
   }, [assignedLeadsQuery.data])
   
   const assignableUsers = useMemo(() => {

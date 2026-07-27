@@ -32,6 +32,7 @@ from app.api.v1.endpoints import scheduled_jobs
 from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing, superadmin_features
 from app.api.dependencies import require_module
+from app.dependencies import rate_limit
 from app.recruitment.routes import careers_router, router as recruitment_router
 from app.integrations.meta import api as meta_integration
 from app.integrations.google_workspace import router as google_workspace_router
@@ -84,6 +85,12 @@ async def health_check():
     }
 
     status["checks"] = checks
+
+
+@api_router.get("/example", tags=["Demo"], dependencies=[Depends(rate_limit)])
+async def example_endpoint():
+    return {"msg": "Rate limited example endpoint"}
+
     return status
 
 

@@ -13,7 +13,7 @@ from app.crm.application import build_crm_dashboard
 from app.crm.lead_timeline import CRMLeadTimelineService
 from app.api.v1.endpoints.sales_prospects import _get_company_prospects, _lead_identity_score, _serialize_prospect_identity
 from app.crm.models import SalesProspect
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.api.deps import Pagination50, PaginationParams
 
 router = APIRouter()
@@ -35,10 +35,8 @@ async def crm_leads(
 ):
     skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False, "company_id": current_user.company_id}
-    if current_user.role == UserRole.EMPLOYEE:
-        current_user_id = str(current_user.id)
-        query["$or"] = [{"assigned_to": current_user_id}, {"assigned_by": current_user_id}]
     if assigned_to:
+        # Filter by a specific assignee (used by managers/admins viewing a specific employee's leads)
         query["assigned_to"] = assigned_to
     if current_stage:
         query["current_stage"] = current_stage
