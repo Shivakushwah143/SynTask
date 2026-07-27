@@ -11,7 +11,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import ConfirmDialog from './components/ConfirmDialog';
 import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isSuperAdminRole } from './utils/roles';
+import { hasCompanyAdminAccess, isSuperAdminRole, isManagerRole } from './utils/roles';
 import { applySeoMeta, getSeoMeta } from './utils/seo';
 import DemoHome from './pages/DemoHome';
 
@@ -150,6 +150,13 @@ const CompanyAdminGuard = ({ children }) => {
   return children
 }
 
+// Only admins and managers can access CRM settings
+const CRMSettingsGuard = ({ children }) => {
+  const { user } = useAuthStore()
+  if (hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role)) return children
+  return <Navigate to="/crm/leads" replace />
+}
+
 const ModuleGuard = ({ module, children }) => {
   const { user } = useAuthStore()
   if (isSuperAdminRole(user?.role)) return children
@@ -183,6 +190,37 @@ function App() {
   useEffect(() => {
     applySeoMeta(getSeoMeta(location.pathname))
   }, [location.pathname])
+
+  // ── Live permission sync ────────────────────────────────────────────────────
+  // Poll /auth/me every 60 s so module/role changes made by an admin are
+  // reflected in the employee's UI without requiring a logout/login cycle.
+  useEffect(() => {
+    const { refreshUser, isAuthenticated } = useAuthStore.getState()
+    if (!isAuthenticated) return
+
+    // Immediate refresh on mount
+    void refreshUser()
+
+    // Poll every 60 seconds
+    const interval = setInterval(() => {
+      if (useAuthStore.getState().isAuthenticated) {
+        void useAuthStore.getState().refreshUser()
+      }
+    }, 60_000)
+
+    // Also refresh when the tab becomes visible again (e.g. user switches back)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && useAuthStore.getState().isAuthenticated) {
+        void useAuthStore.getState().refreshUser()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
 
   // Show global loader briefly on route change to indicate navigation
   useEffect(() => {
@@ -291,8 +329,8 @@ function App() {
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
             <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
             <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
-            <Route path="settings/meta" element={withBoundary(<CRMMetaIntegrationPage />)} />
-            <Route path="settings" element={withBoundary(<CRMSettingsPage />)} />
+            <Route path="settings/meta" element={<CRMSettingsGuard>{withBoundary(<CRMMetaIntegrationPage />)}</CRMSettingsGuard>} />
+            <Route path="settings" element={<CRMSettingsGuard>{withBoundary(<CRMSettingsPage />)}</CRMSettingsGuard>} />
           </Route>
       </Route>
 
