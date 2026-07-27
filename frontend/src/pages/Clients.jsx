@@ -112,12 +112,24 @@ const Clients = () => {
     }
   }, [])
 
+  const loadAssignableUsers = useCallback(async () => {
+    try {
+      const data = await usersAPI.getAssignableUsersWithJuniors()
+      const users = data.users || []
+      setAssignableUsers(users.filter((u) => String(u.id || u._id) !== String(user.id || user._id)))
+    } catch (error) {
+      console.error('Error loading assignable users:', error)
+      setAssignableUsers([])
+    }
+  }, [user])
+
   const { isAuthenticated } = useAuthStore()
 
   useEffect(() => {
     if (!isAuthenticated) return
     loadClients()
     loadLeads()
+    loadAssignableUsers()
   }, [isAuthenticated, loadClients, loadLeads])
 
   const handleCreateClient = async (e) => {
@@ -238,21 +250,7 @@ const Clients = () => {
     setShowCreateModal(true)
   }
 
-  const loadAssignableUsers = async () => {
-    try {
-      const response = await usersAPI.getAssignableUsers()
-      const users = response.users || []
-      const uniqueUsersMap = new Map()
-      users.forEach(user => {
-        if (user && user.id && !uniqueUsersMap.has(user.id)) {
-          uniqueUsersMap.set(user.id, user)
-        }
-      })
-      setAssignableUsers(Array.from(uniqueUsersMap.values()))
-    } catch (error) {
-      console.error('Error loading assignable users:', error)
-    }
-  }
+  
 
   const handleCreateProject = async (e) => {
     e.preventDefault()

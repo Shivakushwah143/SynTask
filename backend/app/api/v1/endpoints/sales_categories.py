@@ -9,7 +9,7 @@ from app.models.user import User, UserRole
 from app.models.sales_category import SalesCategory
 from app.api.deps import Pagination50, PaginationParams
 
-router = APIRouter(dependencies=[Depends(require_module("sales"))])
+router = APIRouter()
 
 
 def _ensure_create_permission(user: User):
@@ -31,6 +31,7 @@ def _ensure_delete_permission(user: User):
 @router.get("/")
 async def list_categories(
     search: Optional[str] = None,
+    name: Optional[str] = None,
     pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user)
 ):
@@ -38,8 +39,10 @@ async def list_categories(
     query = {"deleted": False}
     if current_user.role != UserRole.SUPER_ADMIN:
         query["company_id"] = current_user.company_id
-    if search:
-        query["name"] = {"$regex": search, "$options": "i"}
+    # Support both `search` and legacy `name` query parameter (UI sometimes uses `name`)
+    q = search or name
+    if q:
+        query["name"] = {"$regex": q, "$options": "i"}
 
     total = await SalesCategory.find(query).count()
     categories = await SalesCategory.find(query).skip(skip).limit(limit).to_list()
@@ -60,7 +63,7 @@ async def list_categories(
 @router.post("/")
 async def create_category(
     name: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_module("sales_crm"))
 ):
     _ensure_create_permission(current_user)
     normalized = name.strip()
@@ -88,7 +91,7 @@ async def create_category(
 async def update_category(
     category_id: str,
     name: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_module("sales_crm"))
 ):
     _ensure_create_permission(current_user)
     cat = await SalesCategory.get(category_id)
@@ -117,7 +120,7 @@ async def update_category(
 @router.delete("/{category_id}")
 async def delete_category(
     category_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_module("sales_crm"))
 ):
     _ensure_delete_permission(current_user)
     cat = await SalesCategory.get(category_id)
@@ -134,7 +137,7 @@ async def delete_category(
 @router.post("/bulk-upload")
 async def bulk_upload_categories(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_module("sales_crm"))
 ):
     _ensure_create_permission(current_user)
     content = await file.read()

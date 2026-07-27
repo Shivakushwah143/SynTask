@@ -16,6 +16,14 @@ async def test_manager_can_access_sales_module_without_explicit_module_assignmen
     assert await checker(manager) is manager
 
 
+@pytest.mark.asyncio
+async def test_manager_can_access_sales_crm_module_without_explicit_module_assignment():
+    checker = require_module("sales_crm")
+    manager = SimpleNamespace(id="manager-1", role=UserRole.MANAGER, modules=[], company_id="company-1")
+
+    assert await checker(manager) is manager
+
+
 def test_manager_can_manage_sales_masters():
     manager = SimpleNamespace(role=UserRole.MANAGER)
 

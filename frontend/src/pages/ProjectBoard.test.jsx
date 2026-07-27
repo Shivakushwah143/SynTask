@@ -1,17 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { getProjectRoleAssignmentIds, getProjectRoleNames, normalizeEstimatedHours } from './ProjectBoard.helpers'
+import { getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, normalizeEstimatedHours } from './ProjectBoard.helpers'
 
 describe('ProjectBoard task form helpers', () => {
-  it('accepts task estimates up to 24 hours', () => {
+  it('accepts positive task estimates above and below 24 hours', () => {
     expect(normalizeEstimatedHours('0.25')).toBe('0.25')
     expect(normalizeEstimatedHours('12')).toBe('12')
     expect(normalizeEstimatedHours('24')).toBe('24')
+    expect(normalizeEstimatedHours('24.25')).toBe('24.25')
+    expect(normalizeEstimatedHours('48')).toBe('48')
   })
 
-  it('rejects empty, zero, and over-24 hour estimates', () => {
+  it('rejects empty and zero estimates', () => {
     expect(normalizeEstimatedHours('')).toBeNull()
     expect(normalizeEstimatedHours('0')).toBeNull()
-    expect(normalizeEstimatedHours('24.25')).toBeNull()
+  })
+
+  it('keeps active employees from different managers in task assignee options', () => {
+    const users = [
+      { id: 'emp-a', first_name: 'Asha', role: 'employee', status: 'active', reports_to: 'lead-1' },
+      { id: 'emp-b', first_name: 'Ben', role: 'employee', status: 'active', reports_to: 'lead-2' },
+      { id: 'lead-1', first_name: 'Lead', role: 'lead', status: 'active' },
+      { id: 'inactive', first_name: 'Old', role: 'employee', status: 'inactive' },
+    ]
+
+    expect(getTaskAssigneeUsers(users, { id: 'manager-1' }).map((item) => item.id)).toEqual(['emp-a', 'emp-b'])
   })
 })
 

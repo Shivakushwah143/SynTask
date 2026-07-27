@@ -2,13 +2,28 @@ import { normalizeRole } from '../utils/roles'
 
 export function normalizeEstimatedHours(value) {
   const hours = Number(value)
-  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return null
+  if (!Number.isFinite(hours) || hours <= 0) return null
   return String(hours)
 }
 
 export const getUserDisplayName = (user) => {
   if (!user) return ''
   return user.name || [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email || ''
+}
+
+export const getTaskAssigneeUsers = (users = [], currentUser = null) => {
+  const currentUserId = currentUser?.id || currentUser?._id
+  const seen = new Set()
+
+  return users.filter((item) => {
+    const id = String(item?.id || item?._id || '')
+    const role = normalizeRole(item?.role)
+    if (!id || seen.has(id) || id === String(currentUserId || '')) return false
+    if (item?.status && String(item.status).toLowerCase() !== 'active') return false
+    if (!['employee', 'junior'].includes(role)) return false
+    seen.add(id)
+    return true
+  })
 }
 
 export const getProjectRoleNames = (projectRecord = {}, assignableUsers = [], currentUser = null) => {

@@ -269,7 +269,7 @@ export default function InterviewsPage() {
   const query = useQuery(["recruitment", "interviews", params], () => recruitmentApi.getInterviews(params));
   const candidatesQuery = useQuery(["recruitment", "interviewCandidates"], () => recruitmentApi.getCandidates({ page: 1, page_size: 100 }), { staleTime: 5 * 60 * 1000 });
   const jobsQuery = useQuery(["recruitment", "interviewJobs"], () => recruitmentApi.getJobs({ page: 1, page_size: 100 }), { staleTime: 5 * 60 * 1000 });
-  const interviewersQuery = useQuery(["recruitment", "interviewers"], () => usersAPI.getAssignableUsers(), { staleTime: 5 * 60 * 1000 });
+  const interviewersQuery = useQuery(["recruitment", "interviewers"], () => usersAPI.getAssignableUsersWithJuniors(), { staleTime: 5 * 60 * 1000 });
   
   const interviews = toArray(query.data);
   const candidates = toArray(candidatesQuery.data);

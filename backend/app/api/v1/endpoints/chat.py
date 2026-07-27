@@ -14,11 +14,17 @@ from app.api.dependencies import (
     get_current_user,
     check_company_access,
 )
-from app.core.config import settings
 from app.core.clock import utc_now
+from app.api.v1.endpoints.files import UPLOAD_DIR
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def utc_iso(value):
+    if value is None:
+        return None
+    return value.isoformat().replace("+00:00", "Z") if value.tzinfo else f"{value.isoformat()}Z"
 
 
 @router.post("/conversations")
@@ -66,9 +72,9 @@ async def create_or_get_conversation(
             "id": str(existing_conversation.id),
             "participants": existing_conversation.participants,
             "last_message": existing_conversation.last_message,
-            "last_message_at": existing_conversation.last_message_at,
+            "last_message_at": utc_iso(existing_conversation.last_message_at),
             "unread_count": existing_conversation.unread_count.get(str(current_user.id), 0),
-            "created_at": existing_conversation.created_at,
+            "created_at": utc_iso(existing_conversation.created_at),
         }
     
     # Create new conversation
@@ -87,7 +93,7 @@ async def create_or_get_conversation(
         "last_message": None,
         "last_message_at": None,
         "unread_count": 0,
-        "created_at": conversation.created_at,
+        "created_at": utc_iso(conversation.created_at),
     }
 
 
@@ -146,9 +152,9 @@ async def list_conversations(
             "group_name": conv.group_name,
             "group_admins": conv.group_admins if conv.is_group else [],
             "last_message": conv.last_message,
-            "last_message_at": conv.last_message_at,
+            "last_message_at": utc_iso(conv.last_message_at),
             "unread_count": conv.unread_count.get(str(current_user.id), 0),
-            "created_at": conv.created_at,
+            "created_at": utc_iso(conv.created_at),
         })
     
     return {"conversations": result}
@@ -215,7 +221,7 @@ async def get_messages(
                 "file_size": msg.file_size,
                 "file_type": msg.file_type,
                 "read_by": msg.read_by,
-                "created_at": msg.created_at,
+                "created_at": utc_iso(msg.created_at),
                 "is_edited": msg.is_edited,
             }
             for msg in messages
@@ -271,13 +277,11 @@ async def send_message(
             message_type = MessageType.FILE
         
         # Save file
-        import os
         import uuid
         from pathlib import Path
-        from app.core.config import settings
         
         # Create uploads directory if it doesn't exist
-        upload_dir = Path(settings.UPLOAD_DIR) / "chat"
+        upload_dir = UPLOAD_DIR / "chat"
         upload_dir.mkdir(parents=True, exist_ok=True)
         
         # Generate unique filename
@@ -361,7 +365,7 @@ async def send_message(
         "file_name": message.file_name,
         "file_size": message.file_size,
         "file_type": message.file_type,
-        "created_at": message.created_at,
+        "created_at": utc_iso(message.created_at),
     }
 
 
@@ -545,7 +549,7 @@ async def create_group(
         "is_group": True,
         "participants": participants_info,
         "group_admins": conversation.group_admins,
-        "created_at": conversation.created_at,
+        "created_at": utc_iso(conversation.created_at),
     }
 
 
@@ -599,7 +603,7 @@ async def get_group_details(
         "participants": participants_info,
         "group_admins": conversation.group_admins,
         "created_by": conversation.created_by,
-        "created_at": conversation.created_at,
+        "created_at": utc_iso(conversation.created_at),
     }
 
 
@@ -1050,5 +1054,3 @@ async def remove_group_admin(
             "name": target_user.full_name(),
         },
     }
-
-

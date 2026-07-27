@@ -158,6 +158,8 @@ Acceptance criteria:
 
 ## 5. AI-enabled Phase 2 scope
 
+**Partially Existing, 2026-07-25:** Milestone 12 introduced a unified personal AI workspace gateway at `POST /api/v1/ai-assistant/chat`. It is a controlled rollout path behind `VITE_UNIFIED_AI_ASSISTANT_ENABLED=false` by default on the frontend and existing backend `ai_agents`/Agent Platform gates. The gateway creates or validates server-owned conversation and Working Memory session identifiers, validates submitted workspace context against backend authorization, builds a sectioned Personal ContextPackage, applies backend role capability packs, and deterministically routes to governed agent profiles. The existing AI Chat page now presents the personal AI workspace metadata when available: selected agent, routing reason, confidence, warnings, citations, memory status, proposal-only status, and missing/conflicting data. Personal AI memory controls are available at `/api/v1/ai-assistant/memory*` and reuse `UserMemory` for user-owned professional preferences only. Complete legacy parity, full rollout, and broad production verification remain open until Milestone 12 evidence marks them complete.
+
 | Feature | Status | Product behavior |
 |---|---|---|
 | Project Agent | Proposed | One isolated agent context per project, created lazily when AI is enabled for a project. |

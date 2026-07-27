@@ -161,6 +161,32 @@ flowchart TB
 ```
 
 ```mermaid
+flowchart TB
+    User[Authenticated user] --> ReactAI[Existing AI Chat and Assistant Dialog]
+    ReactAI --> Flag{Unified rollout flag}
+    Flag -->|enabled| Gateway[POST /ai-assistant/chat]
+    Flag -->|disabled| Legacy[Legacy /ai/chat fallback]
+
+    Gateway --> Auth[Backend tenant, module, role and record checks]
+    Auth --> Conversation[Server-owned AIConversation]
+    Auth --> Session[Server-owned Working Memory session]
+    Auth --> Capability[Role Capability Pack]
+    Capability --> Router[Deterministic Agent Router]
+    Session --> PersonalContext[Sectioned Personal ContextPackage]
+    Conversation --> PersonalContext
+    Memory[User-controlled UserMemory preferences] --> PersonalContext
+    Router --> PersonalContext
+    PersonalContext --> Orchestrator[Central Agent Orchestrator]
+    Orchestrator --> ProviderRouter[Central Provider Router]
+    ProviderRouter --> ProviderEnvelope[Sanitized provider context envelope]
+    Orchestrator --> Audit[Agent run and AI log telemetry]
+
+    Conversation --> Mongo[(MongoDB)]
+    Memory --> Mongo
+    Session --> Redis[(Redis)]
+```
+
+```mermaid
 sequenceDiagram
     participant User
     participant Orchestrator as Agent Orchestrator

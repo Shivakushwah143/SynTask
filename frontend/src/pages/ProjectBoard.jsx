@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { format } from 'date-fns'
 import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
 import {
   DndContext,
@@ -32,8 +31,9 @@ import { useMediaQuery } from '../hooks/useMediaQuery'
 import { canCreateTask, canManageProject, hasCompanyAdminAccess, isLeadRole, normalizeRole } from '../utils/roles'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
-import { getProjectRoleAssignmentIds, getProjectRoleNames, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
+import { getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
 import { timeService } from '../services/timeService'
+import { excludeCurrentUser } from '../utils/userFilters'
 
 const DEFAULT_STATUSES = [
   { id: 'todo', label: 'To Do' },
@@ -155,6 +155,8 @@ export default function ProjectBoard() {
   const [createTaskPriority, setCreateTaskPriority] = useState('medium')
   const [createMode, setCreateMode] = useState('now')
   const [scheduleRunAt, setScheduleRunAt] = useState('')
+  const [createDueDate, setCreateDueDate] = useState('')
+  const [createEstimatedHours, setCreateEstimatedHours] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('todo')
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES)
   const [submitting, setSubmitting] = useState(false)
@@ -198,17 +200,14 @@ export default function ProjectBoard() {
 
   const loadAssignableUsers = useCallback(async () => {
     try {
-      const [taskAssignableData, projectAssignableData] = await Promise.all([
-        usersAPI.getAssignableUsers(false, projectId),
-        usersAPI.listUsers(null, null, 'active', 0, 500),
-      ])
-      setAssignableUsers(taskAssignableData.users || [])
-      setProjectAssignableUsers(projectAssignableData.users || [])
+      const projectAssignableData = await usersAPI.getAssignableUsers(false)
+      setAssignableUsers(getTaskAssigneeUsers(projectAssignableData.users || [], user))
+      setProjectAssignableUsers(excludeCurrentUser(projectAssignableData.users || [], user))
     } catch (error) {
       setAssignableUsers([])
       setProjectAssignableUsers([])
     }
-  }, [projectId])
+  }, [user])
 
   const loadBoardData = useCallback(async () => {
     try {
@@ -311,9 +310,11 @@ export default function ProjectBoard() {
   const handleCreateTask = async (event) => {
     event.preventDefault()
     const formData = new FormData(event.target)
-    const estimatedHours = normalizeEstimatedHours(formData.get('estimated_hours'))
+    // prefer controlled suggestion value when present
+    const estimatedValue = createEstimatedHours || formData.get('estimated_hours')
+    const estimatedHours = normalizeEstimatedHours(estimatedValue)
     if (!estimatedHours) {
-      toast.error('Estimated hours must be greater than 0 and no more than 24')
+      toast.error('Estimated hours must be greater than 0')
       return
     }
     try {
@@ -323,7 +324,7 @@ export default function ProjectBoard() {
         description: formData.get('description') || '',
         priority: formData.get('priority') || createTaskPriority || 'medium',
         assigned_to: taskAssigneeId || null,
-        due_date: timeService.zonedInputToUtcISOString(formData.get('due_date')),
+        due_date: timeService.zonedInputToUtcISOString(createDueDate || formData.get('due_date')),
         estimated_hours: estimatedHours,
         project_id: projectId,
         status: selectedStatus,
@@ -373,6 +374,34 @@ export default function ProjectBoard() {
     setAssignmentManagerId(roleIds.manager)
     setAssignmentLeaderId(roleIds.lead || projectRecord.lead_id || '')
     setShowAssignModal(true)
+  }
+
+  // Calculate working hours between two Date objects considering office hours 10:00-19:00
+  function calcWorkingHoursSuggestion(startDate, endDate) {
+    if (!startDate || !endDate || endDate <= startDate) return ''
+    const start = timeService.instant(startDate)
+    const end = timeService.instant(endDate)
+    const MS_PER_HOUR = 1000 * 60 * 60
+    let total = 0
+    let cursor = new Date(start)
+    // iterate day by day
+    while (cursor < end) {
+      const year = cursor.getFullYear()
+      const month = cursor.getMonth()
+      const day = cursor.getDate()
+      const workStart = new Date(year, month, day, 10, 0, 0)
+      const workEnd = new Date(year, month, day, 19, 0, 0)
+      const segmentStart = cursor > workStart ? cursor : workStart
+      const segmentEnd = end < workEnd ? end : workEnd
+      if (segmentEnd > segmentStart) {
+        total += (segmentEnd.getTime() - segmentStart.getTime()) / MS_PER_HOUR
+      }
+      // advance to next day at 00:00
+      cursor = new Date(year, month, day + 1, 0, 0, 0)
+    }
+    // round to nearest 0.25
+    const rounded = Math.round(total * 4) / 4
+    return Math.max(rounded, 0.25)
   }
 
   const handleAssignProject = async (event) => {
@@ -853,7 +882,7 @@ export default function ProjectBoard() {
               canCreate={canAssignProject}
             >
               <option value="">No leader</option>
-              {leaderAssignmentOptions.map((item) => <option key={item.id} value={item.id}>{getUserDisplayName(item)} ({item.role})</option>)}
+              {leaderAssignmentOptions.map((item) => <option key={item.id || item._id} value={item.id || item._id}>{getUserDisplayName(item)} ({item.role})</option>)}
             </CreatableSelectField>
           </FormField>
           <div className="flex justify-end gap-2 pt-2">
@@ -981,24 +1010,39 @@ export default function ProjectBoard() {
                 ))}
               </select>
             </FormField>
-            <FormField label="Due date" required>
-              <input type="datetime-local" name="due_date" required className={inputClassName} />
-            </FormField>
-            <FormField label="Estimated hours" required>
-              <input
-                type="number"
-                name="estimated_hours"
-                min="0.25"
-                max="24"
-                step="0.25"
-                required
-                className={inputClassName}
-                placeholder="8"
-                onInput={(event) => {
-                  if (Number(event.currentTarget.value) > 24) event.currentTarget.value = '24'
-                }}
-              />
-            </FormField>
+              <FormField label="Due date" required>
+                <input
+                  type="datetime-local"
+                  name="due_date"
+                  required
+                  className={inputClassName}
+                  value={createDueDate}
+                  onChange={(e) => {
+                    setCreateDueDate(e.target.value)
+                    // compute suggestion
+                    try {
+                      const parsed = timeService.parseZonedInput(e.target.value)
+                      const suggestion = calcWorkingHoursSuggestion(timeService.now(), parsed)
+                      setCreateEstimatedHours(suggestion ? String(suggestion) : '')
+                    } catch (err) {
+                      // ignore
+                    }
+                  }}
+                />
+              </FormField>
+              <FormField label="Estimated hours" required>
+                <input
+                  type="number"
+                  name="estimated_hours"
+                  min="0.25"
+                  step="0.25"
+                  required
+                  className={inputClassName}
+                  placeholder="Suggested"
+                  value={createEstimatedHours}
+                  onChange={(e) => setCreateEstimatedHours(e.target.value)}
+                />
+              </FormField>
           </div>
           <FormField label="Assign to">
             <CreatableSelectField
@@ -1011,13 +1055,21 @@ export default function ProjectBoard() {
               canCreate={canManageColumns}
             >
               <option value="">Unassigned</option>
-              {assignableUsers.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name}</option>)}
+              {assignableUsers.map((item) => <option key={item.id || item._id} value={item.id || item._id}>{getUserDisplayName(item)}</option>)}
             </CreatableSelectField>
           </FormField>
           <div className="rounded-xl border border-gray-200 p-3 dark:border-[var(--color-app-border)]">
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant={createMode === 'now' ? 'primary' : 'secondary'} onClick={() => setCreateMode('now')}>Create now</Button>
-              <Button type="button" variant={createMode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setCreateMode('schedule')}>Schedule</Button>
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={createMode === 'schedule'}
+                  onChange={(e) => setCreateMode(e.target.checked ? 'schedule' : 'now')}
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Schedule task</span>
+              </label>
+              <span className="text-xs text-gray-500">(check to set a future run time)</span>
             </div>
             {createMode === 'schedule' && (
               <FormField label="Schedule for" required>
