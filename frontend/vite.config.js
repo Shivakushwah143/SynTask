@@ -19,7 +19,7 @@ server: {
   allowedHosts: ["synzent.ai", "www.synzent.ai"],
   proxy: {
     '/api': {
-      target: 'http://localhost:8000',
+      target: 'http://127.0.0.1:8000',
       changeOrigin: true,
     },
   },

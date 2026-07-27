@@ -143,6 +143,7 @@ class Settings(BaseSettings):
     
     # Redis (for caching and Celery)
     REDIS_URL: str = Field(..., description="Redis URL for token blacklist and rate limiting.")
+    DISABLE_REDIS: bool = False
     ENABLE_TOKEN_REVOCATION: bool = True
     REDIS_CONNECT_TIMEOUT_SECONDS: float = 2.0
     REDIS_OPERATION_TIMEOUT_SECONDS: float = 2.0
