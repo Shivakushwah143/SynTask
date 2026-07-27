@@ -1,2611 +1,2320 @@
 import { useState, useEffect, useRef } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { Link, Routes, Route, useLocation } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowRight,
-  BarChart3,
-  BadgeDollarSign,
-  BrainCircuit,
-  Check,
+  Calendar,
+  CheckCircle2,
   ChevronDown,
-  ChevronRight,
   ChevronLeft,
-  Clock3,
+  ChevronRight,
+  Clock,
+  Code,
+  DollarSign,
+  FileText,
   Globe,
-  Headphones,
-  Layers3,
+  Layers,
+  LayoutDashboard,
   Mail,
-  MapPin,
   Menu,
   MessageSquare,
   Moon,
-  Play,
-  ShieldCheck,
+  Plus,
+  Search,
+  Settings,
   Sparkles,
   Star,
   Sun,
-  Workflow,
+  TrendingUp,
+  Users,
   X,
   Zap,
-  Clock,
-  CheckCircle,
-  Heart,
-  Phone,
-  FileText,
-  Rocket,
-  TrendingUp,
-  Monitor,
-  Factory,
-  Scale,
-  Hotel,
-  HardHat,
-  Landmark,
-  UtensilsCrossed,
-  User,
-  LogIn,
-  Settings,
-  HelpCircle,
 } from 'lucide-react'
-import { useTheme } from '../hooks/useTheme'
 
-const navItems = [
-  { label: 'Features', href: '#features' },
-  { label: 'Solutions', href: '#solutions' },
-  { label: 'How it works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#pricing' },
-  { label: 'FAQ', href: '#faq' },
-]
-
-const stats = [
-  { value: '500+', label: 'Agencies onboarded' },
-  { value: '2.4x', label: 'Faster delivery cycles' },
-  { value: '94%', label: 'Renewal rate' },
-  { value: '18h', label: 'Saved weekly per team' },
-]
-
-const solutions = [
-  {
-    title: 'Project delivery',
-    description: 'Plan campaigns, manage tasks, and keep every client deliverable moving on schedule.',
-    image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1200&h=800&fit=crop',
-  },
-  {
-    title: 'Sales pipeline',
-    description: 'Track leads, proposals, and follow-ups in a pipeline built for agency growth.',
-    image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&h=800&fit=crop',
-  },
-  {
-    title: 'Client operations',
-    description: 'Centralize support, billing, approvals, and communication without switching tools.',
-    image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1200&h=800&fit=crop',
-  },
-]
-
-const features = [
-  { icon: Workflow, title: 'Task Management', description: 'Structure work by client, project, and team with clear ownership.' },
-  { icon: BarChart3, title: 'CRM Pipeline', description: 'Move every lead through a sales process designed for agencies.' },
-  { icon: Headphones, title: 'Support Ticketing', description: 'Handle client requests with SLA-aware ticket queues.' },
-  { icon: Clock3, title: 'Time Tracking', description: 'Capture billable and non-billable time with minimal friction.' },
-  { icon: BadgeDollarSign, title: 'Invoicing', description: 'Create polished invoices and recurring billing from the same workspace.' },
-  { icon: BrainCircuit, title: 'AI Insights', description: 'Spot risk, bottlenecks, and revenue opportunities faster.' },
-]
-
-const testimonialsData = [
-  {
-    quote: 'SynTask transformed our agency operations. We are 2x more efficient.',
-    name: 'Sarah Chen',
-    role: 'CEO, DigitalFlow',
-    image: 'https://images.unsplash.com/photo-1494790108378-be9c29b29330?w=120&h=120&fit=crop&crop=face',
-  },
-  {
-    quote: 'The all-in-one platform we have been searching for.',
-    name: 'Mike Rodriguez',
-    role: 'Operations Director, CreativeHub',
-    image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face',
-  },
-  {
-    quote: 'Finally, a tool that understands how agencies work.',
-    name: 'Emma Thompson',
-    role: 'Managing Partner, GrowthAgency',
-    image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=120&h=120&fit=crop&crop=face',
-  },
-]
-
-const pricing = [
-  {
-    name: 'Starter',
-    price: '$29',
-    period: '/mo',
-    description: 'Best for small teams getting organized.',
-    features: ['5 users', 'Task management', 'CRM pipeline', 'Basic reporting'],
-    accent: false,
-  },
-  {
-    name: 'Professional',
-    price: '$79',
-    period: '/mo',
-    description: 'The growth plan for scaling agencies.',
-    features: ['20 users', 'All features', 'Automation', 'Advanced analytics'],
-    accent: true,
-  },
-  {
-    name: 'Enterprise',
-    price: 'Custom',
-    period: '',
-    description: 'For high-volume teams with dedicated support needs.',
-    features: ['Unlimited users', 'Dedicated support', 'Custom onboarding', 'SLA controls'],
-    accent: false,
-  },
-]
-
-const faqs = [
-  {
-    question: 'Can SynTask replace our existing project, CRM, and billing stack?',
-    answer:
-      'Yes. SynTask is designed as an agency operating system so you can consolidate project delivery, sales, support, and billing into one workspace.',
-  },
-  {
-    question: 'Is the platform suitable for digital marketing agencies?',
-    answer:
-      'Yes. The workflows, views, and reporting were built around the day-to-day needs of creative, performance, and growth teams.',
-  },
-  {
-    question: 'Can we onboard our team quickly?',
-    answer:
-      'Absolutely. Most teams can set up the core workspace, add clients, and start tracking work in a single onboarding cycle.',
-  },
-  {
-    question: 'Do you support recurring billing and invoices?',
-    answer:
-      'Yes. You can create invoices, manage recurring billing, and keep revenue data connected to the right client and project context.',
-  },
-]
-
-const compareRows = [
-  ['Project delivery', false, true, true],
-  ['CRM pipeline', false, true, true],
-  ['Support tickets', false, false, true],
-  ['Time tracking', false, true, true],
-  ['Billing + invoices', false, false, true],
-  ['Agency reporting', false, false, true],
-]
-
-// TrustedBy Component Data
-const logos = [
-  { name: "Accenture", abbr: "AC" },
-  { name: "Deloitte", abbr: "DL" },
-  { name: "McKinsey", abbr: "MC" },
-  { name: "Bosch", abbr: "BS" },
-  { name: "Siemens", abbr: "SI" },
-  { name: "Honeywell", abbr: "HW" },
-  { name: "Infosys", abbr: "IF" },
-  { name: "Wipro", abbr: "WP" },
-  { name: "Cognizant", abbr: "CG" },
-  { name: "HCLTech", abbr: "HC" },
-  { name: "Philips", abbr: "PH" },
-  { name: "3M", abbr: "3M" },
-]
-
-// Statistics Component Data
-const statsData = [
-  { value: 48, suffix: "h", label: "Average Team Deployment", sublabel: "From kickoff to first commit", icon: Clock, color: "#25eb46" },
-  { value: 250, suffix: "+", label: "Projects Delivered", sublabel: "Across 12 industries globally", icon: CheckCircle, color: "#46b5e5" },
-  { value: 95, suffix: "%", label: "Client Retention", sublabel: "Long-term partnership model", icon: Heart, color: "#7C3AED" },
-  { value: 24, suffix: "/7", label: "Managed Support", sublabel: "Always-on NOC & L1–L3", icon: Headphones, color: "#10B981" },
-  { label: "Global Delivery", sublabel: "USA + India Delivery Centers", icon: Globe, color: "#F59E0B", custom: "2 Hubs" },
-]
-
-// HowItWorks Component Data
-const howItWorksSteps = [
-  {
-    icon: Phone,
-    number: "01",
-    title: "Discovery Call",
-    description: "We map your business challenges, existing stack, and goals in a focused 60-minute session with our solutions architects.",
-    duration: "Day 1",
-    color: "#2563EB",
-  },
-  {
-    icon: FileText,
-    number: "02",
-    title: "Solution Blueprint",
-    description: "Our team delivers a detailed technical and operational blueprint: team structure, tech stack, timelines, and ROI projections.",
-    duration: "Days 2–3",
-    color: "#4F46E5",
-  },
-  {
-    icon: Rocket,
-    number: "03",
-    title: "Team Deployment",
-    description: "Vetted engineers and AI specialists are onboarded to your project. Credentials, repos, and comms channels set up in hours.",
-    duration: "Days 3–5",
-    color: "#7C3AED",
-  },
-  {
-    icon: Play,
-    number: "04",
-    title: "Execution & Delivery",
-    description: "Sprints begin. Weekly demos, async standups, and full transparency via your preferred project management tools.",
-    duration: "Week 2+",
-    color: "#0891B2",
-  },
-  {
-    icon: TrendingUp,
-    number: "05",
-    title: "Optimization & Scale",
-    description: "Continuous improvement cycles. We scale teams up or down, introduce AI automation, and optimize for long-term business outcomes.",
-    duration: "Ongoing",
-    color: "#10B981",
-  },
-]
-
-// Industries Component Data
-const industries = [
-  { name: "Information Technology", icon: Monitor, color: "#2563EB", desc: "Digital transformation, product engineering, cloud migration" },
-  { name: "Manufacturing", icon: Factory, color: "#4F46E5", desc: "Smart factory, predictive maintenance, QA automation" },
-  { name: "Legal", icon: Scale, color: "#7C3AED", desc: "Document automation, compliance, contract intelligence" },
-  { name: "Healthcare", icon: Heart, color: "#EF4444", desc: "Patient ops, claims processing, clinical AI" },
-  { name: "Hospitality", icon: Hotel, color: "#F59E0B", desc: "Guest experience, booking ops, revenue management" },
-  { name: "Construction", icon: HardHat, color: "#EA580C", desc: "Project tracking, safety compliance, BIM integration" },
-  { name: "Finance", icon: Landmark, color: "#0891B2", desc: "Risk management, regulatory reporting, fraud detection" },
-  { name: "Food & Beverage", icon: UtensilsCrossed, color: "#10B981", desc: "Supply chain, inventory ops, demand forecasting" },
-]
-
-const sectionVariants = {
-  hidden: { opacity: 0, y: 28 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.6, ease: 'easeOut' },
-  },
-}
-
-const staggerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.12 },
-  },
-}
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 18 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.45 } },
-}
-
-const themeTheme = {
-  surface: 'bg-[var(--color-app-surface)]',
-  muted: 'bg-[var(--color-app-surface-muted)]',
-  border: 'border-[var(--color-app-border)]',
-  text: 'text-[var(--color-app-text)]',
-  textSecondary: 'text-[var(--color-app-text-secondary)]',
-}
-
-function SectionHeading({ eyebrow, title, description, center = false }) {
-  return (
-    <div className={center ? 'mx-auto max-w-3xl text-center' : 'max-w-3xl'}>
-      <motion.p
-        variants={itemVariants}
-        className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary-200 bg-primary-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary-700"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        {eyebrow}
-      </motion.p>
-      <motion.h2 variants={itemVariants} className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">
-        {title}
-      </motion.h2>
-      <motion.p variants={itemVariants} className={`mt-5 text-base leading-8 sm:text-lg ${themeTheme.textSecondary}`}>
-        {description}
-      </motion.p>
-    </div>
-  )
-}
-
-function ImageCard({ image, title, description, badge, className = '' }) {
-  return (
-    <motion.article
-      variants={itemVariants}
-      whileHover={{ y: -6 }}
-      className={`overflow-hidden rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface} shadow-[0_20px_60px_rgba(15,23,42,0.08)] ${className}`}
-    >
-      <div className="relative aspect-[4/3] overflow-hidden">
-        <img src={image} alt={title} className="h-full w-full object-cover transition duration-700 hover:scale-105" />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-transparent" />
-        <div className="absolute left-5 top-5 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-700">
-          {badge}
-        </div>
-      </div>
-      <div className="p-6">
-        <h3 className="text-xl font-bold text-[var(--color-app-text)]">{title}</h3>
-        <p className={`mt-3 text-sm leading-7 ${themeTheme.textSecondary}`}>{description}</p>
-        <div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary-700">
-          Learn more
-          <ChevronRight className="h-4 w-4" />
-        </div>
-      </div>
-    </motion.article>
-  )
-}
-
-function StatCard({ value, label }) {
-  return (
-    <motion.div
-      variants={itemVariants}
-      whileHover={{ y: -4 }}
-      className={`rounded-[1.75rem] border ${themeTheme.border} ${themeTheme.surface} p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]`}
-    >
-      <div className="text-3xl font-black tracking-tight text-[var(--color-app-text)]">{value}</div>
-      <div className={`mt-2 text-sm font-medium ${themeTheme.textSecondary}`}>{label}</div>
-    </motion.div>
-  )
-}
-
-// ---- TrustedBy Component ----
-function LogoChip({ name, abbr }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "10px 24px",
-        background: "white",
-        border: "1px solid #E2E8F0",
-        borderRadius: 10,
-        flexShrink: 0,
-        whiteSpace: "nowrap",
-      }}
-    >
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: "linear-gradient(135deg, #1E3A5F, #2563EB)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
-          fontSize: 11,
-          fontWeight: 800,
-          color: "white",
-          letterSpacing: "0.02em",
-        }}
-      >
-        {abbr}
-      </div>
-      <span
-        style={{
-          fontFamily: "'Inter', sans-serif",
-          fontSize: 14,
-          fontWeight: 600,
-          color: "#64748B",
-          letterSpacing: "-0.01em",
-        }}
-      >
-        {name}
-      </span>
-    </div>
-  );
-}
-
-function TrustedBy() {
-  const trackRef = useRef(null);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    let pos = 0;
-    let rafId;
-    const speed = 0.5;
-
-    function tick() {
-      pos -= speed;
-      const half = track.scrollWidth / 2;
-      if (Math.abs(pos) >= half) pos = 0;
-      track.style.transform = `translateX(${pos}px)`;
-      rafId = requestAnimationFrame(tick);
+// ============================================
+// THEME CONTEXT
+// ============================================
+const useTheme = () => {
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') || 'light'
     }
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
+    return 'light'
+  })
 
-  const allLogos = [...logos, ...logos];
-
-  return (
-    <section style={{ padding: "64px 0", background: "#F8FAFC", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto", paddingBottom: 32, textAlign: "center" }}>
-        <p
-          style={{
-            fontFamily: "'Inter', sans-serif",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#94A3B8",
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-          }}
-        >
-          Trusted by Industry Leaders
-        </p>
-      </div>
-
-      <div style={{ overflow: "hidden", position: "relative" }}>
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 120,
-            background: "linear-gradient(to right, #F8FAFC, transparent)",
-            zIndex: 2,
-            pointerEvents: "none",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: 120,
-            background: "linear-gradient(to left, #F8FAFC, transparent)",
-            zIndex: 2,
-            pointerEvents: "none",
-          }}
-        />
-
-        <div
-          ref={trackRef}
-          style={{
-            display: "flex",
-            gap: 12,
-            willChange: "transform",
-            width: "max-content",
-          }}
-        >
-          {allLogos.map((logo, i) => (
-            <LogoChip key={`${logo.name}-${i}`} name={logo.name} abbr={logo.abbr} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---- Statistics Component ----
-function useCountUp(target, duration, start) {
-  const [count, setCount] = useState(0);
   useEffect(() => {
-    if (!start) return;
-    let startTime = null;
-    function tick(ts) {
-      if (!startTime) startTime = ts;
-      const progress = Math.min((ts - startTime) / (duration * 1000), 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.floor(ease * target));
-      if (progress < 1) requestAnimationFrame(tick);
+    const root = document.documentElement
+    if (theme === 'dark') {
+      root.classList.add('dark')
+    } else {
+      root.classList.remove('dark')
     }
-    requestAnimationFrame(tick);
-  }, [target, duration, start]);
-  return count;
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
+
+  return { theme, toggleTheme }
 }
 
-function StatCardWithCount({ stat, inView }) {
-  const count = useCountUp(stat.value ?? 0, 1.5, inView);
-  const Icon = stat.icon;
-
-  return (
-    <div
-      style={{
-        background: "white",
-        border: "1px solid #E2E8F0",
-        borderRadius: 16,
-        padding: 32,
-        position: "relative",
-        overflow: "hidden",
-        transition: "transform 0.2s, box-shadow 0.2s",
-        cursor: "default",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "translateY(-4px)";
-        e.currentTarget.style.boxShadow = "0 16px 40px rgba(15,23,42,0.1)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.boxShadow = "none";
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 3,
-          background: `linear-gradient(90deg, ${stat.color}, ${stat.color}88)`,
-        }}
-      />
-
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 12,
-          background: `${stat.color}12`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: 20,
-        }}
-      >
-        <Icon size={22} color={stat.color} />
-      </div>
-
-      <div
-        style={{
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
-          fontSize: 44,
-          fontWeight: 800,
-          color: "#0F172A",
-          letterSpacing: "-0.03em",
-          lineHeight: 1,
-          marginBottom: 8,
-        }}
-      >
-        {stat.custom ? stat.custom : `${count}${stat.suffix}`}
-      </div>
-
-      <div
-        style={{
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
-          fontSize: 16,
-          fontWeight: 600,
-          color: "#0F172A",
-          marginBottom: 4,
-        }}
-      >
-        {stat.label}
-      </div>
-      <div
-        style={{
-          fontFamily: "'Inter', sans-serif",
-          fontSize: 13,
-          color: "#94A3B8",
-        }}
-      >
-        {stat.sublabel}
-      </div>
-    </div>
-  );
-}
-
-function Statistics() {
-  const ref = useRef(null);
-  const [inView, setInView] = useState(false);
+// ============================================
+// NAVBAR
+// ============================================
+const Navbar = () => {
+  const { theme, toggleTheme } = useTheme()
+  const location = useLocation()
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+  const [solutionsOpen, setSolutionsOpen] = useState(false)
+  const [companyOpen, setCompanyOpen] = useState(false)
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setInView(true); },
-      { threshold: 0.2 }
-    );
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, []);
+    const handleScroll = () => setScrolled(window.scrollY > 20)
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
-  return (
-    <section ref={ref} style={{ padding: "96px 24px", background: "#FAFBFC" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 56 }}>
-          <p
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#2563EB",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              marginBottom: 12,
-            }}
-          >
-            Our Track Record
-          </p>
-          <h2
-            style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontSize: "clamp(28px, 4vw, 48px)",
-              fontWeight: 800,
-              color: "#0F172A",
-              letterSpacing: "-0.02em",
-              lineHeight: 1.2,
-            }}
-          >
-            Numbers that define our impact
-          </h2>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 20,
-          }}
-        >
-          {statsData.map((stat) => (
-            <StatCardWithCount key={stat.label} stat={stat} inView={inView} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---- HowItWorks Component ----
-function HowItWorks() {
-  const [activeStep, setActiveStep] = useState(0);
-
-  return (
-    <section style={{ padding: "96px 24px", background: "#F8FAFC" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 56 }}>
-          <p
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#2563EB",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              marginBottom: 12,
-            }}
-          >
-            How It Works
-          </p>
-          <h2
-            style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontSize: "clamp(28px, 4vw, 48px)",
-              fontWeight: 800,
-              color: "#0F172A",
-              letterSpacing: "-0.02em",
-              lineHeight: 1.2,
-              marginBottom: 16,
-            }}
-          >
-            From first call to full operation
-          </h2>
-          <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, color: "#475569", maxWidth: 480, margin: "0 auto" }}>
-            A structured process built for enterprise speed and reliability.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 0,
-            marginBottom: 48,
-            background: "#E2E8F0",
-            borderRadius: 100,
-            overflow: "hidden",
-            height: 4,
-          }}
-        >
-          <div
-            style={{
-              height: "100%",
-              background: "linear-gradient(90deg, #2563EB, #10B981)",
-              borderRadius: 100,
-              transition: "width 0.5s ease",
-              width: `${((activeStep + 1) / howItWorksSteps.length) * 100}%`,
-            }}
-          />
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 40,
-            overflowX: "auto",
-            paddingBottom: 4,
-          }}
-        >
-          {howItWorksSteps.map((step, i) => (
-            <button
-              key={step.number}
-              onClick={() => setActiveStep(i)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "10px 18px",
-                borderRadius: 100,
-                border: "none",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                fontFamily: "'Inter', sans-serif",
-                fontSize: 13,
-                fontWeight: 600,
-                transition: "all 0.2s",
-                background: activeStep === i ? step.color : "white",
-                color: activeStep === i ? "white" : "#64748B",
-                boxShadow: activeStep === i ? `0 2px 8px ${step.color}30` : "0 0 0 1px #E2E8F0",
-              }}
-            >
-              <span
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: "50%",
-                  background: activeStep === i ? "rgba(255,255,255,0.25)" : "#F1F5F9",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 11,
-                  fontWeight: 700,
-                }}
-              >
-                {step.number}
-              </span>
-              {step.title}
-            </button>
-          ))}
-        </div>
-
-        {(() => {
-          const step = howItWorksSteps[activeStep];
-          const Icon = step.icon;
-          return (
-            <div
-              key={activeStep}
-              style={{
-                background: "white",
-                border: `1px solid ${step.color}20`,
-                borderRadius: 20,
-                padding: 48,
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 48,
-                alignItems: "center",
-                animation: "fadeIn 0.3s ease",
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    background: `${step.color}10`,
-                    border: `1px solid ${step.color}20`,
-                    borderRadius: 100,
-                    padding: "6px 14px",
-                    marginBottom: 20,
-                  }}
-                >
-                  <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: 600, color: step.color }}>
-                    {step.duration}
-                  </span>
-                </div>
-                <h3
-                  style={{
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontSize: 36,
-                    fontWeight: 800,
-                    color: "#0F172A",
-                    letterSpacing: "-0.02em",
-                    marginBottom: 16,
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {step.title}
-                </h3>
-                <p
-                  style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: 16,
-                    color: "#475569",
-                    lineHeight: 1.7,
-                    marginBottom: 28,
-                  }}
-                >
-                  {step.description}
-                </p>
-                <button
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: step.color,
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                  onClick={() => setActiveStep((activeStep + 1) % howItWorksSteps.length)}
-                >
-                  {activeStep < howItWorksSteps.length - 1 ? "Next Step" : "Start Over"} <ArrowRight size={14} />
-                </button>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "center" }}>
-                <div
-                  style={{
-                    width: 200,
-                    height: 200,
-                    borderRadius: "50%",
-                    background: `linear-gradient(135deg, ${step.color}15, ${step.color}05)`,
-                    border: `2px solid ${step.color}20`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    position: "relative",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 120,
-                      height: 120,
-                      borderRadius: "50%",
-                      background: `linear-gradient(135deg, ${step.color}25, ${step.color}10)`,
-                      border: `2px solid ${step.color}30`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 72,
-                        height: 72,
-                        borderRadius: "50%",
-                        background: `linear-gradient(135deg, ${step.color}, ${step.color}CC)`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        boxShadow: `0 8px 24px ${step.color}40`,
-                      }}
-                    >
-                      <Icon size={32} color="white" />
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 12,
-                      right: 12,
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontSize: 48,
-                      fontWeight: 800,
-                      color: `${step.color}15`,
-                      letterSpacing: "-0.04em",
-                      lineHeight: 1,
-                    }}
-                  >
-                    {step.number}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-      </div>
-
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-    </section>
-  );
-}
-
-// ---- Industries Component ----
-function Industries() {
-  const [hovered, setHovered] = useState(null);
-
-  return (
-    <section id="industries" style={{ padding: "96px 24px", background: "#F8FAFC" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 56 }}>
-          <p
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#2563EB",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              marginBottom: 12,
-            }}
-          >
-            Industries We Serve
-          </p>
-          <h2
-            style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontSize: "clamp(28px, 4vw, 48px)",
-              fontWeight: 800,
-              color: "#0F172A",
-              letterSpacing: "-0.02em",
-              lineHeight: 1.2,
-              marginBottom: 16,
-            }}
-          >
-            Built for every vertical
-          </h2>
-          <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, color: "#475569", maxWidth: 480, margin: "0 auto" }}>
-            Deep domain expertise across industries that demand reliability, scale, and precision.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: 16,
-          }}
-        >
-          {industries.map((ind, i) => {
-            const Icon = ind.icon;
-            const isHovered = hovered === i;
-            return (
-              <div
-                key={ind.name}
-                onMouseEnter={() => setHovered(i)}
-                onMouseLeave={() => setHovered(null)}
-                style={{
-                  background: isHovered ? "white" : "white",
-                  border: `1px solid ${isHovered ? ind.color + "40" : "#E2E8F0"}`,
-                  borderRadius: 16,
-                  padding: "28px 24px",
-                  cursor: "default",
-                  transition: "all 0.2s ease",
-                  transform: isHovered ? "translateY(-4px)" : "translateY(0)",
-                  boxShadow: isHovered ? `0 12px 24px rgba(15,23,42,0.08)` : "none",
-                }}
-              >
-                <div
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 12,
-                    background: isHovered ? `linear-gradient(135deg, ${ind.color}, ${ind.color}AA)` : `${ind.color}12`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: 16,
-                    transition: "all 0.2s",
-                  }}
-                >
-                  <Icon size={22} color={isHovered ? "white" : ind.color} />
-                </div>
-                <h3
-                  style={{
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: "#0F172A",
-                    letterSpacing: "-0.01em",
-                    marginBottom: 6,
-                  }}
-                >
-                  {ind.name}
-                </h3>
-                <p
-                  style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: 13,
-                    color: "#64748B",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {ind.desc}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---- Testimonials Component ----
-function TestimonialsSection() {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [direction, setDirection] = useState(0);
-
-  const nextTestimonial = () => {
-    setDirection(1);
-    setActiveIndex((prev) => (prev + 1) % testimonialsData.length);
-  };
-
-  const prevTestimonial = () => {
-    setDirection(-1);
-    setActiveIndex((prev) => (prev - 1 + testimonialsData.length) % testimonialsData.length);
-  };
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      nextTestimonial();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const slideVariants = {
-    enter: (direction) => ({
-      x: direction > 0 ? 100 : -100,
-      opacity: 0,
-      scale: 0.95
-    }),
-    center: {
-      x: 0,
-      opacity: 1,
-      scale: 1,
-      transition: {
-        duration: 0.6,
-        ease: [0.4, 0, 0.2, 1]
-      }
+  const navLinks = [
+    { label: 'Features', href: '/#features' },
+    {
+      label: 'Solutions',
+      href: '#',
+      dropdown: true,
+      items: [
+        'Digital Marketing Agencies',
+        'Creative Agencies',
+        'IT Services Companies',
+        'Software Development Companies',
+        'Product Engineering Companies',
+      ],
     },
-    exit: (direction) => ({
-      x: direction < 0 ? 100 : -100,
-      opacity: 0,
-      scale: 0.95,
-      transition: {
-        duration: 0.5,
-        ease: [0.4, 0, 0.2, 1]
-      }
-    })
-  };
+    { label: 'AI Workforce', href: '/ai-workforce' },
+    { label: 'Pricing', href: '/pricing' },
+    { label: 'Resources', href: '/resources' },
+    {
+      label: 'Company',
+      href: '#',
+      dropdown: true,
+      items: ['About Us', 'Careers', 'Partners', 'Contact Us'],
+    },
+  ]
 
-  const floatingAnimation = {
-    initial: { y: 0 },
-    animate: {
-      y: [0, -8, 0],
-      transition: {
-        duration: 4,
-        repeat: Infinity,
-        ease: "easeInOut"
-      }
-    }
-  };
+  const isActive = (path) => {
+    if (path.startsWith('/#')) return location.pathname === '/' && location.hash === path.slice(1)
+    if (path === '/') return location.pathname === '/'
+    return location.pathname === path
+  }
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-      <motion.div 
-        variants={sectionVariants} 
-        initial="hidden" 
-        whileInView="visible" 
-        viewport={{ once: true, amount: 0.25 }}
-      >
-        <SectionHeading
-          eyebrow="Testimonials"
-          title="What our clients say about us"
-          description="Real stories from agencies that have transformed their operations with SynTask."
-        />
-      </motion.div>
-
-      <div className="mt-16">
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-[600px] h-[600px] rounded-full bg-gradient-to-br from-primary-100/20 to-violet-100/20 blur-3xl" />
+    <nav className={`sticky top-0 z-50 border-b border-gray-200 bg-white/80 backdrop-blur-xl transition-shadow dark:border-gray-800 dark:bg-gray-900/80 ${
+      scrolled ? 'shadow-lg' : ''
+    }`}>
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+        {/* Logo */}
+        <Link to="/" className="flex items-center gap-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-500">
+            <Layers className="h-5 w-5 text-white" />
           </div>
+          <div>
+            <div className="text-base font-extrabold leading-none text-gray-900 dark:text-white">SynTask</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Agency OS</div>
+          </div>
+        </Link>
 
-          <AnimatePresence mode="wait" custom={direction}>
-            <motion.div
-              key={activeIndex}
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              className="relative z-10"
-            >
-              <div className="grid gap-8 lg:grid-cols-[1fr_0.6fr] items-center">
-                <div className="space-y-8">
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.5, delay: 0.2 }}
-                    className="text-7xl font-serif text-primary-200 dark:text-primary-800"
-                  >
-                    &quot;
-                  </motion.div>
-
-                  <motion.blockquote
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.3 }}
-                    className="text-2xl font-light leading-relaxed text-slate-700 dark:text-slate-200 sm:text-3xl lg:text-4xl"
-                  >
-                    {testimonialsData[activeIndex].quote}
-                  </motion.blockquote>
-
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.4 }}
-                    className="flex items-center gap-6 pt-4"
-                  >
-                    <div className="relative">
-                      <div className="h-16 w-16 overflow-hidden rounded-full ring-4 ring-primary-100 dark:ring-primary-900">
-                        <img
-                          src={testimonialsData[activeIndex].image}
-                          alt={testimonialsData[activeIndex].name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <motion.div
-                        className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary-500 flex items-center justify-center"
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: 0.6 }}
-                      >
-                        <Check className="h-3 w-3 text-white" />
-                      </motion.div>
-                    </div>
-
-                    <div>
-                      <div className="text-xl font-bold text-slate-900 dark:text-white">
-                        {testimonialsData[activeIndex].name}
-                      </div>
-                      <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                        {testimonialsData[activeIndex].role}
-                      </div>
-                    </div>
-                  </motion.div>
-
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                    className="flex items-center gap-1 text-amber-400"
-                  >
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} className="h-5 w-5 fill-current" />
-                    ))}
-                  </motion.div>
-                </div>
-
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.6, delay: 0.3 }}
-                  className="relative flex justify-center"
-                >
-                  <div className="relative">
-                    <motion.div
-                      variants={floatingAnimation}
-                      initial="initial"
-                      animate="animate"
-                      className="relative rounded-3xl bg-gradient-to-br from-primary-500/10 to-violet-500/10 p-8 backdrop-blur-sm border border-primary-200/30 dark:border-primary-800/30"
-                    >
-                      <div className="grid grid-cols-2 gap-4">
-                        {[
-                          { label: 'Client Satisfaction', value: '98%', icon: Heart },
-                          { label: 'Faster Delivery', value: '2.4x', icon: Zap },
-                        ].map((stat, i) => {
-                          const Icon = stat.icon;
-                          return (
-                            <motion.div
-                              key={stat.label}
-                              initial={{ opacity: 0, y: 20 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: 0.5 + i * 0.1 }}
-                              className="rounded-2xl bg-white/80 dark:bg-slate-900/80 p-4 shadow-lg backdrop-blur"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="rounded-full bg-primary-100 dark:bg-primary-900 p-2">
-                                  <Icon className="h-4 w-4 text-primary-600 dark:text-primary-400" />
-                                </div>
-                                <div>
-                                  <div className="text-lg font-bold text-slate-900 dark:text-white">
-                                    {stat.value}
-                                  </div>
-                                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                                    {stat.label}
-                                  </div>
-                                </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-
-                      <motion.div
-                        className="absolute -top-4 -right-4 h-20 w-20 rounded-full bg-primary-200/30 blur-xl"
-                        animate={{
-                          scale: [1, 1.2, 1],
-                          opacity: [0.5, 0.8, 0.5]
-                        }}
-                        transition={{
-                          duration: 3,
-                          repeat: Infinity,
-                          ease: "easeInOut"
-                        }}
-                      />
-                      <motion.div
-                        className="absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-violet-200/30 blur-xl"
-                        animate={{
-                          scale: [1, 1.3, 1],
-                          opacity: [0.4, 0.7, 0.4]
-                        }}
-                        transition={{
-                          duration: 4,
-                          repeat: Infinity,
-                          ease: "easeInOut",
-                          delay: 0.5
-                        }}
-                      />
-                    </motion.div>
-                  </div>
-                </motion.div>
-              </div>
-            </motion.div>
-          </AnimatePresence>
-
-          <div className="mt-12 flex items-center justify-center gap-4">
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={prevTestimonial}
-              className="rounded-full border border-slate-200 dark:border-slate-700 p-3 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              aria-label="Previous testimonial"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </motion.button>
-
-            <div className="flex gap-2">
-              {testimonialsData.map((_, index) => (
-                <motion.button
-                  key={index}
-                  onClick={() => {
-                    setDirection(index > activeIndex ? 1 : -1);
-                    setActiveIndex(index);
+        {/* Desktop Nav */}
+        <div className="hidden items-center gap-6 md:flex">
+          {navLinks.map((link) => (
+            <div key={link.label} className="relative group">
+              {link.dropdown ? (
+                <div
+                  className="relative"
+                  onMouseEnter={() => {
+                    if (link.label === 'Solutions') setSolutionsOpen(true)
+                    if (link.label === 'Company') setCompanyOpen(true)
                   }}
-                  whileHover={{ scale: 1.2 }}
-                  whileTap={{ scale: 0.8 }}
-                  className="relative h-3 w-3 rounded-full transition-all duration-300"
+                  onMouseLeave={() => {
+                    if (link.label === 'Solutions') setSolutionsOpen(false)
+                    if (link.label === 'Company') setCompanyOpen(false)
+                  }}
                 >
-                  <div
-                    className={`absolute inset-0 rounded-full transition-all duration-300 ${
-                      index === activeIndex
-                        ? 'bg-primary-600 scale-100'
-                        : 'bg-slate-300 dark:bg-slate-600 scale-75'
+                  <button
+                    className={`flex items-center gap-1 text-sm font-medium transition-colors ${
+                      location.pathname === '/' && link.label === 'Solutions'
+                        ? 'text-orange-500 dark:text-orange-400'
+                        : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white'
                     }`}
-                  />
-                  {index === activeIndex && (
+                  >
+                    {link.label}
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                  <AnimatePresence>
+                    {(link.label === 'Solutions' ? solutionsOpen : companyOpen) && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute left-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white p-2 shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                      >
+                        {link.items.map((item) => (
+                          <a
+                            key={item}
+                            href="#"
+                            className="block rounded-lg px-4 py-2 text-sm text-gray-700 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                          >
+                            {item}
+                          </a>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ) : (
+                <Link
+                  to={link.href}
+                  className={`relative text-sm font-medium transition-colors ${
+                    isActive(link.href)
+                      ? 'text-orange-500 dark:text-orange-400'
+                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white'
+                  }`}
+                >
+                  {link.label}
+                  {isActive(link.href) && (
                     <motion.div
-                      layoutId="activeDot"
-                      className="absolute inset-0 rounded-full bg-primary-600"
-                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                      layoutId="nav-underline"
+                      className="absolute -bottom-[1px] left-0 right-0 h-0.5 bg-orange-500"
                     />
                   )}
-                </motion.button>
-              ))}
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={nextTestimonial}
-              className="rounded-full border border-slate-200 dark:border-slate-700 p-3 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              aria-label="Next testimonial"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </motion.button>
-          </div>
-
-          <motion.div
-            className="mt-6 h-1 w-full max-w-xs mx-auto overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
-          >
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-primary-500 to-violet-500"
-              initial={{ width: '0%' }}
-              animate={{ width: `${((activeIndex + 1) / testimonialsData.length) * 100}%` }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
-            />
-          </motion.div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---- Enhanced Header Component ----
-const Header = () => {
-  const { theme, toggleTheme } = useTheme();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const menuItems = [
-    { icon: User, label: 'Profile', href: '#profile' },
-    { icon: Settings, label: 'Settings', href: '#settings' },
-    { icon: HelpCircle, label: 'Help', href: '#help' },
-  ];
-
-  // Get login URL from environment variables (Vite uses import.meta.env)
-  const loginUrl = import.meta.env.VITE_LOGIN_URL || '/login';
-
-  // Animation variants
-  const headerVariants = {
-    hidden: { y: -100, opacity: 0 },
-    visible: { 
-      y: 0, 
-      opacity: 1,
-      transition: { 
-        type: 'spring',
-        stiffness: 100,
-        damping: 20,
-        delay: 0.1
-      }
-    }
-  };
-
-  const navItemVariants = {
-    hidden: { y: -20, opacity: 0 },
-    visible: (i) => ({
-      y: 0,
-      opacity: 1,
-      transition: {
-        delay: 0.1 + i * 0.05,
-        type: 'spring',
-        stiffness: 100,
-        damping: 12
-      }
-    })
-  };
-
-  const buttonVariants = {
-    hover: { 
-      scale: 1.05,
-      transition: { type: 'spring', stiffness: 400, damping: 10 }
-    },
-    tap: { scale: 0.95 }
-  };
-
-  const mobileMenuVariants = {
-    hidden: { 
-      opacity: 0, 
-      y: -20,
-      height: 0
-    },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      height: 'auto',
-      transition: { 
-        type: 'spring',
-        stiffness: 300,
-        damping: 25
-      }
-    },
-    exit: {
-      opacity: 0,
-      y: -20,
-      height: 0,
-      transition: { duration: 0.2 }
-    }
-  };
-
-  const menuDropdownVariants = {
-    hidden: { 
-      opacity: 0, 
-      y: -10,
-      scale: 0.95
-    },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      scale: 1,
-      transition: { 
-        type: 'spring',
-        stiffness: 300,
-        damping: 20,
-        duration: 0.2
-      }
-    },
-    exit: {
-      opacity: 0,
-      y: -10,
-      scale: 0.95,
-      transition: { duration: 0.15 }
-    }
-  };
-
-  return (
-    <motion.header
-      initial="hidden"
-      animate="visible"
-      variants={headerVariants}
-      className={`sticky top-0 z-50 transition-all duration-300 ${
-        scrolled 
-          ? 'border-b border-white/40 bg-white/95 backdrop-blur-xl shadow-lg dark:border-slate-700/40 dark:bg-slate-900/95' 
-          : 'border-b border-white/40 bg-white/80 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80'
-      }`}
-    >
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-        {/* Logo */}
-        <motion.a 
-          href="#top" 
-          className="flex items-center gap-3"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <motion.div 
-            className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-600 text-white shadow-lg shadow-primary-200 dark:shadow-primary-900/30"
-            whileHover={{ rotate: 180 }}
-            transition={{ duration: 0.5 }}
-          >
-            <Layers3 className="h-6 w-6" />
-          </motion.div>
-          <div>
-            <div className="font-display text-lg font-extrabold tracking-tight dark:text-white">SynTask</div>
-            <div className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Agency OS</div>
-          </div>
-        </motion.a>
-
-        {/* Desktop Navigation */}
-        <nav className="hidden items-center gap-8 lg:flex">
-          {navItems.map((item, i) => (
-            <motion.a
-              key={item.href}
-              href={item.href}
-              custom={i}
-              initial="hidden"
-              animate="visible"
-              variants={navItemVariants}
-              whileHover={{ 
-                scale: 1.05,
-                color: '#0f172a'
-              }}
-              whileTap={{ scale: 0.95 }}
-              className="text-sm font-medium text-slate-600 transition hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
-            >
-              {item.label}
-            </motion.a>
-          ))}
-        </nav>
-
-        {/* Desktop Actions */}
-        <div className="hidden items-center gap-3 lg:flex">
-          {/* Theme Toggle */}
-          <motion.button
-            type="button"
-            onClick={toggleTheme}
-            variants={buttonVariants}
-            whileHover="hover"
-            whileTap="tap"
-            className={`inline-flex h-11 w-11 items-center justify-center rounded-full border transition hover:bg-slate-50 dark:hover:bg-slate-700 ${
-              theme === 'dark' 
-                ? 'border-slate-700 bg-slate-800 text-white' 
-                : 'border-slate-200 bg-white text-slate-700'
-            }`}
-            aria-label="Toggle theme"
-          >
-            <motion.div
-              initial={false}
-              animate={{ rotate: theme === 'dark' ? 180 : 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </motion.div>
-          </motion.button>
-
-          {/* Dedicated Menu Dropdown Button */}
-          <motion.div 
-            className="relative"
-            onMouseEnter={() => setIsMenuOpen(true)}
-            onMouseLeave={() => setIsMenuOpen(false)}
-          >
-            <motion.button
-              variants={buttonVariants}
-              whileHover="hover"
-              whileTap="tap"
-              className="inline-flex items-center gap-2 rounded-full bg-transparent px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800"
-            >
-              <Menu className="h-5 w-5" />
-              <span>Menu</span>
-              <motion.div
-                animate={{ rotate: isMenuOpen ? 180 : 0 }}
-                transition={{ duration: 0.2 }}
-              >
-                <ChevronDown className="h-4 w-4" />
-              </motion.div>
-            </motion.button>
-
-            <AnimatePresence>
-              {isMenuOpen && (
-                <motion.div
-                  variants={menuDropdownVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
-                >
-                  <div className="space-y-1">
-                    {navItems.map((item, i) => (
-                      <motion.a
-                        key={item.href}
-                        href={item.href}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.05 * i }}
-                        whileHover={{ 
-                          scale: 1.02,
-                          backgroundColor: '#f1f5f9'
-                        }}
-                        whileTap={{ scale: 0.98 }}
-                        className="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800"
-                      >
-                        <span className="w-2 h-2 rounded-full bg-primary-500" />
-                        {item.label}
-                      </motion.a>
-                    ))}
-                  </div>
-
-                  <div className="my-2 border-t border-slate-200 dark:border-slate-700" />
-
-                  <div className="space-y-1">
-                    <motion.a
-                      href="#contact"
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.25 }}
-                      whileHover={{ 
-                        scale: 1.02,
-                        backgroundColor: '#eff6ff'
-                      }}
-                      whileTap={{ scale: 0.98 }}
-                      className="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium text-primary-600 transition hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-950/50"
-                    >
-                      <Rocket className="h-4 w-4" />
-                      Start Free Trial
-                    </motion.a>
-                    <motion.a
-                      href="#pricing"
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.3 }}
-                      whileHover={{ 
-                        scale: 1.02,
-                        backgroundColor: '#f1f5f9'
-                      }}
-                      whileTap={{ scale: 0.98 }}
-                      className="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800"
-                    >
-                      <BadgeDollarSign className="h-4 w-4" />
-                      View Pricing
-                    </motion.a>
-                  </div>
-                </motion.div>
+                </Link>
               )}
-            </AnimatePresence>
-          </motion.div>
+            </div>
+          ))}
+        </div>
 
-          {/* Login Button with Environment Variable */}
-          <motion.button
-            variants={buttonVariants}
-            whileHover="hover"
-            whileTap="tap"
-            onClick={() => {
-              window.location.href = loginUrl;
-            }}
-            className="inline-flex items-center gap-2 rounded-full bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 hover:shadow-md dark:bg-primary-500 dark:hover:bg-primary-600"
+        {/* Right Actions */}
+        <div className="flex items-center gap-3">
+          <button className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+            <Search className="h-5 w-5" />
+          </button>
+          <button
+            onClick={toggleTheme}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           >
-            <User className="h-5 w-5" />
-            <span>Login</span>
-          </motion.button>
-
-          {/* CTA Button */}
-          <motion.a
-            href="#contact"
-            variants={buttonVariants}
-            whileHover="hover"
-            whileTap="tap"
-            className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-[#ffffff] dark:text-slate-950 dark:hover:bg-slate-200"
+            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
+          <Link
+            to="/login"
+            className="hidden text-sm font-medium text-gray-600 transition hover:text-gray-900 dark:text-gray-300 dark:hover:text-white sm:inline"
+          >
+            Login
+          </Link>
+          <Link
+            to="/pricing"
+            className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
           >
             Start Free Trial
-            <motion.span
-              animate={{ x: [0, 4, 0] }}
-              transition={{ 
-                duration: 1.5,
-                repeat: Infinity,
-                repeatType: 'loop'
-              }}
-            >
-              <ArrowRight className="h-4 w-4" />
-            </motion.span>
-          </motion.a>
-        </div>
-
-        {/* Mobile Menu Button */}
-        <motion.button
-          type="button"
-          variants={buttonVariants}
-          whileHover="hover"
-          whileTap="tap"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 lg:hidden dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle navigation"
-        >
-          <motion.div
-            animate={{ rotate: mobileOpen ? 180 : 0 }}
-            transition={{ duration: 0.3 }}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <button
+            className="md:hidden"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </motion.div>
-        </motion.button>
+            {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Menu */}
       <AnimatePresence>
-        {mobileOpen && (
+        {isMenuOpen && (
           <motion.div
-            variants={mobileMenuVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            className="border-t border-slate-200 bg-white px-4 py-4 shadow-2xl lg:hidden dark:border-slate-700 dark:bg-slate-900"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 md:hidden"
           >
-            <div className="mx-auto flex max-w-7xl flex-col gap-3">
-              {navItems.map((item, i) => (
-                <motion.a
-                  key={item.href}
-                  href={item.href}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.05 * i }}
-                  whileHover={{ 
-                    scale: 1.02,
-                    backgroundColor: '#f1f5f9'
-                  }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setMobileOpen(false)}
-                  className="rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:text-white dark:hover:bg-slate-800"
+            <div className="space-y-1 px-4 py-3">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.label}
+                  to={link.href}
+                  className={`block py-2 text-sm font-medium ${
+                    isActive(link.href)
+                      ? 'text-orange-500 dark:text-orange-400'
+                      : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
                 >
-                  {item.label}
-                </motion.a>
+                  {link.label}
+                </Link>
               ))}
-
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.25 }}
-                className="mt-2"
+              <Link
+                to="/login"
+                className="block py-2 text-sm font-medium text-gray-600 dark:text-gray-300"
+                onClick={() => setIsMenuOpen(false)}
               >
-                <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                  {/* Mobile Login Button */}
-                  <motion.a
-                    href={loginUrl}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setMobileOpen(false)}
-                    className="flex w-full items-center justify-center gap-2 rounded-full bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-700"
-                  >
-                    <LogIn className="h-4 w-4" />
-                    Login
-                  </motion.a>
-
-                  {menuItems.map((item, i) => (
-                    <motion.a
-                      key={item.label}
-                      href={item.href}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.25 + 0.05 * i }}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-3 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </motion.a>
-                  ))}
-
-                  <motion.button
-                    type="button"
-                    onClick={toggleTheme}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800"
-                  >
-                    {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                    Toggle Theme
-                  </motion.button>
-                </div>
-              </motion.div>
+                Login
+              </Link>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.header>
-  );
-};
+    </nav>
+  )
+}
 
-// ---- Main NewLanding Component ----
-function NewLanding() {
-  useTheme()
-  const [openFaq, setOpenFaq] = useState(0)
+// ============================================
+// FOOTER
+// ============================================
+const Footer = () => {
+  const [email, setEmail] = useState('')
+  const [subscribed, setSubscribed] = useState(false)
+
+  const handleSubscribe = (e) => {
+    e.preventDefault()
+    if (email) {
+      setSubscribed(true)
+      setEmail('')
+      setTimeout(() => setSubscribed(false), 3000)
+    }
+  }
+
+  const footerSections = [
+    {
+      title: 'Product',
+      links: ['Features', 'AI Workforce', 'Integrations', "What's New", 'Roadmap'],
+    },
+    {
+      title: 'Solutions',
+      links: [
+        'Digital Marketing Agencies',
+        'Creative Agencies',
+        'IT Services Companies',
+        'Software Development Companies',
+        'Product Engineering Companies',
+      ],
+    },
+    {
+      title: 'Resources',
+      links: ['Blog', 'Guides & Ebooks', 'Templates', 'Case Studies', 'Help Center'],
+    },
+    {
+      title: 'Company',
+      links: ['About Us', 'Careers', 'Partners', 'Contact Us'],
+    },
+  ]
 
   return (
-    <div className={`min-h-screen ${themeTheme.muted} ${themeTheme.text}`}>
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.5, ease: "easeOut" }}
-          className="absolute left-[-10%] top-[-10%] h-96 w-96 rounded-full bg-primary-100/70 blur-3xl"
-        />
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.5, delay: 0.3, ease: "easeOut" }}
-          className="absolute right-[-10%] top-24 h-[28rem] w-[28rem] rounded-full bg-violet-100/70 blur-3xl"
-        />
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.5, delay: 0.6, ease: "easeOut" }}
-          className="absolute bottom-[-12%] left-1/3 h-[26rem] w-[26rem] rounded-full bg-sky-100/70 blur-3xl"
-        />
-      </div>
-
-      <Header />
-
-      <main id="top">
-        {/* Hero Section */}
-        <section className="mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 lg:px-8 lg:pb-28 lg:pt-24">
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            animate="visible"
-            className="grid items-center gap-14 lg:grid-cols-[1.1fr_0.9fr]"
-          >
-            <div>
-              <motion.p
-                variants={itemVariants}
-                className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary-200 bg-primary-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.26em] text-primary-700"
-              >
-                <Zap className="h-3.5 w-3.5" />
-                One platform for every agency workflow
-              </motion.p>
-              <motion.h1 variants={itemVariants} className="font-display max-w-3xl text-4xl font-black leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
-                The agency operating system you have been waiting for
-              </motion.h1>
-              <motion.p variants={itemVariants} className={`mt-7 max-w-2xl text-lg leading-8 sm:text-xl ${themeTheme.textSecondary}`}>
-                Task management, CRM, support tickets, time tracking, and billing all in one place so your agency can move faster with less chaos.
-              </motion.p>
-
-              <motion.div variants={itemVariants} className="mt-10 flex flex-col gap-4 sm:flex-row">
-                <motion.a
-                  href="#contact"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-primary-600 px-7 py-4 text-sm font-semibold text-white shadow-lg shadow-primary-200 transition hover:bg-primary-700"
-                >
-                  Start Free Trial
-                  <ArrowRight className="h-4 w-4" />
-                </motion.a>
-                <motion.a
-                  href="#how-it-works"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-7 py-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
-                >
-                  <Play className="h-4 w-4" />
-                  Watch Demo
-                </motion.a>
-              </motion.div>
-
-              <motion.div variants={itemVariants} className="mt-10 grid gap-3 sm:grid-cols-3">
-                {['Built for digital agencies', 'Lightweight onboarding', 'Fast, polished UI'].map((pill) => (
-                  <div
-                    key={pill}
-                    className="rounded-full border border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium text-slate-600 shadow-sm"
-                  >
-                    {pill}
-                  </div>
-                ))}
-              </motion.div>
-            </div>
-
-            <motion.div variants={itemVariants} className="relative">
-              <div className="absolute -left-6 top-8 h-24 w-24 rounded-full bg-primary-100 blur-2xl" />
-              <div className="absolute -right-4 bottom-4 h-28 w-28 rounded-full bg-violet-100 blur-2xl" />
-              <div className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-white p-4 shadow-[0_30px_90px_rgba(15,23,42,0.15)]`}>
-                <img
-                  src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&h=800&fit=crop"
-                  alt="Agency dashboard"
-                  className="h-[520px] w-full rounded-[1.8rem] object-cover"
-                />
-                <div className="absolute left-8 top-8 rounded-2xl border border-white/60 bg-white/90 px-4 py-3 shadow-lg backdrop-blur">
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Active campaigns</div>
-                  <div className="mt-1 text-2xl font-black text-slate-900">128</div>
-                </div>
-                <div className="absolute bottom-8 left-8 right-8 grid gap-3 sm:grid-cols-3">
-                  {[
-                    ['Revenue', '$48.2k'],
-                    ['Tasks', '312 open'],
-                    ['SLA', '98.4%'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-white/60 bg-white/90 p-4 shadow-lg backdrop-blur">
-                      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</div>
-                      <div className="mt-1 text-lg font-black text-slate-900">{value}</div>
-                    </div>
-                  ))}
-                </div>
+    <footer className="bg-navy-dark text-white">
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-6">
+          {/* Brand */}
+          <div className="lg:col-span-1">
+            <Link to="/" className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-500">
+                <Layers className="h-5 w-5 text-white" />
               </div>
-            </motion.div>
-          </motion.div>
-        </section>
-
-        <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <div className={`rounded-[2rem] border ${themeTheme.border} bg-white px-6 py-7 shadow-[0_20px_50px_rgba(15,23,42,0.05)] sm:px-8`}>
-              <p className="text-center text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-                Trusted by 500+ agencies worldwide
-              </p>
-              <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-                {['Agency X', 'Digital Co', 'Northstar', 'Creative Lab', 'Studio Flow'].map((name, index) => (
-                  <div
-                    key={name}
-                    className={`flex items-center justify-center rounded-2xl px-4 py-5 text-sm font-bold ${
-                      index % 2 === 0 ? 'bg-slate-950 text-white' : 'bg-primary-50 text-primary-800'
-                    }`}
-                  >
-                    {name}
-                  </div>
-                ))}
+              <div>
+                <div className="text-base font-extrabold leading-none">SynTask</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Agency OS</div>
               </div>
-            </div>
-          </motion.div>
-        </section>
-
-        <TrustedBy />
-
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Performance snapshot"
-              title="A clearer view of the agency business"
-              description="SynTask connects the operational pieces that usually live in separate tools so leaders can manage delivery, sales, and cash flow from one place."
-            />
-          </motion.div>
-
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.2 }}
-            className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4"
-          >
-            {stats.map((stat) => (
-              <StatCard key={stat.label} {...stat} />
-            ))}
-          </motion.div>
-        </section>
-
-        <Statistics />
-
-        <section id="solutions" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Solutions"
-              title="One product, three core agency workflows"
-              description="From pitches to delivery to billing, every part of the client journey stays connected and visible."
-            />
-          </motion.div>
-
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-6 lg:grid-cols-3"
-          >
-            {solutions.map((item) => (
-              <ImageCard
-                key={item.title}
-                image={item.image}
-                title={item.title}
-                description={item.description}
-                badge="Core module"
-              />
-            ))}
-          </motion.div>
-        </section>
-
-        <HowItWorks />
-
-        <section id="features" className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
-          <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-            <div className="absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-primary-100/70 blur-3xl" />
-            <div className="absolute right-0 top-20 h-80 w-80 rounded-full bg-violet-100/60 blur-3xl" />
-          </div>
-
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Features"
-              title="Everything an agency team needs, in one system"
-              description="Built to reduce tool sprawl while giving operators, account managers, and leadership the controls they need."
-            />
-          </motion.div>
-
-          <div className="mt-12 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-            <motion.div
-              variants={itemVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.2 }}
-              whileHover={{ y: -6 }}
-              className={`overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-gradient-to-br from-white via-primary-50/60 to-white p-7 shadow-[0_24px_80px_rgba(15,23,42,0.08)] sm:p-8`}
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="inline-flex items-center gap-2 rounded-full border border-primary-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.26em] text-primary-700">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Agency control center
-                </span>
-                <span className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700">
-                  Live operational visibility
-                </span>
-              </div>
-
-              <div className="mt-6 grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-                <div>
-                  <h3 className="font-display text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                    Run every client account from one elegant workspace.
-                  </h3>
-                  <p className={`mt-4 max-w-lg text-base leading-8 ${themeTheme.textSecondary}`}>
-                    Keep your team aligned with shared task boards, deal visibility, support queues, and billing context that feels built for agencies.
-                  </p>
-
-                  <div className="mt-6 space-y-3">
-                    {[
-                      'Unified delivery, sales, support, and billing',
-                      'Designed for agency owners and operations leads',
-                      'Clear ownership across every client workflow',
-                    ].map((item) => (
-                      <div key={item} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm font-medium text-slate-700">
-                        <Check className="h-4 w-4 text-emerald-600" />
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-7 grid grid-cols-3 gap-3">
-                    {[
-                      ['58%', 'Less admin'],
-                      ['3.2x', 'Faster handoffs'],
-                      ['94%', 'Visibility'],
-                    ].map(([value, label]) => (
-                      <div key={label} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-                        <div className="text-2xl font-black tracking-tight text-slate-950">{value}</div>
-                        <div className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <div className="absolute -left-4 -top-4 h-24 w-24 rounded-full bg-primary-200/50 blur-2xl" />
-                  <div className="overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.12)]">
-                    <img
-                      src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=800&fit=crop"
-                      alt="Agency team working"
-                      className="h-[290px] w-full object-cover"
-                    />
-                    <div className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Command view</div>
-                          <div className="mt-1 text-lg font-bold text-slate-950">This week at a glance</div>
-                        </div>
-                        <div className="rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">Updated now</div>
-                      </div>
-                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                        {[
-                          ['12', 'Active clients'],
-                          ['48', 'Open tasks'],
-                          ['$84k', 'Pipeline'],
-                        ].map(([value, label]) => (
-                          <div key={label} className="rounded-2xl bg-slate-50 px-4 py-4">
-                            <div className="text-xl font-black tracking-tight text-slate-950">{value}</div>
-                            <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              variants={staggerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.15 }}
-              className="grid gap-5 sm:grid-cols-2"
-            >
-              {features.map(({ icon: Icon, title, description }, index) => (
-                <motion.div
-                  key={title}
-                  variants={itemVariants}
-                  whileHover={{ y: -6 }}
-                  className={`group relative overflow-hidden rounded-[1.9rem] border ${themeTheme.border} ${themeTheme.surface} p-6 shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
-                    index === 0 || index === 5 ? 'sm:col-span-2' : ''
-                  }`}
-                >
-                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary-500 via-violet-500 to-sky-500" />
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-700 ring-1 ring-primary-100 transition group-hover:scale-105">
-                      <Icon className="h-7 w-7" />
-                    </div>
-                    <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
-                      0{index + 1}
-                    </div>
-                  </div>
-                  <h3 className="mt-5 text-2xl font-bold tracking-tight text-slate-950">{title}</h3>
-                  <p className={`mt-3 max-w-md text-sm leading-7 ${themeTheme.textSecondary}`}>{description}</p>
-                  <div className="mt-5 flex items-center gap-2 text-sm font-semibold text-primary-700">
-                    Learn more
-                    <ChevronRight className="h-4 w-4" />
-                  </div>
-                </motion.div>
+            </Link>
+            <p className="mt-4 text-sm text-gray-400">
+              The AI Business Operating System built exclusively for agencies & IT companies.
+            </p>
+            <div className="mt-4 flex gap-3">
+              {['LinkedIn', 'Twitter', 'YouTube', 'Facebook', 'Instagram'].map((social) => (
+                <button key={social} className="text-gray-400 transition hover:text-white">
+                  <span className="sr-only">{social}</span>
+                  <div className="h-5 w-5 rounded bg-gray-700/50" />
+                </button>
               ))}
-            </motion.div>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Case studies"
-              title="Real operational lift for growing agencies"
-              description="The goal is not just visibility. It is helping agencies ship faster, close cleaner, and keep clients happier."
-            />
-          </motion.div>
-
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-6 lg:grid-cols-3"
-          >
-            {[
-              {
-                title: 'DigitalFlow',
-                stat: '42% faster delivery',
-                description: 'Used SynTask to reduce handoff friction across creative and media teams.',
-                image: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1200&h=800&fit=crop',
-              },
-              {
-                title: 'CreativeHub',
-                stat: '31% more qualified deals',
-                description: 'Connected CRM and proposal workflows so their sales team never lost momentum.',
-                image: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=1200&h=800&fit=crop',
-              },
-              {
-                title: 'GrowthAgency',
-                stat: '18 hours saved weekly',
-                description: 'Replaced scattered tools with a single operating system for delivery and billing.',
-                image: 'https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1200&h=800&fit=crop',
-              },
-            ].map((item) => (
-              <motion.article
-                key={item.title}
-                variants={itemVariants}
-                whileHover={{ y: -6 }}
-                className={`overflow-hidden rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface} shadow-[0_20px_50px_rgba(15,23,42,0.05)]`}
-              >
-                <img src={item.image} alt={item.title} className="h-56 w-full object-cover" />
-                <div className="p-6">
-                  <div className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{item.title}</div>
-                  <div className="mt-3 text-2xl font-black text-primary-700">{item.stat}</div>
-                  <p className={`mt-3 text-sm leading-7 ${themeTheme.textSecondary}`}>{item.description}</p>
-                </div>
-              </motion.article>
-            ))}
-          </motion.div>
-        </section>
-
-        <Industries />
-
-        {/* Testimonials Section */}
-        <TestimonialsSection />
-
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Why SynTask"
-              title="Stop stitching together tools that were never built for agencies"
-              description="A focused comparison helps teams understand the difference between generic software and an agency-native operating system."
-            />
-          </motion.div>
-
-          <div className="mt-12 grid gap-6 lg:grid-cols-[0.72fr_1.28fr]">
-            <motion.div
-              variants={itemVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.2 }}
-              className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-slate-950 p-8 text-white shadow-[0_24px_70px_rgba(15,23,42,0.18)]`}
-            >
-              <div className="absolute -right-12 top-0 h-40 w-40 rounded-full bg-primary-500/20 blur-3xl" />
-              <div className="absolute -bottom-16 left-0 h-40 w-40 rounded-full bg-violet-500/20 blur-3xl" />
-              <div className="relative">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.28em] text-white/75">
-                  <ShieldCheck className="h-3.5 w-3.5 text-sky-300" />
-                  Decision guide
-                </div>
-                <h3 className="mt-6 max-w-sm font-display text-4xl font-black tracking-tight">
-                  The difference becomes obvious when the work gets real.
-                </h3>
-                <p className="mt-5 max-w-md text-base leading-8 text-slate-300">
-                  Spreadsheets and generic tools can track tasks. SynTask connects the full agency workflow so leaders can operate with confidence.
-                </p>
-
-                <div className="mt-8 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                  {[
-                    ['Ops', 'Cleaner handoffs'],
-                    ['Sales', 'One pipeline'],
-                    ['Finance', 'Connected billing'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">{label}</div>
-                      <div className="mt-2 text-sm font-bold text-white">{value}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/55">Best fit</div>
-                  <div className="mt-2 text-xl font-black tracking-tight">SynTask for agency operators</div>
-                  <p className="mt-3 text-sm leading-7 text-slate-300">
-                    Designed for teams that want fewer tools, stronger visibility, and a more premium client experience.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              variants={staggerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.15 }}
-              className={`overflow-hidden rounded-[2.25rem] border ${themeTheme.border} ${themeTheme.surface} shadow-[0_20px_50px_rgba(15,23,42,0.05)]`}
-            >
-              <div className="grid grid-cols-4 border-b border-slate-200 bg-slate-50/90 px-6 py-4 text-sm font-semibold text-slate-600">
-                <div>Capability</div>
-                <div className="text-center">Spreadsheets</div>
-                <div className="text-center">Generic PM tools</div>
-                <div className="text-center">
-                  <span className="inline-flex items-center gap-2 rounded-full bg-primary-600 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-white">
-                    SynTask
-                    <Sparkles className="h-3 w-3" />
-                  </span>
-                </div>
-              </div>
-
-              {compareRows.map(([label, sheets, generic, syntask], index) => (
-                <div
-                  key={label}
-                  className={`grid grid-cols-4 items-center border-b border-slate-100 px-6 py-5 last:border-b-0 ${
-                    index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-                  }`}
-                >
-                  <div>
-                    <div className="text-base font-semibold text-slate-900">{label}</div>
-                    <div className="mt-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
-                      Agency workflow coverage
-                    </div>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-rose-50 text-rose-500">
-                      {sheets ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-500">
-                      {generic ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <span
-                      className={`inline-flex h-11 w-11 items-center justify-center rounded-full shadow-sm ${
-                        syntask ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-rose-50 text-rose-500'
-                      }`}
-                    >
-                      {syntask ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                    </span>
-                  </div>
-                </div>
-              ))}
-
-              <div className="grid gap-4 border-t border-slate-200 bg-gradient-to-r from-primary-50 via-white to-violet-50 px-6 py-5 sm:grid-cols-[1fr_auto] sm:items-center">
-                <div>
-                  <div className="text-sm font-bold text-slate-900">Built to replace patchwork with clarity</div>
-                  <div className="mt-1 text-sm text-slate-600">
-                    If you want one place for operations, sales, and billing, SynTask is the direct answer.
-                  </div>
-                </div>
-                <a
-                  href="#pricing"
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  View pricing
-                  <ArrowRight className="h-4 w-4" />
-                </a>
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
-        <section id="pricing" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Pricing"
-              title="Simple pricing for growing agencies"
-              description="Choose the plan that fits your team size today and scale into a stronger operating model as you grow."
-            />
-          </motion.div>
-
-          <div className="mt-12 grid gap-6">
-            <motion.div
-              variants={itemVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.2 }}
-              whileHover={{ y: -5 }}
-              className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-slate-950 p-8 text-white shadow-[0_26px_70px_rgba(15,23,42,0.18)]`}
-            >
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.35),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(139,92,246,0.22),transparent_36%)]" />
-              <div className="relative">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.3em] text-white/75">
-                  <Sparkles className="h-3.5 w-3.5 text-sky-300" />
-                  Built for agency growth
-                </div>
-                <h3 className="mt-6 max-w-md font-display text-4xl font-black tracking-tight sm:text-5xl">
-                  Pricing that scales with real client work.
-                </h3>
-                <p className="mt-5 max-w-md text-base leading-8 text-slate-300">
-                  Start lean, upgrade when operations grow, and keep the whole agency in one operating system instead of stitching tools together.
-                </p>
-
-                <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                  {[
-                    ['500+', 'Agencies'],
-                    ['18h', 'Saved weekly'],
-                    ['94%', 'Renewals'],
-                  ].map(([value, label]) => (
-                    <div key={label} className="rounded-2xl border border-white/10 bg-white/6 p-4">
-                      <div className="text-2xl font-black tracking-tight text-white">{value}</div>
-                      <div className="mt-1 text-xs font-semibold uppercase tracking-[0.22em] text-white/55">{label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/50">Best fit</div>
-                      <div className="mt-1 text-lg font-bold">Professional plan</div>
-                    </div>
-                    <div className="rounded-full bg-primary-500 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-white">
-                      Most Popular
-                    </div>
-                  </div>
-                  <div className="mt-4 flex items-end gap-2">
-                    <div className="font-display text-5xl font-black tracking-tight">$79</div>
-                    <div className="pb-1 text-sm text-white/65">/mo</div>
-                  </div>
-                  <p className="mt-3 text-sm leading-7 text-slate-300">
-                    Ideal for scaling agencies that need full visibility across delivery, sales, support, and billing.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              variants={staggerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.15 }}
-              className="grid gap-5 lg:grid-cols-3"
-            >
-              {pricing.map((tier) => {
-                const featured = tier.accent
-                return (
-                  <motion.div
-                    key={tier.name}
-                    variants={itemVariants}
-                    whileHover={{ y: -6 }}
-                    className={`relative overflow-hidden rounded-[2rem] border p-7 shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
-                      featured ? 'border-primary-200 bg-gradient-to-br from-primary-50 to-white' : `${themeTheme.border} ${themeTheme.surface}`
-                    }`}
-                  >
-                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary-500 via-violet-500 to-sky-500" />
-                    {featured && (
-                      <div className="absolute right-6 top-6 rounded-full bg-primary-600 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-white">
-                        Most Popular
-                      </div>
-                    )}
-
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">{tier.name}</div>
-                        <div className="mt-4 flex items-end gap-2">
-                          <div className="font-display text-5xl font-black tracking-tight text-slate-950">{tier.price}</div>
-                          <div className="pb-1 text-sm font-medium text-slate-500">{tier.period}</div>
-                        </div>
-                      </div>
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                        <BadgeDollarSign className="h-6 w-6" />
-                      </div>
-                    </div>
-
-                    <p className={`mt-4 text-sm leading-7 ${themeTheme.textSecondary}`}>{tier.description}</p>
-
-                    <div className="mt-6 space-y-3">
-                      {tier.features.map((feature) => (
-                        <div key={feature} className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm">
-                          <Check className="h-4 w-4 text-emerald-600" />
-                          {feature}
-                        </div>
-                      ))}
-                    </div>
-
-                    <a
-                      href="#contact"
-                      className={`mt-7 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition ${
-                        featured
-                          ? 'bg-primary-600 text-white shadow-lg shadow-primary-200 hover:bg-primary-700'
-                          : 'bg-slate-950 text-white hover:bg-slate-800'
-                      }`}
-                    >
-                      Choose plan
-                      <ArrowRight className="h-4 w-4" />
-                    </a>
-                  </motion.div>
-                )
-              })}
-            </motion.div>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {[
-              'No setup fees',
-              'Cancel anytime',
-              'Dedicated onboarding for higher tiers',
-            ].map((value) => (
-              <div key={value} className={`rounded-[1.5rem] border ${themeTheme.border} ${themeTheme.surface} px-5 py-4 text-sm font-semibold text-slate-700 shadow-sm`}>
-                {value}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section id="faq" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="FAQ"
-              title="Answers to common implementation questions"
-              description="Most teams want to know how quickly they can replace fragmented workflows and move into a cleaner operating rhythm."
-            />
-          </motion.div>
-
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 space-y-4"
-          >
-            {faqs.map((item, index) => {
-              const open = openFaq === index
-              return (
-                <motion.div
-                  key={item.question}
-                  variants={itemVariants}
-                  className={`overflow-hidden rounded-[1.5rem] border ${themeTheme.border} ${themeTheme.surface}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenFaq(open ? -1 : index)}
-                    className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
-                  >
-                    <span className="text-base font-bold text-slate-900">{item.question}</span>
-                    <ChevronDown className={`h-5 w-5 text-slate-500 transition ${open ? 'rotate-180' : ''}`} />
-                  </button>
-                  <AnimatePresence>
-                    {open && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25 }}
-                        className="overflow-hidden"
-                      >
-                        <div className={`px-6 pb-6 text-sm leading-7 ${themeTheme.textSecondary}`}>{item.answer}</div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              )
-            })}
-          </motion.div>
-        </section>
-
-        <section id="contact" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div
-            variants={sectionVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.2 }}
-            className={`overflow-hidden rounded-[2.5rem] border ${themeTheme.border} bg-white shadow-[0_24px_70px_rgba(15,23,42,0.08)]`}
-          >
-            <div className="grid gap-0 lg:grid-cols-[0.95fr_1.05fr]">
-              <div className="bg-slate-950 p-8 text-white sm:p-12">
-                <div className="inline-flex rounded-full bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.26em] text-white/80">
-                  Let&apos;s talk
-                </div>
-                <h2 className="mt-6 font-display text-4xl font-black tracking-tight sm:text-5xl">
-                  Ready to transform your agency operations?
-                </h2>
-                <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
-                  Join 500+ agencies already running on SynTask and create a more predictable system for delivery, sales, and client success.
-                </p>
-
-                <div className="mt-10 space-y-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
-                      <Mail className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/60">Email</div>
-                      <div className="font-medium">hello@synTask.app</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
-                      <MapPin className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/60">Office</div>
-                      <div className="font-medium">Remote-first, global support</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-8 sm:p-12">
-                <form className="grid gap-5">
-                  <div className="grid gap-5 md:grid-cols-2">
-                    <label className="grid gap-2">
-                      <span className="text-sm font-semibold text-slate-700">Full name</span>
-                      <input
-                        type="text"
-                        placeholder="Your name"
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-primary-400 focus:bg-white"
-                      />
-                    </label>
-                    <label className="grid gap-2">
-                      <span className="text-sm font-semibold text-slate-700">Work email</span>
-                      <input
-                        type="email"
-                        placeholder="you@agency.com"
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-primary-400 focus:bg-white"
-                      />
-                    </label>
-                  </div>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-semibold text-slate-700">Agency size</span>
-                    <input
-                      type="text"
-                      placeholder="15 team members"
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-primary-400 focus:bg-white"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-semibold text-slate-700">What do you need help with?</span>
-                    <textarea
-                      rows={5}
-                      placeholder="Tell us about your workflows, pain points, or what you want to improve."
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-primary-400 focus:bg-white"
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-primary-600 px-6 py-4 text-sm font-semibold text-white shadow-lg shadow-primary-200 transition hover:bg-primary-700"
-                  >
-                    Start Your Free Trial
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                </form>
-              </div>
             </div>
-          </motion.div>
-        </section>
-      </main>
+          </div>
 
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-          <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr_0.9fr_0.9fr]">
-            <div>
-              <a href="#top" className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-600 text-white">
-                  <Layers3 className="h-6 w-6" />
-                </div>
-                <div>
-                  <div className="font-display text-lg font-extrabold">SynTask</div>
-                  <div className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">One platform to run your agency</div>
-                </div>
-              </a>
-              <p className="mt-5 max-w-md text-sm leading-7 text-slate-600">
-                Task management, CRM, support, and billing built for agencies that want a cleaner, more reliable operating system.
-              </p>
-              <div className="mt-6 flex items-center gap-3">
-                {[ShieldCheck, Globe, MessageSquare].map((Icon, index) => (
-                  <div key={index} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600">
-                    <Icon className="h-4 w-4" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {[
-              { title: 'Product', links: ['Features', 'Solutions', 'Pricing', 'FAQ'] },
-              { title: 'Company', links: ['About', 'Careers', 'Contact', 'Press'] },
-              { title: 'Resources', links: ['Blog', 'Help center', 'Guides', 'Templates'] },
-            ].map((group) => (
-              <div key={group.title}>
-                <div className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">{group.title}</div>
-                <div className="mt-5 space-y-4">
-                  {group.links.map((link) => (
-                    <a key={link} href="#top" className="block text-sm font-medium text-slate-600 transition hover:text-slate-950">
+          {/* Links */}
+          {footerSections.map((section) => (
+            <div key={section.title}>
+              <h4 className="text-sm font-semibold text-white">{section.title}</h4>
+              <ul className="mt-3 space-y-2">
+                {section.links.map((link) => (
+                  <li key={link}>
+                    <a href="#" className="text-sm text-gray-400 transition hover:text-white">
                       {link}
                     </a>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
 
-          <div className="mt-12 flex flex-col gap-4 border-t border-slate-200 pt-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-            <div>© 2026  SynTask. All rights reserved.</div>
-            <div className="flex items-center gap-5">
-              <a href="#top" className="transition hover:text-slate-900">
-                Privacy
-              </a>
-              <a href="#top" className="transition hover:text-slate-900">
-                Terms
-              </a>
-              <a href="#top" className="transition hover:text-slate-900">
-                Security
-              </a>
+          {/* Newsletter */}
+          <div className="lg:col-span-1">
+            <h4 className="text-sm font-semibold text-white">Stay Updated</h4>
+            <p className="mt-2 text-sm text-gray-400">
+              Get tips, updates & offers straight to your inbox.
+            </p>
+            <form onSubmit={handleSubscribe} className="mt-3 flex gap-2">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                className="flex-1 rounded-full border border-gray-700 bg-gray-800/50 px-4 py-2 text-sm text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none"
+                required
+              />
+              <button
+                type="submit"
+                className="rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600"
+              >
+                Send
+              </button>
+            </form>
+            {subscribed && (
+              <p className="mt-2 text-sm text-green-400">Subscribed successfully!</p>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Bar */}
+        <div className="mt-12 border-t border-gray-800 pt-8 text-sm text-gray-400">
+          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+            <p>© 2026 SynTask. All rights reserved.</p>
+            <div className="flex gap-6">
+              <a href="#" className="transition hover:text-white">Privacy Policy</a>
+              <a href="#" className="transition hover:text-white">Terms of Service</a>
+              <a href="#" className="transition hover:text-white">Security</a>
+              <a href="#" className="transition hover:text-white">Sitemap</a>
             </div>
           </div>
         </div>
-      </footer>
+      </div>
+    </footer>
+  )
+}
+
+// ============================================
+// SECTION HEADER COMPONENT
+// ============================================
+const SectionHeader = ({ eyebrow, title, subtitle, orangeText }) => {
+  if (!orangeText) {
+    return (
+      <div className="mx-auto max-w-3xl text-center">
+        {eyebrow && (
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">
+            {eyebrow}
+          </p>
+        )}
+        <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-4xl lg:text-5xl">
+          {title}
+        </h2>
+        {subtitle && (
+          <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">{subtitle}</p>
+        )}
+      </div>
+    )
+  }
+
+  const parts = title.split(orangeText)
+  return (
+    <div className="mx-auto max-w-3xl text-center">
+      {eyebrow && (
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">
+          {eyebrow}
+        </p>
+      )}
+      <h2 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-4xl lg:text-5xl">
+        {parts.map((part, i) => (
+          <span key={i}>
+            {part}
+            {i < parts.length - 1 && <span className="text-orange-500">{orangeText}</span>}
+          </span>
+        ))}
+      </h2>
+      {subtitle && (
+        <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">{subtitle}</p>
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// TESTIMONIALS CAROUSEL (Shared Component)
+// ============================================
+const TestimonialsCarousel = ({ testimonials }) => {
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
+
+  useEffect(() => {
+    if (isPaused) return
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % testimonials.length)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [isPaused, testimonials.length])
+
+  const next = () => setCurrentIndex((prev) => (prev + 1) % testimonials.length)
+  const prev = () => setCurrentIndex((prev) => (prev - 1 + testimonials.length) % testimonials.length)
+
+  return (
+    <div className="relative" onMouseEnter={() => setIsPaused(true)} onMouseLeave={() => setIsPaused(false)}>
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white p-8 dark:border-gray-700 dark:bg-gray-800">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentIndex}
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+            transition={{ duration: 0.5 }}
+            className="text-center"
+          >
+            <div className="mb-4 flex justify-center text-orange-400">⭐⭐⭐⭐⭐</div>
+            <p className="text-lg text-gray-700 dark:text-gray-200">"{testimonials[currentIndex].quote}"</p>
+            <div className="mt-4">
+              <p className="font-semibold text-gray-900 dark:text-white">{testimonials[currentIndex].name}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{testimonials[currentIndex].title}</p>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <button
+        onClick={prev}
+        className="absolute left-0 top-1/2 -translate-x-4 -translate-y-1/2 rounded-full bg-white p-2 shadow-lg dark:bg-gray-800"
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </button>
+      <button
+        onClick={next}
+        className="absolute right-0 top-1/2 translate-x-4 -translate-y-1/2 rounded-full bg-white p-2 shadow-lg dark:bg-gray-800"
+      >
+        <ChevronRight className="h-5 w-5" />
+      </button>
+      <div className="mt-4 flex justify-center gap-2">
+        {testimonials.map((_, index) => (
+          <button
+            key={index}
+            onClick={() => setCurrentIndex(index)}
+            className={`h-2 w-2 rounded-full transition ${
+              index === currentIndex ? 'bg-orange-500 w-4' : 'bg-gray-300 dark:bg-gray-600'
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// PAGE 1: HOMEPAGE
+// ============================================
+const HomePage = () => {
+  const painPoints = [
+    { icon: '🔄', title: 'Too Many Tools', desc: 'Switching between 10+ apps wastes time and money.' },
+    { icon: '📊', title: 'Scattered Data', desc: 'Information is everywhere and nothing is in sync.' },
+    { icon: '⚙️', title: 'Manual Work', desc: 'Repetitive tasks slow down your team and growth.' },
+    { icon: '👁', title: 'No Real-Time Visibility', desc: "You can't track what's happening in your business right now." },
+    { icon: '⏰', title: 'Missed Deadlines', desc: 'Important tasks slip through the cracks.' },
+    { icon: '📈', title: 'Unpredictable Growth', desc: 'Without a system, scaling becomes messy & risky.' },
+  ]
+
+  const modules = [
+    {
+      title: 'Sales OS',
+      color: 'green',
+      icon: '📈',
+      features: ['CRM, Leads & Pipeline', 'Client Management', 'WhatsApp & Email', 'Sales Reports'],
+    },
+    {
+      title: 'Project OS',
+      color: 'blue',
+      icon: '📋',
+      features: ['Projects & Tasks', 'Milestones', 'Timesheets', 'Calendar, Approvals'],
+    },
+    {
+      title: 'People OS',
+      color: 'purple',
+      icon: '👥',
+      features: ['HR Management', 'Attendance', 'Leave & Holidays', 'Performance, Employee Portal'],
+    },
+    {
+      title: 'Recruitment OS',
+      color: 'orange',
+      icon: '🎯',
+      features: ['ATS, Candidates', 'Interview Scheduling', 'Resume Parsing', 'Offer & Onboarding'],
+    },
+    {
+      title: 'Finance OS',
+      color: 'teal',
+      icon: '💰',
+      features: ['Invoices, Estimates', 'Payments, Expenses', 'Financial Reports'],
+    },
+    {
+      title: 'AI OS',
+      color: 'pink',
+      icon: '🤖',
+      features: ['AI Sales Assistant', 'AI Recruiter', 'AI Project Manager', 'AI Marketing Assistant', 'AI Business Analyst'],
+    },
+  ]
+
+  const colorMap = {
+    green: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
+    blue: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+    purple: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
+    orange: 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400',
+    teal: 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400',
+    pink: 'bg-pink-100 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400',
+  }
+
+  const testimonials = [
+    {
+      quote:
+        "SynTask replaced 8+ tools for our agency. We save 25+ hours every week and our team is 3x more productive now.",
+      name: 'Rohit Sharma',
+      title: 'CEO BrandBoost Digital',
+    },
+    {
+      quote:
+        'The AI assistant is a game changer. From proposals to follow-ups, everything is faster and smarter.',
+      name: 'Neha Kapoor',
+      title: 'COO KreativeWorx',
+    },
+    {
+      quote:
+        'Finally, a platform that understands agencies. Project delivery, HR, billing – everything in one place!',
+      name: 'Vikram Patel',
+      title: 'CTO WebVertex Technologies',
+    },
+  ]
+
+  const stats = [
+    { value: '500+', label: 'Companies Trust Us' },
+    { value: '98%', label: 'Customer Satisfaction' },
+    { value: '3X', label: 'Increase in Productivity' },
+    { value: '60%', label: 'Reduction in Tool Cost' },
+    { value: '24/7', label: 'AI Assistant Support' },
+  ]
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+      {/* HERO */}
+      <section className="relative overflow-hidden bg-white dark:bg-gray-900">
+        <div className="absolute inset-0">
+          <div className="absolute left-1/2 top-0 h-96 w-96 -translate-x-1/2 rounded-full bg-orange-200/30 blur-3xl dark:bg-orange-900/20" />
+          <div className="absolute right-0 top-24 h-80 w-80 rounded-full bg-blue-200/20 blur-3xl dark:bg-blue-900/10" />
+        </div>
+
+        <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:grid lg:grid-cols-2 lg:gap-12 lg:py-24">
+          {/* Left Column */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-1.5 text-sm text-orange-700 dark:border-orange-800/50 dark:bg-orange-900/30 dark:text-orange-300">
+              <span className="text-orange-500">✦</span>
+              ONE PLATFORM. ZERO CHAOS.
+            </div>
+
+            <h1 className="mt-6 text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white sm:text-5xl lg:text-6xl">
+              The Agency
+              <br />
+              Operating System
+              <br />
+              You've Been
+              <br />
+              <span className="text-orange-500">Waiting For.</span>
+            </h1>
+
+            <p className="mt-6 text-lg text-gray-600 dark:text-gray-300">
+              Run your entire agency from one intelligent platform. Manage clients, projects, teams,
+              finances & more – all in one place.
+            </p>
+
+            <div className="mt-8 flex flex-wrap gap-4">
+              <Link
+                to="/pricing"
+                className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-6 py-3 font-semibold text-white transition hover:bg-orange-600"
+              >
+                Start Free Trial
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                to="/stories"
+                className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-6 py-3 font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Book a Demo
+                <Calendar className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-center gap-6 text-sm text-gray-500 dark:text-gray-400">
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                14 Days Free Trial
+              </span>
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                No Credit Card
+              </span>
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                Cancel Anytime
+              </span>
+            </div>
+
+            <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">
+              Trusted by 500+ agencies & service companies worldwide
+            </p>
+            <div className="mt-3 flex flex-wrap gap-4">
+              {['Digital Uprising', 'Pixel Perfect', 'Brandshark', 'DesignLab', 'Codecrate'].map((brand) => (
+                <span
+                  key={brand}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 dark:border-gray-700 dark:text-gray-300"
+                >
+                  {brand}
+                </span>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* Right Column - Dashboard Mockup */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="mt-10 lg:mt-0"
+          >
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+              {/* Dashboard Header */}
+              <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Welcome back, Ankit 👋</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Here's what's happening with your agency today.
+                    </p>
+                  </div>
+                  <Settings className="h-5 w-5 text-gray-400" />
+                </div>
+              </div>
+
+              {/* Stats Pills */}
+              <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
+                {[
+                  { label: 'Revenue', value: '$128,430', change: '+28.1%' },
+                  { label: 'Projects', value: '28', change: '+32%' },
+                  { label: 'Clients', value: '64', change: '+14%' },
+                  { label: 'Team Members', value: '48', change: '+6%' },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{stat.label}</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">{stat.value}</p>
+                    <p className="text-xs text-green-500">{stat.change}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Charts */}
+              <div className="grid gap-4 p-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Project Progress</p>
+                  <div className="mt-2 flex items-center gap-4">
+                    <div className="relative h-20 w-20">
+                      <div className="absolute inset-0 rounded-full border-4 border-orange-500" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 100%)' }} />
+                      <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-gray-900 dark:text-white">75%</div>
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      <div>In Progress: 5</div>
+                      <div>Pending: 2</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Revenue Overview</p>
+                  <div className="mt-2 flex h-16 items-end gap-1">
+                    {[40, 60, 45, 70, 55, 80, 65].map((height, i) => (
+                      <div
+                        key={i}
+                        className="flex-1 rounded bg-orange-400"
+                        style={{ height: `${height}%` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* AI Assistant */}
+              <div className="border-t border-gray-200 p-4 dark:border-gray-700">
+                <div className="flex items-center gap-3 rounded-xl bg-orange-50 p-3 dark:bg-orange-900/20">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 text-white">
+                    <MessageSquare className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    Good morning, Ankit 👋 You have 3 tasks, 2 meetings and 1 project deadline today.
+                    Ask me anything...
+                  </p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* PAIN POINTS */}
+      <section className="bg-gray-50 py-20 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <SectionHeader
+            eyebrow="Stop Juggling Multiple Tools"
+            title="We built SynTask to eliminate these everyday struggles."
+          />
+
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {painPoints.map((point, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                viewport={{ once: true }}
+                className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className="flex items-start gap-4">
+                  <span className="text-2xl">{point.icon}</span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-gray-900 dark:text-white">{point.title}</h3>
+                      <span className="text-xs text-red-500">✗</span>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{point.desc}</p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Solution Banner */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mt-12 rounded-2xl border border-green-200 bg-green-50 p-6 dark:border-green-800/50 dark:bg-green-900/20"
+          >
+            <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500 text-white">
+                  <Layers className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    SynTask is <span className="text-orange-500">the Solution</span>
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    One AI-powered platform to manage everything, automate workflows, bring your team & data together and help you grow predictably.
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/ai-workforce"
+                className="whitespace-nowrap text-sm font-semibold text-orange-500 transition hover:text-orange-600"
+              >
+                See How It Works →
+              </Link>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ALL-IN-ONE OS */}
+      <section className="py-20 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <SectionHeader
+            eyebrow="All-in-One AI Business OS"
+            title="All-in-One AI Business Operating System"
+            orangeText="AI Business"
+            subtitle="Everything you need. Nothing you don't."
+          />
+
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {modules.map((module, index) => (
+              <motion.div
+                key={module.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                viewport={{ once: true }}
+                className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className={`inline-flex rounded-xl ${colorMap[module.color]} p-3`}>
+                  <span className="text-2xl">{module.icon}</span>
+                </div>
+                <h3 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">{module.title}</h3>
+                <ul className="mt-3 space-y-1.5 text-sm text-gray-600 dark:text-gray-400">
+                  {module.features.map((feature) => (
+                    <li key={feature} className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <a href="#" className="mt-4 inline-block text-sm font-semibold text-orange-500 transition hover:text-orange-600">
+                  Learn more →
+                </a>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Capability Pillars */}
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { icon: '🤖', title: 'AI-Powered Automation', desc: 'Save hours every day with smart automations.' },
+              { icon: '📊', title: 'Real-Time Insights', desc: 'Make faster decisions with live dashboards.' },
+              { icon: '🔒', title: 'Secure & Reliable', desc: 'Enterprise-grade security for your data.' },
+              { icon: '📈', title: 'Scalable for Growth', desc: 'From 5 to 500+ team members – we grow with you.' },
+            ].map((item, index) => (
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                viewport={{ once: true }}
+                className="rounded-2xl border border-gray-200 bg-white p-6 text-center dark:border-gray-700 dark:bg-gray-800"
+              >
+                <span className="text-3xl">{item.icon}</span>
+                <h4 className="mt-3 font-semibold text-gray-900 dark:text-white">{item.title}</h4>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{item.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* TESTIMONIALS */}
+      <section className="bg-gray-50 py-20 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">Testimonials</p>
+              <h2 className="mt-3 text-3xl font-bold text-gray-900 dark:text-white">
+                Loved by Agencies.
+                <br />
+                Trusted by Leaders.
+              </h2>
+              <p className="mt-4 text-gray-600 dark:text-gray-400">
+                Real results from real companies.
+              </p>
+              <Link
+                to="/stories"
+                className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-orange-500 transition hover:text-orange-600"
+              >
+                View All Stories →
+              </Link>
+            </div>
+
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {testimonials.map((testimonial, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.08 }}
+                  viewport={{ once: true }}
+                  className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+                >
+                  <div className="flex text-orange-400">
+                    {'⭐'.repeat(5)}
+                  </div>
+                  <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">"{testimonial.quote}"</p>
+                  <div className="mt-4 flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-sm font-bold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                      {testimonial.name.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{testimonial.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{testimonial.title}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* STATS BAR */}
+      <section className="bg-navy-dark py-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 gap-8 text-center sm:grid-cols-5">
+            {stats.map((stat, index) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                viewport={{ once: true }}
+              >
+                <div className="text-2xl font-bold text-orange-500 sm:text-3xl">{stat.value}</div>
+                <div className="mt-1 text-xs text-gray-400 sm:text-sm">{stat.label}</div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ROI COMPARISON */}
+      <section className="py-20 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-10 lg:grid-cols-[0.7fr_1.3fr]">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+                More Productivity.
+                <br />
+                More Profits.
+              </h2>
+              <p className="mt-4 text-gray-600 dark:text-gray-400">
+                Here's how SynTask creates impact for your business.
+              </p>
+              <Link
+                to="/compare"
+                className="mt-4 inline-flex items-center gap-2 rounded-full border border-orange-500 px-6 py-2.5 font-semibold text-orange-500 transition hover:bg-orange-50 dark:hover:bg-orange-900/20"
+              >
+                Calculate Your ROI →
+              </Link>
+            </div>
+
+            <div className="grid gap-6 sm:grid-cols-3">
+              {/* Before */}
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-6 dark:border-red-800/50 dark:bg-red-900/20">
+                <h4 className="text-sm font-semibold text-red-600 dark:text-red-400">Before SynTask</h4>
+                <ul className="mt-3 space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  {['10+ Disconnected Tools', 'Manual Work & Errors', 'No Real-Time Visibility', 'Missed Deadlines', 'High Operational Costs'].map((item) => (
+                    <li key={item} className="flex items-center gap-2">
+                      <span className="text-red-500">✗</span> {item}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-4 text-center text-xs font-semibold uppercase text-red-500">CHAOS & COMPLEXITY</div>
+              </div>
+
+              {/* With SynTask */}
+              <div className="rounded-2xl border-2 border-green-500 bg-green-50 p-6 dark:border-green-400/50 dark:bg-green-900/20">
+                <h4 className="text-sm font-semibold text-green-600 dark:text-green-400">With SynTask</h4>
+                <ul className="mt-3 space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                  {['One Unified Platform', 'Automated Workflows', 'Real-Time Insights', 'On-Time Delivery', 'Lower Costs, Higher Profits'].map((item) => (
+                    <li key={item} className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500" /> {item}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-4 text-center text-xs font-semibold uppercase text-green-500">CLARITY & GROWTH</div>
+              </div>
+
+              {/* Savings */}
+              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-6 text-center dark:border-orange-800/50 dark:bg-orange-900/20">
+                <div className="text-3xl font-bold text-orange-500">$8,200+</div>
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Typical Monthly Savings</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">By consolidating tools, automating work & improving efficiency.</p>
+                <div className="mt-4 rounded-lg bg-white/60 p-3 dark:bg-gray-800/60">
+                  <p className="text-lg font-bold text-orange-500">ROI in 90 Days: 312%</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FINAL CTA */}
+      <section className="relative overflow-hidden bg-navy-dark py-20">
+        <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-orange-500/10 blur-3xl" />
+        <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <div className="text-6xl mb-6">🤖</div>
+          <h2 className="text-3xl font-bold text-white sm:text-4xl lg:text-5xl">
+            Ready to Transform Your Agency?
+          </h2>
+          <p className="mt-4 text-lg text-gray-300">
+            Join thousands of agencies already running smarter with SynTask.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <Link
+              to="/pricing"
+              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-6 py-3 font-semibold text-white transition hover:bg-orange-600"
+            >
+              Start Free Trial
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/stories"
+              className="inline-flex items-center gap-2 rounded-full border border-gray-600 px-6 py-3 font-semibold text-gray-300 transition hover:border-gray-400 hover:bg-white/5"
+            >
+              Book a Demo
+              <Calendar className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="mt-6 flex flex-wrap justify-center gap-6 text-sm text-gray-400">
+            <span>✓ 14 Days Free Trial</span>
+            <span>✓ No Setup Fees</span>
+            <span>✓ Cancel Anytime</span>
+            <span>✓ Dedicated Onboarding</span>
+          </div>
+        </div>
+      </section>
+    </motion.div>
+  )
+}
+
+// ============================================
+// PAGE 2: CUSTOMER STORIES
+// ============================================
+const CustomerStoriesPage = () => {
+  const stories = [
+    {
+      company: 'WebClue',
+      type: 'Digital Marketing Agency',
+      badge: '25+ Clients',
+      quote: 'SynTask helped us automate reporting and increase our productivity by 45%.',
+      challenge: 'Using 8+ tools for project management, reporting, client communication and time tracking.',
+      solution: 'Replaced all tools with SynTask\'s unified platform and automated workflows.',
+      results: ['45% increase in team productivity', '60% less time on reporting', '25% more projects delivered'],
+      stats: ['45% Productivity Increase', '60% Time Saved', '25% More Projects'],
+    },
+    {
+      company: 'Teqnovate',
+      type: 'IT Services Company',
+      badge: '120+ Employees',
+      quote: 'Our support tickets, SLAs and client communication are now 100% streamlined.',
+      challenge: 'Scattered communication, missed SLAs and no visibility into ticket resolution.',
+      solution: 'Implemented SynTask for ticketing, knowledge base, SLA management and automation.',
+      results: ['90% faster response time', '35% more ticket resolution', '100% SLA compliance'],
+      stats: ['90% Faster Response', '35% More Resolutions', '100% SLA Compliance'],
+    },
+    {
+      company: 'PixelCraft',
+      type: 'Software Development Company',
+      badge: '50+ Projects',
+      quote: 'From requirements to deployment, everything lives in SynTask. Total visibility, zero chaos.',
+      challenge: 'No clear visibility, constant context switching and project delays.',
+      solution: 'Used SynTask for projects, tasks, time tracking, collaboration and client portal.',
+      results: ['60% faster delivery', '100% on-time releases', 'Better client satisfaction'],
+      stats: ['60% Faster Delivery', '100% On-time Releases', '98% Client Satisfaction'],
+    },
+  ]
+
+  const storyTestimonials = [
+    {
+      quote: 'SynTask is the backbone of our operations. Everything is organized, automated and easy to track. Our team can\'t imagine working without it.',
+      name: 'Aarav Mehta',
+      title: 'CEO WebClue',
+    },
+    {
+      quote: 'The automation and AI features in SynTask helped us save hours every day. It\'s like having an extra team that never sleeps.',
+      name: 'Neha Kapoor',
+      title: 'Operations Head Teqnovate',
+    },
+    {
+      quote: 'Finally, a platform built for service companies. SynTask gives us complete visibility and helps us deliver projects on time, every time.',
+      name: 'Rohit Sharma',
+      title: 'CTO PixelCraft',
+    },
+  ]
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+      {/* Hero */}
+      <section className="bg-white py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">⭐ Customer Stories</p>
+          <h1 className="mt-3 text-4xl font-bold text-gray-900 dark:text-white sm:text-5xl">
+            Real Stories. <span className="text-orange-500">Real Results.</span>
+          </h1>
+          <p className="mx-auto mt-4 max-w-2xl text-gray-600 dark:text-gray-300">
+            See how agencies and IT companies are using SynTask to streamline operations, delight clients and grow their business.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-8">
+            <div><span className="text-2xl font-bold text-orange-500">4.9/5</span> <span className="text-sm text-gray-500 dark:text-gray-400">Average Rating</span></div>
+            <div><span className="text-2xl font-bold text-orange-500">500+</span> <span className="text-sm text-gray-500 dark:text-gray-400">Happy Customers</span></div>
+            <div><span className="text-2xl font-bold text-orange-500">25+</span> <span className="text-sm text-gray-500 dark:text-gray-400">Countries</span></div>
+            <div><span className="text-2xl font-bold text-orange-500">98%</span> <span className="text-sm text-gray-500 dark:text-gray-400">Customer Satisfaction</span></div>
+          </div>
+        </div>
+      </section>
+
+      {/* Stories Grid */}
+      <section className="bg-gray-50 py-16 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-8 lg:grid-cols-3">
+            {stories.map((story, index) => (
+              <motion.div
+                key={story.company}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                viewport={{ once: true }}
+                className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">{story.company}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{story.type}</p>
+                  </div>
+                  <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                    {story.badge}
+                  </span>
+                </div>
+                <p className="mt-4 text-sm italic text-gray-600 dark:text-gray-300">"{story.quote}"</p>
+                <div className="mt-4 space-y-2 border-t border-gray-100 pt-4 dark:border-gray-700">
+                  <div>
+                    <span className="text-xs font-semibold uppercase text-orange-500">Challenge</span>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{story.challenge}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold uppercase text-green-500">Solution</span>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{story.solution}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold uppercase text-blue-500">Results</span>
+                    <ul className="mt-1 space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                      {story.results.map((result) => (
+                        <li key={result} className="flex items-center gap-2">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> {result}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-4 dark:border-gray-700">
+                  {story.stats.map((stat) => (
+                    <span key={stat} className="rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                      {stat}
+                    </span>
+                  ))}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Impact Bar */}
+      <section className="bg-navy-dark py-12">
+        <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+          <h3 className="text-xl font-bold text-white">Businesses love the way SynTask works for them.</h3>
+          <p className="text-sm text-gray-400">Numbers that speak for themselves.</p>
+          <div className="mt-6 grid grid-cols-2 gap-6 sm:grid-cols-4">
+            {[
+              { value: '₹200Cr+', label: 'Revenue Managed' },
+              { value: '10M+', label: 'Tasks Automated' },
+              { value: '1M+', label: 'Time Saved (Hours)' },
+              { value: '500K+', label: 'Projects Completed' },
+            ].map((item) => (
+              <div key={item.label}>
+                <div className="text-2xl font-bold text-orange-500 sm:text-3xl">{item.value}</div>
+                <div className="mt-1 text-xs text-gray-400 sm:text-sm">{item.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Trusted Industries */}
+      <section className="py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+          <SectionHeader
+            title="Trusted Across Industries"
+            subtitle="From startup agencies to enterprise teams, SynTask adapts to the way you work."
+          />
+          <div className="mt-8 flex flex-wrap justify-center gap-6">
+            {['📢 Digital Marketing Agencies', '✏️ Creative Agencies', '💻 IT Services Companies', '</> Software Development Companies', '🚀 Product Engineering Companies'].map((industry) => (
+              <span key={industry} className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium dark:border-gray-700 dark:text-gray-300">
+                {industry}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials Carousel */}
+      <section className="bg-gray-50 py-16 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          <SectionHeader
+            eyebrow="Testimonials"
+            title="Loved by Teams, Recommended by Leaders"
+          />
+          <div className="mt-10">
+            <TestimonialsCarousel testimonials={storyTestimonials} />
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="bg-navy-dark py-16">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <div className="text-4xl mb-4">🚀</div>
+          <h2 className="text-2xl font-bold text-white sm:text-3xl">
+            Your Success Story Could Be Next.
+          </h2>
+          <p className="mt-2 text-gray-400">
+            Join 500+ companies that trust SynTask to run their business better.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-4">
+            <Link to="/pricing" className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 font-semibold text-white transition hover:bg-orange-600">
+              Start Free Trial <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link to="/compare" className="inline-flex items-center gap-2 rounded-full border border-gray-600 px-6 py-2.5 font-semibold text-gray-300 transition hover:border-gray-400 hover:bg-white/5">
+              Book a Live Demo <Calendar className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-gray-400">
+            <span>✓ 14 Days Free Trial</span>
+            <span>✓ No Credit Card Required</span>
+            <span>✓ Cancel Anytime</span>
+            <span>✓ Full Onboarding Support</span>
+          </div>
+        </div>
+      </section>
+    </motion.div>
+  )
+}
+
+// ============================================
+// PAGE 3: AI WORKFORCE
+// ============================================
+const AIWorkforcePage = () => {
+  const aiEmployees = [
+    {
+      role: 'AI Sales Manager',
+      color: 'orange',
+      icon: '📈',
+      capabilities: ['Lead qualification', 'Follow-ups & nurturing', 'Proposals & quotations', 'Deal tracking & insights'],
+    },
+    {
+      role: 'AI HR Manager',
+      color: 'purple',
+      icon: '👥',
+      capabilities: ['Resume screening', 'Interview scheduling', 'JD & offer letters', 'Employee support'],
+    },
+    {
+      role: 'AI Project Manager',
+      color: 'blue',
+      icon: '📋',
+      capabilities: ['Task planning', 'Progress tracking', 'Risk & issue detection', 'Timeline management'],
+    },
+    {
+      role: 'AI Marketing Assistant',
+      color: 'green',
+      icon: '📢',
+      capabilities: ['Content creation', 'Social media posts', 'Ad copy & creatives', 'Campaign ideas'],
+    },
+    {
+      role: 'AI Operations Manager',
+      color: 'teal',
+      icon: '⚙️',
+      capabilities: ['Workflow optimization', 'Process automation', 'Bottleneck detection', 'Performance reports'],
+    },
+    {
+      role: 'AI Business Analyst',
+      color: 'pink',
+      icon: '📊',
+      capabilities: ['Data analysis', 'Business insights', 'Reports & dashboards', 'Forecasting & trends'],
+    },
+  ]
+
+  const colorMap = {
+    orange: 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400',
+    purple: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
+    blue: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+    green: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
+    teal: 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400',
+    pink: 'bg-pink-100 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400',
+  }
+
+  const steps = [
+    { icon: '👤+', title: 'Choose Your AI Employee', desc: 'Pick the AI role you want to add to your team.' },
+    { icon: '🧠', title: 'Train with Your Data', desc: 'Our AI learns your processes, tools and company knowledge.' },
+    { icon: '🚀', title: 'Delegate & Automate', desc: 'Assign tasks and watch your AI employee get to work.' },
+    { icon: '📈', title: 'Track & Improve', desc: 'Monitor performance, gain insights and scale your AI team.' },
+  ]
+
+  const leaderTestimonials = [
+    {
+      quote: 'Our AI Sales Manager increased our qualified leads by 3X. It never sleeps, never forgets, and never misses a follow-up.',
+      name: 'Rohit Sharma',
+      title: 'CEO GrowthHackers Marketing',
+    },
+    {
+      quote: 'AI HR Manager reduced our hiring time by 60%. From screening to scheduling, everything is now effortless.',
+      name: 'Neha Kapoor',
+      title: 'Head of HR TechNovate',
+    },
+    {
+      quote: 'AI Project Manager keeps our projects on track, risks under control, and clients always happy. It\'s like having a co-pilot.',
+      name: 'Arjun Mehta',
+      title: 'Delivery Head PixelCraft',
+    },
+  ]
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+      {/* Hero */}
+      <section className="bg-white py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:grid lg:grid-cols-2 lg:gap-12 lg:px-8">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }}>
+            <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-1.5 text-sm text-orange-700 dark:border-orange-800/50 dark:bg-orange-900/30 dark:text-orange-300">
+              <span className="text-orange-500">✦</span> AI WORKFORCE
+            </div>
+            <h1 className="mt-6 text-4xl font-extrabold text-gray-900 dark:text-white sm:text-5xl lg:text-6xl">
+              Meet Your AI Workforce.
+              <br />
+              They Work <span className="text-orange-500">24/7.</span>
+              <br />
+              You Grow.
+            </h1>
+            <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">
+              SynTask's AI employees handle the work that slows you down, so your team can focus on what truly matters.
+            </p>
+            <ul className="mt-6 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+              <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-500" /> AI employees for every department</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-500" /> Trained on best practices & your data</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-500" /> Always-on. Always-learning. Always-delivering.</li>
+            </ul>
+            <div className="mt-8 flex flex-wrap gap-4">
+              <Link to="/pricing" className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-6 py-3 font-semibold text-white transition hover:bg-orange-600">
+                Start Free Trial <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link to="/stories" className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-6 py-3 font-semibold text-gray-700 transition hover:border-gray-400 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+                Book a Demo <Calendar className="h-4 w-4" />
+              </Link>
+            </div>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.2 }} className="mt-10 lg:mt-0">
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+              <div className="border-b border-gray-200 p-4 dark:border-gray-700">
+                <h3 className="font-semibold text-gray-900 dark:text-white">AI Workforce — Your AI team is ready to work</h3>
+              </div>
+              <div className="grid gap-4 p-4 sm:grid-cols-2">
+                {aiEmployees.slice(0, 6).map((employee) => (
+                  <div key={employee.role} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">{employee.role}</span>
+                      <span className="text-xs text-green-500">● Online</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-gray-200 p-4 dark:border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Today's Impact</h4>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <div><span className="font-bold text-gray-900 dark:text-white">1,243</span> Tasks Completed</div>
+                  <div><span className="font-bold text-gray-900 dark:text-white">185h</span> Hours Saved</div>
+                  <div><span className="font-bold text-gray-900 dark:text-white">92%</span> Projects Progress</div>
+                  <div><span className="font-bold text-gray-900 dark:text-white">₹4.2L</span> Cost Saved</div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* AI Employee Cards */}
+      <section className="bg-gray-50 py-16 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <SectionHeader
+            title="An AI Employee for Every Function"
+            subtitle="Delegate repetitive work, automate complex processes, and achieve more with your AI team."
+          />
+          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {aiEmployees.map((employee, index) => (
+              <motion.div
+                key={employee.role}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                viewport={{ once: true }}
+                className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className={`inline-flex rounded-xl ${colorMap[employee.color]} p-3`}>
+                  <span className="text-2xl">{employee.icon}</span>
+                </div>
+                <h3 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">{employee.role}</h3>
+                <ul className="mt-3 space-y-1.5 text-sm text-gray-600 dark:text-gray-400">
+                  {employee.capabilities.map((cap) => (
+                    <li key={cap} className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> {cap}
+                    </li>
+                  ))}
+                </ul>
+                <a href="#" className={`mt-4 inline-block text-sm font-semibold text-${employee.color}-500 transition hover:text-${employee.color}-600`}>
+                  Explore →
+                </a>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <SectionHeader
+            title="Onboard. Train. Delegate. Scale."
+          />
+          <div className="relative mt-10">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {steps.map((step, index) => (
+                <motion.div
+                  key={step.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.08 }}
+                  viewport={{ once: true }}
+                  className="text-center"
+                >
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-orange-100 text-2xl dark:bg-orange-900/30">
+                    {step.icon}
+                  </div>
+                  <h4 className="mt-4 font-semibold text-gray-900 dark:text-white">{step.title}</h4>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{step.desc}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Impact Stats */}
+      <section className="bg-navy-dark py-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 gap-8 text-center sm:grid-cols-4">
+            {[
+              { value: '10M+', label: 'Tasks Automated' },
+              { value: '1M+', label: 'Hours Saved' },
+              { value: '₹200Cr+', label: 'Revenue Impacted' },
+              { value: '500+', label: 'Businesses Trust Us' },
+            ].map((stat) => (
+              <div key={stat.label}>
+                <div className="text-2xl font-bold text-orange-500 sm:text-3xl">{stat.value}</div>
+                <div className="mt-1 text-xs text-gray-400 sm:text-sm">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Leader Testimonials */}
+      <section className="bg-gray-50 py-16 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <SectionHeader
+            eyebrow="What Leaders Say"
+            title="What Leaders Say About Our AI Workforce"
+          />
+          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {leaderTestimonials.map((testimonial, index) => (
+              <motion.div
+                key={testimonial.name}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                viewport={{ once: true }}
+                className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className="flex text-orange-400">⭐⭐⭐⭐⭐</div>
+                <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">"{testimonial.quote}"</p>
+                <div className="mt-4">
+                  <p className="font-semibold text-gray-900 dark:text-white">{testimonial.name}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{testimonial.title}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="bg-navy-dark py-16">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <div className="text-6xl mb-4">🤖</div>
+          <h2 className="text-3xl font-bold text-white">Build Your AI Workforce Today</h2>
+          <p className="mt-2 text-gray-400">Start with one AI employee. Scale to an entire AI-powered organization.</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-4">
+            <Link to="/pricing" className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-6 py-3 font-semibold text-white transition hover:bg-orange-600">
+              Start Free Trial <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link to="/stories" className="inline-flex items-center gap-2 rounded-full border border-gray-600 px-6 py-3 font-semibold text-gray-300 transition hover:border-gray-400 hover:bg-white/5">
+              Book a Demo <Calendar className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-gray-400">
+            <span>✓ 14 Days Free Trial</span>
+            <span>✓ No Credit Card Required</span>
+            <span>✓ Cancel Anytime</span>
+            <span>✓ Full Onboarding Support</span>
+          </div>
+        </div>
+      </section>
+    </motion.div>
+  )
+}
+
+// ============================================
+// PAGE 4: COMPARE
+// ============================================
+const ComparePage = () => {
+  const [activeCompetitor, setActiveCompetitor] = useState('SynTask')
+  const competitors = ['SynTask', 'ClickUp', 'Monday.com', 'HubSpot', 'Zoho One', 'Salesforce']
+
+  const comparisonData = {
+    'AI-Powered Automation': ['✅', 'Limited', 'Limited', 'Limited', 'Limited', 'Limited'],
+    'All-in-One Platform': ['✅', '✗', '✗', '✗', '✗', '✅'],
+    'Client Management': ['✅', 'Limited', 'Limited', 'Limited', 'Limited', '✅'],
+    'Project Management': ['✅', '✅', '✅', 'Limited', 'Limited', 'Limited'],
+    'HR & Team Management': ['✅', 'Limited', 'Limited', 'Limited', '✅', 'Limited'],
+    'Finance & Invoicing': ['✅', 'Limited', 'Limited', '✅', '✅', 'Limited'],
+    'AI Workforce (Virtual Employees)': ['✅', '✗', '✗', '✗', '✗', '✗'],
+    'Ease of Use': ['⭐⭐⭐⭐⭐', '⭐⭐⭐⭐', '⭐⭐⭐⭐', '⭐⭐⭐', '⭐⭐⭐', '⭐⭐⭐'],
+    'Integrations': ['500+', '1000+', '200+', '1500+', '1000+', '3000+'],
+    'Starting Price': ['₹149/user/mo', '$7/user/mo', '$8/user/mo', '$20/user/mo', '$37/user/mo', '$25/user/mo'],
+    'Best For': ['Service Companies Agencies, IT Teams', 'Teams of all sizes', 'Project-focused teams', 'Marketing & Sales Teams', 'Businesses of all sizes', 'Large Enterprises'],
+  }
+
+  const faqs = [
+    'Is SynTask really an all-in-one platform?',
+    'How is SynTask different from ClickUp or Monday.com?',
+    'Does SynTask offer better pricing than other tools?',
+    'Can I migrate my data from other platforms?',
+  ]
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+      {/* Hero */}
+      <section className="bg-white py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:grid lg:grid-cols-2 lg:gap-12 lg:px-8">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }}>
+            <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-1.5 text-sm text-orange-700 dark:border-orange-800/50 dark:bg-orange-900/30 dark:text-orange-300">
+              <span className="text-orange-500">✦</span> COMPARE SYNTASK
+            </div>
+            <h1 className="mt-6 text-4xl font-extrabold text-gray-900 dark:text-white sm:text-5xl lg:text-6xl">
+              SynTask vs The Rest.
+              <br />
+              See the <span className="text-orange-500">Clear Difference.</span>
+            </h1>
+            <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">
+              SynTask brings all your work, teams and clients together in one AI-powered platform. See how we compare with other popular tools.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <span className="rounded-full bg-gray-100 px-3 py-1.5 text-sm dark:bg-gray-800">👥 One Platform</span>
+              <span className="rounded-full bg-gray-100 px-3 py-1.5 text-sm dark:bg-gray-800">🤖 AI-Powered</span>
+              <span className="rounded-full bg-gray-100 px-3 py-1.5 text-sm dark:bg-gray-800">⚡ End-to-End Automation</span>
+              <span className="rounded-full bg-gray-100 px-3 py-1.5 text-sm dark:bg-gray-800">💰 Lower Cost</span>
+            </div>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.2 }} className="mt-10 lg:mt-0">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+              <h3 className="font-semibold text-gray-900 dark:text-white">All Your Work. One AI-Powered Platform.</h3>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Tasks Completed</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">1,243 ↑10%</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Hours Saved</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">185h ↑26%</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Projects in Progress</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">56 ↑12%</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Team Productivity</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-white">92% ↑14%</p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Competitor Toggle */}
+      <section className="bg-gray-50 py-8 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap justify-center gap-2">
+            {competitors.map((comp) => (
+              <button
+                key={comp}
+                onClick={() => setActiveCompetitor(comp)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  comp === activeCompetitor
+                    ? 'bg-orange-500 text-white'
+                    : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                }`}
+              >
+                {comp}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Comparison Table */}
+      <section className="py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <th className="p-3 text-left font-semibold text-gray-900 dark:text-white">Features</th>
+                  {competitors.map((comp) => (
+                    <th
+                      key={comp}
+                      className={`p-3 text-center font-semibold ${
+                        comp === 'SynTask' ? 'bg-orange-500 text-white' : 'text-gray-900 dark:text-white'
+                      }`}
+                    >
+                      {comp}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(comparisonData).map(([feature, values]) => (
+                  <tr key={feature} className="border-b border-gray-200 dark:border-gray-700">
+                    <td className="p-3 font-medium text-gray-900 dark:text-white">{feature}</td>
+                    {values.map((value, i) => (
+                      <td key={i} className="p-3 text-center">
+                        {value === '✅' ? (
+                          <span className="text-green-500">✅</span>
+                        ) : value === '✗' ? (
+                          <span className="text-gray-400">✗</span>
+                        ) : value === 'Limited' ? (
+                          <span className="text-gray-400">Limited</span>
+                        ) : (
+                          <span className="text-gray-700 dark:text-gray-300">{value}</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* Savings Banner */}
+      <section className="bg-gray-50 py-12 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-8 dark:border-green-800/50 dark:bg-green-900/20">
+            <div className="text-4xl mb-3">💰</div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+              Companies save up to 60% on software costs by switching to SynTask.
+            </h3>
+            <p className="mt-2 text-gray-600 dark:text-gray-400">One platform. More productivity. Lower cost. Higher growth.</p>
+            <div className="mt-4 flex flex-wrap justify-center gap-6 text-sm">
+              <span className="font-bold text-orange-500">60% Cost Savings</span>
+              <span className="font-bold text-orange-500">3X More Productive</span>
+              <span className="font-bold text-orange-500">100% Work in One Place</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Real Results */}
+      <section className="py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                <Layers className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 dark:text-white">TechNovo Solutions</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Replaced 6 tools with SynTask</p>
+              </div>
+            </div>
+            <p className="mt-4 text-gray-600 dark:text-gray-300">
+              "We replaced 6 different tools with SynTask and saved over ₹18 Lakhs annually. Our team is 3X more productive now."
+              <br />
+              <span className="font-semibold text-gray-900 dark:text-white">— Rahul Mehta, CEO TechNovo Solutions</span>
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div><span className="text-xl font-bold text-orange-500">₹18L+</span><p className="text-xs text-gray-500">Annual Savings</p></div>
+              <div><span className="text-xl font-bold text-orange-500">120+</span><p className="text-xs text-gray-500">Hours Saved/Month</p></div>
+              <div><span className="text-xl font-bold text-orange-500">3X</span><p className="text-xs text-gray-500">Productivity Improvement</p></div>
+              <div><span className="text-xl font-bold text-orange-500">98%</span><p className="text-xs text-gray-500">Client Satisfaction</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="bg-gray-50 py-16 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:grid lg:grid-cols-2 lg:gap-12 lg:px-8">
+          <div>
+            <SectionHeader
+              title="Frequently Compared. Clearly Answered."
+            />
+            <div className="mt-6 space-y-3">
+              {faqs.map((faq, index) => (
+                <div key={index} className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                  <button className="flex w-full items-center justify-between text-left">
+                    <span className="font-medium text-gray-900 dark:text-white">{faq}</span>
+                    <Plus className="h-4 w-4 text-gray-500" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-10 lg:mt-0">
+            <div className="rounded-2xl border border-orange-200 bg-orange-50 p-8 dark:border-orange-800/50 dark:bg-orange-900/20">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Still comparing?</h3>
+              <p className="mt-2 text-gray-600 dark:text-gray-400">
+                Book a personalized demo and see why 500+ businesses switched to SynTask.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link to="/stories" className="rounded-full bg-orange-500 px-6 py-2.5 font-semibold text-white transition hover:bg-orange-600">
+                  Book a Demo
+                </Link>
+                <Link to="/contact" className="rounded-full border border-orange-500 px-6 py-2.5 font-semibold text-orange-500 transition hover:bg-orange-50 dark:hover:bg-orange-900/20">
+                  Talk to Sales
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="bg-navy-dark py-16">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <div className="text-4xl mb-4">🚀</div>
+          <h2 className="text-2xl font-bold text-white sm:text-3xl">Stop Switching. Start Scaling.</h2>
+          <p className="mt-2 text-gray-400">Join 500+ service companies using SynTask to automate operations, deliver better and grow faster.</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-gray-400">
+            <span>✓ 14 Days Free Trial</span>
+            <span>✓ No Credit Card Required</span>
+            <span>✓ Cancel Anytime</span>
+          </div>
+          <div className="mt-6 flex flex-wrap justify-center gap-4">
+            <Link to="/pricing" className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 font-semibold text-white transition hover:bg-orange-600">
+              Start Free Trial <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link to="/stories" className="inline-flex items-center gap-2 rounded-full border border-gray-600 px-6 py-2.5 font-semibold text-gray-300 transition hover:border-gray-400 hover:bg-white/5">
+              Book a Live Demo <Calendar className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+    </motion.div>
+  )
+}
+
+// ============================================
+// PAGE 5: PRICING
+// ============================================
+const PricingPage = () => {
+  const [billingCycle, setBillingCycle] = useState('monthly')
+  const [employees, setEmployees] = useState(25)
+  const [tools, setTools] = useState(8)
+
+  const plans = [
+    {
+      name: 'Starter',
+      price: '₹1,999',
+      accent: false,
+      color: 'green',
+      description: 'Perfect for small teams getting started.',
+      features: ['Up to 5 Users', 'Sales OS', 'Project OS', 'People OS', 'Basic Reports', 'Email Support'],
+      buttonText: 'Start Free Trial',
+      buttonColor: 'green',
+    },
+    {
+      name: 'Growth',
+      price: '₹4,999',
+      accent: true,
+      color: 'blue',
+      description: 'Ideal for growing agencies & IT companies.',
+      features: ['Up to 20 Users', 'Recruitment OS', 'Finance OS', 'Automation (50 Workflows)', 'Client Portal', 'Priority Support'],
+      buttonText: 'Start Free Trial',
+      buttonColor: 'blue',
+      popular: true,
+    },
+    {
+      name: 'Business',
+      price: '₹9,999',
+      accent: false,
+      color: 'purple',
+      description: 'Advanced features for scaling businesses.',
+      features: ['Up to 50 Users', 'AI Workforce (Basic)', 'Advanced Reports & Analytics', 'Automation (Unlimited)', 'Custom Roles & Permissions', 'Phone Support'],
+      buttonText: 'Start Free Trial',
+      buttonColor: 'purple',
+    },
+    {
+      name: 'Enterprise',
+      price: 'Custom',
+      accent: false,
+      color: 'orange',
+      description: 'For large teams with custom needs & security.',
+      features: ['Unlimited Users', 'AI Workforce (Advanced)', 'Custom Integrations', 'Dedicated Account Manager', 'SLA & Uptime Guarantee', 'On-premise / Private Cloud'],
+      buttonText: 'Contact Sales',
+      buttonColor: 'orange',
+    },
+  ]
+
+  const yearlyPrice = (monthlyPrice) => {
+    const num = parseInt(monthlyPrice.replace(/[₹,]/g, ''))
+    return `₹${(num * 10).toLocaleString()}`
+  }
+
+  const savings = employees * tools * 500
+  const formattedSavings = `₹${savings.toLocaleString()}`
+
+  const planFeatures = [
+    { feature: 'Users', starter: 'Up to 5', growth: 'Up to 20', business: 'Up to 50', enterprise: 'Unlimited' },
+    { feature: 'All Core Modules', starter: '✅', growth: '✅', business: '✅', enterprise: '✅' },
+    { feature: 'AI Assistant', starter: 'Basic', growth: 'Basic', business: 'Advanced', enterprise: 'Advanced' },
+    { feature: 'Automation', starter: '10 Workflows', growth: '50 Workflows', business: 'Unlimited', enterprise: 'Unlimited' },
+    { feature: 'Storage', starter: '10 GB', growth: '50 GB', business: '200 GB', enterprise: 'Custom' },
+    { feature: 'Client Portal', starter: '✅', growth: '✅', business: '✅', enterprise: '✅' },
+    { feature: 'Custom Reports', starter: '—', growth: '✅', business: '✅', enterprise: '✅' },
+    { feature: 'Priority Support', starter: '—', growth: '✅', business: '✅', enterprise: '24/7 Dedicated' },
+    { feature: 'SLA Uptime', starter: '—', growth: '99%', business: '99.9%', enterprise: '99.99%' },
+  ]
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+      {/* Hero */}
+      <section className="bg-white py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">✦ SIMPLE PRICING. POWERFUL VALUE.</p>
+          <h1 className="mt-3 text-4xl font-bold text-gray-900 dark:text-white sm:text-5xl">
+            Choose the Plan That <span className="text-orange-500">Transforms</span> Your Business
+          </h1>
+          <p className="mt-4 text-gray-600 dark:text-gray-300">
+            All plans include access to core modules. Upgrade or downgrade at any time.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-4">
+            <span className={`text-sm ${billingCycle === 'monthly' ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+              Billed Monthly
+            </span>
+            <button
+              onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'yearly' : 'monthly')}
+              className={`relative h-6 w-12 rounded-full transition ${
+                billingCycle === 'yearly' ? 'bg-orange-500' : 'bg-gray-300 dark:bg-gray-600'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${
+                  billingCycle === 'yearly' ? 'left-6' : 'left-0.5'
+                }`}
+              />
+            </button>
+            <span className={`text-sm ${billingCycle === 'yearly' ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+              Billed Yearly <span className="text-orange-500">Save up to 20%</span>
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Cards */}
+      <section className="bg-gray-50 py-12 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-6 lg:grid-cols-4">
+            {plans.map((plan, index) => (
+              <motion.div
+                key={plan.name}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                viewport={{ once: true }}
+                className={`relative rounded-2xl border p-6 shadow-sm ${
+                  plan.accent
+                    ? 'border-blue-200 bg-white dark:border-blue-800/50 dark:bg-gray-800'
+                    : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'
+                }`}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-500 px-4 py-1 text-xs font-semibold text-white">
+                    MOST POPULAR
+                  </div>
+                )}
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{plan.name}</h3>
+                <div className="mt-2">
+                  <span className="text-3xl font-bold text-gray-900 dark:text-white">
+                    {billingCycle === 'yearly' && plan.price !== 'Custom' ? yearlyPrice(plan.price) : plan.price}
+                  </span>
+                  {plan.price !== 'Custom' && (
+                    <span className="text-sm text-gray-500">/{billingCycle === 'yearly' ? 'year' : 'month'}</span>
+                  )}
+                </div>
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{plan.description}</p>
+                <ul className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                  {plan.features.map((feature) => (
+                    <li key={feature} className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> {feature}
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  to={plan.name === 'Enterprise' ? '/contact' : '/pricing'}
+                  className={`mt-6 inline-flex w-full items-center justify-center rounded-full px-6 py-2.5 font-semibold transition ${
+                    plan.accent
+                      ? 'bg-blue-500 text-white hover:bg-blue-600'
+                      : `border border-${plan.color}-500 text-${plan.color}-500 hover:bg-${plan.color}-50 dark:hover:bg-${plan.color}-900/20`
+                  }`}
+                >
+                  {plan.buttonText}
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+          <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+            <span>🛡 14 Days Free Trial</span>
+            <span>• No Credit Card Required</span>
+            <span>• Cancel Anytime</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Compare Plans + ROI */}
+      <section className="py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:grid lg:grid-cols-3 lg:gap-8 lg:px-8">
+          <div className="lg:col-span-2">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Compare Plans</h3>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    <th className="p-3 text-left font-semibold text-gray-900 dark:text-white">Features</th>
+                    <th className="p-3 text-center font-semibold text-gray-900 dark:text-white">Starter</th>
+                    <th className="p-3 text-center font-semibold text-blue-500">Growth</th>
+                    <th className="p-3 text-center font-semibold text-gray-900 dark:text-white">Business</th>
+                    <th className="p-3 text-center font-semibold text-gray-900 dark:text-white">Enterprise</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planFeatures.map((row) => (
+                    <tr key={row.feature} className="border-b border-gray-200 dark:border-gray-700">
+                      <td className="p-3 font-medium text-gray-900 dark:text-white">{row.feature}</td>
+                      <td className="p-3 text-center text-gray-600 dark:text-gray-400">{row.starter}</td>
+                      <td className="p-3 text-center text-gray-600 dark:text-gray-400">{row.growth}</td>
+                      <td className="p-3 text-center text-gray-600 dark:text-gray-400">{row.business}</td>
+                      <td className="p-3 text-center text-gray-600 dark:text-gray-400">{row.enterprise}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ROI Calculator */}
+          <div className="mt-10 lg:mt-0">
+            <div className="sticky top-24 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <h4 className="text-lg font-bold text-gray-900 dark:text-white">📊 Calculate Your ROI</h4>
+              <div className="mt-4">
+                <label className="text-sm text-gray-600 dark:text-gray-400">How many employees do you have?</label>
+                <input
+                  type="range"
+                  min="1"
+                  max="1000"
+                  value={employees}
+                  onChange={(e) => setEmployees(Number(e.target.value))}
+                  className="w-full"
+                />
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">{employees}</span>
+              </div>
+              <div className="mt-4">
+                <label className="text-sm text-gray-600 dark:text-gray-400">How many tools are you using today?</label>
+                <input
+                  type="range"
+                  min="1"
+                  max="20"
+                  value={tools}
+                  onChange={(e) => setTools(Number(e.target.value))}
+                  className="w-full"
+                />
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">{tools}</span>
+              </div>
+              <div className="mt-4 rounded-lg bg-orange-50 p-4 dark:bg-orange-900/20">
+                <p className="text-sm text-gray-600 dark:text-gray-400">You can save up to</p>
+                <p className="text-2xl font-bold text-orange-500">{formattedSavings}/year</p>
+                <p className="text-xs text-gray-500">with SynTask</p>
+              </div>
+              <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                <p>▾ Can I change my plan later?</p>
+                <p>▾ Is my data secure with SynTask?</p>
+                <p>▾ Do you offer onboarding support?</p>
+                <p>▾ What if I exceed my user limit?</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Trusted By */}
+      <section className="bg-gray-50 py-12 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Trusted by 500+ Companies Worldwide</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-4">
+            {['WebClue Digital Agency', 'Teqnovate IT Services', 'PixelCraft Software Co.', 'GrowthHackers Marketing Agency', 'NextGen Solutions', 'InnoApps Technologies'].map((company) => (
+              <span key={company} className="rounded-full border border-gray-200 px-4 py-2 text-sm dark:border-gray-700 dark:text-gray-300">
+                {company}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="bg-navy-dark py-16">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <div className="text-4xl mb-4">🚀</div>
+          <h2 className="text-2xl font-bold text-white sm:text-3xl">Ready to Transform Your Business?</h2>
+          <p className="mt-2 text-gray-400">Join hundreds of agencies & IT companies already growing with SynTask.</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-4">
+            <Link to="/pricing" className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-6 py-2.5 font-semibold text-white transition hover:bg-orange-600">
+              Start Free Trial <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link to="/stories" className="inline-flex items-center gap-2 rounded-full border border-gray-600 px-6 py-2.5 font-semibold text-gray-300 transition hover:border-gray-400 hover:bg-white/5">
+              Book a Live Demo <Calendar className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-gray-400">
+            <span>✓ 14 Days Free Trial</span>
+            <span>✓ No Credit Card</span>
+            <span>✓ Cancel Anytime</span>
+            <span>✓ Full Onboarding Support</span>
+          </div>
+        </div>
+      </section>
+    </motion.div>
+  )
+}
+
+// ============================================
+// PAGE 6: RESOURCES
+// ============================================
+const ResourcesPage = () => {
+  const [activeTab, setActiveTab] = useState('All Resources (120+)')
+  const tabs = ['All Resources (120+)', 'Guides & Ebooks (24)', 'Templates (18)', 'Playbooks (16)', 'Case Studies (20)', 'Webinars (12)', 'Product Updates (10)']
+
+  const featuredArticles = [
+    {
+      title: 'How to Run Your Agency Like a Well-Oiled Machine',
+      category: 'Operations',
+      badge: 'FEATURED',
+      badgeColor: 'orange',
+      image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=600&h=300&fit=crop',
+      excerpt: 'Discover the exact framework top agencies use to streamline operations...',
+      date: 'May 20, 2024',
+      readTime: '8 min read',
+      author: 'Ankit Sen',
+    },
+    {
+      title: '10 Ways to Improve Team Productivity with AI',
+      category: 'Productivity',
+      badge: 'GUIDE',
+      badgeColor: 'green',
+      image: 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=600&h=300&fit=crop',
+      excerpt: 'Practical strategies to leverage AI and automation to get more done...',
+      date: 'May 15, 2024',
+      readTime: '6 min read',
+      author: 'Neha Kapoor',
+    },
+    {
+      title: 'How WebClue Increased Productivity by 45% with SynTask',
+      category: 'Growth',
+      badge: 'CASE STUDY',
+      badgeColor: 'purple',
+      image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&h=300&fit=crop',
+      excerpt: 'See how a digital marketing agency scaled to 25+ clients without increasing headcount.',
+      date: 'May 10, 2024',
+      readTime: '5 min read',
+      author: 'Aarav Mehta',
+    },
+  ]
+
+  const resources = [
+    { icon: '📄', title: 'Agency Operations Playbook', desc: 'Step-by-step guide to build scalable operations for your agency.', format: 'PDF Guide • 24 Pages' },
+    { icon: '📊', title: 'Project Management Template', desc: 'Ready-to-use project plan template to manage tasks, timelines and deliverables.', format: 'Excel Sheet • Customizable' },
+    { icon: '✅', title: 'Client Onboarding Checklist', desc: 'Complete checklist to onboard clients professionally and efficiently.', format: 'Checklist • 15 Steps' },
+    { icon: '📁', title: 'SOP Template Bundle', desc: '50+ SOP templates for HR, finance, projects, sales and more.', format: 'ZIP File • 50+ Templates' },
+    { icon: '📈', title: 'KPI Dashboard Template', desc: 'Track the right metrics and grow your business with data.', format: 'Google Sheets • Real-time' },
+    { icon: '🤖', title: 'AI Prompts for Agencies', desc: '100+ ready-to-use AI prompts for marketing, sales, HR and operations.', format: 'Document • 100+ Prompts' },
+  ]
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+      {/* Hero */}
+      <section className="bg-white py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:grid lg:grid-cols-2 lg:gap-12 lg:px-8">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }}>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">🏠 RESOURCES THAT HELP YOU GROW</p>
+            <h1 className="mt-3 text-4xl font-bold text-gray-900 dark:text-white sm:text-5xl">
+              Learn. Implement. <span className="text-orange-500">Grow.</span>
+            </h1>
+            <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">
+              Everything for Service Companies. Guides, templates, playbooks and insights to help you streamline operations, improve productivity and scale your business with SynTask.
+            </p>
+            <div className="mt-6 flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-800">
+              <Search className="h-5 w-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="What do you want to learn today?"
+                className="flex-1 bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-500"
+              />
+            </div>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.2 }} className="mt-10 lg:mt-0">
+            <div className="relative h-64 rounded-2xl bg-gradient-to-br from-orange-100 to-orange-200 p-8 dark:from-orange-900/30 dark:to-orange-800/20">
+              <div className="absolute bottom-4 right-4 space-y-2">
+                <div className="rounded-lg bg-white/80 p-3 shadow-lg dark:bg-gray-800/80">📄 Templates</div>
+                <div className="rounded-lg bg-white/80 p-3 shadow-lg dark:bg-gray-800/80">📚 Guides</div>
+                <div className="rounded-lg bg-white/80 p-3 shadow-lg dark:bg-gray-800/80">📖 Playbooks</div>
+                <div className="rounded-lg bg-white/80 p-3 shadow-lg dark:bg-gray-800/80">📋 Case Studies</div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Category Tabs */}
+      <section className="bg-gray-50 py-6 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  tab === activeTab
+                    ? 'bg-orange-500 text-white'
+                    : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Featured Articles */}
+      <section className="py-16 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Featured Articles</h2>
+            <a href="#" className="text-sm font-semibold text-orange-500 transition hover:text-orange-600">View all articles →</a>
+          </div>
+          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {featuredArticles.map((article, index) => (
+              <motion.div
+                key={article.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                viewport={{ once: true }}
+                className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800"
+              >
+                <img src={article.image} alt={article.title} className="h-48 w-full object-cover" />
+                <div className="p-4">
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded-full bg-${article.badgeColor}-100 px-3 py-1 text-xs font-semibold text-${article.badgeColor}-600 dark:bg-${article.badgeColor}-900/30 dark:text-${article.badgeColor}-400`}>
+                      {article.badge}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{article.category}</span>
+                  </div>
+                  <h3 className="mt-2 font-semibold text-gray-900 dark:text-white">{article.title}</h3>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{article.excerpt}</p>
+                  <div className="mt-3 flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                    <span>{article.date}</span>
+                    <span>•</span>
+                    <span>{article.readTime}</span>
+                    <span>•</span>
+                    <span>By {article.author}</span>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Resource Library */}
+      <section className="bg-gray-50 py-16 dark:bg-gray-800/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Explore Our Resource Library</h2>
+          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {resources.map((resource, index) => (
+              <motion.div
+                key={resource.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                viewport={{ once: true }}
+                className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className="text-3xl">{resource.icon}</div>
+                <h4 className="mt-3 font-semibold text-gray-900 dark:text-white">{resource.title}</h4>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{resource.desc}</p>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{resource.format}</span>
+                  <a href="#" className="text-sm font-semibold text-orange-500 transition hover:text-orange-600">Download →</a>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+          <div className="mt-8 text-center">
+            <button className="rounded-full border border-orange-500 px-8 py-2.5 font-semibold text-orange-500 transition hover:bg-orange-50 dark:hover:bg-orange-900/20">
+              View All Resources →
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Newsletter CTA */}
+      <section className="bg-navy-dark py-16">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <div className="text-4xl mb-4">✉️</div>
+          <h2 className="text-2xl font-bold text-white sm:text-3xl">Stay Ahead with Actionable Insights</h2>
+          <p className="mt-2 text-gray-400">Join 5,000+ agency owners and operators who get our best content straight to their inbox.</p>
+          <form className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <input
+              type="email"
+              placeholder="Enter your work email"
+              className="rounded-full border border-gray-700 bg-gray-800/50 px-6 py-3 text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none sm:w-80"
+              required
+            />
+            <button type="submit" className="rounded-full bg-orange-500 px-6 py-3 font-semibold text-white transition hover:bg-orange-600">
+              Subscribe
+            </button>
+          </form>
+          <div className="mt-4 flex flex-wrap justify-center gap-4 text-xs text-gray-400">
+            <span>✓ No spam</span>
+            <span>✓ Unsubscribe anytime</span>
+            <span>✓ Weekly insights</span>
+          </div>
+        </div>
+      </section>
+    </motion.div>
+  )
+}
+
+// ============================================
+// MAIN APP WITH ROUTING
+// ============================================
+const NewLanding = () => {
+  return (
+    <div className="min-h-screen bg-white dark:bg-gray-900">
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/stories" element={<CustomerStoriesPage />} />
+        <Route path="/ai-workforce" element={<AIWorkforcePage />} />
+        <Route path="/compare" element={<ComparePage />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/resources" element={<ResourcesPage />} />
+        <Route path="/login" element={<div className="py-20 text-center text-gray-900 dark:text-white">Login Page</div>} />
+      </Routes>
+      <Footer />
     </div>
   )
 }

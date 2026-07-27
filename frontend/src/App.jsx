@@ -191,6 +191,37 @@ function App() {
     applySeoMeta(getSeoMeta(location.pathname))
   }, [location.pathname])
 
+  // ── Live permission sync ────────────────────────────────────────────────────
+  // Poll /auth/me every 60 s so module/role changes made by an admin are
+  // reflected in the employee's UI without requiring a logout/login cycle.
+  useEffect(() => {
+    const { refreshUser, isAuthenticated } = useAuthStore.getState()
+    if (!isAuthenticated) return
+
+    // Immediate refresh on mount
+    void refreshUser()
+
+    // Poll every 60 seconds
+    const interval = setInterval(() => {
+      if (useAuthStore.getState().isAuthenticated) {
+        void useAuthStore.getState().refreshUser()
+      }
+    }, 60_000)
+
+    // Also refresh when the tab becomes visible again (e.g. user switches back)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && useAuthStore.getState().isAuthenticated) {
+        void useAuthStore.getState().refreshUser()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
+
   // Show global loader briefly on route change to indicate navigation
   useEffect(() => {
     if (!setLoading) return

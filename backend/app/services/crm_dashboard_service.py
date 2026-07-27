@@ -121,9 +121,11 @@ async def build_sales_analytics_summary(current_user: User) -> Dict[str, Any]:
     quarter_start = now.replace(month=quarter_start_month, day=1, hour=0, minute=0, second=0, microsecond=0)
     year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    prospects = await SalesProspect.find({"company_id": current_user.company_id, "deleted": False}).to_list()
-    deals = await CRMDeal.find({"company_id": current_user.company_id, "archived": False}).to_list()
-    proposals = await CRMProposal.find({"company_id": current_user.company_id, "archived": False}).sort("-updated_at").to_list()
+    prospects, deals, proposals = await asyncio.gather(
+        SalesProspect.find({"company_id": current_user.company_id, "deleted": False}).to_list(),
+        CRMDeal.find({"company_id": current_user.company_id, "archived": False}).to_list(),
+        CRMProposal.find({"company_id": current_user.company_id, "archived": False}).sort("-updated_at").to_list(),
+    )
 
     won_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.WON)
     lost_revenue = sum(_safe_amount(p.won_amount) for p in prospects if p.status == ProspectStatus.LOST)
