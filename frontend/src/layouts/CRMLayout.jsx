@@ -39,6 +39,8 @@ import {
 import { CRMWorkspace } from '../components/crm'
 import { CRM_NAV_ITEMS, CRM_ROUTE_DESCRIPTIONS, CRM_ROUTE_LABELS } from '../pages/crm/metadata'
 import { Badge, Button } from '../components/ui'
+import { useAuthStore } from '../store/authStore'
+import { hasCompanyAdminAccess, isManagerRole } from '../utils/roles'
 
 // Enhanced navigation items with icons and colors
 const ENHANCED_NAV_ITEMS = [
@@ -150,6 +152,8 @@ const NavItem = ({ item, isActive, onClick, collapsed = false }) => {
 
 const CRMLayout = () => {
   const location = useLocation()
+  const { user } = useAuthStore()
+  const canSeeSettings = hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role)
   const [searchValue, setSearchValue] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -273,7 +277,7 @@ const CRMLayout = () => {
 
             {/* Navigation */}
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {ENHANCED_NAV_ITEMS.map((item) => (
+              {ENHANCED_NAV_ITEMS.filter((item) => item.id !== 'settings' || canSeeSettings).map((item) => (
                 <NavItem
                   key={item.id}
                   item={item}

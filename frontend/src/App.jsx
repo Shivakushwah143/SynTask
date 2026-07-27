@@ -11,7 +11,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import ConfirmDialog from './components/ConfirmDialog';
 import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isSuperAdminRole } from './utils/roles';
+import { hasCompanyAdminAccess, isSuperAdminRole, isManagerRole } from './utils/roles';
 import { applySeoMeta, getSeoMeta } from './utils/seo';
 import DemoHome from './pages/DemoHome';
 
@@ -148,6 +148,13 @@ const CompanyAdminGuard = ({ children }) => {
   const { user } = useAuthStore()
   if (!hasCompanyAdminAccess(user?.role)) return <Navigate to="/dashboard" replace />
   return children
+}
+
+// Only admins and managers can access CRM settings
+const CRMSettingsGuard = ({ children }) => {
+  const { user } = useAuthStore()
+  if (hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role)) return children
+  return <Navigate to="/crm/leads" replace />
 }
 
 const ModuleGuard = ({ module, children }) => {
@@ -291,8 +298,8 @@ function App() {
             <Route path="calendar" element={withBoundary(<CRMCalendarPage />)} />
             <Route path="reports" element={withBoundary(<CRMReportsPage />)} />
             <Route path="configuration" element={<Navigate to="/crm/settings" replace />} />
-            <Route path="settings/meta" element={withBoundary(<CRMMetaIntegrationPage />)} />
-            <Route path="settings" element={withBoundary(<CRMSettingsPage />)} />
+            <Route path="settings/meta" element={<CRMSettingsGuard>{withBoundary(<CRMMetaIntegrationPage />)}</CRMSettingsGuard>} />
+            <Route path="settings" element={<CRMSettingsGuard>{withBoundary(<CRMSettingsPage />)}</CRMSettingsGuard>} />
           </Route>
       </Route>
 
