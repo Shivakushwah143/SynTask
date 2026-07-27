@@ -255,28 +255,42 @@ export default function WorkspaceCalendar() {
 
   // Quick action navigation
   const openEventTarget = (event) => {
+    if (!event) return
     setSelectedEvent(null)
     const rawId = String(event.id || '')
-    const idParts = rawId.split('_')
-    const type = idParts[0]
-    const dbId = idParts.slice(2).join('_')
 
-    console.log("dbid=",dbId);
-    console.log("rawid=",rawId,"id=",idParts);
-    
-    if (type === 'task' || type === 'task_start' || type === 'task_due') {
+    if (event.type === 'meeting' || rawId.startsWith('meeting_')) {
+      if (event.zoom_meeting_url) {
+        window.open(event.zoom_meeting_url, '_blank')
+      } else {
+        navigate('/meetings')
+      }
+      return
+    }
+
+    let dbId = rawId
+    if (rawId.startsWith('task_start_') || rawId.startsWith('task_due_')) {
+      dbId = rawId.replace(/^task_(start|due)_/, '')
+    } else if (rawId.startsWith('task_')) {
+      dbId = rawId.replace(/^task_/, '')
+    } else if (rawId.startsWith('project_start_') || rawId.startsWith('project_due_')) {
+      dbId = rawId.replace(/^project_(start|due)_/, '')
+    } else if (rawId.startsWith('project_milestone_')) {
+      dbId = event.project_id || rawId.split('_')[2]
+    }
+
+    const isTask = rawId.startsWith('task') || String(event.type).startsWith('task')
+    const isProject = rawId.startsWith('project') || String(event.type).startsWith('project') || event.type === 'milestone'
+
+    if (isTask) {
       if (event.project_id) {
         navigate(`/projects/${event.project_id}/tasks/${dbId}`)
       } else {
         navigate(`/tasks/${dbId}`)
       }
-    } else if (type === 'project' || type === 'project_start' || type === 'project_due' || type === 'project_milestone') {
-      navigate(`/projects/${dbId}/board`)
-    } else if (type === 'meeting') {
-      if (event.zoom_meeting_url) {
-        window.open(event.zoom_meeting_url, '_blank')
-      } else {
-        navigate(`/meetings`)
+    } else if (isProject) {
+      if (dbId) {
+        navigate(`/projects/${dbId}`)
       }
     }
   }
@@ -616,6 +630,64 @@ export default function WorkspaceCalendar() {
 
         {/* MAIN PANEL: The Calendar views */}
         <main className="flex-1">
+          {/* Calendar Header with Month Navigation Buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4 bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handlePrev}
+                className="inline-flex items-center justify-center p-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 transition-all shadow-xs"
+                title="Previous Month/Week/Day"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white min-w-[160px]">
+                {format(currentDate, view === 'month' ? 'MMMM yyyy' : view === 'week' ? "'Week of' MMM d, yyyy" : 'PPP')}
+              </h2>
+              <button
+                type="button"
+                onClick={handleNext}
+                className="inline-flex items-center justify-center p-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 transition-all shadow-xs"
+                title="Next Month/Week/Day"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleToday}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 transition-all"
+              >
+                <CalendarIcon className="h-3.5 w-3.5" />
+                Today
+              </button>
+              <div className="flex items-center rounded-xl bg-gray-100 p-1 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setView('month')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${view === 'month' ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'}`}
+                >
+                  Month
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView('week')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${view === 'week' ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'}`}
+                >
+                  Week
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView('day')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${view === 'day' ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'}`}
+                >
+                  Day
+                </button>
+              </div>
+            </div>
+          </div>
+
           {isLoading ? (
             <div className="space-y-4">
               <Skeleton className="h-10 w-full rounded-2xl" />
@@ -704,104 +776,248 @@ export default function WorkspaceCalendar() {
             </div>
 
             <div className="flex-1 p-6 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{selectedEvent.title}</h2>
-                <p className="mt-3 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
-                  {selectedEvent.description || 'No description provided.'}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900">
-                  <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Date</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
-                    {format(parseEventDate(selectedEvent.start), 'PPP')}
-                  </span>
-                </div>
-                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900">
-                  <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Time</span>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
-                    {selectedEvent.time ? format(parseEventDate(`${selectedEvent.start}T${selectedEvent.time}`), 'p') : 'All Day'}
-                  </span>
-                </div>
-
-                {selectedEvent.project_name && (
-                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 col-span-2">
-                    <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Project</span>
-                    <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-                      <Layers className="h-3.5 w-3.5 text-indigo-500" />
-                      {selectedEvent.project_name}
-                    </span>
-                  </div>
-                )}
-
-                {selectedEvent.assignee && (
-                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900">
-                    <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Assignee</span>
-                    <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5 text-gray-500" />
-                      {selectedEvent.assignee}
-                    </span>
-                  </div>
-                )}
-
-                {selectedEvent.priority && (
-                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900">
-                    <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Priority</span>
-                    <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-                      <Flag className="h-3.5 w-3.5 text-amber-500" />
-                      <span className="capitalize">{selectedEvent.priority}</span>
-                    </span>
-                  </div>
-                )}
+              {/* Same Date Items Selector */}
+              {(() => {
+                const targetDate = parseEventDate(selectedEvent.start)
+                const sameDateEvents = filteredEvents.filter((e) => isSameDay(parseEventDate(e.start), targetDate))
                 
-                {selectedEvent.host && (
-                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 col-span-2">
-                    <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Host</span>
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{selectedEvent.host}</span>
-                  </div>
-                )}
-                
-                {selectedEvent.participants && selectedEvent.participants.length > 0 && (
-                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 col-span-2">
-                    <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Participants</span>
-                    <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      {selectedEvent.participants.map((p, idx) => (
-                        <span key={idx} className="bg-white border dark:bg-black px-2 py-0.5 rounded-md text-[10px] font-medium text-gray-700 dark:text-gray-300">
-                          {p}
-                        </span>
-                      ))}
+                return (
+                  <>
+                    {sameDateEvents.length > 1 && (
+                      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3.5 dark:border-indigo-900/30 dark:bg-indigo-950/30 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                            <CalendarDays className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                            All Items on {format(targetDate, 'MMM d, yyyy')} ({sameDateEvents.length})
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                          {sameDateEvents.map((item) => {
+                            const isCurrent = item.id === selectedEvent.id
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => setSelectedEvent(item)}
+                                className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all truncate flex items-center gap-1.5 ${
+                                  isCurrent
+                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                    : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600'
+                                }`}
+                                title={item.title}
+                              >
+                                <span className={`h-1.5 w-1.5 rounded-full ${isCurrent ? 'bg-white' : 'bg-indigo-500'}`} />
+                                <span className="truncate max-w-[180px]">{item.title}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{selectedEvent.title}</h2>
+                      <p className="mt-3 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
+                        {selectedEvent.description || 'No description provided.'}
+                      </p>
                     </div>
-                  </div>
-                )}
-              </div>
 
-              <div className="border-t border-gray-200 pt-4 dark:border-gray-800 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedEvent(null)}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openEventTarget(selectedEvent)}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 flex items-center gap-2"
-                >
-                  {selectedEvent.type === 'meeting' ? (
-                    <>
-                      <Video className="h-4 w-4" />
-                      Join Meeting
-                    </>
-                  ) : (
-                    <>
-                      <ExternalLink className="h-4 w-4" />
-                      Open Record
-                    </>
-                  )}
-                </button>
-              </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      {/* Scheduled Context Card */}
+                      <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-100 dark:bg-indigo-950/20 dark:border-indigo-900/30 col-span-2 flex items-center justify-between">
+                        <div>
+                          <span className="font-semibold text-indigo-500 uppercase tracking-wider text-[10px] block">Timing Context</span>
+                          <span className="font-bold text-indigo-900 dark:text-indigo-200 text-xs mt-0.5 block">
+                            {selectedEvent.type === 'task_assigned' || selectedEvent.is_scheduled
+                              ? '🗓️ Scheduled Start Date (Not Creation Date)'
+                              : selectedEvent.type === 'task_due'
+                                ? '⏰ Task Due Date'
+                                : selectedEvent.type === 'project_start'
+                                  ? '🚀 Project Start Date'
+                                  : selectedEvent.type === 'project_due'
+                                    ? '🏁 Project Delivery Due Date'
+                                    : '📅 Calendar Scheduled Event'}
+                          </span>
+                        </div>
+                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-gray-900 px-2.5 py-1 rounded-xl shadow-xs border border-indigo-200 dark:border-indigo-800">
+                          {format(parseEventDate(selectedEvent.start), 'MMM d, yyyy')}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                        <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Scheduled Start</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          {selectedEvent.start_date
+                            ? format(parseEventDate(selectedEvent.start_date), 'PPP')
+                            : selectedEvent.is_scheduled
+                              ? format(parseEventDate(selectedEvent.start), 'PPP')
+                              : 'Not specified'}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                        <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Due Date</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          {selectedEvent.due_date
+                            ? format(parseEventDate(selectedEvent.due_date), 'PPP')
+                            : !selectedEvent.is_scheduled && selectedEvent.type === 'task_due'
+                              ? format(parseEventDate(selectedEvent.start), 'PPP')
+                              : 'No due date'}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                        <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Time</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          {selectedEvent.time ? format(parseEventDate(`${selectedEvent.start}T${selectedEvent.time}`), 'p') : 'All Day'}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+                        <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Priority</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                          <Flag className="h-3.5 w-3.5 text-amber-500" />
+                          <span className="capitalize">{selectedEvent.priority || 'Medium'}</span>
+                        </span>
+                      </div>
+
+                      {selectedEvent.project_name && (
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 col-span-2">
+                          <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Project</span>
+                          <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                            <Layers className="h-3.5 w-3.5 text-indigo-500" />
+                            {selectedEvent.project_name}
+                          </span>
+                        </div>
+                      )}
+
+                      {selectedEvent.assignee && (
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 col-span-2">
+                          <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Assignee</span>
+                          <span className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                            <User className="h-3.5 w-3.5 text-gray-500" />
+                            {selectedEvent.assignee}
+                          </span>
+                        </div>
+                      )}
+
+                      {selectedEvent.host && (
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 col-span-2">
+                          <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Host</span>
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{selectedEvent.host}</span>
+                        </div>
+                      )}
+
+                      {selectedEvent.participants && selectedEvent.participants.length > 0 && (
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 col-span-2">
+                          <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Participants</span>
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {selectedEvent.participants.map((p, idx) => (
+                              <span key={idx} className="bg-white border dark:bg-black px-2 py-0.5 rounded-md text-[10px] font-medium text-gray-700 dark:text-gray-300">
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Detailed List of All Events on Same Date */}
+                    {sameDateEvents.length > 1 && (
+                      <div className="border-t border-gray-200 pt-5 dark:border-gray-800 space-y-3">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center justify-between">
+                          <span>Complete Schedule ({sameDateEvents.length} items)</span>
+                        </h3>
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                          {sameDateEvents.map((item) => {
+                            const isSelected = item.id === selectedEvent.id
+                            return (
+                              <div
+                                key={item.id}
+                                className={`p-3 rounded-2xl border transition-all text-xs flex flex-col gap-2 ${
+                                  isSelected
+                                    ? 'border-indigo-500 bg-indigo-50/50 ring-1 ring-indigo-400 dark:border-indigo-600 dark:bg-indigo-950/40 dark:ring-indigo-700'
+                                    : 'border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-700'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="space-y-0.5">
+                                    <span className="font-bold text-gray-900 dark:text-gray-100 block">{item.title}</span>
+                                    {item.project_name && (
+                                      <span className="text-[10px] text-gray-500 dark:text-gray-400 block">{item.project_name}</span>
+                                    )}
+                                  </div>
+                                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-white border dark:bg-gray-800 dark:border-gray-700 text-gray-700 dark:text-gray-300 whitespace-nowrap shadow-xs">
+                                    {getEventBadgeLabel(item.type)}
+                                  </span>
+                                </div>
+
+                                {item.description && (
+                                  <p className="text-[11px] text-gray-600 dark:text-gray-300 line-clamp-2">
+                                    {item.description}
+                                  </p>
+                                )}
+
+                                <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800/80 text-[10px] text-gray-500 dark:text-gray-400">
+                                  <span className="font-medium">
+                                    {item.time ? item.time : 'All Day'} • {item.assignee || 'Unassigned'}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {!isSelected && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedEvent(item)}
+                                        className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                                      >
+                                        View Details
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => openEventTarget(item)}
+                                      className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 hover:underline"
+                                    >
+                                      {item.type === 'meeting' ? 'Join' : 'Open'}
+                                      <ExternalLink className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="border-t border-gray-200 pt-4 dark:border-gray-800 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedEvent(null)}
+                        className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                      >
+                        Close
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEventTarget(selectedEvent)}
+                        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 flex items-center gap-2"
+                      >
+                        {selectedEvent.type === 'meeting' ? (
+                          <>
+                            <Video className="h-4 w-4" />
+                            Join Meeting
+                          </>
+                        ) : (
+                          <>
+                            <ExternalLink className="h-4 w-4" />
+                            Open Record
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -831,7 +1047,12 @@ function MonthView({ days, events, selected, setSelected, month, onOpenEvent, pa
           return (
             <div
               key={timeService.toUtcISOString(day)}
-              onClick={() => setSelected(day)}
+              onClick={() => {
+                setSelected(day)
+                if (dayEvents.length > 0) {
+                  onOpenEvent(dayEvents[0])
+                }
+              }}
               className={`min-h-32 p-2 text-left transition-colors flex flex-col cursor-pointer ${
                 isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/20 ring-2 ring-indigo-300 dark:ring-indigo-700' : ''
               } ${
@@ -873,9 +1094,16 @@ function MonthView({ days, events, selected, setSelected, month, onOpenEvent, pa
                   </button>
                 ))}
                 {dayEvents.length > 3 && (
-                  <div className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 pl-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onOpenEvent(dayEvents[0])
+                    }}
+                    className="text-[9px] font-bold text-indigo-600 hover:underline dark:text-indigo-400 pl-1 cursor-pointer block"
+                  >
                     +{dayEvents.length - 3} more
-                  </div>
+                  </button>
                 )}
               </div>
             </div>
