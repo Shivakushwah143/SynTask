@@ -47,6 +47,9 @@ For Super Admin functionality, verify ordinary company users cannot call `/api/v
 ### Domain regression
 
 - Project/task lifecycle, assignment, boards, automation, history.
+- Project board task creation verifies the Assign to dropdown includes active employees across managers within the tenant, excludes non-employee/inactive/current-user records, rejects cross-tenant employees, and keeps quick-created employee modal content above the Create task modal.
+- Project board task creation verifies suggested estimated hours never auto-fill as `0`; future due dates use at least `0.25` hours and past/invalid due dates leave the field blank.
+- Project board task creation verifies estimated hours accepts any positive value, including values greater than 24.
 - Super Admin platform operations: tenant list user counts, tenant user list, password reset confirmation/email attempt, suspend with reason/notes/notify-admin, suspended-user login/API denial, activate tenant, plan create/edit, tenant plan assignment, invoice generate/list/send, revenue analytics period selector, subscription overview, usage summary/detail expansion, tenant feature toggles, global feature matrix toggles, and audit log entries for each material action.
 - Task list graphs resolve assigned employee names from API `assigned_to_name`, embedded assignee objects, assignable users, or current-user fallback.
 - Task detail UI verifies status tone labels and color-coded selector/indicator states for each task status.

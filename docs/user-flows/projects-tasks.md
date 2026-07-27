@@ -15,12 +15,14 @@ flowchart TD
 
 ## Projects List and Board
 - How the user reaches it: main navigation or workspace links.
-- What they can do: browse projects, open a board, inspect board summaries.
+- What they can do: browse projects, open a board, inspect board summaries, create tasks, assign tasks to active employees in the company, and quick-create an employee from the task assignment flow.
 - What happens after every action: selecting a project opens board/detail routes and refetches project data.
-- Backend APIs called: project list/detail/board APIs.
+- Backend APIs called: project list/detail/board APIs, task create/update APIs, and tenant-scoped active staff lookup through `/api/v1/users/assignable`.
 - Timeline events created: project changes should appear in timeline/activity where the backend emits events.
 - Notifications sent: none explicitly in the frontend.
 - Related modules updated: Tasks, Time Tracking, CRM handoff in future flows.
+- Tenant and access rule: task assignee choices come only from the authenticated user's company and are limited to active employee-role records; managers can see employees even when those employees report to a different manager. Negative tests should verify another company's employee never appears in the dropdown.
+- Quick-create behavior: the nested Create user modal opens above the Create task modal, and the employee designation field uses the shared designation dropdown with search and an inline create-new option.
 
 ## Task Detail
 - How the user reaches it: from project board, task list, or direct task route.

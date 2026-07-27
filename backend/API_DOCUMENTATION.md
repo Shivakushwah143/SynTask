@@ -399,6 +399,8 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 
 ### Sales Categories
 
+Sales category list/create/update/delete are tenant-scoped and require the canonical `sales_crm` module. Create is allowed for Admin, Manager, Lead, and Super Admin; delete is allowed for Admin, Manager, and Super Admin.
+
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/sales/categories/` | `list_categories` | Uses router/endpoint dependencies where configured. |
