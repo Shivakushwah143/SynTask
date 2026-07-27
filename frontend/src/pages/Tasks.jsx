@@ -16,8 +16,40 @@ import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
-import { timeService } from '@/services/timeService'
-import { excludeCurrentUser } from '../utils/userFilters'
+import { timeService } from '@/services/timeService';
+import { eachDayOfInterval, isWeekend } from 'date-fns';
+import { excludeCurrentUser } from '../utils/userFilters';
+
+// Helper to calculate working hours between now and a due date (8h workday, exclude weekends)
+const calculateWorkingHours = (dueIso) => {
+  const now = timeService.now();
+  const due = timeService.instant(dueIso);
+  if (!due || due <= now) return 0;
+  const startDay = new Date(now);
+  startDay.setHours(0,0,0,0);
+  const endDay = new Date(due);
+  endDay.setHours(0,0,0,0);
+  const days = eachDayOfInterval({ start: startDay, end: endDay });
+  let total = 0;
+  days.forEach((day, idx) => {
+    if (isWeekend(day)) return;
+    const workStart = new Date(day);
+    workStart.setHours(9,0,0,0);
+    const workEnd = new Date(day);
+    workEnd.setHours(17,0,0,0);
+    if (idx === 0) {
+      const start = now > workStart ? now : workStart;
+      const end = (days.length === 1) ? Math.min(due, workEnd) : workEnd;
+      total += Math.max(0, (end - start) / 3600000);
+    } else if (idx === days.length - 1) {
+      const end = Math.min(due, workEnd);
+      total += Math.max(0, (end - workStart) / 3600000);
+    } else {
+      total += 8;
+    }
+  });
+  return Math.round(total * 100) / 100;
+};
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -82,7 +114,15 @@ const Tasks = () => {
   const [scheduleRunAt, setScheduleRunAt] = useState('')
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
-  const pageSize = 20
+  const pageSize = 20;
+
+// Update estimated hours when due date changes
+useEffect(() => {
+  if (dueDateValue) {
+    const hrs = calculateWorkingHours(dueDateValue);
+    setEstimatedHoursValue(hrs.toString());
+  }
+}, [dueDateValue]);
 
   const statuses = [
     { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
@@ -133,8 +173,8 @@ const Tasks = () => {
   const loadAssignableUsers = useCallback(async () => {
     try {
       setLoadingUsers(true)
-      // Use listUsers to surface all junior employees regardless of department/manager
-      const data = await usersAPI.listUsers(null, 'junior', 'active', 0, 500)
+      // Load all active employees in the company
+      const data = await usersAPI.listUsers(null, null, 'active', 0, 500)
       setAssignableUsers(excludeCurrentUser(data.users || [], user))
     } catch (error) {
       console.error('Error loading users:', error)

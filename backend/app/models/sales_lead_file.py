@@ -14,6 +14,9 @@ class SalesLeadFile(Document):
     company_id: Indexed(str)
 
     file_url: str
+    file_public_id: Optional[str] = None
+    file_resource_type: Optional[str] = None
+    file_delivery_type: Optional[str] = None
     file_name: str
     original_name: Optional[str] = None
     file_type: Optional[str] = None

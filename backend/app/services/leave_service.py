@@ -276,6 +276,7 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
         "end_date": leave.end_date,
         "reason": leave.reason,
         "attachment_url": leave.attachment_url,
+        "attachment_public_id": getattr(leave, "attachment_public_id", None),
         "status": leave.status.value,
         "reviewed_by": leave.reviewed_by,
         "reviewed_at": leave.reviewed_at,

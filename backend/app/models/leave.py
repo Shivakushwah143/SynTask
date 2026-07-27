@@ -36,6 +36,7 @@ class LeaveRequest(Document):
     end_date: datetime
     reason: str
     attachment_url: Optional[str] = None
+    attachment_public_id: Optional[str] = None
     status: LeaveStatus = LeaveStatus.PENDING
     requested_by: str
     reviewed_by: Optional[str] = None

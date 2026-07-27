@@ -26,11 +26,11 @@ class ProspectStatus(str, Enum):
 class SalesProspect(Document):
     """Lead linked to contacts, products, and pipeline stages."""
 
-    # Basic Fields (from Contact or new)
-    first_name: str
-    last_name: str
-    prospect_name: str  # Auto-generated: First + Last
-    country_code: str
+    # Basic Fields (from Contact or new) - All optional except phone for partial lead creation
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    prospect_name: Optional[str] = None  # Auto-generated: First + Last, or set manually
+    country_code: Optional[str] = None  # Defaults to +91 if not provided
     phone: Indexed(str)
     email: Optional[EmailStr] = None
     contact_id: Optional[str] = None  # If converted from existing contact

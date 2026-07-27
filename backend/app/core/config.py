@@ -133,6 +133,13 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     AWS_BUCKET_NAME: Optional[str] = None
     AWS_REGION: str = "us-east-1"
+
+    # Cloudinary storage
+    CLOUDINARY_CLOUD_NAME: Optional[str] = None
+    CLOUDINARY_API_KEY: Optional[str] = None
+    CLOUDINARY_API_SECRET: Optional[str] = None
+    CLOUDINARY_UPLOAD_FOLDER: str = "syntask"
+    STORAGE_BACKEND: str = "cloudinary"
     
     # Redis (for caching and Celery)
     REDIS_URL: str = Field(..., description="Redis URL for token blacklist and rate limiting.")

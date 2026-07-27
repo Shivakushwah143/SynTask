@@ -50,6 +50,7 @@ class ChatMessage(Document):
     message_type: MessageType = MessageType.TEXT
     content: str  # Text content or file description
     file_url: Optional[str] = None  # URL to uploaded file
+    file_public_id: Optional[str] = None
     file_name: Optional[str] = None  # Original file name
     file_size: Optional[int] = None  # File size in bytes
     file_type: Optional[str] = None  # MIME type
@@ -72,4 +73,3 @@ class ChatMessage(Document):
             "sender_id",
             "created_at",
         ]
-

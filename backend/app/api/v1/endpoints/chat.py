@@ -16,6 +16,7 @@ from app.api.dependencies import (
 )
 from app.core.clock import utc_now
 from app.api.v1.endpoints.files import UPLOAD_DIR
+from app.services.file_service import FileService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -217,6 +218,7 @@ async def get_messages(
                 "message_type": msg.message_type.value,
                 "content": msg.content,
                 "file_url": msg.file_url,
+                "file_public_id": msg.file_public_id,
                 "file_name": msg.file_name,
                 "file_size": msg.file_size,
                 "file_type": msg.file_type,
@@ -276,29 +278,18 @@ async def send_message(
         else:
             message_type = MessageType.FILE
         
-        # Save file
-        import uuid
-        from pathlib import Path
-        
-        # Create uploads directory if it doesn't exist
-        upload_dir = UPLOAD_DIR / "chat"
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Generate unique filename
-        file_ext = Path(file.filename).suffix if file.filename else ""
-        unique_filename = f"{uuid.uuid4()}{file_ext}"
-        file_path = upload_dir / unique_filename
-        
-        # Save file
-        file_content = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-        
-        # Store file info - use relative path for serving
-        file_url = f"/uploads/chat/{unique_filename}"
-        file_name = file.filename
-        file_size = len(file_content)
-        file_type = file.content_type
+        stored = await FileService.store_uploaded_file(
+            file,
+            upload_dir=UPLOAD_DIR / "chat",
+            url_prefix="/uploads/chat",
+            scope="chat",
+            sensitive=True,
+        )
+
+        file_url = stored["file_url"]
+        file_name = stored["filename"]
+        file_size = stored["size"]
+        file_type = stored["type"]
         
         # If no content provided, use file name as content
         if not content:
@@ -314,6 +305,7 @@ async def send_message(
         message_type=message_type,
         content=content or "",
         file_url=file_url,
+        file_public_id=stored.get("cloudinary_public_id") if file else None,
         file_name=file_name,
         file_size=file_size,
         file_type=file_type,
@@ -362,6 +354,7 @@ async def send_message(
         "message_type": message.message_type.value,
         "content": message.content,
         "file_url": message.file_url,
+        "file_public_id": message.file_public_id,
         "file_name": message.file_name,
         "file_size": message.file_size,
         "file_type": message.file_type,

@@ -390,14 +390,10 @@ function LeadModal({ isOpen, onClose, onDone }) {
 
   const submit = () => {
     const nextErrors = {}
-    if (!form.first_name.trim()) nextErrors.first_name = 'First name is required'
-    if (!form.last_name.trim()) nextErrors.last_name = 'Last name is required'
+    // Only phone is required - all other fields are optional for partial lead creation
     if (!/^\+\d{1,4}$/.test(form.country_code.trim())) nextErrors.phone = 'Country code must start with + and contain 1 to 4 digits'
     if (!/^\d{10}$/.test(form.phone.trim())) nextErrors.phone = 'Phone must be exactly 10 digits'
-    if (!form.category_id) nextErrors.category_id = 'Category is required'
-    if (!form.current_stage) nextErrors.current_stage = 'Stage is required'
-    if (!form.assigned_to) nextErrors.assigned_to = 'Owner is required'
-    if (form.product_ids.length === 0) nextErrors.product_ids = 'Select at least one product'
+    // Category, stage, owner and product are optional - backend will assign defaults
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) {
       toast.error('Please complete the required fields')
@@ -414,7 +410,7 @@ function LeadModal({ isOpen, onClose, onDone }) {
       isOpen={isOpen}
       onClose={onClose}
       title="Add lead"
-      description="Capture the basic lead details first, then assign ownership and products."
+      description="Add leads with just a phone number - all other details can be added later."
       size="lg"
       footer={(
         <div className="flex justify-end gap-2">
@@ -427,8 +423,8 @@ function LeadModal({ isOpen, onClose, onDone }) {
         <section className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-950/50">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Identity</h3>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <FormField label="First name" required error={errors.first_name}><input className={inputClassName} value={form.first_name} onChange={(event) => { update('first_name', event.target.value); if (errors.first_name) setErrors((state) => ({ ...state, first_name: '' })) }} /></FormField>
-            <FormField label="Last name" required error={errors.last_name}><input className={inputClassName} value={form.last_name} onChange={(event) => { update('last_name', event.target.value); if (errors.last_name) setErrors((state) => ({ ...state, last_name: '' })) }} /></FormField>
+            <FormField label="First name" error={errors.first_name}><input className={inputClassName} value={form.first_name} onChange={(event) => { update('first_name', event.target.value); if (errors.first_name) setErrors((state) => ({ ...state, first_name: '' })) }} /></FormField>
+            <FormField label="Last name" error={errors.last_name}><input className={inputClassName} value={form.last_name} onChange={(event) => { update('last_name', event.target.value); if (errors.last_name) setErrors((state) => ({ ...state, last_name: '' })) }} /></FormField>
             <FormField label="Phone" required error={errors.phone} className="sm:col-span-2">
               <PhoneInput
                 countryCode={form.country_code}
@@ -446,9 +442,9 @@ function LeadModal({ isOpen, onClose, onDone }) {
         <section className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Ownership and pipeline</h3>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <FormField label="Category" required error={errors.category_id}><select className={inputClassName} value={form.category_id} onChange={(event) => { update('category_id', event.target.value); if (errors.category_id) setErrors((state) => ({ ...state, category_id: '' })) }}><option value="">Select category</option>{categories.map((category) => <option key={getId(category)} value={getId(category)}>{category.name}</option>)}</select></FormField>
-            <FormField label="Stage" required error={errors.current_stage}><select className={inputClassName} value={form.current_stage} onChange={(event) => { update('current_stage', event.target.value); if (errors.current_stage) setErrors((state) => ({ ...state, current_stage: '' })) }}><option value="">Select stage</option>{stages.map((stage) => <option key={getId(stage)} value={getId(stage)}>{stage.name}</option>)}</select></FormField>
-            <FormField label="Owner" required error={errors.assigned_to}><select className={inputClassName} value={form.assigned_to} onChange={(event) => { update('assigned_to', event.target.value); if (errors.assigned_to) setErrors((state) => ({ ...state, assigned_to: '' })) }}><option value="">Assign to</option>{users.map((user) => <option key={getId(user)} value={getId(user)}>{user.first_name} {user.last_name}</option>)}</select></FormField>
+            <FormField label="Category" error={errors.category_id}><select className={inputClassName} value={form.category_id} onChange={(event) => { update('category_id', event.target.value); if (errors.category_id) setErrors((state) => ({ ...state, category_id: '' })) }}><option value="">Select category</option>{categories.map((category) => <option key={getId(category)} value={getId(category)}>{category.name}</option>)}</select></FormField>
+            <FormField label="Stage" error={errors.current_stage}><select className={inputClassName} value={form.current_stage} onChange={(event) => { update('current_stage', event.target.value); if (errors.current_stage) setErrors((state) => ({ ...state, current_stage: '' })) }}><option value="">Select stage</option>{stages.map((stage) => <option key={getId(stage)} value={getId(stage)}>{stage.name}</option>)}</select></FormField>
+            <FormField label="Owner" error={errors.assigned_to}><select className={inputClassName} value={form.assigned_to} onChange={(event) => { update('assigned_to', event.target.value); if (errors.assigned_to) setErrors((state) => ({ ...state, assigned_to: '' })) }}><option value="">Assign to</option>{users.map((user) => <option key={getId(user)} value={getId(user)}>{user.first_name} {user.last_name}</option>)}</select></FormField>
             <FormField label="Interest level"><select className={inputClassName} value={form.interest_level} onChange={(event) => update('interest_level', event.target.value)}><option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option></select></FormField>
             <FormField label="Estimated close date"><input className={inputClassName} type="date" value={form.estimated_close_date} onChange={(event) => update('estimated_close_date', event.target.value)} /></FormField>
             <FormField label="Remark"><input className={inputClassName} value={form.remark} onChange={(event) => update('remark', event.target.value)} /></FormField>
@@ -457,7 +453,7 @@ function LeadModal({ isOpen, onClose, onDone }) {
 
         <section className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-950/50">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Products</h3>
-          <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Select at least one product to qualify the lead.</p>
+          <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Select products for this lead (optional).</p>
           <div className="mt-4 grid max-h-40 gap-2 overflow-y-auto rounded-xl border border-gray-200/80 bg-white p-3 sm:grid-cols-2 dark:border-gray-800 dark:bg-gray-900">
             {products.length ? products.map((product) => (
               <label key={getId(product)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">
