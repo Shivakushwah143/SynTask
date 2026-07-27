@@ -540,7 +540,13 @@ class ResumeStorageService:
 
         upload_dir = FileService.resolve_upload_dir() / "resumes"
         upload = UploadFile(filename=Path(filename).name, file=BytesIO(resume_content))
-        stored = await FileService.store_uploaded_file(upload, upload_dir=upload_dir, url_prefix="/uploads/resumes")
+        stored = await FileService.store_uploaded_file(
+            upload,
+            upload_dir=upload_dir,
+            url_prefix="/uploads/resumes",
+            scope="recruitment/resumes",
+            sensitive=True,
+        )
 
         # Create resume record
         resume = Resume(
@@ -549,6 +555,9 @@ class ResumeStorageService:
             original_filename=filename,
             mime_type=detected_mime,
             storage_url=stored["file_url"],
+            storage_public_id=stored.get("cloudinary_public_id"),
+            storage_resource_type=stored.get("cloudinary_resource_type"),
+            storage_delivery_type=stored.get("cloudinary_delivery_type"),
             checksum=checksum,
             size_bytes=len(resume_content),
         )
@@ -1310,7 +1319,13 @@ class CandidateAttachmentService:
         content = await file.read()
         checksum = hashlib.sha256(content).hexdigest()
         upload = UploadFile(filename=Path(file.filename or "attachment").name, file=BytesIO(content))
-        stored = await FileService.store_uploaded_file(upload, upload_dir=FileService.resolve_upload_dir() / "recruitment", url_prefix="/uploads/recruitment")
+        stored = await FileService.store_uploaded_file(
+            upload,
+            upload_dir=FileService.resolve_upload_dir() / "recruitment",
+            url_prefix="/uploads/recruitment",
+            scope="recruitment/attachments",
+            sensitive=True,
+        )
         attachment = RecruitmentAttachment(
             company_id=company_id,
             candidate_id=candidate_id,
@@ -1318,6 +1333,9 @@ class CandidateAttachmentService:
             original_filename=stored["filename"] or Path(file.filename or "attachment").name,
             mime_type=FileService.detect_mime_type(content, file.filename or ""),
             storage_key=stored["file_url"],
+            storage_public_id=stored.get("cloudinary_public_id"),
+            storage_resource_type=stored.get("cloudinary_resource_type"),
+            storage_delivery_type=stored.get("cloudinary_delivery_type"),
             checksum=checksum,
             size_bytes=stored["size"],
             uploaded_by=actor_id,
@@ -1649,4 +1667,3 @@ class RecruitmentReportService:
             "hiring_sources": await RecruitmentReportRepository.hiring_sources(company_id, filters),
             **await HiringAnalyticsService.time_metrics(company_id, filters),
         }
-

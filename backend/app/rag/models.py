@@ -51,6 +51,10 @@ class RAGKnowledgeSource(Document):
     title: str
     original_filename: str
     storage_path: str
+    storage_url: Optional[str] = None
+    storage_public_id: Optional[str] = None
+    storage_resource_type: Optional[str] = None
+    storage_delivery_type: Optional[str] = None
     mime_type: Optional[str] = None
     size_bytes: int = 0
     checksum: Indexed(str)

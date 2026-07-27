@@ -508,9 +508,9 @@ async def get_prospect(
 
 @router.post("/")
 async def create_prospect(
-    first_name: str = Form(...),
-    last_name: str = Form(...),
-    country_code: str = Form(...),
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    country_code: Optional[str] = Form("+91"),
     phone: str = Form(...),
     category_id: Optional[str] = Form(None),
     product_ids: Optional[str] = Form(None),  # Comma-separated or pipe-separated

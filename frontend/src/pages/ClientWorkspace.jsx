@@ -37,6 +37,8 @@ function formatDateTime(value) {
 }
 
 function clientFileUrl(url) {
+  if (!url) return ''
+  if (/^https?:\/\//i.test(url)) return url
   const baseUrl = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'
   return `${baseUrl}${url}`
 }

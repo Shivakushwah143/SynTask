@@ -81,6 +81,13 @@ class RAGSourceRegistry:
         filename = f"{version_id}{Path(file.filename or '').suffix.lower()}"
         path = self.upload_root() / filename
         path.write_bytes(content)
+        stored = await FileService.store_uploaded_file(
+            UploadFile(filename=Path(file.filename or filename).name, file=__import__("io").BytesIO(content)),
+            upload_dir=self.upload_root(),
+            url_prefix="/uploads/rag",
+            scope="rag",
+            sensitive=True,
+        )
 
         source = RAGKnowledgeSource(
             source_id=source_id,
@@ -91,6 +98,10 @@ class RAGSourceRegistry:
             title=Path(file.filename or "Untitled").stem,
             original_filename=file.filename or filename,
             storage_path=str(path),
+            storage_url=stored["file_url"],
+            storage_public_id=stored.get("cloudinary_public_id"),
+            storage_resource_type=stored.get("cloudinary_resource_type"),
+            storage_delivery_type=stored.get("cloudinary_delivery_type"),
             mime_type=file.content_type,
             size_bytes=len(content),
             checksum=checksum,

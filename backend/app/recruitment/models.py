@@ -230,6 +230,9 @@ class Resume(Document):
     original_filename: str
     mime_type: str
     storage_url: str
+    storage_public_id: Optional[str] = None
+    storage_resource_type: Optional[str] = None
+    storage_delivery_type: Optional[str] = None
     checksum: Indexed(str)
     size_bytes: int = 0
     parsed_text: Optional[str] = None
@@ -353,6 +356,9 @@ class RecruitmentAttachment(Document):
     original_filename: str
     mime_type: str
     storage_key: str
+    storage_public_id: Optional[str] = None
+    storage_resource_type: Optional[str] = None
+    storage_delivery_type: Optional[str] = None
     checksum: str
     size_bytes: int
     uploaded_by: Optional[str] = None
