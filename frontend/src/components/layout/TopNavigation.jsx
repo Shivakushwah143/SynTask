@@ -87,19 +87,19 @@ export function TopNavigation({
                 <h1 className="truncate text-base font-semibold text-gray-900 dark:text-white">
                   {title}
                 </h1>
-                {subtitle && (
+                {/* {subtitle && (
                   <p className="hidden truncate text-xs text-gray-500 sm:block dark:text-gray-400">
                     {subtitle}
                   </p>
-                )}
+                )} */}
                 {breadcrumb && (
                   <p className="hidden truncate text-xs text-gray-400 md:block dark:text-gray-500">
                     {breadcrumb}
                   </p>
                 )}
-                <p className="hidden truncate text-xs text-indigo-600 lg:block dark:text-indigo-300">
+                {/* <p className="hidden truncate text-xs text-indigo-600 lg:block dark:text-indigo-300">
                   Tip: Press {searchShortcut} to search commands, projects, tasks, and people.
-                </p>
+                </p> */}
               </div>
             </div>
           </div>

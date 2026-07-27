@@ -115,10 +115,20 @@ async def initial_pending_reviewers(employee: User) -> list[str]:
         manager = await nearest_manager(employee)
         if manager:
             return [str(manager.id)]
-        return await company_admin_ids(employee.company_id)
+        admins = await company_admin_ids(employee.company_id)
+        if admins:
+            return admins
+        return [str(employee.id)]
     if employee.role == UserRole.MANAGER:
-        return await company_admin_ids(employee.company_id)
-    return []
+        admins = await company_admin_ids(employee.company_id)
+        if admins:
+            return admins
+        return [str(employee.id)]
+    if employee.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+        admins = await company_admin_ids(employee.company_id)
+        other_admins = [a for a in admins if a != str(employee.id)]
+        return other_admins if other_admins else [str(employee.id)]
+    return [str(employee.id)]
 
 
 def leave_visibility_query(current_user: User, employee_id: Optional[str] = None) -> Dict[str, Any]:
@@ -152,19 +162,32 @@ async def assert_forward_target(current_user: User, leave: LeaveRequest, employe
 
 
 def parse_leave_date(value: str, *, end_of_day: bool = False) -> datetime:
+    if not value or not isinstance(value, str) or not value.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Date string cannot be empty"
+        )
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        parsed = datetime.strptime(value, "%Y-%m-%d")
-    if "T" not in value:
-        return datetime.combine(parsed.date(), time.max if end_of_day else time.min)
-    return parse_to_utc(parsed)
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            parsed = datetime.strptime(value, "%Y-%m-%d")
+        if "T" not in value:
+            return datetime.combine(parsed.date(), time.max if end_of_day else time.min)
+        return parse_to_utc(parsed)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid date format: '{value}'. Expected YYYY-MM-DD or ISO 8601 string."
+        )
 
 
 async def ensure_no_overlap(employee_id: str, start_date: datetime, end_date: datetime, exclude_id: Optional[str] = None) -> None:
     query: Dict[str, Any] = {
         "employee_id": employee_id,
-        "status": {"$in": [LeaveStatus.PENDING.value, LeaveStatus.APPROVED.value]},
+        "status": {"$in": [LeaveStatus.PENDING.value, LeaveStatus.FORWARDED.value, LeaveStatus.APPROVED.value]},
         "start_date": {"$lte": end_date},
         "end_date": {"$gte": start_date},
     }
