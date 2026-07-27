@@ -1137,7 +1137,7 @@ export default function CRMLeadsPage() {
               <label className="space-y-1">
                   <span className="flex items-center justify-between gap-2 text-xs font-medium text-text-muted">
                   <span>Category</span>
-                  <button type="button" className={`text-primary-600 hover:underline ${!canCreateCategory ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => { if (!canCreateCategory) { toast.error('You do not have permission to create categories'); return } setCreateCategoryOpen(true) }} disabled={!canCreateCategory}>+ New category</button>
+                  <button type="button" className={`text-primary-600 hover:underline ${canCreateCategory ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => { if (canCreateCategory) { toast.error('You do not have permission to create categories'); return } setCreateCategoryOpen(true) }} >+ New category</button>
                 </span>
                 <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
                   <option value="">Select category</option>
