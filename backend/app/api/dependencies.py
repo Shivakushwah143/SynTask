@@ -100,7 +100,8 @@ def require_module(module_name: str):
     """Dependency factory to ensure the current user has access to a specific module."""
     async def _checker(current_user: User = Depends(get_current_user)) -> User:
         current_role = _normalize_role(getattr(current_user, "role", None))
-        if current_role == UserRole.SUPER_ADMIN:
+        # Super Admin and Admin have full access to all modules
+        if current_role == UserRole.SUPER_ADMIN or current_role == UserRole.ADMIN:
             return current_user
         if module_name in {"sales", "sales_crm"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user

@@ -232,10 +232,15 @@ class LeadNormalizer:
     @staticmethod
     def normalize_form_payload(payload: Dict[str, Any], *, source: str = "manual") -> Dict[str, Any]:
         normalized = dict(payload or {})
-        normalized["first_name"] = _normalize_text(normalized.get("first_name"))
-        normalized["last_name"] = _normalize_text(normalized.get("last_name"))
-        normalized["prospect_name"] = _normalize_text(normalized.get("prospect_name") or f"{normalized['first_name']} {normalized['last_name']}")
-        normalized["country_code"] = _normalize_text(normalized.get("country_code") or "+91")
+        # Handle partial name data - first_name and last_name are optional
+        first_name = _normalize_text(normalized.get("first_name")) or ""
+        last_name = _normalize_text(normalized.get("last_name")) or ""
+        normalized["first_name"] = first_name
+        normalized["last_name"] = last_name
+        # Auto-generate prospect_name from available name data
+        full_name = f"{first_name} {last_name}".strip()
+        normalized["prospect_name"] = _normalize_text(normalized.get("prospect_name")) or full_name or "Unknown Lead"
+        normalized["country_code"] = _normalize_text(normalized.get("country_code")) or "+91"
         normalized["phone"] = _normalize_text(normalized.get("phone"))
         normalized["email"] = _normalize_text(normalized.get("email")).lower() or None
         normalized["remark"] = _normalize_text(normalized.get("remark")) or None
@@ -307,14 +312,12 @@ class LeadNormalizer:
 class LeadValidator:
     @staticmethod
     def validate_lead_payload(payload: Dict[str, Any]) -> None:
-        if not payload.get("first_name"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="First name is required")
-        if not payload.get("last_name"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Last name is required")
-        if not payload.get("country_code"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Country code is required")
+        # Only phone is required - all other fields are optional for partial lead creation
         if not payload.get("phone"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone is required")
+        # If first_name is provided but last_name is not, that's okay
+        # If last_name is provided but first_name is not, that's okay
+        # prospect_name will be auto-generated from first_name + last_name
         if payload.get("status") and _normalize_text(payload.get("status")).lower() not in {item.value for item in ProspectStatus}:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status")
         try:
@@ -333,14 +336,18 @@ class LeadValidator:
 class DuplicateResolver:
     @staticmethod
     async def find_duplicate(current_user: User, payload: Dict[str, Any]) -> Optional[SalesProspect]:
+        # Phone is the unique identifier for leads - check by phone number
+        if not payload.get("phone"):
+            return None
         query: Dict[str, Any] = {
             "deleted": False,
-            "company_id": current_user.company_id,
-            "country_code": payload.get("country_code"),
+            "country_code": payload.get("country_code") or "+91",
             "phone": payload.get("phone"),
         }
         if current_user.role == UserRole.SUPER_ADMIN and payload.get("company_id"):
             query["company_id"] = payload["company_id"]
+        else:
+            query["company_id"] = current_user.company_id
         return await SalesProspect.find_one(query)
 
     @staticmethod
@@ -556,11 +563,17 @@ class LeadEngine:
                     assignment_counts={str(user.id): 0 for user in assignable_users},
                 )
 
+        # Handle partial data - ensure prospect_name is set properly
+        first_name = normalized.get("first_name") or ""
+        last_name = normalized.get("last_name") or ""
+        full_name = f"{first_name} {last_name}".strip() or normalized.get("phone") or "Unknown Lead"
+        prospect_name = normalized.get("prospect_name") or full_name
+
         prospect = SalesProspect(
-            first_name=normalized["first_name"],
-            last_name=normalized["last_name"],
-            prospect_name=normalized["prospect_name"],
-            country_code=normalized["country_code"],
+            first_name=normalized.get("first_name"),
+            last_name=normalized.get("last_name"),
+            prospect_name=prospect_name,
+            country_code=normalized.get("country_code") or "+91",
             phone=normalized["phone"],
             email=normalized.get("email"),
             contact_id=normalized.get("contact_id"),
@@ -776,10 +789,7 @@ class LeadEngine:
 
         headers, rows = _parse_tabular_upload(file_name, content)
         normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
-        if "email" not in normalized_headers:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must include an 'email' column")
-        if not any(header in normalized_headers for header in ["name", "first_name"]):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must include either 'name' or 'first_name' column")
+        # For import, we only require phone - email and name are optional for partial lead creation
 
         source_label = DEFAULT_SOURCE_LABELS.get("xlsx" if file_name.lower().endswith(".xlsx") else "csv", "csv_import")
         assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=target_department_id)
@@ -789,35 +799,45 @@ class LeadEngine:
             if target_user_id not in {str(user.id) for user in assignable_users}:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user must be an active Lead or Employee in your company")
 
-        seen_emails: set[str] = set()
-        all_emails: set[str] = set()
+        seen_phones: set[str] = set()
         parsed_rows: list[dict[str, Any]] = []
         skipped_rows: list[dict[str, Any]] = []
         total_input_rows = 0
         for idx, row in enumerate(rows, start=2):
             total_input_rows += 1
             row_norm = { _normalize_lead_csv_header(key): (value or "").strip() for key, value in row.items() if key is not None }
-            email = (row_norm.get("email") or "").lower()
-            if not email:
-                skipped_rows.append({"row": idx, "reason": "Missing email"})
+            # Only phone is required - email and name are optional
+            phone = (row_norm.get("phone") or "").strip()
+            country_code = row_norm.get("country_code") or "+91"
+            full_phone = f"{country_code}:{phone}" if phone else ""
+            if not phone:
+                skipped_rows.append({"row": idx, "reason": "Missing phone number"})
                 continue
-            if email in seen_emails:
-                skipped_rows.append({"row": idx, "reason": "Duplicate email in file"})
+            if full_phone in seen_phones:
+                skipped_rows.append({"row": idx, "reason": "Duplicate phone number in file"})
                 continue
-            seen_emails.add(email)
-            all_emails.add(email)
+            seen_phones.add(full_phone)
             parsed_rows.append({"row": idx, "row_norm": row_norm})
 
-        existing_emails: set[str] = set()
-        if all_emails:
-            existing_leads = await SalesProspect.find(
-                {
+        # Check for existing phone numbers in the database (phone is the unique identifier for partial leads)
+        seen_phones_for_dup = set()
+        if parsed_rows:
+            phone_numbers = []
+            for item in parsed_rows:
+                row_norm = item["row_norm"]
+                phone = (row_norm.get("phone") or "").strip()
+                country_code = row_norm.get("country_code") or "+91"
+                if phone:
+                    phone_numbers.append({"country_code": country_code, "phone": phone})
+            if phone_numbers:
+                existing_leads = await SalesProspect.find({
                     "company_id": current_user.company_id,
-                    "email": {"$in": list(all_emails)},
                     "deleted": False,
-                }
-            ).to_list()
-            existing_emails = {lead.email.lower() for lead in existing_leads if lead.email}
+                    "$or": [
+                        {"country_code": p["country_code"], "phone": p["phone"]} for p in phone_numbers
+                    ]
+                }).to_list()
+                seen_phones_for_dup = {f"{lead.country_code}:{lead.phone}" for lead in existing_leads}
 
         valid_rows: list[dict[str, Any]] = []
         assignment_counts = defaultdict(int)
@@ -830,8 +850,10 @@ class LeadEngine:
             normalized["assigned_by"] = str(current_user.id)
             normalized["updated_at"] = _now()
             normalized["created_at"] = normalized["updated_at"]
-            if normalized["email"] in existing_emails:
-                skipped_rows.append({"row": row_number, "reason": "Duplicate email already exists"})
+            # Check for duplicate phone in database
+            full_phone = f"{normalized.get('country_code', '+91')}:{normalized.get('phone', '')}"
+            if full_phone in seen_phones_for_dup:
+                skipped_rows.append({"row": row_number, "reason": "Lead with this phone number already exists"})
                 continue
             try:
                 LeadValidator.validate_lead_payload(normalized)
@@ -931,20 +953,19 @@ class LeadEngine:
         failed_rows = []
         for idx, row in enumerate(rows, start=2):
             row_norm = {_normalize_lead_csv_header(key): (value or "").strip() for key, value in row.items() if key is not None}
-            email = (row_norm.get("email") or "").lower()
-            if not email:
-                failed_rows.append({"row": idx, "error": "Missing email"})
-                continue
-            if not any(h in normalized_headers for h in ["name", "first_name"]):
-                failed_rows.append({"row": idx, "error": "Missing name"})
+            # Only phone is required - email and name are optional for partial lead creation
+            phone = (row_norm.get("phone") or "").strip()
+            if not phone:
+                failed_rows.append({"row": idx, "error": "Missing phone number"})
                 continue
             preview_rows.append(
                 {
                     "row": idx,
                     "first_name": row_norm.get("first_name") or row_norm.get("name") or "",
                     "last_name": row_norm.get("last_name") or "",
-                    "email": email,
-                    "phone": row_norm.get("phone") or "",
+                    "email": row_norm.get("email") or "",
+                    "phone": phone,
+                    "country_code": row_norm.get("country_code") or "+91",
                     "company_name": row_norm.get("company") or row_norm.get("company_name") or "",
                     "current_stage": row_norm.get("stage") or row_norm.get("current_stage") or "new",
                     "assigned_to": target_user_id if strategy == "manual" else None,
