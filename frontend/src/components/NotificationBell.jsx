@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Bell } from 'lucide-react'
+import { Bell, X } from 'lucide-react'
 import { notificationsAPI } from '../api/notifications'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
@@ -140,25 +140,39 @@ const NotificationBell = () => {
   const showNotificationPopup = useCallback((notif) => {
     toast.custom(
       (t) => (
-        <button
-          type="button"
-          onClick={() => {
-            toast.dismiss(t.id)
-            handleNotificationClick(notif)
-          }}
-          className={`w-full max-w-sm rounded-2xl border px-4 py-3 text-left shadow-[0_20px_40px_rgba(15,23,42,0.16)] transition-transform hover:-translate-y-0.5 ${
+        <div className={`relative w-full max-w-sm rounded-2xl border p-4 text-left shadow-[0_20px_40px_rgba(15,23,42,0.16)] transition-transform hover:-translate-y-0.5 ${
             notif.is_read
               ? 'border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
               : 'border-amber-200 bg-amber-50 text-slate-900 dark:border-amber-900/60 dark:bg-slate-900 dark:text-slate-100'
-          }`}
-        >
-          <p className="text-sm font-semibold leading-5">
-            {notif.title}
-          </p>
-          <p className="mt-1 text-xs leading-4 text-slate-600 line-clamp-2 dark:text-slate-300">
-            {notif.message}
-          </p>
-        </button>
+          }`}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              toast.dismiss(t.id)
+            }}
+            className="absolute top-2.5 right-2.5 rounded-full p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            title="Dismiss notification"
+            aria-label="Dismiss notification"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              toast.dismiss(t.id)
+              handleNotificationClick(notif)
+            }}
+            className="w-full text-left pr-6"
+          >
+            <p className="text-sm font-semibold leading-5">
+              {notif.title}
+            </p>
+            <p className="mt-1 text-xs leading-4 text-slate-600 line-clamp-2 dark:text-slate-300">
+              {notif.message}
+            </p>
+          </button>
+        </div>
       ),
       {
         duration: 6000,
