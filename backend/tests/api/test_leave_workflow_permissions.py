@@ -177,7 +177,8 @@ async def test_manager_lists_subordinate_employee_and_lead_leave_but_lead_has_no
     lead.get_all_subordinates = lead_subordinates
     manager.get_all_subordinates = manager_subordinates
 
-    assert await leave_endpoints._base_query(lead, None) == {"company_id": "company-1", "employee_id": "__none__"}
+    # Leads now see their own submitted leaves (not __none__)
+    assert await leave_endpoints._base_query(lead, None) == {"employee_id": "lead-1"}
     assert await leave_endpoints._base_query(manager, None) == {
         "company_id": "company-1",
         "employee_id": {"$in": ["lead-1", "employee-1"]},

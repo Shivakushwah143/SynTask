@@ -36,7 +36,11 @@ const defaultActionState = {
   target_user_id: '',
 }
 
-export const canSubmitLeaveRequest = (role) => !hasCompanyAdminAccess(role)
+export const canSubmitLeaveRequest = (role) => {
+  const normalized = normalizeRole(role)
+  // Super admins operate across companies and cannot submit company leaves
+  return normalized !== ROLE.SUPER_ADMIN
+}
 
 export const canReviewLeaveRequest = (leave, user) => {
   const userId = String(user?.id || '')
@@ -87,6 +91,7 @@ export default function Leaves() {
   const contentGridClassName = canRequestLeave ? 'grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]' : 'grid gap-6'
   const [form, setForm] = useState(defaultForm)
   const [leaves, setLeaves] = useState([])
+  const [myLeaves, setMyLeaves] = useState([])
   const [calendar, setCalendar] = useState({ today: [], upcoming: [] })
   const [availability, setAvailability] = useState({ availability: 'working' })
   const [users, setUsers] = useState([])
@@ -95,6 +100,7 @@ export default function Leaves() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [actionState, setActionState] = useState(defaultActionState)
+  const [myLeavesTab, setMyLeavesTab] = useState(false)
 
   const selectedEmployeeName = useMemo(() => {
     const item = users.find((entry) => String(entry.id) === String(filters.employee_id))
@@ -127,21 +133,30 @@ export default function Leaves() {
         ...(filters.start_date ? { start_date: timeService.toUtcISOString(filters.start_date) } : {}),
         ...(filters.end_date ? { end_date: timeService.zonedInputToUtcISOString(`${filters.end_date}T23:59:59`) } : {}),
       }
-      const [leaveData, calendarData, availabilityData] = await Promise.all([
+      const promises = [
         leavesAPI.list(params),
         leavesAPI.calendar(),
         leavesAPI.availability(),
-      ])
+      ]
+      // Admins & Managers: also load their own submitted leaves separately
+      if (canManage && user?.id) {
+        promises.push(leavesAPI.myLeaves())
+      }
+      const results = await Promise.all(promises)
+      const [leaveData, calendarData, availabilityData] = results
       setLeaves(leaveData.leaves || [])
       setCalendar(calendarData || { today: [], upcoming: [] })
       setAvailability(availabilityData || { availability: 'working' })
+      if (canManage && results[3]) {
+        setMyLeaves(results[3].leaves || [])
+      }
     } catch (error) {
       console.error('Error loading leaves:', error)
       setLeaves([])
     } finally {
       setLoading(false)
     }
-  }, [filters])
+  }, [filters, canManage, user?.id])
 
   useEffect(() => {
     loadData()
@@ -178,6 +193,19 @@ export default function Leaves() {
 
   const submitLeave = async (event) => {
     event.preventDefault()
+    // Client-side date validation
+    if (!form.start_date || !form.end_date) {
+      toast.error('Please select both start and end dates')
+      return
+    }
+    if (form.end_date < form.start_date) {
+      toast.error('End date cannot be before start date')
+      return
+    }
+    if (!form.reason.trim()) {
+      toast.error('Please provide a reason for your leave request')
+      return
+    }
     try {
       setSubmitting(true)
       await leavesAPI.create(form)
@@ -400,13 +428,32 @@ export default function Leaves() {
                   </div>
                   <div>
                     <h2 className="font-bold text-gray-900 dark:text-white">Requests</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{selectedEmployeeName}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{myLeavesTab ? 'My submitted requests' : selectedEmployeeName}</p>
                   </div>
                 </div>
+                {canManage && canRequestLeave && (
+                  <div className="flex rounded-lg border border-gray-200 overflow-hidden dark:border-gray-600">
+                    <button
+                      type="button"
+                      onClick={() => setMyLeavesTab(false)}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${!myLeavesTab ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+                    >
+                      Team
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMyLeavesTab(true)}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${myLeavesTab ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+                    >
+                      My Requests
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="p-4">
+              {!myLeavesTab && (
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5 mb-4">
                 <select 
                   className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white" 
@@ -447,6 +494,7 @@ export default function Leaves() {
                   onChange={(event) => setFilters({ ...filters, end_date: event.target.value })} 
                 />
               </div>
+              )}
 
               {loading ? (
                 <div className="flex h-40 items-center justify-center">
@@ -455,9 +503,9 @@ export default function Leaves() {
                     <p className="text-gray-500 dark:text-gray-400">Loading requests...</p>
                   </div>
                 </div>
-              ) : leaves.length ? (
+              ) : (myLeavesTab ? myLeaves : leaves).length ? (
                 <div className="space-y-3">
-                  {leaves.map((leave) => (
+                  {(myLeavesTab ? myLeaves : leaves).map((leave) => (
                     <LeaveRow
                       key={leave.id}
                       leave={leave}
@@ -477,7 +525,7 @@ export default function Leaves() {
                     <CalendarDays className="h-8 w-8 text-gray-400" />
                   </div>
                   <h3 className="font-semibold text-gray-900 dark:text-white">No leave requests found</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Try adjusting your filters or create a new request.</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{myLeavesTab ? 'You have not submitted any leave requests yet.' : 'Try adjusting your filters or create a new request.'}</p>
                 </div>
               )}
             </div>
