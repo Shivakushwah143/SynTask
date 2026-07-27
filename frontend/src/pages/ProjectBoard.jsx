@@ -129,6 +129,7 @@ export default function ProjectBoard() {
   const { user } = useAuthStore()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const userRole = normalizeRole(user?.role)
+  const isManager = userRole === 'manager'
   const [activeTab, setActiveTab] = useState('board')
   const [loading, setLoading] = useState(true)
   const [loadingSummary, setLoadingSummary] = useState(false)
@@ -670,7 +671,7 @@ export default function ProjectBoard() {
               <ProjectOverviewLine
                 label="Manager"
                 value={managerValue}
-                action={canAssignProject ? (
+                action={hasCompanyAdminAccess(user?.role) ? (
                   <Button variant="secondary" size="sm" onClick={openAssignProjectModal}>
                     <UserPlus className="h-4 w-4" />
                     Change
@@ -858,20 +859,22 @@ export default function ProjectBoard() {
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Project</p>
             <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{activeProject}</p>
           </div>
-          <FormField label="Manager">
-            <CreatableSelectField
-              value={assignmentManagerId}
-              onChange={setAssignmentManagerId}
-              className={inputClassName}
-              createLabel="Create user"
-              onCreate={() => setShowQuickEmployeeModal(true)}
-              canCreate={hasCompanyAdminAccess(user?.role)}
-              disabled={!hasCompanyAdminAccess(user?.role)}
-            >
-              <option value="">No manager</option>
-              {managerAssignmentOptions.map((item) => <option key={item.id || item._id} value={item.id || item._id}>{getUserDisplayName(item)} ({item.role})</option>)}
-            </CreatableSelectField>
-          </FormField>
+          {!isManager ? (
+            <FormField label="Manager">
+              <CreatableSelectField
+                value={assignmentManagerId}
+                onChange={setAssignmentManagerId}
+                className={inputClassName}
+                createLabel="Create user"
+                onCreate={() => setShowQuickEmployeeModal(true)}
+                canCreate={hasCompanyAdminAccess(user?.role)}
+                disabled={!hasCompanyAdminAccess(user?.role)}
+              >
+                <option value="">No manager</option>
+                {managerAssignmentOptions.map((item) => <option key={item.id || item._id} value={item.id || item._id}>{getUserDisplayName(item)} ({item.role})</option>)}
+              </CreatableSelectField>
+            </FormField>
+          ) : null}
           <FormField label="Leader">
             <CreatableSelectField
               value={assignmentLeaderId}
