@@ -5,8 +5,8 @@ from celery import Celery
 
 from app.core.config import settings
 
-BROKER_URL = "memory://" if settings.DISABLE_CELERY else (settings.CELERY_BROKER_URL or settings.REDIS_URL)
-RESULT_BACKEND = "cache+memory://" if settings.DISABLE_CELERY else (settings.CELERY_RESULT_BACKEND or settings.REDIS_URL)
+BROKER_URL = settings.CELERY_BROKER_URL or settings.REDIS_URL
+RESULT_BACKEND = settings.CELERY_RESULT_BACKEND or settings.REDIS_URL
 
 celery_app = Celery(
     "syntask",

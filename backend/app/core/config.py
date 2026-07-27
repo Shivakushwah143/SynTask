@@ -143,13 +143,14 @@ class Settings(BaseSettings):
     
     # Redis (for caching and Celery)
     REDIS_URL: str = Field(..., description="Redis URL for token blacklist and rate limiting.")
+    DISABLE_REDIS: bool = False
     ENABLE_TOKEN_REVOCATION: bool = True
     REDIS_CONNECT_TIMEOUT_SECONDS: float = 2.0
     REDIS_OPERATION_TIMEOUT_SECONDS: float = 2.0
     REDIS_HEALTH_CACHE_SECONDS: int = 30
     REDIS_RETRY_ATTEMPTS: int = 3
     REDIS_RETRY_BASE_DELAY_SECONDS: float = 0.2
-    DISABLE_REDIS: bool = False
+    DASHBOARD_CACHE_TTL: int = Field(30, description="Cache TTL for dashboard payloads (seconds)")
 
     # Celery (Background tasks)
     CELERY_BROKER_URL: Optional[str] = None

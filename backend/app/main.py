@@ -1,7 +1,7 @@
 """
 Main Application Entry Point
 """
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -331,10 +331,33 @@ from app.core.clock import utc_now
 
 avatar_router = APIRouter()
 
+# Compatibility route keeping the original path used by the frontend
 @avatar_router.get("/uploads/avatars/{filename}")
-async def serve_avatar(filename: str):
-    """Serve avatar files with CORS headers"""
-    return serve_upload_file(UPLOAD_DIR / "avatars", Path(filename).name)
+async def get_avatar_file_legacy(
+    filename: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Legacy endpoint for avatar files; delegates to the new logic with fallback."""
+    return await get_avatar_file(filename, current_user)
+
+
+@avatar_router.get("/avatars/{filename}")
+async def get_avatar_file(
+    filename: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get user avatar file, fallback to default if missing"""
+    filename = Path(filename).name
+    logger.info(f"🔍 Serving avatar: {filename}")
+    try:
+        return serve_upload_file(UPLOAD_DIR / "avatars", filename)
+    except HTTPException as e:
+        if e.status_code == 404:
+            # Return a simple SVG placeholder
+            from fastapi.responses import Response
+            svg = """<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 256 256'><rect width='256' height='256' fill='%23e0e0e0'/><circle cx='128' cy='96' r='48' fill='%23999'/><rect x='64' y='176' width='128' height='48' fill='%23999'/></svg>"""
+            return Response(content=svg, media_type="image/svg+xml")
+        raise
 
 app.include_router(avatar_router, prefix="/api/v1", include_in_schema=False)
 app.include_router(avatar_router, include_in_schema=False)

@@ -3,7 +3,9 @@ Dashboard & Analytics Endpoints
 """
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends
+import asyncio
+from fastapi import APIRouter, Depends, Query
+from app.core.config import settings
 from app.models.user import User, UserRole
 from app.models.task import Task, TaskPriority, TaskStatus
 from app.models.ticket import Ticket
@@ -13,7 +15,7 @@ from app.models.notification import Notification
 from app.models.company import Company, Subscription
 from app.models.sales_prospect import SalesProspect
 from app.api.dependencies import get_current_user, get_current_super_admin
-from app.core.cache import cache_get, cache_set, dashboard_cache_key
+from app.core.cache import cache_get, cache_set, dashboard_cache_key, dashboard_metrics_cache_key, company_dashboard_pattern
 from app.services.crm_dashboard_service import build_sales_analytics_summary, build_sales_dashboard_summary
 from app.services.dashboard_service import build_manager_dashboard_metrics
 from app.core.clock import utc_now
@@ -86,11 +88,15 @@ def _build_conversion_trend(analytics: dict) -> list[dict]:
 
 
 async def _build_project_status_chart(base_query: dict) -> list[dict]:
+    status_values = [item.value for item in ProjectStatus]
+    counts = await asyncio.gather(*[
+        Project.find({**base_query, "status": sv}).count()
+        for sv in status_values
+    ])
     row = {"name": "All Projects", "route": "/projects"}
     total = 0
-    for status_value in [item.value for item in ProjectStatus]:
-        count = await Project.find({**base_query, "status": status_value}).count()
-        row[status_value] = count
+    for sv, count in zip(status_values, counts):
+        row[sv] = count
         total += count
     row["total"] = total
     return [row] if total else []
@@ -98,17 +104,21 @@ async def _build_project_status_chart(base_query: dict) -> list[dict]:
 
 async def _build_due_priority_chart(base_query: dict, now: datetime) -> list[dict]:
     end = now + timedelta(days=7)
-    rows = []
-    for priority in [TaskPriority.CRITICAL, TaskPriority.HIGH, TaskPriority.MEDIUM, TaskPriority.LOW]:
-        count = await Task.find({
+    priorities = [TaskPriority.CRITICAL, TaskPriority.HIGH, TaskPriority.MEDIUM, TaskPriority.LOW]
+    counts = await asyncio.gather(*[
+        Task.find({
             **base_query,
-            "priority": priority.value,
+            "priority": p.value,
             "due_date": {"$gte": now, "$lt": end},
             "status": {"$nin": [TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value]},
         }).count()
+        for p in priorities
+    ])
+    rows = []
+    for p, count in zip(priorities, counts):
         rows.append({
-            "name": priority.value.replace("_", " ").title(),
-            "priorityKey": priority.value,
+            "name": p.value.replace("_", " ").title(),
+            "priorityKey": p.value,
             "count": count,
             "route": "/tasks",
         })
@@ -118,22 +128,33 @@ async def _build_due_priority_chart(base_query: dict, now: datetime) -> list[dic
 async def _build_report_totals(base_query: dict, now: datetime) -> dict:
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
-    high_priority = await Task.find({**base_query, "priority": {"$in": [TaskPriority.HIGH.value, TaskPriority.CRITICAL.value]}}).count()
+    high_priority_query = {**base_query, "priority": {"$in": [TaskPriority.HIGH.value, TaskPriority.CRITICAL.value]}}
+    due_today_query = {**base_query, "due_date": {"$gte": today_start, "$lt": today_end}}
+    tasks, projects, meetings, high_priority, tasks_due_today = await asyncio.gather(
+        Task.find(base_query).count(),
+        Project.find(base_query).count(),
+        Meeting.find(base_query).count(),
+        Task.find(high_priority_query).count(),
+        Task.find(due_today_query).count(),
+    )
     return {
-        "tasks": await Task.find(base_query).count(),
-        "projects": await Project.find(base_query).count(),
-        "meetings": await Meeting.find(base_query).count(),
+        "tasks": tasks,
+        "projects": projects,
+        "meetings": meetings,
         "high_priority": high_priority,
-        "tasks_due_today": await Task.find({**base_query, "due_date": {"$gte": today_start, "$lt": today_end}}).count(),
+        "tasks_due_today": tasks_due_today,
     }
 
 
 async def _build_company_dashboard_metrics(current_user: User) -> dict:
     now = utc_now()
     base_query = {"company_id": current_user.company_id} if current_user.company_id else {}
-    sales_summary = await build_sales_dashboard_summary(current_user)
-    sales_analytics = await build_sales_analytics_summary(current_user)
-    report_totals = await _build_report_totals(base_query, now)
+    # Parallelize heavy async calls
+    sales_summary, sales_analytics, report_totals = await asyncio.gather(
+        build_sales_dashboard_summary(current_user),
+        build_sales_analytics_summary(current_user),
+        _build_report_totals(base_query, now),
+    )
     month_start = _month_start(now)
     next_month = _next_month(now)
 
@@ -141,11 +162,17 @@ async def _build_company_dashboard_metrics(current_user: User) -> dict:
     revenue = sales_analytics.get("revenue", {})
     sales_summary_values = sales_summary.get("summary", {})
 
-    current_month_leads = await SalesProspect.find({
-        **base_query,
-        "deleted": False,
-        "created_at": {"$gte": month_start, "$lt": next_month},
-    }).count()
+    # Parallelize remaining DB counts
+    current_month_leads, upcoming_meetings_count, project_status_chart, task_due_priority_chart = await asyncio.gather(
+        SalesProspect.find({
+            **base_query,
+            "deleted": False,
+            "created_at": {"$gte": month_start, "$lt": next_month},
+        }).count(),
+        Meeting.find({**base_query, "meeting_date": {"$gte": now}}).count(),
+        _build_project_status_chart(base_query),
+        _build_due_priority_chart(base_query, now),
+    )
 
     monthly_performance = [
         {"name": "Leads", "value": current_month_leads, "total": sales_summary_values.get("prospect_count", 0), "route": "/crm/leads"},
@@ -170,7 +197,7 @@ async def _build_company_dashboard_metrics(current_user: User) -> dict:
         "won_deals": kpis.get("won_deals", 0),
         "lost_deals": kpis.get("lost_deals", 0),
         "projects": report_totals["projects"],
-        "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": now}}).count(),
+        "upcoming_meetings": upcoming_meetings_count,
         "tasks_due_today": report_totals["tasks_due_today"],
         "revenue_trend": _build_revenue_trend(sales_summary),
         "pipeline_funnel": _build_pipeline_funnel(sales_summary, sales_analytics),
@@ -178,19 +205,20 @@ async def _build_company_dashboard_metrics(current_user: User) -> dict:
         "monthly_performance": monthly_performance,
         "report_totals": report_totals,
         "report_graph": report_graph,
-        "project_status_chart": await _build_project_status_chart(base_query),
-        "task_due_priority_chart": await _build_due_priority_chart(base_query, now),
+        "project_status_chart": project_status_chart,
+        "task_due_priority_chart": task_due_priority_chart,
     }
 
 
 @router.get("/stats")
 async def get_dashboard_stats(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    fresh: bool = Query(False)
 ):
     """Get dashboard statistics with hierarchical RBAC"""
     cache_key = dashboard_cache_key(str(current_user.id), current_user.role.value, current_user.company_id)
     cached = await cache_get(cache_key)
-    if cached:
+    if not fresh and cached:
         return cached
 
     if current_user.role == UserRole.SUPER_ADMIN:
@@ -207,17 +235,18 @@ async def get_dashboard_stats(
             "pending_companies": pending_companies,
             "total_subscriptions": total_subscriptions,
         }
-        await cache_set(cache_key, data, ttl=300)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
 
 @router.get("/metrics")
 async def get_dashboard_metrics(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    fresh: bool = Query(False)
 ):
-    cache_key = f"dashboard:metrics:{current_user.id}:{current_user.role.value}:{current_user.company_id}"
+    cache_key = dashboard_metrics_cache_key(str(current_user.id), current_user.role.value, current_user.company_id)
     cached = await cache_get(cache_key)
-    if cached:
+    if not fresh and cached:
         return cached
 
     base_query = {"company_id": current_user.company_id} if current_user.company_id else {}
@@ -230,18 +259,18 @@ async def get_dashboard_metrics(
             "pending_companies": await Company.find({"status": "pending"}).count(),
             "total_subscriptions": await Subscription.find().count(),
         }
-        await cache_set(cache_key, data, ttl=120)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
     if role == UserRole.ADMIN:
         data = await _build_company_dashboard_metrics(current_user)
-        await cache_set(cache_key, data, ttl=120)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
     if role == UserRole.MANAGER:
         manager_metrics = await build_manager_dashboard_metrics(current_user)
         data = {**await _build_company_dashboard_metrics(current_user), **manager_metrics}
-        await cache_set(cache_key, data, ttl=120)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
     if role == UserRole.LEAD:
@@ -249,7 +278,7 @@ async def get_dashboard_metrics(
         employee_ids = [str(emp.id) for emp in employees] + [str(current_user.id)]
         data = await _build_company_dashboard_metrics(current_user)
         data["tasks_due_today"] = await Task.find({"company_id": current_user.company_id, "assigned_to": {"$in": employee_ids}}).count()
-        await cache_set(cache_key, data, ttl=120)
+        await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
         return data
 
     company_metrics = await _build_company_dashboard_metrics(current_user) if current_user.company_id else {}
@@ -263,79 +292,70 @@ async def get_dashboard_metrics(
         "upcoming_meetings": await Meeting.find({**base_query, "meeting_date": {"$gte": utc_now()}}).count(),
         "tasks_due_today": await Task.find({**base_query, "assigned_to": str(current_user.id)}).count(),
     }
-    await cache_set(cache_key, data, ttl=120)
+    await cache_set(cache_key, data, ttl=settings.DASHBOARD_CACHE_TTL)
     return data
 
 
 @router.get("/recent")
-async def get_dashboard_recent(
-    current_user: User = Depends(get_current_user)
-):
+async def get_dashboard_recent(current_user: User = Depends(get_current_user)):
+    cache_key = f"dashboard:recent:{current_user.company_id}" if current_user.company_id else "dashboard:recent:platform"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
     company_id = current_user.company_id
     task_query = {"company_id": company_id} if company_id else {}
-    recent_tasks = await Task.find(task_query).sort("-created_at").limit(5).to_list()
-    recent_meetings = await Meeting.find(task_query).sort("-created_at").limit(5).to_list()
-    recent_projects = await Project.find(task_query).sort("-created_at").limit(5).to_list()
-    return {
+    recent_tasks, recent_meetings, recent_projects = await asyncio.gather(
+        Task.find(task_query).sort("-created_at").limit(5).to_list(),
+        Meeting.find(task_query).sort("-created_at").limit(5).to_list(),
+        Project.find(task_query).sort("-created_at").limit(5).to_list(),
+    )
+    data = {
         "tasks": [{"id": str(item.id), "title": item.title, "created_at": item.created_at} for item in recent_tasks],
         "meetings": [{"id": str(item.id), "title": item.title, "created_at": item.created_at} for item in recent_meetings],
         "projects": [{"id": str(item.id), "name": item.name, "created_at": item.created_at} for item in recent_projects],
     }
+    await cache_set(cache_key, data, ttl=60)
+    return data
 
 
 @router.get("/activity")
-async def get_dashboard_activity(
-    current_user: User = Depends(get_current_user)
-):
+async def get_dashboard_activity(current_user: User = Depends(get_current_user)):
+    cache_key = f"dashboard:activity:{current_user.id}"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
     company_id = current_user.company_id
-    notifications = await Notification.find(
-        {"company_id": company_id, "user_id": str(current_user.id)}
-    ).sort("-created_at").limit(10).to_list()
-    return {
-        "activity": [
-            {
-                "id": str(item.id),
-                "title": item.title,
-                "message": item.message,
-                "created_at": item.created_at,
-                "type": item.type.value,
-            }
-            for item in notifications
-        ]
-    }
+    notifications = await Notification.find({
+        "company_id": company_id,
+        "user_id": str(current_user.id)}).sort("-created_at").limit(10).to_list()
+    data = {"activity": [
+        {"id": str(item.id), "title": item.title, "message": item.message, "created_at": item.created_at, "type": item.type.value}
+        for item in notifications
+    ]}
+    await cache_set(cache_key, data, ttl=30)
+    return data
 
 
 @router.get("/super-admin/analytics")
-async def get_super_admin_analytics(
-    current_user: User = Depends(get_current_super_admin)
-):
-    """Get detailed analytics for Super Admin"""
-    # Company statistics
-    companies_by_status = {}
+async def get_super_admin_analytics(current_user: User = Depends(get_current_super_admin)):
+    cache_key = "dashboard:super_admin:analytics"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
     statuses = ["pending", "active", "suspended", "cancelled"]
-    for status in statuses:
-        count = await Company.find({"status": status}).count()
-        companies_by_status[status] = count
-    
-    # Subscription statistics
-    subscriptions_by_plan = {}
     plans = ["free", "basic", "professional", "enterprise"]
-    for plan in plans:
-        count = await Subscription.find({"plan": plan}).count()
-        subscriptions_by_plan[plan] = count
-    
-    # User statistics
-    total_users = await User.find().count()
-    users_by_role = {}
     roles = ["super_admin", "admin", "manager", "lead", "employee"]
-    for role in roles:
-        count = await User.find({"role": role}).count()
-        users_by_role[role] = count
-    
-    return {
-        "companies_by_status": companies_by_status,
-        "subscriptions_by_plan": subscriptions_by_plan,
+    company_counts, plan_counts, role_counts, total_users = await asyncio.gather(
+        asyncio.gather(*[Company.find({"status": s}).count() for s in statuses]),
+        asyncio.gather(*[Subscription.find({"plan": p}).count() for p in plans]),
+        asyncio.gather(*[User.find({"role": r}).count() for r in roles]),
+        User.find().count(),
+    )
+    data = {
+        "companies_by_status": dict(zip(statuses, company_counts)),
+        "subscriptions_by_plan": dict(zip(plans, plan_counts)),
         "total_users": total_users,
-        "users_by_role": users_by_role,
+        "users_by_role": dict(zip(roles, role_counts)),
     }
-
+    await cache_set(cache_key, data, ttl=300)
+    return data
