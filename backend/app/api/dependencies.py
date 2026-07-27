@@ -89,6 +89,10 @@ def _module_access_allowed(module_name: str, user_modules: list[str]) -> bool:
             or "task" in normalized_modules
             or "tasks_projects" in normalized_modules
         )
+    if module_name == "sales_crm":
+        return "sales_crm" in normalized_modules or "sales" in normalized_modules
+    if module_name == "sales":
+        return "sales" in normalized_modules or "sales_crm" in normalized_modules
     return module_name in normalized_modules
 
 
@@ -98,7 +102,7 @@ def require_module(module_name: str):
         current_role = _normalize_role(getattr(current_user, "role", None))
         if current_role == UserRole.SUPER_ADMIN:
             return current_user
-        if module_name == "sales" and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+        if module_name in {"sales", "sales_crm"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user
         modules = getattr(current_user, "modules", []) or []
         if not _module_access_allowed(module_name, modules):

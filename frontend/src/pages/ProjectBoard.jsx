@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { format } from 'date-fns'
 import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
 import {
   DndContext,
@@ -32,7 +31,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery'
 import { canCreateTask, canManageProject, hasCompanyAdminAccess, isLeadRole, normalizeRole } from '../utils/roles'
 import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
-import { getProjectRoleAssignmentIds, getProjectRoleNames, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
+import { getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
 import { timeService } from '../services/timeService'
 import { excludeCurrentUser } from '../utils/userFilters'
 
@@ -201,18 +200,14 @@ export default function ProjectBoard() {
 
   const loadAssignableUsers = useCallback(async () => {
     try {
-      // Prefer showing all junior employees regardless of department/manager
-      const [projectAssignableData, juniorUsersData] = await Promise.all([
-        usersAPI.listUsers(null, null, 'active', 0, 500),
-        usersAPI.listUsers(null, 'junior', 'active', 0, 500),
-      ])
-      setAssignableUsers(excludeCurrentUser(juniorUsersData.users || [], user))
+      const projectAssignableData = await usersAPI.getAssignableUsers(false)
+      setAssignableUsers(getTaskAssigneeUsers(projectAssignableData.users || [], user))
       setProjectAssignableUsers(excludeCurrentUser(projectAssignableData.users || [], user))
     } catch (error) {
       setAssignableUsers([])
       setProjectAssignableUsers([])
     }
-  }, [projectId])
+  }, [user])
 
   const loadBoardData = useCallback(async () => {
     try {
@@ -383,7 +378,7 @@ export default function ProjectBoard() {
 
   // Calculate working hours between two Date objects considering office hours 10:00-19:00
   function calcWorkingHoursSuggestion(startDate, endDate) {
-    if (!startDate || !endDate || endDate <= startDate) return 0
+    if (!startDate || !endDate || endDate <= startDate) return ''
     const start = timeService.instant(startDate)
     const end = timeService.instant(endDate)
     const MS_PER_HOUR = 1000 * 60 * 60
@@ -406,7 +401,7 @@ export default function ProjectBoard() {
     }
     // round to nearest 0.25
     const rounded = Math.round(total * 4) / 4
-    return rounded
+    return Math.max(rounded, 0.25)
   }
 
   const handleAssignProject = async (event) => {
@@ -1027,7 +1022,7 @@ export default function ProjectBoard() {
                     try {
                       const parsed = timeService.parseZonedInput(e.target.value)
                       const suggestion = calcWorkingHoursSuggestion(timeService.now(), parsed)
-                      setCreateEstimatedHours(String(suggestion || ''))
+                      setCreateEstimatedHours(suggestion ? String(suggestion) : '')
                     } catch (err) {
                       // ignore
                     }
@@ -1038,6 +1033,7 @@ export default function ProjectBoard() {
                 <input
                   type="number"
                   name="estimated_hours"
+                  min="0.25"
                   step="0.25"
                   required
                   className={inputClassName}

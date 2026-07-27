@@ -199,6 +199,25 @@ def test_require_module_allows_chat_for_task_workspace_users(monkeypatch):
     asyncio.run(run_checks())
 
 
+def test_require_module_allows_sales_or_sales_crm(monkeypatch):
+    import asyncio
+    from app.api.dependencies import require_module
+
+    user_with_sales = FakeUser(modules=["sales"])
+    user_with_sales_crm = FakeUser(modules=["sales_crm"])
+
+    checker_sales = require_module("sales")
+    checker_sales_crm = require_module("sales_crm")
+
+    async def run_checks():
+        assert await checker_sales(current_user=user_with_sales) == user_with_sales
+        assert await checker_sales(current_user=user_with_sales_crm) == user_with_sales_crm
+        assert await checker_sales_crm(current_user=user_with_sales) == user_with_sales
+        assert await checker_sales_crm(current_user=user_with_sales_crm) == user_with_sales_crm
+
+    asyncio.run(run_checks())
+
+
 def test_overview_allows_admin_with_string_role(monkeypatch):
     actor = FakeUser(id="actor-1", role="admin", company_id="company-1")
     department = FakeDepartment(id="dept-1", name="Engineering", company_id="company-1", enabled_modules=["tasks_projects"])

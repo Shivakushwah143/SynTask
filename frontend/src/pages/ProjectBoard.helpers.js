@@ -11,6 +11,21 @@ export const getUserDisplayName = (user) => {
   return user.name || [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email || ''
 }
 
+export const getTaskAssigneeUsers = (users = [], currentUser = null) => {
+  const currentUserId = currentUser?.id || currentUser?._id
+  const seen = new Set()
+
+  return users.filter((item) => {
+    const id = String(item?.id || item?._id || '')
+    const role = normalizeRole(item?.role)
+    if (!id || seen.has(id) || id === String(currentUserId || '')) return false
+    if (item?.status && String(item.status).toLowerCase() !== 'active') return false
+    if (!['employee', 'junior'].includes(role)) return false
+    seen.add(id)
+    return true
+  })
+}
+
 export const getProjectRoleNames = (projectRecord = {}, assignableUsers = [], currentUser = null) => {
   const assignedProjectUsers = Array.isArray(projectRecord.assigned_users) ? projectRecord.assigned_users : []
   const assignedProjectIds = projectRecord.assigned_user_ids || (projectRecord.assigned_to ? [projectRecord.assigned_to] : [])
