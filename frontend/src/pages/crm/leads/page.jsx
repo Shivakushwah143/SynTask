@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useOutletContext } from 'react-router-dom'
 import { 
   Area, AreaChart, Bar, BarChart, CartesianGrid, 
   ResponsiveContainer, XAxis, YAxis, PieChart, Pie, 
@@ -114,7 +114,10 @@ export default function CRMLeadsPage() {
   const [categoryForm, setCategoryForm] = useState({ name: '' })
   const [productForm, setProductForm] = useState({ name: '', category_id: '', rate: '', unit: '', state: '', city: '' })
   const [selectedIds, setSelectedIds] = useState([])
-  const [leadSearch, setLeadSearch] = useState('')
+  const [localLeadSearch, setLocalLeadSearch] = useState('')
+  const context = useOutletContext()
+  const leadSearch = context?.searchValue ?? localLeadSearch
+  const setLeadSearch = context?.setSearchValue || setLocalLeadSearch
   const [stageFilter, setStageFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
 

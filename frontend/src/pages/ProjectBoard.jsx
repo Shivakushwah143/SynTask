@@ -29,7 +29,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { useAuthStore } from '../store/authStore'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { canCreateTask, canManageProject, hasCompanyAdminAccess, isLeadRole, normalizeRole } from '../utils/roles'
-import { Badge, Button, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
+import { Badge, Button, ConfirmDialog, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import { getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
 import { timeService } from '../services/timeService'
@@ -168,6 +168,79 @@ export default function ProjectBoard() {
   const [assigningProject, setAssigningProject] = useState(false)
   const [updatingTaskId, setUpdatingTaskId] = useState(null)
   const [activeTaskId, setActiveTaskId] = useState(null)
+
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editFormData, setEditFormData] = useState({ name: '', description: '', lead_id: '', start_date: '', delivery_date: '', status: 'active' })
+  const [editFormErrors, setEditFormErrors] = useState({})
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const projectAssigneeOptions = useMemo(
+    () => projectAssignableUsers.filter((item) => {
+      const role = normalizeRole(item.role)
+      return role === 'manager' || role === 'employee'
+    }),
+    [projectAssignableUsers],
+  )
+
+  const openEditModal = () => {
+    if (!projectRecord) return
+    setEditFormData({
+      name: projectRecord.name || '',
+      description: projectRecord.description || '',
+      lead_id: projectRecord.lead_id || '',
+      start_date: projectRecord.start_date ? projectRecord.start_date.substring(0, 16) : '',
+      delivery_date: projectRecord.delivery_date ? projectRecord.delivery_date.substring(0, 16) : '',
+      status: projectRecord.status || 'active',
+    })
+    setEditFormErrors({})
+    setShowEditModal(true)
+  }
+
+  const validateEditForm = () => {
+    const nextErrors = {}
+    if (!editFormData.name.trim()) nextErrors.name = 'Project name is required.'
+    if (editFormData.start_date && editFormData.delivery_date && timeService.instant(editFormData.delivery_date) < timeService.instant(editFormData.start_date)) {
+      nextErrors.delivery_date = 'Delivery date must be after the start date.'
+    }
+    setEditFormErrors(nextErrors)
+    return Object.keys(nextErrors).length === 0
+  }
+
+  const handleEditSubmit = async (event) => {
+    event.preventDefault()
+    if (submitting || !validateEditForm()) return
+    try {
+      setSubmitting(true)
+      const payload = { ...editFormData }
+      if (payload.start_date) payload.start_date = timeService.toUtcISOString(payload.start_date)
+      if (payload.delivery_date) payload.delivery_date = timeService.toUtcISOString(payload.delivery_date)
+      
+      await projectsApi.updateProject(projectId, payload)
+      toast.success('Project updated successfully')
+      setShowEditModal(false)
+      await loadProjectInfo()
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update project')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleDeleteProject = async () => {
+    if (deleting) return
+    try {
+      setDeleting(true)
+      await projectsApi.deleteProject(projectId)
+      toast.success('Project deleted successfully')
+      setShowDeleteConfirm(false)
+      navigate('/projects')
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to delete project')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -604,6 +677,16 @@ export default function ProjectBoard() {
               <ArrowLeft className="h-4 w-4" />
               Projects
             </Button>
+            {canManageCurrentProject && (
+              <>
+                <Button variant="secondary" size="sm" onClick={openEditModal}>
+                  Edit project
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(true)} className="hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-950/20 dark:hover:text-red-400 dark:hover:border-red-900/50">
+                  Delete project
+                </Button>
+              </>
+            )}
             <Button variant="secondary" size="sm" onClick={() => setShowFilters((value) => !value)}>
               <Filter className="h-4 w-4" />
               Filters
@@ -1086,6 +1169,76 @@ export default function ProjectBoard() {
           </div>
         </form>
       </Modal>
+
+      {/* Edit Project Modal */}
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit project" size="xl">
+        <form onSubmit={handleEditSubmit} className="space-y-5">
+          <FormField label="Project name" error={editFormErrors.name} required>
+            <input
+              name="name"
+              autoComplete="off"
+              className={inputClassName}
+              value={editFormData.name}
+              onChange={(event) => setEditFormData((state) => ({ ...state, name: event.target.value }))}
+              placeholder="Enter project name"
+            />
+          </FormField>
+          <FormField label="Details">
+            <textarea className={inputClassName} rows={4} value={editFormData.description} onChange={(event) => setEditFormData((state) => ({ ...state, description: event.target.value }))} />
+          </FormField>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <FormField label="Status">
+              <select
+                className={inputClassName}
+                value={editFormData.status}
+                onChange={(event) => setEditFormData((state) => ({ ...state, status: event.target.value }))}
+              >
+                <option value="created">Created</option>
+                <option value="kickoff">Kickoff</option>
+                <option value="execution">Execution</option>
+                <option value="review">Review</option>
+                <option value="active">Active</option>
+                <option value="in_progress">In progress</option>
+                <option value="on_hold">On hold</option>
+                <option value="completed">Completed</option>
+                <option value="reporting">Reporting</option>
+                <option value="archived">Archived</option>
+              </select>
+            </FormField>
+            <FormField label="Project lead">
+              <select
+                className={inputClassName}
+                value={editFormData.lead_id}
+                onChange={(event) => setEditFormData((state) => ({ ...state, lead_id: event.target.value }))}
+              >
+                <option value="">Unassigned</option>
+                {projectAssigneeOptions.map((item) => <option key={item.id} value={item.id}>{item.first_name} {item.last_name} ({item.role})</option>)}
+              </select>
+            </FormField>
+            <FormField label="Start date">
+              <input type="datetime-local" className={inputClassName} value={editFormData.start_date} onChange={(event) => setEditFormData((state) => ({ ...state, start_date: event.target.value }))} />
+            </FormField>
+            <FormField label="Delivery date" error={editFormErrors.delivery_date}>
+              <input type="datetime-local" className={inputClassName} value={editFormData.delivery_date} onChange={(event) => setEditFormData((state) => ({ ...state, delivery_date: event.target.value }))} />
+            </FormField>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowEditModal(false)}>Cancel</Button>
+            <Button type="submit" loading={submitting} loadingText="Saving">Save changes</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Project Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete project"
+        message="Are you sure you want to delete this project? This action cannot be undone. You can only delete projects that have no existing tasks."
+        confirmLabel="Delete"
+        loading={deleting}
+        onConfirm={handleDeleteProject}
+        onClose={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }
