@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 export default function NewLanding() {
   useEffect(() => {
@@ -401,10 +402,10 @@ export default function NewLanding() {
             </button>
 
             <button className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 rounded-full"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></button>
-            <a className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full border border-gray-200 dark:border-slate-700 hover:bg-gray-50" href="#">
+            <Link className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full border border-gray-200 dark:border-slate-700 hover:bg-gray-50" to="/login">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
               Login
-            </a>
+            </Link>
             <a className="bg-slate-900 text-white text-sm font-semibold px-5 py-2.5 rounded-full flex items-center gap-2 hover:bg-slate-800" href="#">
               Start Free Trial <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
             </a>
@@ -423,10 +424,10 @@ export default function NewLanding() {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
             Toggle Theme
           </button>
-          <a className="flex items-center gap-2 hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#">
+          <Link className="flex items-center gap-2 hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" to="/login">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
             Login
-          </a>
+          </Link>
           <a className="bg-slate-900 dark:bg-slate-800 text-white text-center font-semibold py-2.5 rounded-full hover:bg-slate-800 dark:hover:bg-slate-700" href="#">
             Start Free Trial
           </a>

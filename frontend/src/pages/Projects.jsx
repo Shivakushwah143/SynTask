@@ -175,6 +175,10 @@ export default function Projects() {
       const payload = { ...editFormData }
       if (payload.start_date) payload.start_date = timeService.toUtcISOString(payload.start_date)
       if (payload.delivery_date) payload.delivery_date = timeService.toUtcISOString(payload.delivery_date)
+      // Only send status if it actually changed to avoid illegal transition errors (e.g. active -> active)
+      if (payload.status === (editingProject?.status || 'active')) {
+        delete payload.status
+      }
       
       await projectsApi.updateProject(editingProject.id, payload)
       toast.success('Project updated successfully')
@@ -588,6 +592,14 @@ export default function Projects() {
           const match = projectCards.find((item) => item.id === project.id)
           if (match && canManageProject(user?.role, match, user?.id)) openAssignmentModal(match)
         }}
+        onEditProject={(project) => {
+          const match = projectCards.find((item) => item.id === project.id)
+          if (match) openEditModal(match)
+        }}
+        onDeleteProject={(project) => {
+          const match = projectCards.find((item) => item.id === project.id)
+          if (match) openDeleteConfirm(match)
+        }}
       />
 
       {/* Create Project Modal */}
@@ -825,7 +837,7 @@ export default function Projects() {
 }
 
 // Enhanced Project Graph Panel
-function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject, canAssignProject, onAssignProject }) {
+function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, pageSize, onViewMore, onOpenProject, canAssignProject, onAssignProject, onEditProject, onDeleteProject }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
       {/* Header */}
@@ -893,8 +905,8 @@ function ProjectGraphPanel({ rows, summary, loading, totalCount, visibleCount, p
                 canAssign={canAssignProject?.(project)}
                 onAssign={() => onAssignProject?.(project)}
                 canManage={canAssignProject?.(project)}
-                onEdit={() => openEditModal(project)}
-                onDelete={() => openDeleteConfirm(project)}
+                onEdit={() => onEditProject?.(project)}
+                onDelete={() => onDeleteProject?.(project)}
               />
             ))}
           </div>

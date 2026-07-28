@@ -64,7 +64,9 @@ const Sidebar = ({ isOpen, onClose }) => {
   const userRole = normalizeRole(user?.role);
   const hasModule = (module) => {
     if (!module) return true;
+    // Super admins and company admins always see everything
     if (isSuperAdminRole(userRole)) return true;
+    if (userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN || userRole === ROLE.MANAGER) return true;
     const userModules = user?.modules || [];
     if (module === "tasks_projects") {
       return userModules.includes("tasks_projects") || userModules.includes("task");
