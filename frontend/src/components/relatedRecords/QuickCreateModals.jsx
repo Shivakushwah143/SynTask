@@ -274,17 +274,18 @@ export function QuickCreateProjectModal({ isOpen, onClose, onCreated, existing =
 
   const submit = async (event) => {
     event.preventDefault()
-    const key = form.key.trim().toUpperCase()
-    const projectId = form.project_id.trim() || key
-    if (existing.some((item) => [item.name, item.key, item.project_id].some((value) => String(value || '').toLowerCase() === String(form.name || key || projectId).toLowerCase()))) {
+    const nameVal = form.name.trim()
+    const autoKey = form.key.trim().toUpperCase() || (nameVal ? nameVal.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16) : '')
+    const projectId = autoKey
+    if (existing.some((item) => [item.name, item.key, item.project_id].some((value) => String(value || '').toLowerCase() === String(form.name || autoKey || projectId).toLowerCase()))) {
       toast.error('Project already exists')
       return
     }
     try {
       setSaving(true)
-      const response = await projectsApi.createProject({ ...form, key, project_id: projectId, assigned_to: assignedTo, client_id: clientId })
+      const response = await projectsApi.createProject({ ...form, key: autoKey, project_id: projectId, assigned_to: assignedTo, client_id: clientId })
       const created = response.data?.project || response.data || {}
-      await onCreated?.({ ...created, id: getRecordId(created) || projectId, name: form.name, key, project_id: projectId })
+      await onCreated?.({ ...created, id: getRecordId(created) || projectId, name: form.name, key: autoKey, project_id: projectId })
       setForm({ name: '', key: '', project_id: '', description: '', type: 'software' })
       onClose()
       toast.success('Project created')
@@ -299,10 +300,28 @@ export function QuickCreateProjectModal({ isOpen, onClose, onCreated, existing =
     <Modal isOpen={isOpen} onClose={onClose} title="Create project" size="lg">
       <form onSubmit={submit} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="Project name" required><input required className={inputClassName} value={form.name} onChange={(event) => update('name', event.target.value)} /></FormField>
-          <FormField label="Project key" required><input required className={`${inputClassName} font-mono`} value={form.key} onChange={(event) => update('key', event.target.value.toUpperCase())} /></FormField>
+          <FormField label="Project name" required>
+            <input
+              required
+              className={inputClassName}
+              value={form.name}
+              onChange={(event) => {
+                const val = event.target.value
+                const key = val.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16)
+                setForm((state) => ({ ...state, name: val, key, project_id: key }))
+              }}
+            />
+          </FormField>
+          <FormField label="Project key" required>
+            <input
+              readOnly
+              tabIndex={-1}
+              className={`${inputClassName} font-mono bg-gray-100 dark:bg-gray-800 cursor-not-allowed`}
+              value={form.key}
+              placeholder="Auto-generated"
+            />
+          </FormField>
         </div>
-        <FormField label="Project ID"><input className={`${inputClassName} font-mono`} value={form.project_id} onChange={(event) => update('project_id', event.target.value)} placeholder="Defaults to project key" /></FormField>
         <FormField label="Type"><select className={inputClassName} value={form.type} onChange={(event) => update('type', event.target.value)}><option value="software">Software</option><option value="business">Business</option><option value="marketing">Marketing</option><option value="operations">Operations</option><option value="other">Other</option></select></FormField>
         <FormField label="Description"><textarea className={inputClassName} rows={3} value={form.description} onChange={(event) => update('description', event.target.value)} /></FormField>
         <div className="flex justify-end gap-2 pt-2">

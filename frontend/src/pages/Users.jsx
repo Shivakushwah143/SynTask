@@ -678,31 +678,32 @@ const Users = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <UsersIcon className="h-6 w-6" />
+        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
+              <UsersIcon className="h-7 w-7 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Users</h1>
-              <p className="mt-1 text-indigo-100">{isLead ? 'Manage your team members' : 'Manage team members and roles'}</p>
+              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">Team & User Directory</h1>
+              <p className="mt-1 text-indigo-100 text-sm">{isLead ? 'Manage your team members, departments & permissions' : 'Manage company team members, roles, departments & access'}</p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
             {(isCompanyAdmin || isManager || isLead) && (
               <>
                 <button
                   type="button"
                   onClick={() => setShowBulkModal(true)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 border border-white/10 shadow-md"
                 >
                   <Upload className="h-4 w-4" />
-                  Bulk Add
+                  <span>Bulk Add</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setShowAddModal(true)
                     setSelectedDepartmentId('')
@@ -722,10 +723,10 @@ const Users = () => {
                       setUserType('employee')
                     }
                   }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
                 >
                   <Plus className="h-4 w-4" />
-                  {isLead ? 'Add Employee' : 'Add User'}
+                  <span>{isLead ? 'Add Employee' : 'Add User'}</span>
                 </button>
               </>
             )}
@@ -1027,8 +1028,16 @@ const Users = () => {
 
       {/* Add/Edit User Modal - Keep existing modal code */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-md">
-          <div className="my-4 flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-2xl dark:border-[var(--color-app-border)] dark:bg-gray-900">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-md"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowAddModal(false)
+              setEditingUser(null)
+            }
+          }}
+        >
+          <div className="my-4 flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-surface-border/80 bg-white shadow-2xl dark:border-[var(--color-app-border)] dark:bg-gray-900" onClick={(e) => e.stopPropagation()}>
             {/* Modal content - keeping existing logic but with updated styles */}
             <div className="flex items-start justify-between gap-4 border-b border-gray-200/80 bg-gradient-to-r from-indigo-50/50 to-white px-6 py-5 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
               <div className="flex min-w-0 items-start gap-3">

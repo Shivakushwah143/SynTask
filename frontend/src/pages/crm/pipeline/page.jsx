@@ -59,6 +59,7 @@ import {
   parsePipelineFilters,
   stageOptionsFromBoard,
 } from './utils'
+import { sanitizeLocalPhone, parsePhonePaste } from '../../../components/ui/phoneUtils'
 
 // ============================================================
 // CONSTANTS & HELPERS
@@ -415,30 +416,48 @@ export default function CRMPipelinePage() {
   // ============================================================
   // Phone Input Component
   // ============================================================
-  const PhoneInput = ({ countryCode, phoneNumber, onCountryCodeChange, onPhoneNumberChange, required }) => (
-    <div className="flex gap-2">
-      <select
-        value={countryCode}
-        onChange={(e) => onCountryCodeChange(e.target.value)}
-        className="w-24 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-      >
-        <option value="+91">+91</option>
-        <option value="+1">+1</option>
-        <option value="+44">+44</option>
-        <option value="+61">+61</option>
-        <option value="+81">+81</option>
-        <option value="+86">+86</option>
-      </select>
-      <input
-        type="tel"
-        value={phoneNumber}
-        onChange={(e) => onPhoneNumberChange(e.target.value)}
-        className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-        placeholder="9876543210"
-        required={required}
-      />
-    </div>
-  )
+  const PhoneInput = ({ countryCode, phoneNumber, onCountryCodeChange, onPhoneNumberChange, required }) => {
+    const handlePaste = (e) => {
+      e.preventDefault()
+      const pasted = e.clipboardData?.getData('text') || ''
+      const { countryCode: detected, phoneNumber: clean } = parsePhonePaste(pasted)
+      if (detected) onCountryCodeChange(detected)
+      onPhoneNumberChange(clean)
+    }
+
+    const handleChange = (e) => {
+      const val = e.target.value
+      const { countryCode: detected, phoneNumber: clean } = parsePhonePaste(val)
+      if (detected) onCountryCodeChange(detected)
+      onPhoneNumberChange(clean)
+    }
+
+    return (
+      <div className="flex gap-2">
+        <select
+          value={countryCode}
+          onChange={(e) => onCountryCodeChange(e.target.value)}
+          className="w-24 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        >
+          <option value="+91">+91</option>
+          <option value="+1">+1</option>
+          <option value="+44">+44</option>
+          <option value="+61">+61</option>
+          <option value="+81">+81</option>
+          <option value="+86">+86</option>
+        </select>
+        <input
+          type="tel"
+          value={phoneNumber}
+          onChange={handleChange}
+          onPaste={handlePaste}
+          className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+          placeholder="9876543210"
+          required={required}
+        />
+      </div>
+    )
+  }
 
   // ============================================================
   // Stat Card Component
@@ -719,8 +738,13 @@ export default function CRMPipelinePage() {
       {/* CREATE LEAD MODAL - Beautiful Glassmorphism */}
       {/* ============================================================ */}
       {createOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCreateOpen(false)
+          }}
+        >
+          <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="mb-6 flex items-start justify-between border-b border-gray-200 pb-4 dark:border-gray-700">
               <div>

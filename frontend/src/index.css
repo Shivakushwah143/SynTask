@@ -17,6 +17,28 @@
   }
 }
 
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes float-delayed {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(8px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.08); }
+}
+
+.animate-float-slow { animation: float-slow 4s ease-in-out infinite; }
+.animate-float-delayed { animation: float-delayed 4s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulse-glow 3.5s ease-in-out infinite; }
+.text-brand-orange { color: #FF5C00; }
+.bg-brand-orange { background-color: #FF5C00; }
+.border-brand-orange { border-color: #FF5C00; }
+
 @layer base {
   html,
   body,
@@ -28,7 +50,7 @@
   }
 
   html {
-    font-size: 90%;
+    font-size: 100%;
   }
 
   :root {

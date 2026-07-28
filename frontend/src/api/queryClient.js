@@ -3,9 +3,10 @@ import { QueryClient } from 'react-query'
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
+      refetchInterval: 10000, // Live auto-sync all queries every 10s
+      staleTime: 5000,
       retry: 1,
-      staleTime: 5 * 60 * 1000,
     },
   },
 })
