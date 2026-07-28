@@ -4,7 +4,7 @@ import {
   Inbox, AlertCircle, Activity, CheckCircle2, Clock3, LineChart, 
   TrendingUp, Users, Zap, Target, Award, BarChart3, PieChart, 
   Sparkles, Rocket, Clock, AlertTriangle, CheckCheck, UserCheck, 
-  Briefcase, ArrowRight 
+  Briefcase, ArrowRight, Ticket 
 } from 'lucide-react'
 import { excludeCurrentUser } from '../utils/userFilters'
 import { useConfirmation } from '../hooks/useConfirmation'
@@ -471,6 +471,42 @@ const Tickets = () => {
     }
   }
 
+  const handleQuickActionAssign = () => {
+    setFilters({ status: 'open', priority: '', type: '' })
+    toast.success('Filtered to open tickets for assignment')
+    setTimeout(() => {
+      document.getElementById('ticket-board')?.scrollIntoView({ behavior: 'smooth' })
+    }, 100)
+  }
+
+  const handleQuickActionUrgent = () => {
+    setFilters({ status: '', priority: 'high', type: '' })
+    toast.success('Filtered to High & Urgent requests')
+    setTimeout(() => {
+      document.getElementById('ticket-board')?.scrollIntoView({ behavior: 'smooth' })
+    }, 100)
+  }
+
+  const handleQuickActionMatrix = () => {
+    const el = document.querySelector('[data-section="priority-charts"]')
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' })
+      toast.success('Scrolled to Priority Distribution')
+    } else {
+      toast.success('Priority Matrix active')
+    }
+  }
+
+  const handleQuickActionPerformance = () => {
+    const el = document.querySelector('[data-section="quick-stats"]')
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' })
+      toast.success('Scrolled to Team Performance Stats')
+    } else {
+      toast.success('Performance metrics active')
+    }
+  }
+
   const fetchTickets = useCallback(async () => {
     try {
       setLoading(true)
@@ -633,42 +669,7 @@ const Tickets = () => {
     }
   }
 
-  const handleQuickActionAssign = () => {
-    // Filter to show only unassigned tickets
-    const unassignedTickets = tickets.filter(t => !t.assigned_to)
-    if (unassignedTickets.length === 0) {
-      toast.info('No unassigned tickets found')
-      return
-    }
-    // Show the first unassigned ticket in the modal
-    handleTicketClick(unassignedTickets[0])
-  }
 
-  const handleQuickActionUrgent = () => {
-    // Set filter to show urgent tickets
-    setFilters(prev => ({ ...prev, priority: 'urgent' }))
-    toast.success('Filtered to urgent tickets')
-  }
-
-  const handleQuickActionMatrix = () => {
-    // Scroll to priority distribution chart
-    const chartsSection = document.querySelector('[data-section="priority-charts"]')
-    if (chartsSection) {
-      chartsSection.scrollIntoView({ behavior: 'smooth' })
-    } else {
-      toast.info('Priority distribution chart is below')
-    }
-  }
-
-  const handleQuickActionPerformance = () => {
-    // Scroll to quick stats section
-    const statsSection = document.querySelector('[data-section="quick-stats"]')
-    if (statsSection) {
-      statsSection.scrollIntoView({ behavior: 'smooth' })
-    } else {
-      toast.info('Performance metrics are below')
-    }
-  }
 
   const handleEditColumn = (column) => {
     setEditingColumn(column)
@@ -746,27 +747,27 @@ const Tickets = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-600 via-orange-600 to-amber-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <Briefcase className="h-6 w-6" />
+        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
+              <Ticket className="h-7 w-7 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Service Requests</h1>
-              <p className="mt-1 text-indigo-100">Manage and track all support tickets in one place</p>
+              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">Service Requests & Tickets</h1>
+              <p className="mt-1 text-indigo-100 text-sm">Track, manage & resolve support requests with real-time status boards</p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
             >
               <Plus className="h-4 w-4" />
-              New Request
+              <span>New Request</span>
             </button>
             {canManageColumns && (
               <button
@@ -776,10 +777,10 @@ const Tickets = () => {
                   setColumnForm({ label: '', color: 'badge-secondary' })
                   setShowColumnModal(true)
                 }}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
+                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 shadow-md border border-white/10"
               >
                 <Settings className="h-4 w-4" />
-                Manage Columns
+                <span>Manage Columns</span>
               </button>
             )}
           </div>
@@ -1010,7 +1011,7 @@ const Tickets = () => {
       </div>
 
       {/* Kanban Board */}
-      <div>
+      <div id="ticket-board" className="scroll-mt-4">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Kanban Board</h2>

@@ -1,98 +1,10 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 export default function NewLanding() {
+  const [activeTab, setActiveTab] = useState('crm');
+
   useEffect(() => {
-    // 1. Dynamically load AOS CSS
-    let link = document.getElementById('aos-css');
-    if (!link) {
-      link = document.createElement('link');
-      link.id = 'aos-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/aos@2.3.1/dist/aos.css';
-      document.head.appendChild(link);
-    }
-
-    // 2. Dynamically load AOS JS and initialize
-    const loadAosScript = () => {
-      return new Promise((resolve) => {
-        if (window.AOS) {
-          resolve(window.AOS);
-          return;
-        }
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/aos@2.3.1/dist/aos.js';
-        script.onload = () => resolve(window.AOS);
-        document.body.appendChild(script);
-      });
-    };
-
-    loadAosScript().then((AOS) => {
-      if (AOS) {
-        AOS.init({
-          duration: 700,
-          once: true,
-          easing: 'ease-out-cubic',
-          offset: 80
-        });
-      }
-    });
-
-    // 3. Sticky Navbar Shadow
-    const handleScroll = () => {
-      const nav = document.getElementById('main-nav');
-      if (nav) {
-        nav.classList.toggle('shadow-lg', window.scrollY > 10);
-      }
-    };
-    window.addEventListener('scroll', handleScroll);
-
-    // 4. Mobile Navigation Toggle
-    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-    const mobileMenu = document.getElementById('mobile-menu');
-    const toggleMobileMenu = () => {
-      if (mobileMenu) mobileMenu.classList.toggle('hidden');
-    };
-    if (mobileMenuBtn) {
-      mobileMenuBtn.addEventListener('click', toggleMobileMenu);
-    }
-
-    // 5. Theme Toggle Logic
-    const themeToggleBtn = document.getElementById('theme-toggle-btn');
-    const themeToggleBtnMobile = document.getElementById('theme-toggle-btn-mobile');
-    const sunIcon = document.getElementById('theme-sun-icon');
-    const moonIcon = document.getElementById('theme-moon-icon');
-
-    const updateThemeUI = (theme) => {
-      if (theme === 'dark') {
-        document.documentElement.classList.add('dark');
-        document.documentElement.dataset.theme = 'dark';
-        document.documentElement.style.colorScheme = 'dark';
-        if (sunIcon) sunIcon.classList.remove('hidden');
-        if (moonIcon) moonIcon.classList.add('hidden');
-      } else {
-        document.documentElement.classList.remove('dark');
-        document.documentElement.dataset.theme = 'light';
-        document.documentElement.style.colorScheme = 'light';
-        if (sunIcon) sunIcon.classList.add('hidden');
-        if (moonIcon) moonIcon.classList.remove('hidden');
-      }
-    };
-
-    const currentTheme = localStorage.getItem('syntask-theme') || 'light';
-    updateThemeUI(currentTheme);
-
-    const toggleTheme = () => {
-      const activeTheme = localStorage.getItem('syntask-theme') || 'light';
-      const newTheme = activeTheme === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('syntask-theme', newTheme);
-      localStorage.setItem('theme', newTheme);
-      updateThemeUI(newTheme);
-    };
-
-    if (themeToggleBtn) themeToggleBtn.addEventListener('click', toggleTheme);
-    if (themeToggleBtnMobile) themeToggleBtnMobile.addEventListener('click', toggleTheme);
-
     // 6. Stats Bar Numbers Counter Animation
     function animateCounter(el) {
       const target = parseInt(el.getAttribute('data-target'));
@@ -130,7 +42,6 @@ export default function NewLanding() {
     function goToSlide(n) {
       if (slides.length === 0) return;
       slides.forEach((s, i) => s.classList.toggle('hidden', i !== n));
-      dots.forEach((d, i) => d.classList.toggle('bg-orange-DEFAULT', i === n));
       currentSlide = n;
     }
 
@@ -221,9 +132,7 @@ export default function NewLanding() {
       "div.grid.grid-cols-2.md\\:grid-cols-3.gap-6 > div",
       "div.grid.grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3.gap-8.mb-16 > div",
       "div.grid.grid-cols-2.md\\:grid-cols-4.lg\\:grid-cols-7.gap-4 > div",
-      "div.grid.grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3.gap-6.mb-12 > div",
-      "div.grid.grid-cols-1.lg\\:grid-cols-3.gap-8.mb-16 > div",
-      "div.grid.grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-4.gap-8 > div"
+      "div.grid.grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3.gap-6.mb-12 > div"
     ];
     selectors.forEach(sel => {
       try {
@@ -235,140 +144,17 @@ export default function NewLanding() {
 
     // Cleanup listeners
     return () => {
-      window.removeEventListener('scroll', handleScroll);
-      if (mobileMenuBtn) mobileMenuBtn.removeEventListener('click', toggleMobileMenu);
       if (carouselInterval) clearInterval(carouselInterval);
       if (prevBtn) prevBtn.removeEventListener('click', handlePrev);
       if (nextBtn) nextBtn.removeEventListener('click', handleNext);
       if (billingToggle) billingToggle.removeEventListener('change', handleBillingToggle);
       if (empSlider) empSlider.removeEventListener('input', calcROI);
       if (toolSlider) toolSlider.removeEventListener('input', calcROI);
-      if (themeToggleBtn) themeToggleBtn.removeEventListener('click', toggleTheme);
-      if (themeToggleBtnMobile) themeToggleBtnMobile.removeEventListener('click', toggleTheme);
     };
   }, []);
 
   return (
     <>
-      <style>{`
-    
-    body {
-      font-family: 'Inter', sans-serif;
-    }
-
-    /* Custom brand colors and styles from Section 2 */
-    .text-brand-orange { color: #FF5C00; }
-    .bg-brand-orange { background-color: #FF5C00; }
-    .bg-soft-blue { background-color: #F0F7FF; }
-    .bg-soft-green { background-color: #F0FFF4; }
-    .bg-soft-red { background-color: #FFF5F5; }
-    .border-brand-orange { border-color: #FF5C00; }
-
-    /* Custom table styles from Section 3 */
-    .comparison-table td, .comparison-table th {
-      padding: 1.25rem 1rem;
-      border-bottom: 1px solid #E5E7EB;
-      text-align: center;
-    }
-    .comparison-table td:first-child {
-      text-align: left;
-      font-weight: 500;
-    }
-    .highlight-column {
-      background-color: #FFF7F2;
-      border-left: 2px solid #FF5C00;
-      border-right: 2px solid #FF5C00;
-    }
-    .highlight-header {
-      background-color: #FF5C00;
-      color: white;
-    }
-
-    /* Custom styles from Section 4 */
-    .card-shadow {
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-    }
-    .dotted-bg {
-      background-image: radial-gradient(#d1d5db 1px, transparent 1px);
-      background-size: 20px 20px;
-    }
-
-    /* Custom styles from Section 5 */
-    .bg-syn-orange { background-color: #FF5A1F; }
-    .text-syn-orange { color: #FF5A1F; }
-    .border-syn-orange { border-color: #FF5A1F; }
-    .hero-gradient { background: radial-gradient(circle at 70% 50%, #fff5f2 0%, #ffffff 100%); }
-
-    /* Custom styles from Section 6 */
-    .text-gradient-orange {
-      background: linear-gradient(90deg, #FF4D00, #FF9500);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .toggle-checkbox:checked {
-      right: 0;
-      border-color: #68D391;
-    }
-    .toggle-checkbox:checked + .toggle-label {
-      background-color: #68D391;
-    }
-
-    /* HOVER & TRANSITION EFFECTS CHECKLIST */
-    .card-hover {
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .card-hover:hover {
-      transform: translateY(-4px) !important;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.10) !important;
-    }
-    .btn-primary {
-      transition: background-color 0.2s, transform 0.15s;
-    }
-    .btn-primary:hover {
-      transform: scale(1.02);
-    }
-    .nav-link {
-      position: relative;
-    }
-    .nav-link::after {
-      content: '';
-      position: absolute;
-      bottom: -2px;
-      left: 0;
-      width: 0;
-      height: 2px;
-      background: #FF5C00;
-      transition: width 0.2s;
-    }
-    .nav-link:hover::after {
-      width: 100%;
-    }
-    img {
-      transition: transform 0.5s ease;
-    }
-
-    /* DARK MODE OVERRIDES */
-    .dark .comparison-table td, .dark .comparison-table th {
-      border-bottom-color: #1e293b;
-    }
-    .dark .highlight-column {
-      background-color: #18110b;
-      border-left-color: #FF5C00;
-      border-right-color: #FF5C00;
-    }
-    .dark .dotted-bg {
-      background-image: radial-gradient(#334155 1px, transparent 1px);
-    }
-    .dark .hero-gradient {
-      background: radial-gradient(circle at 70% 50%, #1c1512 0%, #0A0B1A 100%);
-    }
-    .dark .bg-slate-900 {
-      background-color: #0d0e20;
-    }
-
-  `}</style>
-
-
       <header id="main-nav" className="sticky top-0 z-50 bg-white/90 dark:bg-[#0A0B1A]/90 backdrop-blur-md border-b border-gray-100 dark:border-slate-800 transition-shadow duration-300">
         <nav className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-10">
@@ -379,17 +165,14 @@ export default function NewLanding() {
               <span className="text-2xl font-bold tracking-tight">SynTask</span>
             </div>
             <div className="hidden lg:flex items-center gap-8 text-sm font-medium text-gray-600 dark:text-gray-300">
-              <a className="hover:text-black flex items-center gap-1" href="#">Features <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
-              <a className="hover:text-black flex items-center gap-1" href="#">Solutions <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
-              <a className="hover:text-black" href="#">AI Workforce</a>
-              <a className="hover:text-black" href="#">Pricing</a>
-              <a className="hover:text-black flex items-center gap-1" href="#">Resources <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
-              <a className="hover:text-black flex items-center gap-1" href="#">Company <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+              <a className="hover:text-black flex items-center gap-1" href="#features">Features</a>
+              <a className="hover:text-black flex items-center gap-1" href="#demo-preview">Live Demo</a>
+              <a className="hover:text-black" href="#roi-calc">ROI Calculator</a>
+              <a className="hover:text-black" href="#pricing">Pricing</a>
             </div>
           </div>
           <div className="flex items-center gap-4">
-
-            <button id="theme-toggle-btn" className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 rounded-full hover:text-gray-900 transition dark:text-gray-400 dark:hover:bg-slate-800 dark:hover:text-white">
+            <button id="theme-toggle-btn" className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 rounded-full hover:text-gray-900 transition dark:hover:bg-slate-800 dark:hover:text-white">
               <svg id="theme-sun-icon" className="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z"></path>
               </svg>
@@ -400,95 +183,311 @@ export default function NewLanding() {
             <button id="mobile-menu-btn" className="lg:hidden p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 rounded-full hover:text-gray-900 transition">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
             </button>
-
-            <button className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 rounded-full"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></button>
-            <Link className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full border border-gray-200 dark:border-slate-700 hover:bg-gray-50" to="/login">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+            <Link className="text-sm font-semibold px-4 py-2 rounded-full border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800" to="/login">
               Login
             </Link>
-            <a className="bg-slate-900 text-white text-sm font-semibold px-5 py-2.5 rounded-full flex items-center gap-2 hover:bg-slate-800" href="#">
-              Start Free Trial <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
-            </a>
+            <Link className="bg-brand-orange text-white text-sm font-bold px-5 py-2.5 rounded-full hover:bg-orange-600 shadow-md shadow-orange-500/20" to="/login">
+              Start Free Demo
+            </Link>
           </div>
         </nav>
 
-        <div id="mobile-menu" className="hidden lg:hidden bg-white dark:bg-[#0A0B1A] dark:bg-[#0A0B1A] border-b border-gray-100 dark:border-slate-800 dark:border-slate-800 shadow-md px-6 py-4 flex flex-col gap-4">
-          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#">Features</a>
-          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#">Solutions</a>
-          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#">AI Workforce</a>
-          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#">Pricing</a>
-          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#">Resources</a>
-          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#">Company</a>
-          <hr className="border-gray-100 dark:border-slate-800 dark:border-slate-800" />
-          <button id="theme-toggle-btn-mobile" className="flex items-center gap-2 hover:text-[#FF5C00] font-medium text-left dark:text-gray-300 dark:hover:text-white">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
-            Toggle Theme
-          </button>
+        <div id="mobile-menu" className="hidden lg:hidden bg-white dark:bg-[#0A0B1A] border-b border-gray-100 dark:border-slate-800 shadow-md px-6 py-4 flex flex-col gap-4">
+          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#features">Features</a>
+          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#demo-preview">Live Demo</a>
+          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#pricing">Pricing</a>
+          <hr className="border-gray-100 dark:border-slate-800" />
           <Link className="flex items-center gap-2 hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" to="/login">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
             Login
           </Link>
-          <a className="bg-slate-900 dark:bg-slate-800 text-white text-center font-semibold py-2.5 rounded-full hover:bg-slate-800 dark:hover:bg-slate-700" href="#">
-            Start Free Trial
-          </a>
+          <Link className="bg-brand-orange text-white text-center font-bold py-2.5 rounded-full hover:bg-orange-600" to="/login">
+            Start Free Demo
+          </Link>
         </div>
       </header>
 
       <div id="content-sections">
+        <main className="relative overflow-hidden pt-16 pb-20 lg:pt-20 bg-white dark:bg-[#0A0B1A]">
+          {/* Ambient Glow Circles */}
+          <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-brand-orange/10 rounded-full blur-[140px] pointer-events-none animate-pulse-glow"></div>
 
-
-
-
-
-        <main className="relative overflow-hidden pt-16 pb-24 lg:pt-24 bg-white dark:bg-[#0A0B1A]">
           <div className="max-w-7xl mx-auto px-4 grid lg:grid-cols-2 gap-12 items-center">
-            <div data-purpose="hero-content">
-              <div className="inline-block px-4 py-1.5 rounded-full bg-orange-50 dark:bg-orange-950/20 border border-orange-100 mb-6">
-                <span className="text-xs font-bold uppercase tracking-widest text-brand-orange">AI THAT WORKS WHILE YOU GROW</span>
+            <div data-purpose="hero-content" className="z-10">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-purple-500/10 border border-brand-orange/30 mb-6 shadow-sm">
+                <span className="flex h-2 w-2 rounded-full bg-brand-orange animate-ping"></span>
+                <span className="text-xs font-extrabold uppercase tracking-widest text-brand-orange">✨ The AI Business Operating System</span>
               </div>
-              <h1 className="text-6xl lg:text-7xl font-extrabold text-slate-900 dark:text-white leading-[1.1] mb-6">
-                One Platform.<br />
-                <span className="text-brand-orange">Unlimited Possibilities.</span>
+              <h1 className="text-5xl lg:text-7xl font-extrabold text-slate-900 dark:text-white leading-[1.1] mb-6 tracking-tight">
+                Run Your Entire Company<br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-orange via-amber-500 to-orange-600">On Autopilot.</span>
               </h1>
-              <p className="text-lg text-slate-600 dark:text-gray-300 mb-10 max-w-lg leading-relaxed">
-                SynTask's AI Workforce is designed to automate work, bring teams together and help you deliver exceptional results for your clients and your business.
+              <p className="text-lg text-slate-600 dark:text-gray-300 mb-8 max-w-xl leading-relaxed">
+                No complex tech setup needed. SynTask brings your clients, team tasks, automated invoicing &amp; AI workforce into one simple, beautiful workspace.
               </p>
-              <div className="grid grid-cols-2 gap-4 mb-8">
-                <div className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-[#111224]/50">
-                  <div className="w-8 h-8 rounded bg-white dark:bg-[#0A0B1A] shadow-sm flex items-center justify-center text-blue-500">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"></path></svg>
+              
+              {/* Call-to-Action Buttons */}
+              <div className="flex flex-wrap items-center gap-4 mb-10">
+                <Link to="/login" className="px-8 py-4 rounded-2xl bg-brand-orange text-white font-bold shadow-xl shadow-orange-500/25 hover:bg-orange-600 hover:scale-[1.02] transition-all flex items-center gap-2 group">
+                  <span>Start Free Demo</span>
+                  <svg className="w-5 h-5 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"></path></svg>
+                </Link>
+                <a href="#demo-preview" className="px-6 py-4 rounded-2xl border border-gray-200 dark:border-slate-800 text-slate-800 dark:text-white font-semibold hover:bg-gray-50 dark:hover:bg-slate-800/80 transition-all flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-orange-100 dark:bg-orange-950/50 flex items-center justify-center text-brand-orange">▶</div>
+                  <span>Watch 2-Min Tour</span>
+                </a>
+              </div>
+
+              {/* 4 Non-Techie Value Badges */}
+              <div className="grid grid-cols-2 gap-3.5">
+                <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-[#111224]/80 shadow-sm transition hover:border-brand-orange/40">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md flex items-center justify-center font-bold text-sm">⚡</div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Zero Tech Setup</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Ready in 2 minutes</p>
                   </div>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-gray-200">All-in-One Platform</span>
                 </div>
-                <div className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-[#111224]/50">
-                  <div className="w-8 h-8 rounded bg-white dark:bg-[#0A0B1A] shadow-sm flex items-center justify-center text-green-500">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" fillRule="evenodd"></path></svg>
+                <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-[#111224]/80 shadow-sm transition hover:border-brand-orange/40">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-md flex items-center justify-center font-bold text-sm">🤖</div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">AI Assistants</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Handle routine work</p>
                   </div>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-gray-200">AI-Powered Automation</span>
                 </div>
-                <div className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-[#111224]/50">
-                  <div className="w-8 h-8 rounded bg-white dark:bg-[#0A0B1A] shadow-sm flex items-center justify-center text-blue-400">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
+                <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-[#111224]/80 shadow-sm transition hover:border-brand-orange/40">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 text-white shadow-md flex items-center justify-center font-bold text-sm">📊</div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Unified Dashboard</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Clients, tasks &amp; bills</p>
                   </div>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-gray-200">Real-time Collaboration</span>
                 </div>
-                <div className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-[#111224]/50">
-                  <div className="w-8 h-8 rounded bg-white dark:bg-[#0A0B1A] shadow-sm flex items-center justify-center text-indigo-500">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path></svg>
+                <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-[#111224]/80 shadow-sm transition hover:border-brand-orange/40">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 text-white shadow-md flex items-center justify-center font-bold text-sm">🔒</div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Bank-Grade Security</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">100% Encrypted Data</p>
                   </div>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-gray-200">Built for Service Companies</span>
                 </div>
               </div>
             </div>
-            <div className="relative" data-purpose="hero-image-container">
 
-              <img alt="SynTask Dashboard Preview" className="w-full h-auto rounded-3xl shadow-2xl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCLeaLr-L9QlJqIws1q3315eXnXcYwpU_aoRZc47oIJz_0HiemVGEqsF-tcYQkK-MFCeUvIpBGx20OCsFk13prCPqmSuypHtZwfLKpfFK2SoEOGwECkHnj9tlYIja3ge1XyhwWuppNRFkygQQF4mq_L2Ho3-zwNyPSBRjNYxf1j4hRU11ml8y-IMuNdrnovrlVXtuaezhbFs3GXqLHgqzvG-yLJxXwg9SOk9utpP3zibS1YkoOvaIyV8w9sAQDT9QSZuWlSbCL4Pg" />
+            {/* Interactive Hero Preview Card Container */}
+            <div className="relative z-10" data-purpose="hero-image-container">
+              {/* Animated Floating Glass Card 1 */}
+              <div className="absolute -top-6 -left-6 z-20 hidden sm:flex items-center gap-3 p-4 rounded-2xl bg-white/90 dark:bg-[#111224]/90 backdrop-blur-xl border border-white/40 dark:border-slate-800 shadow-2xl animate-float-slow">
+                <div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500 text-lg">
+                  🚀
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">+340% Output</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">AI Task Automation Active</p>
+                </div>
+              </div>
+
+              {/* Animated Floating Glass Card 2 */}
+              <div className="absolute -bottom-6 -right-6 z-20 hidden sm:flex items-center gap-3 p-4 rounded-2xl bg-white/90 dark:bg-[#111224]/90 backdrop-blur-xl border border-white/40 dark:border-slate-800 shadow-2xl animate-float-delayed">
+                <div className="h-10 w-10 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-brand-orange text-lg">
+                  🧾
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">1-Click GST Invoices</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">₹14.8L Billed This Month</p>
+                </div>
+              </div>
+
+              {/* Main Dashboard Preview */}
+              <div className="overflow-hidden rounded-3xl border border-gray-200/80 dark:border-slate-800 bg-white dark:bg-[#111224] shadow-2xl p-2.5 transition-transform hover:scale-[1.01]">
+                <div className="rounded-2xl overflow-hidden bg-slate-900">
+                  <img alt="SynTask Dashboard Preview" className="w-full h-auto rounded-2xl transition duration-700 hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCLeaLr-L9QlJqIws1q3315eXnXcYwpU_aoRZc47oIJz_0HiemVGEqsF-tcYQkK-MFCeUvIpBGx20OCsFk13prCPqmSuypHtZwfLKpfFK2SoEOGwECkHnj9tlYIja3ge1XyhwWuppNRFkygQQF4mq_L2Ho3-zwNyPSBRjNYxf1j4hRU11ml8y-IMuNdrnovrlVXtuaezhbFs3GXqLHgqzvG-yLJxXwg9SOk9utpP3zibS1YkoOvaIyV8w9sAQDT9QSZuWlSbCL4Pg" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Feature Demo Tabs Container */}
+          <div id="demo-preview" className="max-w-6xl mx-auto px-4 mt-20">
+            <div className="p-8 rounded-3xl bg-gradient-to-b from-gray-50 to-white dark:from-[#111224] dark:to-[#0A0B1A] border border-gray-100 dark:border-slate-800 shadow-xl">
+              <div className="text-center max-w-2xl mx-auto mb-8">
+                <span className="text-xs font-extrabold uppercase tracking-widest text-brand-orange">EXPLORE SYNTASK IN ACTION</span>
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-white mt-1">See How Simple Business Can Be</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Click any tab below to preview real workflows without code</p>
+              </div>
+
+              {/* Tab Selector Buttons */}
+              <div className="flex flex-wrap justify-center gap-2 mb-8">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('crm')}
+                  className={activeTab === 'crm' ? "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-brand-orange text-white shadow-lg shadow-orange-500/20 scale-105" : "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-white dark:bg-slate-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"}
+                >
+                  <span>💼 Client CRM &amp; Pipeline</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('ai')}
+                  className={activeTab === 'ai' ? "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-brand-orange text-white shadow-lg shadow-orange-500/20 scale-105" : "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-white dark:bg-slate-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"}
+                >
+                  <span>⚡ AI Automation Teammates</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('tasks')}
+                  className={activeTab === 'tasks' ? "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-brand-orange text-white shadow-lg shadow-orange-500/20 scale-105" : "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-white dark:bg-slate-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"}
+                >
+                  <span>📁 Kanban Projects &amp; Tasks</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('invoices')}
+                  className={activeTab === 'invoices' ? "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-brand-orange text-white shadow-lg shadow-orange-500/20 scale-105" : "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-white dark:bg-slate-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"}
+                >
+                  <span>🧾 1-Click Billing &amp; GST</span>
+                </button>
+              </div>
+
+              {/* Active Tab Preview Display */}
+              <div className="rounded-2xl border border-gray-200/80 dark:border-slate-800 bg-white dark:bg-[#0A0B1A] p-6 shadow-md transition-all duration-300">
+                {activeTab === 'crm' && (
+                  <div className="grid md:grid-cols-3 gap-6 items-center">
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="inline-block px-3 py-1 rounded-full bg-blue-50 text-blue-600 font-semibold text-[11px]">Visual Sales Funnel</div>
+                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Track Every Inquiry From Lead to Contract</h3>
+                      <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                        Drag and drop leads through stages. SynTask automatically assigns account leads, sends welcome packages, and logs contact history.
+                      </p>
+                      <div className="flex gap-4 pt-2">
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
+                          <p className="text-[10px] text-gray-400 uppercase font-bold">Total Pipeline</p>
+                          <p className="text-lg font-bold text-slate-900 dark:text-white">₹48,50,000</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40">
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">Win Rate</p>
+                          <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">68.4%</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-[#111224] space-y-3">
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <span className="text-xs font-bold text-slate-800 dark:text-white">Apex Tech Solutions</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">Proposal Sent</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <span className="text-xs font-bold text-slate-800 dark:text-white">Quantum Leap Labs</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-bold">In Negotiation</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <span className="text-xs font-bold text-slate-800 dark:text-white">Horizon Media Co</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">Discovery Call</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'ai' && (
+                  <div className="grid md:grid-cols-3 gap-6 items-center">
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="inline-block px-3 py-1 rounded-full bg-purple-50 text-purple-600 font-semibold text-[11px]">24/7 Digital Workers</div>
+                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white">AI Assistant Agents Handling Daily Chores</h3>
+                      <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                        Let AI draft progress emails, organize task deadlines, analyze project risk, and notify team members automatically.
+                      </p>
+                      <div className="flex gap-4 pt-2">
+                        <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/40">
+                          <p className="text-[10px] text-purple-600 dark:text-purple-400 uppercase font-bold">Hours Saved / Month</p>
+                          <p className="text-lg font-bold text-purple-600 dark:text-purple-400">140+ Hours</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-orange-50 dark:bg-orange-950/40">
+                          <p className="text-[10px] text-brand-orange uppercase font-bold">Errors Reduced</p>
+                          <p className="text-lg font-bold text-brand-orange">99.8%</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-[#111224] space-y-3">
+                      <div className="p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-brand-orange">🤖 Invoicing Bot</span>
+                          <span className="text-emerald-500 font-bold">Active</span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">Sent 12 monthly retainer reminders</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-purple-600">🧠 Summary Assistant</span>
+                          <span className="text-emerald-500 font-bold">Active</span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">Generated weekly client status briefs</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'tasks' && (
+                  <div className="grid md:grid-cols-3 gap-6 items-center">
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="inline-block px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 font-semibold text-[11px]">Visual Deliverables</div>
+                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Clean Kanban Boards Your Team Will Love</h3>
+                      <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                        Organize work by status, assign leads, attach files, and track deliverables in real time without messy spreadsheet email threads.
+                      </p>
+                      <div className="flex gap-4 pt-2">
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
+                          <p className="text-[10px] text-gray-400 uppercase font-bold">Active Tasks</p>
+                          <p className="text-lg font-bold text-slate-900 dark:text-white">128 Deliverables</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40">
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">On-Time Completion</p>
+                          <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">97.2%</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-[#111224] space-y-2">
+                      <div className="p-2.5 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white">Website UI Redesign</p>
+                        <p className="text-[10px] text-indigo-500 font-semibold mt-0.5">Assigned: Sarah M. • Due Tomorrow</p>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white">API Integration Testing</p>
+                        <p className="text-[10px] text-emerald-500 font-semibold mt-0.5">Completed Today</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'invoices' && (
+                  <div className="grid md:grid-cols-3 gap-6 items-center">
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="inline-block px-3 py-1 rounded-full bg-amber-50 text-amber-600 font-semibold text-[11px]">Financial Operations</div>
+                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Automated Tax Invoices &amp; Instant Billing</h3>
+                      <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                        Create GST compliant invoices, track paid vs outstanding balances, and send instant PDF invoices directly to clients.
+                      </p>
+                      <div className="flex gap-4 pt-2">
+                        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40">
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-bold">Collected This Month</p>
+                          <p className="text-lg font-bold text-amber-600 dark:text-amber-400">₹18,40,000</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40">
+                          <p className="text-[10px] text-blue-600 dark:text-blue-400 uppercase font-bold">Avg Payment Time</p>
+                          <p className="text-lg font-bold text-blue-600 dark:text-blue-400">2.4 Days</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-[#111224] space-y-3">
+                      <div className="p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm border-l-4 border-emerald-500">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white">INV-2026-084</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm border-l-4 border-amber-500">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white">INV-2026-085</p>
+                        <p className="text-[10px] text-gray-500">Quantum Leap • ₹4,20,000 (Pending)</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </main>
 
-
-        <section className="py-24 bg-gray-50/30 dark:bg-[#111224]/30">
+        <section id="features" className="py-24 bg-gray-50/30 dark:bg-[#111224]/30">
           <div className="max-w-7xl mx-auto px-4">
             <div className="text-center mb-16">
               <div className="inline-block px-4 py-1.5 rounded-full bg-orange-50 dark:bg-orange-950/20 mb-4">
@@ -497,7 +496,6 @@ export default function NewLanding() {
               <h2 className="text-4xl font-bold text-slate-900 dark:text-white">Replace Multiple Tools. Replace Manual Work.<br />Replace Limits.</h2>
             </div>
             <div className="grid lg:grid-cols-3 gap-8 items-stretch">
-
               <div className="bg-white dark:bg-[#0A0B1A] p-10 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-8 text-center">The Traditional Way</h3>
                 <ul className="space-y-6">
@@ -513,14 +511,6 @@ export default function NewLanding() {
                     <div className="w-5 h-5 flex-shrink-0 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-xs">✕</div>
                     <span className="text-gray-600 dark:text-gray-300 font-medium">Scattered data &amp; reports</span>
                   </li>
-                  <li className="flex items-center gap-3">
-                    <div className="w-5 h-5 flex-shrink-0 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-xs">✕</div>
-                    <span className="text-gray-600 dark:text-gray-300 font-medium">Disconnected teams &amp; systems</span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <div className="w-5 h-5 flex-shrink-0 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-xs">✕</div>
-                    <span className="text-gray-600 dark:text-gray-300 font-medium">High software costs &amp; complexity</span>
-                  </li>
                 </ul>
               </div>
 
@@ -531,10 +521,6 @@ export default function NewLanding() {
                   <li className="flex items-center gap-3">
                     <div className="w-5 h-5 flex-shrink-0 bg-green-100 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-xs font-bold">✓</div>
                     <span className="text-slate-800 dark:text-white font-semibold">One AI-powered Business Operating System</span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <div className="w-5 h-5 flex-shrink-0 bg-green-100 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-xs font-bold">✓</div>
-                    <span className="text-slate-800 dark:text-white font-semibold">AI automation handles repetitive work</span>
                   </li>
                   <li className="flex items-center gap-3">
                     <div className="w-5 h-5 flex-shrink-0 bg-green-100 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-xs font-bold">✓</div>

@@ -145,8 +145,16 @@ export function AIAssistantDialog({ isOpen, onClose }) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[1px]" role="dialog" aria-modal="true" aria-labelledby="ai-assistant-title">
-      <div className="flex h-[min(92vh,860px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-orange-100/80 bg-[#fffdf9] shadow-[0_28px_80px_rgba(36,28,20,0.34)] dark:border-[#5a4635] dark:bg-[rgb(29_24_19)]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[1px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ai-assistant-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.()
+      }}
+    >
+      <div className="flex h-[min(92vh,860px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-orange-100/80 bg-[#fffdf9] shadow-[0_28px_80px_rgba(36,28,20,0.34)] dark:border-[#5a4635] dark:bg-[rgb(29_24_19)]" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-center justify-between border-b border-orange-100/80 px-7 py-6 dark:border-[#5a4635]">
           <div className="flex min-w-0 items-center gap-4">
             <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-100 text-orange-600 dark:bg-orange-950/60 dark:text-orange-200">
