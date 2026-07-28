@@ -70,6 +70,7 @@ const Clients = () => {
   const [showDocumentModal, setShowDocumentModal] = useState(false)
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
+  const [updatingStatusId, setUpdatingStatusId] = useState(null)
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
@@ -250,7 +251,21 @@ const Clients = () => {
     setShowCreateModal(true)
   }
 
-  
+  const handleStatusChange = async (clientId, newStatus) => {
+    if (updatingStatusId) return
+    try {
+      setUpdatingStatusId(clientId)
+      await clientsAPI.updateClientStatus(clientId, newStatus)
+      toast.success(`Client status updated to ${newStatus}`)
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
+      )
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update status')
+    } finally {
+      setUpdatingStatusId(null)
+    }
+  }
 
   const handleCreateProject = async (e) => {
     e.preventDefault()
@@ -659,18 +674,46 @@ const Clients = () => {
                       return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
                     })()}
                   </td>
-                  <td className="py-3 pr-4">
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full ${
-                        client.status === 'active'
-                          ? 'bg-green-100 text-green-700'
-                          : client.status === 'inactive'
-                          ? 'bg-gray-100 text-gray-700'
-                          : 'bg-yellow-100 text-yellow-700'
-                      }`}
-                    >
-                      {client.status}
-                    </span>
+                  <td className="py-3 pr-4" onClick={(e) => e.stopPropagation()}>
+                    {(isCompanyAdmin || isLead) ? (
+                      <select
+                        value={client.status || 'active'}
+                        onChange={(e) => handleStatusChange(client.id, e.target.value)}
+                        disabled={updatingStatusId === client.id}
+                        className={`text-xs rounded-full px-2 py-1 border-0 font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 ${
+                          client.status === 'active'
+                            ? 'bg-green-100 text-green-700'
+                            : client.status === 'inactive'
+                            ? 'bg-gray-100 text-gray-600'
+                            : client.status === 'on_hold'
+                            ? 'bg-amber-100 text-amber-700'
+                            : client.status === 'archived'
+                            ? 'bg-red-100 text-red-600'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="archived">Archived</option>
+                      </select>
+                    ) : (
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          client.status === 'active'
+                            ? 'bg-green-100 text-green-700'
+                            : client.status === 'inactive'
+                            ? 'bg-gray-100 text-gray-600'
+                            : client.status === 'on_hold'
+                            ? 'bg-amber-100 text-amber-700'
+                            : client.status === 'archived'
+                            ? 'bg-red-100 text-red-600'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {client.status || 'active'}
+                      </span>
+                    )}
                   </td>
                   <td className="py-3 pr-4">
                     <div className="flex items-center space-x-2">
