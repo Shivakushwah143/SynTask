@@ -282,10 +282,7 @@ export default function Projects() {
     [assignableUsers],
   )
   const projectAssigneeOptions = useMemo(
-    () => uniqueAssignableUsers.filter((item) => {
-      const role = normalizeRole(item.role)
-      return role === 'manager' || role === 'employee'
-    }),
+    () => uniqueAssignableUsers.filter((item) => item.status === 'active'),
     [uniqueAssignableUsers, userRole],
   )
 

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { 
   ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
-  Zap, Sparkles
+  Zap, Sparkles, Plus, List
 } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { aiAPI } from '../api/ai'
@@ -67,10 +67,17 @@ const TaskDetail = () => {
   const [updatingField, setUpdatingField] = useState(null)
   const [composerOpen, setComposerOpen] = useState(false)
   const [extensionRequests, setExtensionRequests] = useState([])
+  const [subtasks, setSubtasks] = useState([])
+  const [showSubtaskForm, setShowSubtaskForm] = useState(false)
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
+  const [newSubtaskDueDate, setNewSubtaskDueDate] = useState('')
+  const [newSubtaskEstimatedHours, setNewSubtaskEstimatedHours] = useState('')
+  const [creatingSubtask, setCreatingSubtask] = useState(false)
   const [extensionForm, setExtensionForm] = useState({ requested_due_date: '', reason: '' })
   const [submittingExtension, setSubmittingExtension] = useState(false)
   const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const [dragOverColumn, setDragOverColumn] = useState(null)
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
   const historyRef = useRef(null)
@@ -195,6 +202,13 @@ const TaskDetail = () => {
         setExtensionRequests(extensionData.requests || [])
       } catch (error) {
         console.error('Error loading extension requests:', error)
+      }
+
+      try {
+        const subtaskData = await tasksAPI.getSubtasks(data.id)
+        setSubtasks(subtaskData.subtasks || [])
+      } catch (error) {
+        console.error('Error loading subtasks:', error)
       }
     } catch (error) {
       console.error('Error loading task:', error)
@@ -832,6 +846,238 @@ const TaskDetail = () => {
                 </div>
               </div>
             ) : null}
+          </div>
+
+          {/* Subtasks Section - Kanban Board */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900">Subtasks ({subtasks.length})</h3>
+              <button
+                onClick={() => setShowSubtaskForm(!showSubtaskForm)}
+                className="inline-flex items-center gap-1 rounded-lg bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100 dark:bg-primary-900/20 dark:text-primary-300 dark:hover:bg-primary-900/30"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Subtask
+              </button>
+            </div>
+            
+            {showSubtaskForm && (
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                if (!newSubtaskTitle.trim()) return
+                try {
+                  setCreatingSubtask(true)
+                  await tasksAPI.createTask({
+                    title: newSubtaskTitle,
+                    parent_task_id: task.id,
+                    priority: 'medium',
+                    due_date: newSubtaskDueDate || null,
+                    estimated_hours: newSubtaskEstimatedHours ? parseFloat(newSubtaskEstimatedHours) : null,
+                  })
+                  toast.success('Subtask created')
+                  setNewSubtaskTitle('')
+                  setNewSubtaskDueDate('')
+                  setNewSubtaskEstimatedHours('')
+                  setShowSubtaskForm(false)
+                  const data = await tasksAPI.getSubtasks(task.id)
+                  setSubtasks(data.subtasks || [])
+                } catch (error) {
+                  toast.error('Failed to create subtask')
+                } finally {
+                  setCreatingSubtask(false)
+                }
+              }} className="mb-4 space-y-2">
+                <input
+                  type="text"
+                  value={newSubtaskTitle}
+                  onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                  placeholder="Subtask title..."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  required
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Due date</label>
+                    <input
+                      type="date"
+                      value={newSubtaskDueDate}
+                      onChange={(e) => setNewSubtaskDueDate(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="w-24">
+                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Hours</label>
+                    <input
+                      type="number"
+                      min="0.25"
+                      step="0.25"
+                      value={newSubtaskEstimatedHours}
+                      onChange={(e) => setNewSubtaskEstimatedHours(e.target.value)}
+                      placeholder="0.5"
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="submit" disabled={creatingSubtask} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-60 flex-1">
+                    {creatingSubtask ? 'Creating...' : 'Add'}
+                  </button>
+                  <button type="button" onClick={() => { setShowSubtaskForm(false); setNewSubtaskTitle(''); setNewSubtaskDueDate(''); setNewSubtaskEstimatedHours(''); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+            
+            {subtasks.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {[
+                  { id: 'todo', label: 'To Do', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+                  { id: 'in_progress', label: 'In Progress', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+                  { id: 'in_review', label: 'Review', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' },
+                  { id: 'completed', label: 'Completed', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+                ].map((column) => {
+                  const columnSubtasks = subtasks.filter((s) => s.status === column.id)
+                  const isOver = dragOverColumn === column.id
+                  return (
+                    <div key={column.id}
+                      onDragOver={(e) => { e.preventDefault(); setDragOverColumn(column.id) }}
+                      onDragEnter={(e) => { e.preventDefault(); setDragOverColumn(column.id) }}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget)) return
+                        setDragOverColumn(null)
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault()
+                        setDragOverColumn(null)
+                        const draggedId = e.dataTransfer.getData('text/plain')
+                        if (!draggedId) return
+                        const draggedSubtask = subtasks.find((s) => s.id === draggedId)
+                        if (!draggedSubtask || draggedSubtask.status === column.id) return
+                        try {
+                          await tasksAPI.updateTaskStatus(draggedId, column.id)
+                          toast.success('Subtask moved')
+                          const data = await tasksAPI.getSubtasks(task.id)
+                          setSubtasks(data.subtasks || [])
+                        } catch (error) {
+                          toast.error('Failed to move subtask')
+                        }
+                      }}
+                      className={`rounded-xl border bg-white shadow-sm transition-all duration-200 ${
+                        isOver
+                          ? 'border-indigo-400 bg-indigo-50/50 shadow-md ring-2 ring-indigo-200 dark:border-indigo-500 dark:bg-indigo-950/20 dark:ring-indigo-800'
+                          : 'border-gray-200 dark:border-gray-700 dark:bg-gray-800/50'
+                      }`}
+                    >
+                      <div className="border-b border-gray-100 px-3 py-2 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${column.color}`}>
+                            {column.label}
+                          </span>
+                          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-indigo-100 px-1.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                            {columnSubtasks.length}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`space-y-2 p-2 min-h-[80px] transition-colors ${isOver ? 'bg-indigo-50/30 dark:bg-indigo-950/10' : ''}`}>
+                        {columnSubtasks.length === 0 ? (
+                          <div className={`flex min-h-[60px] items-center justify-center rounded-lg border-2 border-dashed transition-colors ${
+                            isOver ? 'border-indigo-300 bg-indigo-50/50 dark:border-indigo-600 dark:bg-indigo-950/30' : 'border-gray-200 dark:border-gray-700'
+                          }`}>
+                            <p className="text-[11px] text-gray-400">{isOver ? 'Drop here' : 'Empty'}</p>
+                          </div>
+                        ) : (
+                          columnSubtasks.map((subtask) => (
+                            <div key={subtask.id}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('text/plain', subtask.id)
+                                e.dataTransfer.effectAllowed = 'move'
+                              }}
+                              className="group rounded-lg border border-gray-200 bg-white p-2.5 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700 cursor-grab active:cursor-grabbing"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-xs font-medium text-gray-900 dark:text-gray-100 line-clamp-2">{subtask.title}</p>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                                  subtask.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                                  subtask.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                                  subtask.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {(subtask.priority || 'medium').charAt(0).toUpperCase() + (subtask.priority || 'medium').slice(1)}
+                                </span>
+                                <select
+                                  value={subtask.assigned_to || ''}
+                                  onChange={async (e) => {
+                                    try {
+                                      await tasksAPI.updateTask(subtask.id, { assigned_to: e.target.value || null })
+                                      toast.success('Subtask reassigned')
+                                      const data = await tasksAPI.getSubtasks(task.id)
+                                      setSubtasks(data.subtasks || [])
+                                    } catch (error) {
+                                      toast.error('Failed to reassign subtask')
+                                    }
+                                  }}
+                                  className="max-w-[100px] rounded-md border border-gray-200 px-1 py-0.5 text-[10px] text-gray-600 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={users.find(u => u.id === subtask.assigned_to) ? `${users.find(u => u.id === subtask.assigned_to).first_name} ${users.find(u => u.id === subtask.assigned_to).last_name}` : 'Assign to...'}
+                                >
+                                  <option value="">Unassigned</option>
+                                  {users.map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.first_name} {u.last_name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="mt-2">
+                                <select
+                                  value={subtask.status}
+                                  onChange={async (e) => {
+                                    try {
+                                      await tasksAPI.updateTaskStatus(subtask.id, e.target.value)
+                                      toast.success('Subtask status updated')
+                                      const data = await tasksAPI.getSubtasks(task.id)
+                                      setSubtasks(data.subtasks || [])
+                                    } catch (error) {
+                                      toast.error('Failed to update subtask status')
+                                    }
+                                  }}
+                                  className="w-full rounded-md border border-gray-200 px-1.5 py-1 text-[10px] font-medium text-gray-700 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <option value="todo">To Do</option>
+                                  <option value="in_progress">In Progress</option>
+                                  <option value="in_review">Review</option>
+                                  <option value="completed">Completed</option>
+                                </select>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="flex min-h-[100px] items-center justify-center rounded-xl border-2 border-dashed border-gray-200 p-4 dark:border-gray-700">
+                <div className="text-center">
+                  <List className="mx-auto h-6 w-6 text-gray-300 dark:text-gray-600" />
+                  <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">No subtasks yet</p>
+                  <button
+                    onClick={() => setShowSubtaskForm(true)}
+                    className="mt-2 inline-flex items-center gap-1 rounded-lg bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100 dark:bg-primary-900/20 dark:text-primary-300"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Create first subtask
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Attachments */}

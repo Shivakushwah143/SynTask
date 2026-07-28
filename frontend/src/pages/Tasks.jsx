@@ -12,6 +12,7 @@ import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/
 import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
+import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
@@ -793,6 +794,12 @@ useEffect(() => {
           </div>
         </div>
       </div>
+
+      {/* Quick Assign Panel */}
+      <QuickAssignPanel
+        users={uniqueAssignableUsers}
+        onTaskCreated={() => fetchTasks({ isRefresh: true })}
+      />
 
       {/* Task Graph Panel */}
       <TaskGraphPanel

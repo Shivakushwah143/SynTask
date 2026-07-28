@@ -31,6 +31,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery'
 import { canCreateTask, canManageProject, hasCompanyAdminAccess, isLeadRole, normalizeRole } from '../utils/roles'
 import { Badge, Button, ConfirmDialog, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
+import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { getProjectRoleAssignmentIds, getProjectRoleNames, getTaskAssigneeUsers, getUserDisplayName, normalizeEstimatedHours } from './ProjectBoard.helpers'
 import { timeService } from '../services/timeService'
 import { excludeCurrentUser } from '../utils/userFilters'
@@ -176,10 +177,7 @@ export default function ProjectBoard() {
   const [deleting, setDeleting] = useState(false)
 
   const projectAssigneeOptions = useMemo(
-    () => projectAssignableUsers.filter((item) => {
-      const role = normalizeRole(item.role)
-      return role === 'manager' || role === 'employee'
-    }),
+    () => projectAssignableUsers.filter((item) => item.status === 'active'),
     [projectAssignableUsers],
   )
 
@@ -643,7 +641,7 @@ export default function ProjectBoard() {
     return managers
   }, [projectAssignableUsers, user, userRole])
   const leaderAssignmentOptions = useMemo(
-    () => projectAssignableUsers.filter((item) => ['manager', 'employee'].includes(normalizeRole(item.role))),
+    () => projectAssignableUsers.filter((item) => item.status === 'active'),
     [projectAssignableUsers],
   )
   const { manager: projectManagers, lead: projectLeaders } = getProjectRoleNames(projectRecord, projectAssignableUsers, user)
@@ -786,6 +784,12 @@ export default function ProjectBoard() {
         <BoardMetric title="Labels" value={availableLabels.length} />
         <BoardMetric title="Team" value={assignableUsers.length} />
       </section>
+
+      {/* Quick Assign Panel */}
+      <QuickAssignPanel
+        users={projectAssignableUsers}
+        onTaskCreated={() => { loadBoardData(); loadProjectInfo(); }}
+      />
 
       <section className="card p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">

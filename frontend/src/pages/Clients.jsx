@@ -41,6 +41,10 @@ const Clients = () => {
     assigned_to: '',
     notes: '',
     tags: '',
+    client_type: '',
+    budget: '',
+    start_date: '',
+    delivery_date: '',
   })
   const [formErrors, setFormErrors] = useState({})
   const [editingClient, setEditingClient] = useState(null)
@@ -146,6 +150,10 @@ const Clients = () => {
           formDataObj.append(key, formData[key])
         }
       })
+      // Handle client_type field name mapping (if needed)
+      if (formData.client_type) {
+        formDataObj.set('client_type', formData.client_type)
+      }
 
       await clientsAPI.createClient(formDataObj)
       toast.success('Client created successfully')
@@ -172,6 +180,10 @@ const Clients = () => {
       Object.keys(formData).forEach(key => {
         formDataObj.append(key, formData[key] || '')
       })
+      // Handle client_type field name mapping (if needed)
+      if (formData.client_type) {
+        formDataObj.set('client_type', formData.client_type)
+      }
 
       await clientsAPI.updateClient(editingClient.id, formDataObj)
       toast.success('Client updated successfully')
@@ -247,6 +259,10 @@ const Clients = () => {
       assigned_to: client.assigned_to || '',
       notes: client.notes || '',
       tags: Array.isArray(client.tags) ? client.tags.join(', ') : '',
+      client_type: client.client_type || '',
+      budget: client.budget || '',
+      start_date: client.start_date ? client.start_date.substring(0, 10) : '',
+      delivery_date: client.delivery_date ? client.delivery_date.substring(0, 10) : '',
     })
     setShowCreateModal(true)
   }
@@ -454,6 +470,10 @@ const Clients = () => {
       assigned_to: '',
       notes: '',
       tags: '',
+      client_type: '',
+      budget: '',
+      start_date: '',
+      delivery_date: '',
     })
     setEditingClient(null)
     setFormErrors({})
@@ -629,6 +649,7 @@ const Clients = () => {
                 <th className="py-3 pr-4 font-medium">Client</th>
                 <th className="py-3 pr-4 font-medium">Contact</th>
                 <th className="py-3 pr-4 font-medium">Email</th>
+                <th className="py-3 pr-4 font-medium">Type</th>
                 <th className="py-3 pr-4 font-medium">Projects</th>
                 <th className="py-3 pr-4 font-medium">Budget</th>
                 <th className="py-3 pr-4 font-medium">Start Date</th>
@@ -657,19 +678,28 @@ const Clients = () => {
                     {client.email || '-'}
                   </td>
                   <td className="py-3 pr-4 text-xs text-gray-700">
+                    {client.client_type === 'monthly' ? (
+                      <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Monthly</span>
+                    ) : client.client_type === 'one_time' ? (
+                      <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">One Time</span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
+                  <td className="py-3 pr-4 text-xs text-gray-700">
                     {client.total_projects ?? client.project_ids?.length ?? 0}
                   </td>
                   <td className="py-3 pr-4 text-xs text-gray-700">
-                    {getTotalBudget(client) > 0 ? `₹${getTotalBudget(client).toLocaleString()}` : '-'}
+                    {client.budget > 0 ? `₹${Number(client.budget).toLocaleString()}` : getTotalBudget(client) > 0 ? `₹${getTotalBudget(client).toLocaleString()}` : '-'}
                   </td>
                   <td className="py-3 pr-4 text-xs text-gray-700">
-                    {(() => {
+                    {client.start_date ? format(timeService.instant(client.start_date), 'MMM d, yyyy') : (() => {
                       const startDate = getEarliestStartDate(client)
                       return startDate ? format(startDate, 'MMM d, yyyy') : '-'
                     })()}
                   </td>
                   <td className="py-3 pr-4 text-xs text-gray-700">
-                    {(() => {
+                    {client.delivery_date ? format(timeService.instant(client.delivery_date), 'MMM d, yyyy') : (() => {
                       const deliveryDate = getLatestDeliveryDate(client)
                       return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
                     })()}
@@ -913,7 +943,52 @@ const Clients = () => {
                     />
                   </div>
                 </div>
+                {/* Client Type & Financial Info */}
+                <div className="md:col-span-2">
+                  <h3 className="text-xs font-semibold text-gray-700 mb-2 border-b pb-1 dark:text-gray-300">Financial & Scheduling</h3>
+                </div>
                 <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Client Type</label>
+                  <select
+                    value={formData.client_type}
+                    onChange={(e) => setFormData({ ...formData, client_type: e.target.value })}
+                    className="input"
+                  >
+                    <option value="">Select type...</option>
+                    <option value="monthly">Monthly Client</option>
+                    <option value="one_time">One Time Client</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Budget (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.budget}
+                    onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                    className="input"
+                    step="0.01"
+                    placeholder="Total client budget"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Start Date</label>
+                  <input
+                    type="date"
+                    value={formData.start_date}
+                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                    className="input"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Delivery Date</label>
+                  <input
+                    type="date"
+                    value={formData.delivery_date}
+                    onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })}
+                    className="input"
+                  />
+                </div>
+                <div className="md:col-span-2">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Tags (comma separated)</label>
                   <input
                     type="text"
@@ -923,7 +998,7 @@ const Clients = () => {
                     placeholder="e.g., important, vip, recurring"
                   />
                 </div>
-                <div>
+                <div className="md:col-span-2">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
                   <textarea
                     value={formData.notes}
@@ -1025,6 +1100,18 @@ const Clients = () => {
                       <div>Assigned To: {selectedClient.assigned_to_name}</div>
                     )}
                     <div>Status: <span className="capitalize">{selectedClient.status}</span></div>
+                    {selectedClient.client_type && (
+                      <div>Type: <span className="capitalize font-medium">{selectedClient.client_type === 'monthly' ? 'Monthly' : 'One Time'}</span></div>
+                    )}
+                    {selectedClient.budget > 0 && (
+                      <div>Budget: <span className="font-medium">₹{Number(selectedClient.budget).toLocaleString()}</span></div>
+                    )}
+                    {selectedClient.start_date && (
+                      <div>Start Date: {format(timeService.instant(selectedClient.start_date), 'MMM d, yyyy')}</div>
+                    )}
+                    {selectedClient.delivery_date && (
+                      <div>Delivery Date: {format(timeService.instant(selectedClient.delivery_date), 'MMM d, yyyy')}</div>
+                    )}
                   </div>
                 </div>
               </div>

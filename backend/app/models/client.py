@@ -15,6 +15,11 @@ class ClientStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class ClientType(str, Enum):
+    MONTHLY = "monthly"
+    ONE_TIME = "one_time"
+
+
 class Client(Document):
     """Client Model - For managing external clients"""
     name: str
@@ -34,6 +39,12 @@ class Client(Document):
     status: ClientStatus = ClientStatus.ACTIVE
     company_name: Optional[str] = None  # Client's company name
     industry: Optional[str] = None
+    
+    # Client-level financial & scheduling info
+    client_type: Optional[ClientType] = None  # monthly or one_time billing
+    budget: Optional[float] = None  # Total client budget
+    start_date: Optional[datetime] = None  # Client engagement start
+    delivery_date: Optional[datetime] = None  # Client engagement delivery
     
     # Projects associated with this client
     project_ids: List[str] = []  # List of project IDs
