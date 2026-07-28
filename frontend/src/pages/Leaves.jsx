@@ -38,8 +38,7 @@ const defaultActionState = {
 
 export const canSubmitLeaveRequest = (role) => {
   const normalized = normalizeRole(role)
-  // Super admins operate across companies and cannot submit company leaves
-  return normalized !== ROLE.SUPER_ADMIN
+  return ![ROLE.SUPER_ADMIN, ROLE.ADMIN].includes(normalized)
 }
 
 export const canReviewLeaveRequest = (leave, user) => {
