@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { ROLE, normalizeRole } from '../utils/roles'
 import { PasswordInput, PhoneInput } from '../components/ui'
+import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { timeService } from '@/services/timeService'
 
 const allowedTeamRoles = [ROLE.LEAD, ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN]
@@ -197,6 +198,12 @@ const MyTeam = () => {
           Add Member
         </button>
       </div>
+
+      {/* Quick Assign Panel */}
+      <QuickAssignPanel
+        users={team_members}
+        onTaskCreated={fetchTeam}
+      />
 
       {/* Team Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

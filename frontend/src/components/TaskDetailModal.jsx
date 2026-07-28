@@ -27,6 +27,8 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
   const [subtasks, setSubtasks] = useState([])
   const [showSubtaskForm, setShowSubtaskForm] = useState(false)
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
+  const [newSubtaskDueDate, setNewSubtaskDueDate] = useState('')
+  const [newSubtaskEstimatedHours, setNewSubtaskEstimatedHours] = useState('')
   const [creatingSubtask, setCreatingSubtask] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({})
@@ -41,6 +43,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
   const [components, setComponents] = useState([])
   const [versions, setVersions] = useState([])
   const [showLinkModal, setShowLinkModal] = useState(false)
+  const [dragOverColumn, setDragOverColumn] = useState(null)
   const [linkForm, setLinkForm] = useState({ destination_task_id: '', link_type: 'relates_to' })
 
   useEffect(() => {
@@ -88,14 +91,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
       try {
         const fallbackData = await usersAPI.listUsers(user.company_id)
         let fallbackUsers = fallbackData.users || []
-        // Filter based on role
-        if (hasCompanyAdminAccess(user.role)) {
-          fallbackUsers = fallbackUsers.filter(u => 
-            u.role === 'lead' || u.role === 'employee'
-          )
-        } else if (isLeadRole(user.role)) {
-          fallbackUsers = fallbackUsers.filter(u => u.role === 'employee')
-        }
+        // Show all team members in assign dropdown regardless of role
         // Ensure current user is not present in assign dropdown
         setUsers(fallbackUsers.filter((u) => String(u.id || u._id) !== String(user.id || user._id)))
       } catch (fallbackError) {
@@ -241,9 +237,13 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
         title: newSubtaskTitle,
         parent_task_id: task.id,
         priority: 'medium',
+        due_date: newSubtaskDueDate || null,
+        estimated_hours: newSubtaskEstimatedHours ? parseFloat(newSubtaskEstimatedHours) : null,
       })
       toast.success('Subtask created')
       setNewSubtaskTitle('')
+      setNewSubtaskDueDate('')
+      setNewSubtaskEstimatedHours('')
       setShowSubtaskForm(false)
       await loadSubtasks()
     } catch (error) {
@@ -597,71 +597,224 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
             </div>
           )}
 
-          {/* Subtasks Section */}
+          {/* Subtasks Section - Kanban Board */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-gray-700">Subtasks ({subtasks.length})</label>
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-sm font-semibold text-gray-700">Subtasks ({subtasks.length})</label>
               <button
                 onClick={() => setShowSubtaskForm(!showSubtaskForm)}
-                className="text-primary-600 hover:text-primary-700 text-sm flex items-center"
+                className="inline-flex items-center gap-1 rounded-lg bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100 dark:bg-primary-900/20 dark:text-primary-300 dark:hover:bg-primary-900/30"
               >
-                <Plus className="h-4 w-4 mr-1" />
+                <Plus className="h-3.5 w-3.5" />
                 Add Subtask
               </button>
             </div>
             
             {showSubtaskForm && (
-              <form onSubmit={handleCreateSubtask} className="mb-3 flex space-x-2">
+              <form onSubmit={handleCreateSubtask} className="mb-4 space-y-2">
                 <input
                   type="text"
                   value={newSubtaskTitle}
                   onChange={(e) => setNewSubtaskTitle(e.target.value)}
                   placeholder="Subtask title..."
-                  className="input flex-1"
+                  className="input w-full text-sm"
                   required
+                  autoFocus
                 />
-                <button
-                  type="submit"
-                  disabled={creatingSubtask}
-                  className="btn btn-primary"
-                >
-                  {creatingSubtask ? 'Creating...' : 'Add'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSubtaskForm(false)
-                    setNewSubtaskTitle('')
-                  }}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Due date</label>
+                    <input
+                      type="date"
+                      value={newSubtaskDueDate}
+                      onChange={(e) => setNewSubtaskDueDate(e.target.value)}
+                      className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-primary-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                    />
+                  </div>
+                  <div className="w-24">
+                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Hours</label>
+                    <input
+                      type="number"
+                      min="0.25"
+                      step="0.25"
+                      value={newSubtaskEstimatedHours}
+                      onChange={(e) => setNewSubtaskEstimatedHours(e.target.value)}
+                      placeholder="0.5"
+                      className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-primary-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={creatingSubtask}
+                    className="btn btn-primary btn-sm flex-1"
+                  >
+                    {creatingSubtask ? 'Creating...' : 'Add'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSubtaskForm(false)
+                      setNewSubtaskTitle('')
+                      setNewSubtaskDueDate('')
+                      setNewSubtaskEstimatedHours('')
+                    }}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </form>
             )}
             
             {subtasks.length > 0 ? (
-              <div className="space-y-2">
-                {subtasks.map((subtask) => (
-                  <div
-                    key={subtask.id}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200"
-                  >
-                    <div className="flex items-center flex-1">
-                      <List className="h-4 w-4 text-gray-400 mr-2" />
-                      <span className="text-sm text-gray-900">{subtask.title}</span>
-                      <span className={`ml-2 badge ${priorities[subtask.priority]?.color || 'badge-secondary'} text-xs`}>
-                        {priorities[subtask.priority]?.label || subtask.priority}
-                      </span>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {[
+                  { id: 'todo', label: 'To Do', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+                  { id: 'in_progress', label: 'In Progress', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+                  { id: 'in_review', label: 'Review', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' },
+                  { id: 'completed', label: 'Completed', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+                ].map((column) => {
+                  const columnSubtasks = subtasks.filter((s) => s.status === column.id)
+                  const isOver = dragOverColumn === column.id
+                  return (
+                    <div key={column.id}
+                      onDragOver={(e) => { e.preventDefault(); setDragOverColumn(column.id) }}
+                      onDragEnter={(e) => { e.preventDefault(); setDragOverColumn(column.id) }}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget)) return
+                        setDragOverColumn(null)
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault()
+                        setDragOverColumn(null)
+                        const draggedId = e.dataTransfer.getData('text/plain')
+                        if (!draggedId) return
+                        const draggedSubtask = subtasks.find((s) => s.id === draggedId)
+                        if (!draggedSubtask || draggedSubtask.status === column.id) return
+                        try {
+                          await tasksAPI.updateTaskStatus(draggedId, column.id)
+                          toast.success('Subtask moved')
+                          await loadSubtasks()
+                        } catch (error) {
+                          toast.error('Failed to move subtask')
+                        }
+                      }}
+                      className={`rounded-xl border bg-white shadow-sm transition-all duration-200 ${
+                        isOver
+                          ? 'border-indigo-400 bg-indigo-50/50 shadow-md ring-2 ring-indigo-200 dark:border-indigo-500 dark:bg-indigo-950/20 dark:ring-indigo-800'
+                          : 'border-gray-200 dark:border-gray-700 dark:bg-gray-800/50'
+                      }`}
+                    >
+                      <div className="border-b border-gray-100 px-3 py-2 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${column.color}`}>
+                            {column.label}
+                          </span>
+                          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-indigo-100 px-1.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                            {columnSubtasks.length}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`space-y-2 p-2 min-h-[80px] transition-colors ${isOver ? 'bg-indigo-50/30 dark:bg-indigo-950/10' : ''}`}>
+                        {columnSubtasks.length === 0 ? (
+                          <div className={`flex min-h-[60px] items-center justify-center rounded-lg border-2 border-dashed transition-colors ${
+                            isOver ? 'border-indigo-300 bg-indigo-50/50 dark:border-indigo-600 dark:bg-indigo-950/30' : 'border-gray-200 dark:border-gray-700'
+                          }`}>
+                            <p className="text-[11px] text-gray-400">{isOver ? 'Drop here' : 'Empty'}</p>
+                          </div>
+                        ) : (
+                          columnSubtasks.map((subtask) => (
+                            <div
+                              key={subtask.id}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('text/plain', subtask.id)
+                                e.dataTransfer.effectAllowed = 'move'
+                              }}
+                              className="group rounded-lg border border-gray-200 bg-white p-2.5 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700 cursor-grab active:cursor-grabbing"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-xs font-medium text-gray-900 dark:text-gray-100 line-clamp-2">
+                                  {subtask.title}
+                                </p>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                                  subtask.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                                  subtask.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                                  subtask.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {(subtask.priority || 'medium').charAt(0).toUpperCase() + (subtask.priority || 'medium').slice(1)}
+                                </span>
+                                <select
+                                  value={subtask.assigned_to || ''}
+                                  onChange={async (e) => {
+                                    try {
+                                      await tasksAPI.updateTask(subtask.id, { assigned_to: e.target.value || null })
+                                      toast.success('Subtask reassigned')
+                                      await loadSubtasks()
+                                    } catch (error) {
+                                      toast.error('Failed to reassign subtask')
+                                    }
+                                  }}
+                                  className="max-w-[100px] rounded-md border border-gray-200 px-1 py-0.5 text-[10px] text-gray-600 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={users.find(u => u.id === subtask.assigned_to) ? `${users.find(u => u.id === subtask.assigned_to).first_name} ${users.find(u => u.id === subtask.assigned_to).last_name}` : 'Assign to...'}
+                                >
+                                  <option value="">Unassigned</option>
+                                  {users.map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.first_name} {u.last_name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="mt-2">
+                                <select
+                                  value={subtask.status}
+                                  onChange={async (e) => {
+                                    try {
+                                      await tasksAPI.updateTaskStatus(subtask.id, e.target.value)
+                                      toast.success('Subtask status updated')
+                                      await loadSubtasks()
+                                    } catch (error) {
+                                      toast.error('Failed to update subtask status')
+                                    }
+                                  }}
+                                  className="w-full rounded-md border border-gray-200 px-1.5 py-1 text-[10px] font-medium text-gray-700 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <option value="todo">To Do</option>
+                                  <option value="in_progress">In Progress</option>
+                                  <option value="in_review">Review</option>
+                                  <option value="completed">Completed</option>
+                                </select>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
-                    <span className="text-xs text-gray-500 capitalize">
-                      {subtask.status?.replace('_', ' ')}
-                    </span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">No subtasks yet</p>
+              <div className="flex min-h-[100px] items-center justify-center rounded-xl border-2 border-dashed border-gray-200 p-4 dark:border-gray-700">
+                <div className="text-center">
+                  <List className="mx-auto h-6 w-6 text-gray-300 dark:text-gray-600" />
+                  <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">No subtasks yet</p>
+                  <button
+                    onClick={() => setShowSubtaskForm(true)}
+                    className="mt-2 inline-flex items-center gap-1 rounded-lg bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100 dark:bg-primary-900/20 dark:text-primary-300"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Create first subtask
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 

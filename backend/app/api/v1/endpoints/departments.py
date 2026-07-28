@@ -5,6 +5,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from bson import ObjectId
+
 from app.api.dependencies import get_current_user
 from app.models.department import Department, DepartmentType
 from app.models.task import Task
@@ -88,12 +90,15 @@ async def list_departments(current_user: User = Depends(_require_department_read
     manager_ids = [department.manager_id for department in departments if department.manager_id]
     managers_by_id = {}
     if manager_ids:
-        managers = await User.find({"_id": {"$in": manager_ids}}).to_list()
-        managers_by_id = {
-            str(manager.id): manager.full_name()
-            for manager in managers
-            if manager.company_id == current_user.company_id
-        }
+        # Convert string IDs to ObjectIds so the $in query matches MongoDB _id (ObjectId) field
+        manager_object_ids = [ObjectId(mid) for mid in manager_ids if ObjectId.is_valid(mid)]
+        if manager_object_ids:
+            managers = await User.find({"_id": {"$in": manager_object_ids}}).to_list()
+            managers_by_id = {
+                str(manager.id): manager.full_name()
+                for manager in managers
+                if manager.company_id == current_user.company_id
+            }
 
     return [
         _serialize_department(
@@ -122,7 +127,7 @@ async def create_department(
         manager_id=str(manager.id) if manager else None,
     )
     await department.insert()
-    return _serialize_department(department)
+    return _serialize_department(department, manager.full_name() if manager else None)
 
 
 @router.put("/{department_id}")
@@ -147,7 +152,7 @@ async def update_department(
     department.updated_at = utc_now()
     await department.save()
 
-    return _serialize_department(department)
+    return _serialize_department(department, manager.full_name() if manager else None)
 
 
 @router.delete("/{department_id}")

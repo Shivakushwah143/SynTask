@@ -441,6 +441,9 @@ export default function ClientWorkspacePage() {
                 <p>{client.company_name || 'No company name'}</p>
                 <p>Status: {client.status || 'N/A'}</p>
                 <p>Owner: {client.assigned_to_name || client.assigned_to || 'Unassigned'}</p>
+                {client.client_type && (
+                  <p>Type: <span className="capitalize font-medium">{client.client_type === 'monthly' ? 'Monthly' : 'One Time'}</span></p>
+                )}
               </div>
             </article>
             <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -449,6 +452,23 @@ export default function ClientWorkspacePage() {
                 <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-gray-400" /> {client.email || 'No email'}</p>
                 <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-gray-400" /> {client.contact || 'No phone'}</p>
                 <p className="text-gray-500 dark:text-gray-400">{client.address || 'No address'}</p>
+              </div>
+            </article>
+            <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">Financial & Schedule</p>
+              <div className="mt-3 space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                {client.budget > 0 && (
+                  <p>Budget: <span className="font-medium">₹{Number(client.budget).toLocaleString()}</span></p>
+                )}
+                {client.start_date && (
+                  <p>Start: {formatDate(client.start_date)}</p>
+                )}
+                {client.delivery_date && (
+                  <p>Delivery: {formatDate(client.delivery_date)}</p>
+                )}
+                {!client.budget && !client.start_date && !client.delivery_date && (
+                  <p className="text-gray-500 dark:text-gray-400">No financial info set</p>
+                )}
               </div>
             </article>
             <article className="rounded-2xl border border-surface-border/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
