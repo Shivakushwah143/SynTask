@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Building2, Search, Users, Plus, Mail, Phone, Briefcase, Award, UserCheck, UserPlus, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -34,7 +35,10 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
 
 export default function CRMContactsPage() {
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
+  const [localSearch, setLocalSearch] = useState('')
+  const context = useOutletContext()
+  const search = context?.searchValue ?? localSearch
+  const setSearch = context?.setSearchValue || setLocalSearch
   const [createOpen, setCreateOpen] = useState(false)
   const [editingContact, setEditingContact] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
