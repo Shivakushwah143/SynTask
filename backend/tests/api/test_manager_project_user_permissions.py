@@ -56,6 +56,15 @@ async def test_manager_can_manage_any_project_in_their_company():
 
 
 @pytest.mark.asyncio
+async def test_sub_admin_can_manage_any_project_in_their_company():
+    sub_admin = user("subadmin-1", UserRole.SUB_ADMIN)
+    company_project = project()
+
+    assert await project_shared.can_manage_project(company_project, sub_admin) is True
+    assert await project_shared.check_project_access(company_project, sub_admin) is True
+
+
+@pytest.mark.asyncio
 async def test_manager_cannot_manage_project_outside_their_company():
     manager = user("manager-1", UserRole.MANAGER)
     other_company_project = project(company_id="company-2")

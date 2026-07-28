@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -116,8 +116,8 @@ const NavItem = ({ item, isActive, onClick, collapsed = false }) => {
     <button
       onClick={onClick}
       className={`group relative flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 ${isActive
-          ? 'bg-indigo-50 text-indigo-700 shadow-sm dark:bg-indigo-950/30 dark:text-indigo-300'
-          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200'
+        ? 'bg-indigo-50 text-indigo-700 shadow-sm dark:bg-indigo-950/30 dark:text-indigo-300'
+        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200'
         } ${collapsed ? 'justify-center px-2' : ''}`}
       title={collapsed ? item.label : undefined}
     >
@@ -154,6 +154,12 @@ const CRMLayout = () => {
   const [searchValue, setSearchValue] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const q = params.get('q') || params.get('search') || ''
+    setSearchValue(q)
+  }, [location.pathname, location.search])
 
   const routePath = useMemo(() => {
     const pathname = location.pathname.replace(/\/+$/, '') || '/crm/pipeline'

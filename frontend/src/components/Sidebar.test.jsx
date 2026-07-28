@@ -7,7 +7,7 @@ vi.mock('../store/authStore', () => ({
   useAuthStore: () => ({
     user: {
       role: 'admin',
-      modules: ['task'],
+      modules: ['task', 'invoicing_ledger'],
       first_name: 'Admin',
       last_name: 'User',
     },

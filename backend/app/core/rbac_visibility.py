@@ -12,7 +12,7 @@ from app.services.user_service import UserService
 
 
 FULL_PLATFORM_ROLES = {UserRole.SUPER_ADMIN}
-FULL_COMPANY_ROLES = {UserRole.ADMIN}
+FULL_COMPANY_ROLES = {UserRole.ADMIN, UserRole.SUB_ADMIN}
 TEAM_SCOPED_ROLES = {UserRole.MANAGER, UserRole.LEAD}
 
 

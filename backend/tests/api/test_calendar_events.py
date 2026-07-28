@@ -40,11 +40,14 @@ def test_employee_calendar_task_query_is_assigned_only_and_date_scoped():
     )
 
     assert query["company_id"] == "company-1"
-    assert query["assigned_to"] == "employee-1"
-    assert query["$or"] == [
-        {"due_date": {"$gte": start_at, "$lte": end_at}},
-        {"due_date": None, "created_at": {"$gte": start_at, "$lte": end_at}},
-    ]
+    assert query["$and"][0] == {"$or": [{"assigned_to": "employee-1"}, {"created_by": "employee-1"}]}
+    assert query["$and"][1] == {
+        "$or": [
+            {"due_date": {"$gte": start_at, "$lte": end_at}},
+            {"start_date": {"$gte": start_at, "$lte": end_at}},
+            {"due_date": None, "start_date": None, "created_at": {"$gte": start_at, "$lte": end_at}},
+        ]
+    }
 
 
 def test_project_name_lookup_query_keeps_logical_keys_out_of_mongo_id_filter():

@@ -68,7 +68,7 @@ async def scoped_user_ids(current_user: User) -> list[str]:
 
 
 async def can_manage_project(project: Project, current_user: User) -> bool:
-    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return True
     if current_user.company_id != project.company_id:
         return False
@@ -118,7 +118,7 @@ async def check_project_access(project: Project, current_user: User) -> bool:
         return True
     if current_user.company_id != project.company_id:
         return False
-    if current_user.role in [UserRole.ADMIN, UserRole.MANAGER]:
+    if current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUB_ADMIN]:
         return True
     
     assignee_ids = set(project_assignee_ids(project))

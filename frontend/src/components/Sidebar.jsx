@@ -62,8 +62,24 @@ const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { user } = useAuthStore();
   const userRole = normalizeRole(user?.role);
-  const hasModule = (module) =>
-    !module || user?.modules?.includes(module) || isSuperAdminRole(userRole);
+  const hasModule = (module) => {
+    if (!module) return true;
+    if (isSuperAdminRole(userRole)) return true;
+    const userModules = user?.modules || [];
+    if (module === "tasks_projects") {
+      return userModules.includes("tasks_projects") || userModules.includes("task");
+    }
+    if (module === "task") {
+      return userModules.includes("task") || userModules.includes("tasks_projects");
+    }
+    if (module === "sales_crm") {
+      return userModules.includes("sales_crm") || userModules.includes("sales");
+    }
+    if (module === "sales") {
+      return userModules.includes("sales") || userModules.includes("sales_crm");
+    }
+    return userModules.includes(module);
+  };
   const canSeeDepartments = (hasCompanyAdminAccess(user?.role) && hasModule("tasks_projects")) || isSuperAdminRole(userRole);
   const userCapabilities = new Set(user?.capabilities || user?.permissions || []);
   const userDepartment = String(user?.department || user?.department_key || '').toLowerCase();
@@ -662,28 +678,28 @@ const Sidebar = ({ isOpen, onClose }) => {
     const colorMap = {
       // Dashboard - Cyan/Blue
       'Dashboard': 'text-cyan-400',
-      
+
       // Project Management - Indigo/Purple
       'Projects': 'text-indigo-400',
       'Tasks': 'text-violet-400',
       'Service Requests': 'text-purple-400',
       'Workspace Calendar': 'text-fuchsia-400',
-      
+
       // Time & Attendance - Orange/Yellow
       'Timesheet': 'text-amber-400',
       'Attendance': 'text-orange-400',
       'Live Attendance': 'text-amber-400',
       'Attendance Reports': 'text-yellow-400',
-      
+
       // Communications - Pink/Rose
       'Notifications': 'text-rose-400',
       'Timeline': 'text-pink-400',
       'Leaves': 'text-emerald-400',
       'Daily EOD': 'text-teal-400',
-      
+
       // Reports - Lime/Green
       'Workspace Reports': 'text-lime-400',
-      
+
       // CRM - Blue/Cyan
       'Leads': 'text-sky-400',
       'CRM': 'text-cyan-400',
@@ -703,13 +719,13 @@ const Sidebar = ({ isOpen, onClose }) => {
       'Omnichannel Analytics': 'text-lime-400',
       'Partner Readiness': 'text-orange-400',
       'Customer Meta Connect': 'text-indigo-400',
-      
+
       // AI & Marketing - Purple/Pink
       'AI Command Center': 'text-purple-400',
       'Creative Studio': 'text-pink-400',
       'Marketing Assistant': 'text-rose-400',
       'Content Calendar': 'text-indigo-300',
-      
+
       // HR - Emerald/Green
       'HR': 'text-emerald-400',
       'Recruitment Dashboard': 'text-green-400',
@@ -719,14 +735,14 @@ const Sidebar = ({ isOpen, onClose }) => {
       'Resume Pool': 'text-amber-300',
       'Interviews': 'text-pink-300',
       'Recruitment Reports': 'text-lime-300',
-      
+
       // Finance - Gold/Green
       'Bulk Lead Import': 'text-orange-400',
       'Clients': 'text-blue-400',
       'Invoices': 'text-emerald-400',
       'Ledger': 'text-yellow-400',
       'Subscriptions': 'text-teal-400',
-      
+
       // Administration - Red/Gray
       'Users': 'text-gray-400',
       'Workflows': 'text-purple-400',
@@ -737,7 +753,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       'Audit Log': 'text-orange-400',
       'Settings': 'text-gray-400',
       'Google Workspace': 'text-blue-400',
-      
+
       // Default
       'default': 'text-gray-400'
     };
@@ -785,7 +801,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         style={{ '--sidebar-width': `${collapsed ? 76 : sidebarWidth}px` }}
       >
         <div className="relative flex h-full flex-col overflow-visible border-r border-[#1a1a1a] bg-gradient-to-b from-[#0a0a0a] via-[#0d0d0d] to-[#0a0a0a] text-white shadow-2xl">
-          
+
           {/* Animated gradient border top - Rainbow effect */}
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-cyan-400 via-emerald-400 via-yellow-400 via-rose-400 to-purple-500 animate-gradient-x"></div>
 
@@ -884,7 +900,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </div>
               </div>
             ) : null}
-            
+
             {dashboardNavigation.map((item) => (
               <SidebarNavItem
                 key={item.name}
@@ -899,7 +915,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 groupKey="dashboard"
               />
             ))}
-            
+
             {navigationGroups
               .filter((group) => !(isManagerRole(userRole) && group.key === 'hr'))
               .map((group) => (
@@ -929,9 +945,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                   ? `${user?.first_name || ""} ${user?.last_name || ""}`.trim()
                   : undefined
               }
-              className={`group relative flex items-center rounded-lg p-2 transition-all hover:bg-white/5 ${
-                collapsed ? "lg:justify-center" : ""
-              }`}
+              className={`group relative flex items-center rounded-lg p-2 transition-all hover:bg-white/5 ${collapsed ? "lg:justify-center" : ""
+                }`}
               onClick={onClose}
             >
               <div className="flex-shrink-0">
@@ -988,7 +1003,7 @@ function SidebarNavGroup({
   groupKey,
 }) {
   const isGroupActive = group.items.some((item) => isNavItemActive(item, location))
-  
+
   // Get group-specific dot color
   const getGroupDotColor = (key) => {
     const dotColors = {
@@ -1070,13 +1085,11 @@ function SidebarNavItem({
         aria-current={isActive ? "page" : undefined}
         aria-label={item.name}
         onClick={onClose}
-        className={`group relative flex min-h-8 flex-1 items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
-          collapsed ? "lg:justify-center lg:px-0" : nested ? "ml-1" : ""
-        } ${
-          isActive
+        className={`group relative flex min-h-8 flex-1 items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${collapsed ? "lg:justify-center lg:px-0" : nested ? "ml-1" : ""
+          } ${isActive
             ? "bg-gradient-to-r from-primary-500/15 to-transparent text-primary-400 shadow-sm"
             : "text-gray-300 hover:bg-white/5 hover:text-white"
-        }`}
+          }`}
       >
         <item.icon className={`h-4 w-4 flex-shrink-0 transition-colors duration-200 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-primary-400" : iconColor} group-hover:scale-110`} />
         <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.name}</span>
