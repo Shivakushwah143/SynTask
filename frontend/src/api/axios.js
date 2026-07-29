@@ -13,14 +13,26 @@ const axiosInstance = axios.create({
   },
 })
 
+// Singleton promise for concurrent refresh deduplication
 let refreshPromise = null
+
+/**
+ * Mark the refresh endpoint itself so the response interceptor
+ * never attempts another refresh when /auth/refresh returns 401.
+ */
+const REFRESH_URL = '/auth/refresh'
 
 // Request interceptor - check storage for token
 axiosInstance.interceptors.request.use(
   (config) => {
     config.headers = config.headers || {}
 
-    // First try to get token from state, then from storage
+    // Never intercept the refresh endpoint itself
+    if (config.url?.includes(REFRESH_URL)) {
+      config._skipAuthRefresh = true
+      return config
+    }
+
     if (!config.skipAuth) {
       let token = useAuthStore.getState().token
       if (!token) {
@@ -103,6 +115,11 @@ axiosInstance.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
+    // ── Guard: never intercept the refresh endpoint itself ──────────────
+    if (originalRequest?._skipAuthRefresh || originalRequest?.url?.includes(REFRESH_URL)) {
+      return Promise.reject(error)
+    }
+
     // If the error is 401 and we haven't retried yet, try to refresh
     if (
       error.response?.status === 401 &&
@@ -112,7 +129,6 @@ axiosInstance.interceptors.response.use(
     ) {
       // Skip retry if request was made without token (auth still initializing)
       if (originalRequest?._unauthenticated) {
-        // Silently reject - don't show errors for requests made before auth initialized
         return Promise.reject(error)
       }
 
@@ -126,11 +142,13 @@ axiosInstance.interceptors.response.use(
         }
 
         if (refreshToken || useAuthStore.getState().isAuthenticated) {
+          // ── Concurrency-safe: only ONE refresh request at a time ──
           if (!refreshPromise) {
             refreshPromise = axios.post(`${API_URL}/auth/refresh`, refreshToken ? {
               refresh_token: refreshToken,
             } : undefined, {
               withCredentials: true,
+              _skipAuthRefresh: true,
             }).finally(() => {
               refreshPromise = null
             })
@@ -140,27 +158,27 @@ axiosInstance.interceptors.response.use(
           const { access_token } = response.data
 
           const authState = useAuthStore.getState()
-          if (
-            authState.isLoggingOut ||
-            (refreshToken && (
-              authState.refreshToken !== refreshToken ||
-              getRefreshToken() !== refreshToken
-            ))
-          ) {
+
+          // If logout happened during refresh, bail out
+          if (authState.isLoggingOut) {
             return Promise.reject(error)
           }
 
           // Update token in storage
           updateAccessToken(access_token)
-          
-          // Update state
-          useAuthStore.getState().setAuth(
-            authState.user,
-            access_token,
-            refreshToken,
-            undefined,
-          )
 
+          // Update state — only setAuth if the token actually changed
+          // to avoid unnecessary re-renders across all subscribers.
+          if (authState.token !== access_token) {
+            useAuthStore.getState().setAuth(
+              authState.user,
+              access_token,
+              refreshToken,
+              undefined,
+            )
+          }
+
+          // Retry the original request with the fresh token
           originalRequest.headers = originalRequest.headers || {}
           if (typeof originalRequest.headers.set === 'function') {
             originalRequest.headers.set('Authorization', `Bearer ${access_token}`)
@@ -179,17 +197,11 @@ axiosInstance.interceptors.response.use(
       }
     }
 
-    // Handle other errors
+    // Handle server unavailable errors
     if ([502, 503, 504].includes(error.response?.status)) {
       toast.error('Server temporarily unavailable. Please try again.')
       return Promise.reject(error)
     }
-
-    const errorMessage = extractErrorMessage(
-      error.response?.data?.detail ||
-      error.response?.data?.message ||
-      error.response?.data
-    )
 
     // Handle other errors - suppress toasts for 401/403 and unauthenticated requests
     if (![401, 403].includes(error.response?.status) && !originalRequest?._unauthenticated) {

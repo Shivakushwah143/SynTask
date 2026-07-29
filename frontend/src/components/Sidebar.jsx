@@ -66,14 +66,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     if (!module) return true;
     // Super admins and company admins always see everything
     if (isSuperAdminRole(userRole)) return true;
-    if (userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN || userRole === ROLE.MANAGER) return true;
+    if (userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN || userRole === ROLE.MANAGER || userRole === ROLE.LEAD || userRole === ROLE.EMPLOYEE) return true;
     const userModules = user?.modules || [];
-    if (module === "tasks_projects") {
-      return userModules.includes("tasks_projects") || userModules.includes("task");
-    }
-    if (module === "task") {
-      return userModules.includes("task") || userModules.includes("tasks_projects");
-    }
+
     if (module === "sales_crm") {
       return userModules.includes("sales_crm") || userModules.includes("sales");
     }
@@ -400,9 +395,8 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/hr",
       match: "/hr",
       icon: UserCog,
-      // roles: HR_ROLES,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      
+      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      department: "hr",
     },
     {
       name: "Users",
@@ -456,7 +450,15 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const filteredNavigation = navigation.filter((item) => {
     const roleAllowed = item.roles.includes(userRole) || (userRole === ROLE.SUB_ADMIN && item.roles.includes(ROLE.ADMIN))
-    return roleAllowed && hasModule(item.module) && hasCapability(item.capability) && hasDepartment(item.department)
+    if (!roleAllowed) return false
+    if (!hasModule(item.module)) return false
+    if (!hasCapability(item.capability)) return false
+    // Special case: HR — managers/admin always see, super admin never sees, others gated by department
+    if (item.name === "HR") {
+      return !isSuperAdminRole(userRole) &&
+        (isManagerRole(userRole) || userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN || hasDepartment(item.department))
+    }
+    return hasDepartment(item.department)
   });
   const departmentItems = useMemo(() => orgDepartments.map((department) => ({
     name: department.name,
@@ -916,7 +918,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             ))}
 
             {navigationGroups
-              .filter((group) => !(isManagerRole(userRole) && group.key === 'hr'))
+              .filter((group) => group.key !== 'hr' || isManagerRole(userRole) || userDepartment === 'hr' || userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN)
               .map((group) => (
                 <SidebarNavGroup
                   key={group.key}

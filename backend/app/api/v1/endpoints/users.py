@@ -191,6 +191,15 @@ async def list_users(
     elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
         subordinates = await current_user.get_all_subordinates()
         visible_ids = {str(current_user.id), *[str(user.id) for user in subordinates]}
+        # Also include users from the same department
+        department_id = getattr(current_user, "department_id", None)
+        if department_id:
+            dept_users = await User.find({
+                "company_id": current_user.company_id,
+                "department_id": department_id,
+            }).to_list()
+            for dept_user in dept_users:
+                visible_ids.add(str(dept_user.id))
         all_users = await User.find({"company_id": current_user.company_id}).to_list()
         filtered_users = [user for user in all_users if str(user.id) in visible_ids]
         if role:

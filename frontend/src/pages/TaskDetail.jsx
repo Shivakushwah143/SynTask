@@ -176,13 +176,6 @@ const TaskDetail = () => {
       }
 
       try {
-        const usersData = await usersAPI.getAssignableUsers()
-        setUsers(dedupeUsersById(usersData.users || []))
-      } catch (error) {
-        console.error('Error loading users:', error)
-      }
-
-      try {
         const watchersResponse = await watchersApi.getWatchers(data.id)
         setWatchers(watchersResponse.data.watchers || [])
         setIsWatching(watchersResponse.data.watchers?.some(w => w.user_id === user.id) || false)
@@ -220,6 +213,19 @@ const TaskDetail = () => {
     }
   }, [navigate, taskId, user.id])
 
+  // Fetch assignable users only on mount — not on every task update event
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const usersData = await usersAPI.getAssignableUsers()
+        setUsers(dedupeUsersById(usersData.users || []))
+      } catch (error) {
+        console.error('Error loading users:', error)
+      }
+    }
+    if (taskId) loadUsers()
+  }, [taskId])
+
   useEffect(() => {
     if (taskId) {
       loadTask()
@@ -227,6 +233,10 @@ const TaskDetail = () => {
   }, [taskId, loadTask])
 
   useEffect(() => {
+    // Debounce timer to prevent cascading re-fetches when multiple
+    // syntask:tasks-updated events fire in quick succession.
+    let debounceTimer = null
+
     const refreshCurrentTask = (event) => {
       const relatedId = event?.detail?.relatedId
       const metadataTaskId = event?.detail?.metadata?.task_id
@@ -237,6 +247,8 @@ const TaskDetail = () => {
       ) return
       const notificationType = String(event?.detail?.type || '').toLowerCase()
       const eventName = String(event?.detail?.metadata?.event || '').toLowerCase()
+
+      // Comments refresh immediately (no debounce needed — lightweight)
       if (notificationType === 'task_comment' || eventName === 'task_comment_added') {
         const refreshComments = async () => {
           try {
@@ -249,12 +261,20 @@ const TaskDetail = () => {
         refreshComments()
         return
       }
-      if (taskId) {
-        loadTask()
-      }
+
+      // Full task reload is debounced to avoid rapid re-fetches from cascade events
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        if (taskId) {
+          loadTask()
+        }
+      }, 2000)
     }
     window.addEventListener('syntask:tasks-updated', refreshCurrentTask)
-    return () => window.removeEventListener('syntask:tasks-updated', refreshCurrentTask)
+    return () => {
+      window.removeEventListener('syntask:tasks-updated', refreshCurrentTask)
+      if (debounceTimer) clearTimeout(debounceTimer)
+    }
   }, [taskId, loadTask])
 
   const loadWatchers = async () => {
@@ -1556,19 +1576,7 @@ const TaskDetail = () => {
             {/* Actions */}
             <div className="pt-4 border-t border-gray-200">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleToggleWatch}
-                  disabled={updatingWatch}
-                  aria-busy={updatingWatch || undefined}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${
-                    isWatching
-                      ? 'bg-primary-100 text-primary-700'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <Eye className="h-4 w-4" />
-                  {updatingWatch ? 'Updating...' : isWatching ? 'Watching' : 'Watch'}
-                </button>
+                {/* Watch button removed from sidebar — it already exists in the top header */}
                 <button
                   onClick={handleDelete}
                   disabled={deleting}
