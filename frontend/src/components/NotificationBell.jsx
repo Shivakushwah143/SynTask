@@ -22,24 +22,10 @@ const NotificationBell = () => {
   const isMountedRef = useRef(false) // Track if component is mounted
   const authFailureHandledRef = useRef(false)
 
-  const emitTaskRefresh = useCallback((notification) => {
-    const relatedType = String(notification?.related_type || '').toLowerCase()
-    const notifType = String(notification?.type || '').toLowerCase()
-    if (relatedType === 'task' || notifType.includes('task')) {
-      window.dispatchEvent(
-        new CustomEvent('syntask:tasks-updated', {
-          detail: {
-            source: 'notification',
-            notificationId: notification?.id || null,
-            relatedId: notification?.related_id || null,
-            relatedType: notification?.related_type || null,
-            type: notification?.type || null,
-            metadata: notification?.metadata || null,
-          },
-        })
-      )
-    }
-  }, [])
+  // emitTaskRefresh was removed — dispatching syntask:tasks-updated on every
+  // 10-second notification poll was the PRIMARY CASCADE CAUSE, triggering
+  // Dashboard, Tasks, and TaskDetail to all re-fetch their data simultaneously.
+  // Notifications polling should only update the bell badge, not re-fetch pages.
 
   // Determine navigation route based on notification
   const getNotificationRoute = useCallback((notification) => {
@@ -243,7 +229,8 @@ const NotificationBell = () => {
       setUnreadCount(newUnreadCount)
       previousNotificationsRef.current = newNotifications
       lastFetchTimeRef.current = now
-      newNotifications.forEach((notification) => emitTaskRefresh(notification))
+      // NOTE: emitTaskRefresh was removed here — was dispatching syntask:tasks-updated
+      // on every poll, causing cascading re-fetches across the entire app.
       
       // Clean up old notification IDs from the tracking set (keep only current ones)
       // This prevents memory leak and ensures we don't track too many IDs
@@ -270,7 +257,7 @@ const NotificationBell = () => {
       }
       // Silently fail if server is not running - don't spam console
     }
-  }, [clearAuth, emitTaskRefresh, isAuthenticated, navigate, showNotificationPopup, user])
+  }, [clearAuth, isAuthenticated, navigate, showNotificationPopup, user])
 
   useEffect(() => {
     // Only reset and show initial popups when user actually changes (login)

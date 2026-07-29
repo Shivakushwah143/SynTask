@@ -227,7 +227,7 @@ export default function Projects() {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [])
 
   const loadAssignableUsers = useCallback(async () => {
     try {
@@ -240,9 +240,6 @@ export default function Projects() {
 
   useEffect(() => {
     loadProjects()
-    const interval = setInterval(() => {
-      loadProjects()
-    }, 10000)
 
     const handleProjectsUpdated = () => {
       loadProjects()
@@ -251,7 +248,6 @@ export default function Projects() {
     window.addEventListener('syntask:data-updated', handleProjectsUpdated)
 
     return () => {
-      clearInterval(interval)
       window.removeEventListener('syntask:projects-updated', handleProjectsUpdated)
       window.removeEventListener('syntask:data-updated', handleProjectsUpdated)
     }

@@ -103,7 +103,7 @@ def require_module(module_name: str):
         # Super Admin and Admin have full access to all modules
         if current_role == UserRole.SUPER_ADMIN or current_role == UserRole.ADMIN:
             return current_user
-        if module_name in {"sales", "sales_crm"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+        if module_name in {"sales", "sales_crm", "tickets"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user
         if module_name == "recruitment" and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user

@@ -125,6 +125,12 @@ export const useAuthStore = create(
         const normalized = normalizeRole(freshUser.role)
           ? { ...freshUser, role: normalizeRole(freshUser.role) }
           : freshUser
+
+        // Only update store if data actually changed to avoid cascading re-renders
+        // across all components subscribed to `user`.
+        const currentUser = get().user
+        if (currentUser && JSON.stringify(currentUser) === JSON.stringify(normalized)) return
+
         // Persist the refreshed data
         saveUserData(normalized)
         set({ user: normalized })

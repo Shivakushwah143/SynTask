@@ -305,11 +305,9 @@ useEffect(() => {
     }
     window.addEventListener('syntask:tasks-updated', handleTasksUpdated)
     window.addEventListener('syntask:data-updated', handleTasksUpdated)
-    const interval = setInterval(handleTasksUpdated, 10000)
     return () => {
       window.removeEventListener('syntask:tasks-updated', handleTasksUpdated)
       window.removeEventListener('syntask:data-updated', handleTasksUpdated)
-      clearInterval(interval)
     }
   }, [fetchTasks])
 

@@ -389,24 +389,23 @@ const Dashboard = () => {
     };
     run();
 
-    // Auto-sync polling every 10 seconds for live graph updates
-    const interval = setInterval(run, 10000);
-
-    // Event listeners for instant live updates on actions across the app
+    // Event listeners for instant updates after user actions (tasks, projects, CRM).
+    // NOTE: 10s interval polling was removed as the PRIMARY CAUSE of the infinite
+    // API loop. Event-driven sync is sufficient: components dispatch these events
+    // after successful create/update/delete operations.
+    // The cascade that previously made this dangerous (NotificationBell dispatching
+    // on every poll) has been eliminated.
     const handleLiveSync = () => {
       if (active) refreshDashboard(() => active);
     };
     window.addEventListener('syntask:tasks-updated', handleLiveSync);
     window.addEventListener('syntask:projects-updated', handleLiveSync);
-    window.addEventListener('syntask:crm-updated', handleLiveSync);
     window.addEventListener('syntask:data-updated', handleLiveSync);
 
     return () => {
       active = false;
-      clearInterval(interval);
       window.removeEventListener('syntask:tasks-updated', handleLiveSync);
       window.removeEventListener('syntask:projects-updated', handleLiveSync);
-      window.removeEventListener('syntask:crm-updated', handleLiveSync);
       window.removeEventListener('syntask:data-updated', handleLiveSync);
     };
   }, [refreshDashboard]);
