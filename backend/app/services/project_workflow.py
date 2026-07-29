@@ -41,6 +41,10 @@ async def advance_project(
     current_status = _normalize_status(project.status.value if getattr(project.status, "value", None) else str(project.status))
     next_status = _normalize_status(target_status)
 
+    # Skip validation if status hasn't changed
+    if current_status == next_status:
+        return project
+
     allowed = PROJECT_ALLOWED_TRANSITIONS.get(current_status, set())
     if next_status not in allowed:
         raise HTTPException(
