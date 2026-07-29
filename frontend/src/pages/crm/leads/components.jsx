@@ -347,7 +347,7 @@ export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSavin
             <LeadOverviewInput label="Lead name" value={form.prospect_name} onChange={(value) => updateField('prospect_name', value)} />
             <LeadOverviewInput label="Company" value={form.company_name} onChange={(value) => updateField('company_name', value)} />
             <LeadOverviewInput label="Email" type="email" value={form.email} onChange={(value) => updateField('email', value)} />
-            <LeadOverviewInput label="Phone" value={form.phone} onChange={(value) => updateField('phone', value)} />
+            <LeadOverviewInput label="Phone" type="tel" maxLength={10} value={form.phone} onChange={(value) => updateField('phone', value)} />
             <LeadOverviewInput label="Source" value={form.channel} onChange={(value) => updateField('channel', value)} />
             <LeadOverviewInput label="Estimated close" type="date" value={form.estimated_close_date} onChange={(value) => updateField('estimated_close_date', value)} />
           </div>
@@ -375,15 +375,20 @@ export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSavin
   )
 })
 
-function LeadOverviewInput({ label, value, onChange, type = 'text' }) {
+function LeadOverviewInput({ label, value, onChange, type = 'text', maxLength }) {
   return (
     <label className="block rounded-xl border border-surface-border/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">{label}</span>
       <input
         className={`${inputClassName} mt-2`}
         type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
+        value={value ?? ''}
+        maxLength={maxLength}
+        onChange={(event) => {
+          const raw = event.target.value
+          const next = type === 'tel' ? raw.replace(/\D/g, '') : raw
+          onChange(next)
+        }}
       />
     </label>
   )

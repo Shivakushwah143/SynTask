@@ -271,7 +271,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/eod",
       icon: ClipboardCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "tasks_projects",
     },
     {
       name: "Scheduled Jobs",
@@ -295,29 +294,25 @@ const Sidebar = ({ isOpen, onClose }) => {
       name: "Attendance",
       href: "/attendance",
       icon: UserCheck,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "attendance_leaves",
+      roles: [ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
       name: "Live Attendance",
       href: "/live-monitor",
       icon: MonitorCheck,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.MANAGER],
-      module: "attendance_leaves",
     },
     {
       name: "Attendance Reports",
       href: "/attendance-reports",
       icon: FileBarChart2,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.MANAGER],
-      module: "attendance_leaves",
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
     },
     {
       name: "Leaves",
       href: "/leaves",
       icon: CalendarCheck2,
       roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "attendance_leaves",
     },
 
     // ── Sales & CRM module ─────────────────────────────────────────────────────

@@ -577,6 +577,11 @@ async def create_prospect(
 @router.put("/{prospect_id}")
 async def update_prospect(
     prospect_id: str,
+    prospect_name: Optional[str] = Form(None),
+    company_name: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    channel: Optional[str] = Form(None),
     remark: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),
     due_time: Optional[str] = Form(None),
@@ -596,6 +601,11 @@ async def update_prospect(
         current_user,
         prospect_id,
         {
+            "prospect_name": prospect_name,
+            "company_name": company_name,
+            "email": email,
+            "phone": phone,
+            "channel": channel,
             "remark": remark,
             "due_date": due_date,
             "due_time": due_time,
