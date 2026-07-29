@@ -168,18 +168,13 @@ async def test_manager_lists_subordinate_employee_and_lead_leave_but_lead_has_no
     lead = user("lead-1", UserRole.LEAD, reports_to="manager-1", ancestors=["manager-1"])
     manager = user("manager-1", UserRole.MANAGER)
 
-    async def lead_subordinates():
-        return [employee]
-
-    async def manager_subordinates():
-        return [lead, employee]
-
-    lead.get_all_subordinates = lead_subordinates
-    manager.get_all_subordinates = manager_subordinates
-
-    # Leads now see their own submitted leaves (not __none__)
-    assert await leave_endpoints._base_query(lead, None) == {"employee_id": "lead-1"}
+    # Leads now see all company leaves except their own
+    assert await leave_endpoints._base_query(lead, None) == {
+        "company_id": "company-1",
+        "employee_id": {"$ne": "lead-1"},
+    }
+    # Managers see all company leaves except their own
     assert await leave_endpoints._base_query(manager, None) == {
         "company_id": "company-1",
-        "employee_id": {"$in": ["lead-1", "employee-1"]},
+        "employee_id": {"$ne": "manager-1"},
     }

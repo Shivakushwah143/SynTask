@@ -48,11 +48,6 @@ def history_entry(action: str, actor_id: str, *, comment: Optional[str] = None, 
     }
 
 
-def is_direct_or_indirect_report(manager: User, employee: User) -> bool:
-    manager_id = str(manager.id)
-    return employee.reports_to == manager_id or manager_id in (employee.ancestors or [])
-
-
 def can_approve_leave(current_user: User, employee: User, leave: LeaveRequest) -> bool:
     current_user_id = str(current_user.id)
     if current_user_id == str(employee.id) or current_user_id == leave.employee_id:
@@ -65,13 +60,15 @@ def can_approve_leave(current_user: User, employee: User, leave: LeaveRequest) -
         return False
     if current_user.company_id != employee.company_id:
         return False
-    pending_with = {str(item) for item in getattr(leave, "pending_with_user_ids", []) or []}
-    if current_user_id not in pending_with:
-        return False
-    if current_user.role == UserRole.ADMIN:
-        return employee.role == UserRole.MANAGER or bool(getattr(leave, "forwarded_by", None))
+    # Managers can approve any employee or lead leave in the company
     if current_user.role == UserRole.MANAGER:
-        return employee.role in {UserRole.EMPLOYEE, UserRole.LEAD} and is_direct_or_indirect_report(current_user, employee)
+        return employee.role in {UserRole.EMPLOYEE, UserRole.LEAD}
+    # Admins must be in pending_with_user_ids (set via forwarding)
+    if current_user.role == UserRole.ADMIN:
+        pending_with = {str(item) for item in getattr(leave, "pending_with_user_ids", []) or []}
+        if current_user_id not in pending_with:
+            return False
+        return employee.role == UserRole.MANAGER or bool(getattr(leave, "forwarded_by", None))
     return False
 
 

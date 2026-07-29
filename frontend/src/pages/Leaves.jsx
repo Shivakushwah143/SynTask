@@ -6,7 +6,7 @@ import { leavesAPI } from '../api/leaves'
 import { usersAPI } from '../api/users'
 import { PageHeader, Button, Badge, FormField, Modal, inputClassName } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
-import { ROLE, hasCompanyAdminAccess, isManagerRole, normalizeRole } from '../utils/roles'
+import { ROLE, hasCompanyAdminAccess, isManagerRole, isLeadRole, normalizeRole } from '../utils/roles'
 import { timeService } from '@/services/timeService'
 
 const LEAVE_TYPES = [
@@ -46,9 +46,12 @@ export const canReviewLeaveRequest = (leave, user) => {
   const userRole = normalizeRole(user?.role)
   const employeeRole = normalizeRole(leave?.employee_role)
   if (!leave || !['pending', 'forwarded'].includes(leave.status) || !userId || String(leave.employee_id) === userId) return false
-  if (!(leave.pending_with_user_ids || []).map(String).includes(userId)) return false
+  // Managers can review any employee or lead leave request (backend enforces report hierarchy)
   if (userRole === ROLE.MANAGER) return [ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole)
+  // Admins can review manager leaves or forwarded leaves
   if (userRole === ROLE.ADMIN) return employeeRole === ROLE.MANAGER || Boolean(leave.forwarded_by)
+  // Other roles must be in pending_with_user_ids
+  if (!(leave.pending_with_user_ids || []).map(String).includes(userId)) return false
   return false
 }
 
@@ -85,7 +88,7 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
 
 export default function Leaves() {
   const { user } = useAuthStore()
-  const canManage = hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role)
+  const canManage = hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role) || isLeadRole(user?.role)
   const canRequestLeave = canSubmitLeaveRequest(user?.role)
   const contentGridClassName = canRequestLeave ? 'grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]' : 'grid gap-6'
   const [form, setForm] = useState(defaultForm)

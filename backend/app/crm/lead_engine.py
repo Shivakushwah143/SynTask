@@ -685,6 +685,8 @@ class LeadEngine:
 
         update = LeadNormalizer.normalize_form_payload(payload, source=prospect.source or "manual")
         now = _now()
+        if "prospect_name" in payload and payload["prospect_name"] is not None:
+            prospect.prospect_name = _normalize_text(payload["prospect_name"])
         if "first_name" in payload and payload["first_name"] is not None:
             prospect.first_name = _normalize_text(payload["first_name"])
         if "last_name" in payload and payload["last_name"] is not None:
