@@ -44,7 +44,10 @@ async def update_project(
                 requested_assignees.extend([item.strip() for item in raw.split(",") if item.strip()])
         assignees = await validate_project_assignees(current_user, current_user.company_id, requested_assignees)
         parsed_assignee_ids = [str(user.id) for user in assignees]
-    if status_filter:
+
+    # Only transition status if it's actually different from current status
+    current_status = enum_or_string_value(project.status)
+    if status_filter and status_filter.lower() != current_status:
         await advance_project(
             project=project,
             current_user=current_user,
