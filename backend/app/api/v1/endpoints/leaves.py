@@ -227,7 +227,7 @@ async def approve_leave_request(
     leave, employee = await _load_manageable_leave(leave_id, current_user)
     if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending or forwarded requests can be approved")
-    await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=str(leave.id))
+    await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=leave.id)
     leave.status = LeaveStatus.APPROVED
     leave.reviewed_by = str(current_user.id)
     leave.reviewed_at = utc_now()

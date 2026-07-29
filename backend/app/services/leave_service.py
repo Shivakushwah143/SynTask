@@ -181,7 +181,7 @@ def parse_leave_date(value: str, *, end_of_day: bool = False) -> datetime:
         )
 
 
-async def ensure_no_overlap(employee_id: str, start_date: datetime, end_date: datetime, exclude_id: Optional[str] = None) -> None:
+async def ensure_no_overlap(employee_id: str, start_date: datetime, end_date: datetime, exclude_id: Any = None) -> None:
     query: Dict[str, Any] = {
         "employee_id": employee_id,
         "status": {"$in": [LeaveStatus.PENDING.value, LeaveStatus.FORWARDED.value, LeaveStatus.APPROVED.value]},
