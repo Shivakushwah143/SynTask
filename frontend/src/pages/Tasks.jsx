@@ -12,6 +12,7 @@ import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/
 import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
+import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
@@ -303,9 +304,11 @@ useEffect(() => {
       fetchTasks({ isRefresh: true })
     }
     window.addEventListener('syntask:tasks-updated', handleTasksUpdated)
-    const interval = setInterval(handleTasksUpdated, 30000)
+    window.addEventListener('syntask:data-updated', handleTasksUpdated)
+    const interval = setInterval(handleTasksUpdated, 10000)
     return () => {
       window.removeEventListener('syntask:tasks-updated', handleTasksUpdated)
+      window.removeEventListener('syntask:data-updated', handleTasksUpdated)
       clearInterval(interval)
     }
   }, [fetchTasks])
@@ -794,6 +797,12 @@ useEffect(() => {
         </div>
       </div>
 
+      {/* Quick Assign Panel */}
+      <QuickAssignPanel
+        users={uniqueAssignableUsers}
+        onTaskCreated={() => fetchTasks({ isRefresh: true })}
+      />
+
       {/* Task Graph Panel */}
       <TaskGraphPanel
         rows={taskGraphRows}
@@ -981,8 +990,16 @@ useEffect(() => {
 
       {/* Edit Task Modal */}
       {showEditModal && editingTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowEditModal(false)
+          }}
+        >
+          <div
+            className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">Edit Task</h2>
@@ -1089,8 +1106,16 @@ useEffect(() => {
 
       {/* Delete Task Confirmation */}
       {showDeleteConfirm && deletingTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) { setShowDeleteConfirm(false); setDeletingTask(null) }
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Delete Task</h2>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
               Are you sure you want to delete <span className="font-semibold text-gray-700 dark:text-gray-200">&ldquo;{deletingTask.title}&rdquo;</span>? This action cannot be undone.
@@ -1118,8 +1143,16 @@ useEffect(() => {
 
       {/* Create Task Modal */}
       {canManageTasks && showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeCreateModal()
+          }}
+        >
+          <div
+            className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">New Task</h2>

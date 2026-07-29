@@ -510,47 +510,45 @@ const Invoices = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* ============================================================ */}
-      {/* HERO SECTION - Gradient with Glassmorphism */}
-      {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 p-6 text-white shadow-xl md:p-8">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
         
-        <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Invoices</h1>
-                <p className="mt-1 text-indigo-100">Generate and manage invoices for your clients</p>
-              </div>
+        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
+              <FileText className="h-7 w-7 text-white" />
             </div>
-            <div className="flex flex-wrap gap-2">
-              {(isCompanyAdmin || isLead) && (
-                <>
-                  <button
-                    onClick={() => setComposerOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-                  >
-                    <Mail className="h-4 w-4" />
-                    Send Email
-                  </button>
-                  <button
-                    onClick={() => {
-                      resetForm()
-                      setShowCreateModal(true)
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Create Invoice
-                  </button>
-                </>
-              )}
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">Invoices & Financials</h1>
+              <p className="mt-1 text-indigo-100 text-sm">Generate tax invoices, proforma estimates & track client billing status</p>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+            {(isCompanyAdmin || isLead) && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setComposerOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 border border-white/10 shadow-md"
+                >
+                  <Mail className="h-4 w-4" />
+                  <span>Send Email</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm()
+                    setShowCreateModal(true)
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Create Invoice</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -803,8 +801,13 @@ const Invoices = () => {
       {/* CREATE INVOICE MODAL - Glassmorphism */}
       {/* ============================================================ */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="relative w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCreateModal(false)
+          }}
+        >
+          <div className="relative w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="mb-6 flex items-start justify-between border-b border-gray-200 pb-4 dark:border-gray-700">
               <div>
@@ -1117,8 +1120,13 @@ const Invoices = () => {
       {/* INVOICE DETAIL MODAL */}
       {/* ============================================================ */}
       {showDetailModal && selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowDetailModal(false)
+          }}
+        >
+          <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="mb-6 flex items-start justify-between border-b border-gray-200 pb-4 dark:border-gray-700">
               <div>

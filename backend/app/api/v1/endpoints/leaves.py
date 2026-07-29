@@ -401,8 +401,15 @@ async def _base_query(current_user: User, employee_id: Optional[str]) -> dict:
             "company_id": current_user.company_id,
             "employee_id": {"$in": visible_ids},
         }
-    # Employees and Leads see their own submitted leaves
-    return {"employee_id": str(current_user.id)}
+    # Employees see only their own submitted leaves
+    if current_user.role == UserRole.EMPLOYEE:
+        if not current_user.company_id:
+            return {"employee_id": "__none__"}
+        return {"employee_id": str(current_user.id), "company_id": current_user.company_id}
+    # Leads see their own submitted leaves
+    if current_user.role == UserRole.LEAD:
+        return {"employee_id": str(current_user.id)}
+    return {"employee_id": "__none__"}
 
 
 async def _load_manageable_leave(leave_id: str, current_user: User) -> tuple[LeaveRequest, User]:

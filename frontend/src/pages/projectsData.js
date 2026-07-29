@@ -17,11 +17,12 @@ const getUserDisplayName = (user) => (
 const getRoleOwnerLine = (project) => {
   const assignedUsers = Array.isArray(project.assigned_users) ? project.assigned_users : []
   const managerNames = assignedUsers
-    .filter((user) => String(user.role || '').toLowerCase() === 'manager')
+    // Show all active users as potential project owners (employees, managers, leads, sub admins)
+    .filter((user) => user.status === 'active')
     .map(getUserDisplayName)
     .filter(Boolean)
   const leadNames = assignedUsers
-    .filter((user) => ['employee', 'lead'].includes(String(user.role || '').toLowerCase()))
+    .filter((user) => user.status === 'active')
     .map(getUserDisplayName)
     .filter(Boolean)
   const parts = []

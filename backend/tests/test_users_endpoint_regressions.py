@@ -10,7 +10,8 @@ def _get_function(tree: ast.AST, name: str) -> ast.AsyncFunctionDef:
 
 
 def test_create_employee_does_not_shadow_user_service_import():
-    source = Path("app/api/v1/endpoints/users.py").read_text(encoding="utf-8")
+    source = Path(__file__).resolve().parents[1] / "app" / "api" / "v1" / "endpoints" / "users.py"
+    source = source.read_text(encoding="utf-8")
     function = _get_function(ast.parse(source), "create_employee")
 
     local_user_service_imports = [
@@ -25,7 +26,8 @@ def test_create_employee_does_not_shadow_user_service_import():
 
 
 def test_create_employee_updates_ancestors_once_before_insert():
-    source = Path("app/api/v1/endpoints/users.py").read_text(encoding="utf-8")
+    source = Path(__file__).resolve().parents[1] / "app" / "api" / "v1" / "endpoints" / "users.py"
+    source = source.read_text(encoding="utf-8")
     function = _get_function(ast.parse(source), "create_employee")
 
     update_calls = [
@@ -37,3 +39,20 @@ def test_create_employee_updates_ancestors_once_before_insert():
     ]
 
     assert len(update_calls) == 1
+
+
+def test_get_assignable_users_includes_admins_and_employees():
+    source = Path(__file__).resolve().parents[1] / "app" / "api" / "v1" / "endpoints" / "users.py"
+    source = source.read_text(encoding="utf-8")
+    function = _get_function(ast.parse(source), "get_assignable_users")
+
+    role_filter_snippets = [
+        "UserRole.ADMIN",
+        "UserRole.SUB_ADMIN",
+        "UserRole.MANAGER",
+        "UserRole.LEAD",
+        "UserRole.EMPLOYEE",
+    ]
+
+    for snippet in role_filter_snippets:
+        assert snippet in ast.get_source_segment(source, function)

@@ -159,6 +159,19 @@ const Departments = () => {
     }
   }
 
+  // Silent refresh: updates data without triggering the full-page loading spinner.
+  // Used after save/delete so the page stays responsive and changes appear seamlessly.
+  const refreshDepartments = async () => {
+    try {
+      const data = await departmentsAPI.listDepartments()
+      setDepartments(Array.isArray(data) ? data : [])
+    } catch (fetchError) {
+      const message = fetchError.response?.data?.detail || fetchError.message || 'Failed to refresh departments'
+      toast.error('Saved, but failed to refresh the department list.')
+      console.error('refreshDepartments error:', message)
+    }
+  }
+
   const loadUsers = async () => {
     try {
       setLoadingUsers(true)
@@ -234,7 +247,7 @@ const Departments = () => {
       setEditingDepartment(null)
       setForm(emptyForm)
       setFormError('')
-      await loadDepartments()
+      await refreshDepartments()
       notifyDepartmentsChanged({ action: editingDepartment ? 'updated' : 'created' })
     } catch (saveError) {
       const message = saveError.response?.data?.detail || saveError.message || 'Failed to save department'
@@ -252,7 +265,7 @@ const Departments = () => {
       await departmentsAPI.deleteDepartment(deleteTarget.id)
       toast.success('Department deleted')
       setDeleteTarget(null)
-      await loadDepartments()
+      await refreshDepartments()
       notifyDepartmentsChanged({ action: 'deleted' })
     } catch (deleteError) {
       const message = deleteError.response?.data?.detail || deleteError.message || 'Failed to delete department'

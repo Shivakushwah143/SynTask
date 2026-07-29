@@ -100,7 +100,7 @@ export default function BulkLeads() {
   const { data: departmentsData } = useQuery('bulk-leads-departments', departmentsAPI.listDepartments)
   const users = asArray(usersData, ['users'])
   const departments = asArray(departmentsData, ['departments'])
-  const assignableUsers = useMemo(() => users.filter((user) => String(user.role || '').toLowerCase() === 'employee'), [users])
+  const assignableUsers = useMemo(() => users.filter((user) => user.status === 'active'), [users])
 
   const hasPreview = previewRows.length > 0
   const previewCount = previewRows.length
@@ -277,7 +277,7 @@ export default function BulkLeads() {
           value={String(assignableUsers.length)}
           icon={Users}
           color="indigo"
-          subtitle="Employees available for routing"
+          subtitle="Team members available for routing"
         />
       </div>
 
@@ -399,7 +399,7 @@ export default function BulkLeads() {
                           onChange={(event) => setTargetUserId(event.target.value)} 
                           disabled={strategy !== 'manual' || Boolean(departmentId)}
                         >
-                          <option value="">Select employee</option>
+                          <option value="">Select team member</option>
                           {assignableUsers.map((user) => (
                             <option key={getId(user)} value={getId(user)}>
                               {user.first_name} {user.last_name} - {user.role}
@@ -449,7 +449,7 @@ export default function BulkLeads() {
                       <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Routing status</h3>
                     </div>
                     <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                      {assignableUsers.length ? `${assignableUsers.length} employees are available for assignment.` : 'No assignable employees found yet.'}
+                      {assignableUsers.length ? `${assignableUsers.length} team members are available for assignment.` : 'No assignable team members found yet.'}
                     </p>
                     {departmentId ? (
                       <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">

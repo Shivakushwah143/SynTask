@@ -388,8 +388,26 @@ const Dashboard = () => {
       await refreshDashboard(() => active);
     };
     run();
+
+    // Auto-sync polling every 10 seconds for live graph updates
+    const interval = setInterval(run, 10000);
+
+    // Event listeners for instant live updates on actions across the app
+    const handleLiveSync = () => {
+      if (active) refreshDashboard(() => active);
+    };
+    window.addEventListener('syntask:tasks-updated', handleLiveSync);
+    window.addEventListener('syntask:projects-updated', handleLiveSync);
+    window.addEventListener('syntask:crm-updated', handleLiveSync);
+    window.addEventListener('syntask:data-updated', handleLiveSync);
+
     return () => {
       active = false;
+      clearInterval(interval);
+      window.removeEventListener('syntask:tasks-updated', handleLiveSync);
+      window.removeEventListener('syntask:projects-updated', handleLiveSync);
+      window.removeEventListener('syntask:crm-updated', handleLiveSync);
+      window.removeEventListener('syntask:data-updated', handleLiveSync);
     };
   }, [refreshDashboard]);
 
