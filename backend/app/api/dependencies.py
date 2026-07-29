@@ -105,6 +105,8 @@ def require_module(module_name: str):
             return current_user
         if module_name in {"sales", "sales_crm"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user
+        if module_name == "recruitment" and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+            return current_user
         modules = getattr(current_user, "modules", []) or []
         if not _module_access_allowed(module_name, modules):
             raise HTTPException(
