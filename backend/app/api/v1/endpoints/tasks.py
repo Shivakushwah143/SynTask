@@ -34,7 +34,7 @@ from app.services.task_health_service import (
 )
 from app.models.timeline import TimelineEventType, TimelineModule
 from app.services.timeline_service import create_timeline_event
-from app.core.cache import cache_delete_pattern
+from app.core.cache import cache_delete_pattern, company_dashboard_pattern
 from app.api.deps import Pagination20, PaginationParams
 from app.core.clock import utc_now
 
@@ -356,7 +356,7 @@ async def _send_task_side_effects(task: Task, current_user: User, assignee, proj
 
     # --- Cache invalidation ---
     try:
-        await cache_delete_pattern(f"dashboard:stats:{current_user.company_id}:*")
+        await cache_delete_pattern(company_dashboard_pattern(str(current_user.company_id)))
     except Exception as e:
         logger.error(f"Failed to invalidate cache: {str(e)}")
 

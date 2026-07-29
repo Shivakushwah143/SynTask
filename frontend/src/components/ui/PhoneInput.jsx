@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Search } from 'lucide-react'
 import { inputClassName } from './FormField'
-import { phoneValidationMessage, sanitizeLocalPhone } from './phoneUtils'
+import { phoneValidationMessage, sanitizeLocalPhone, parsePhonePaste } from './phoneUtils'
 
 const COUNTRIES = [
   { code: '+91', name: 'India' },
@@ -100,13 +100,29 @@ export function PhoneInput({
     requestAnimationFrame(() => phoneRef.current?.focus())
   }
 
+  const handlePaste = (event) => {
+    event.preventDefault()
+    const pastedText = event.clipboardData?.getData('text') || ''
+    if (!pastedText) return
+    const { countryCode: detectedCountry, phoneNumber: cleanPhone } = parsePhonePaste(
+      pastedText,
+      COUNTRIES.map((c) => c.code)
+    )
+    const nextCountry = detectedCountry || currentCountry
+    commit(nextCountry, cleanPhone)
+  }
+
   const handlePhoneChange = (event) => {
     const input = event.target
     const before = input.value
     const selectionStart = input.selectionStart ?? before.length
-    const nextPhone = sanitizeLocalPhone(before)
+    const { countryCode: detectedCountry, phoneNumber: nextPhone } = parsePhonePaste(
+      before,
+      COUNTRIES.map((c) => c.code)
+    )
+    const nextCountry = detectedCountry || currentCountry
     const removedBeforeCursor = before.slice(0, selectionStart).length - sanitizeLocalPhone(before.slice(0, selectionStart)).length
-    commit(currentCountry, nextPhone)
+    commit(nextCountry, nextPhone)
     requestAnimationFrame(() => {
       const nextCursor = Math.max(0, Math.min(nextPhone.length, selectionStart - removedBeforeCursor))
       phoneRef.current?.setSelectionRange(nextCursor, nextCursor)
@@ -174,14 +190,14 @@ export function PhoneInput({
           type="tel"
           inputMode="numeric"
           autoComplete="tel"
-          maxLength={10}
+          maxLength={30}
           minLength={required ? 10 : undefined}
-          pattern="\d{10}"
-          title="Enter exactly 10 digits."
+          title="Enter phone number."
           required={required}
           disabled={disabled}
           value={currentPhone}
           onChange={handlePhoneChange}
+          onPaste={handlePaste}
           onKeyDown={blockInvalidKey}
           onBlur={handlePhoneBlur}
           className="min-h-11 min-w-0 flex-1 border-0 bg-transparent px-4 py-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:ring-0 dark:text-[var(--color-app-text)] dark:placeholder:text-[#8f8374]"

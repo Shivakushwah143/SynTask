@@ -20,15 +20,15 @@ export const buildTaskAssignmentOptions = (users = [], currentUser = null) => {
 
   const allUsers = [...byId.values()]
   return {
-    leads: allUsers.filter((item) => normalizeRole(item.role) === 'lead'),
-    employees: allUsers.filter((item) => normalizeRole(item.role) === 'employee'),
+    leads: allUsers.filter((item) => ['lead', 'employee', 'manager', 'sub_admin'].includes(normalizeRole(item.role))),
+    employees: allUsers,
   }
 }
 
 export const getProjectLeadName = (project = {}, users = [], currentUser = null) => {
   const safeProject = project || {}
   const assignedUsers = Array.isArray(safeProject.assigned_users) ? safeProject.assigned_users : []
-  const leadFromProject = assignedUsers.find((item) => ['employee', 'lead'].includes(normalizeRole(item.role)))
+  const leadFromProject = assignedUsers.find((item) => ['employee', 'lead', 'manager', 'sub_admin'].includes(normalizeRole(item.role)))
   if (leadFromProject) return getUserDisplayName(leadFromProject)
 
   const leadIds = [
@@ -36,7 +36,7 @@ export const getProjectLeadName = (project = {}, users = [], currentUser = null)
     ...(Array.isArray(safeProject.assigned_user_ids) ? safeProject.assigned_user_ids : []),
   ].filter(Boolean).map(String)
   const candidates = [...users, currentUser].filter(Boolean)
-  const lead = candidates.find((item) => leadIds.includes(getUserId(item)) && ['employee', 'lead'].includes(normalizeRole(item.role)))
+  const lead = candidates.find((item) => leadIds.includes(getUserId(item)) && ['employee', 'lead', 'manager', 'sub_admin'].includes(normalizeRole(item.role)))
   return getUserDisplayName(lead) || 'No leader assigned'
 }
 

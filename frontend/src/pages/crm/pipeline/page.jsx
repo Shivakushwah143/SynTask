@@ -4,12 +4,12 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners,
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { 
-  LayoutDashboard, 
-  Users, 
-  TrendingUp, 
-  Clock, 
-  DollarSign, 
+import {
+  LayoutDashboard,
+  Users,
+  TrendingUp,
+  Clock,
+  DollarSign,
   RefreshCw,
   Plus,
   Import,
@@ -59,6 +59,7 @@ import {
   parsePipelineFilters,
   stageOptionsFromBoard,
 } from './utils'
+import { sanitizeLocalPhone, parsePhonePaste } from '../../../components/ui/phoneUtils'
 
 // ============================================================
 // CONSTANTS & HELPERS
@@ -144,10 +145,12 @@ export default function CRMPipelinePage() {
   const users = useMemo(() => getResponseItems(usersQuery.data, 'users'), [usersQuery.data])
   const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
   const filters = useMemo(() => parsePipelineFilters(searchParams), [searchParams])
+
   const selectedStageLabel = useMemo(() => {
     if (!filters.stage) return ''
     return board.stages.find((stage) => stage.key === filters.stage)?.name || filters.stage
   }, [board.stages, filters.stage])
+
   const debouncedSearch = useDebounce(searchValue, 160)
   const effectiveSearch = useMemo(() => {
     const typedSearch = debouncedSearch?.trim() || ''
@@ -155,10 +158,8 @@ export default function CRMPipelinePage() {
   }, [debouncedSearch, filters.q])
 
   useEffect(() => {
-    if (filters.q !== searchValue) {
-      setSearchValue(filters.q)
-    }
-  }, [filters.q, searchValue, setSearchValue])
+    setSearchValue(filters.q)
+  }, [filters.q, setSearchValue])
 
   useEffect(() => {
     if (effectiveSearch !== filters.q) {
@@ -199,7 +200,7 @@ export default function CRMPipelinePage() {
       leadIndex,
     }
   }, [board, visibleLeadIds])
-  
+
   const defaultStageId = getStageValue(stages[0])
   const defaultCategoryId = getOptionId(categories[0])
   const defaultProductIds = getOptionId(products[0])
@@ -387,21 +388,21 @@ export default function CRMPipelinePage() {
   const pipelineStats = useMemo(() => {
     const allLeads = board.stages.flatMap(stage => stage.leads)
     const total = allLeads.length
-    const openLeads = allLeads.filter(lead => 
+    const openLeads = allLeads.filter(lead =>
       !['closed_won', 'closed_lost', 'disqualified'].includes(lead.current_stage?.toLowerCase())
     ).length
-    const wonLeads = allLeads.filter(lead => 
+    const wonLeads = allLeads.filter(lead =>
       lead.current_stage?.toLowerCase() === 'closed_won'
     ).length
-    const highValueLeads = allLeads.filter(lead => 
+    const highValueLeads = allLeads.filter(lead =>
       parseFloat(lead.amount || lead.value || 0) > 100000
     ).length
-    const totalValue = allLeads.reduce((sum, lead) => 
+    const totalValue = allLeads.reduce((sum, lead) =>
       sum + parseFloat(lead.amount || lead.value || 0), 0
     )
     const avgValue = total > 0 ? totalValue / total : 0
     const conversionRate = total > 0 ? (wonLeads / total) * 100 : 0
-    
+
     return { total, openLeads, wonLeads, highValueLeads, totalValue, avgValue, conversionRate }
   }, [board.stages])
 
@@ -415,30 +416,48 @@ export default function CRMPipelinePage() {
   // ============================================================
   // Phone Input Component
   // ============================================================
-  const PhoneInput = ({ countryCode, phoneNumber, onCountryCodeChange, onPhoneNumberChange, required }) => (
-    <div className="flex gap-2">
-      <select
-        value={countryCode}
-        onChange={(e) => onCountryCodeChange(e.target.value)}
-        className="w-24 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-      >
-        <option value="+91">+91</option>
-        <option value="+1">+1</option>
-        <option value="+44">+44</option>
-        <option value="+61">+61</option>
-        <option value="+81">+81</option>
-        <option value="+86">+86</option>
-      </select>
-      <input
-        type="tel"
-        value={phoneNumber}
-        onChange={(e) => onPhoneNumberChange(e.target.value)}
-        className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-        placeholder="9876543210"
-        required={required}
-      />
-    </div>
-  )
+  const PhoneInput = ({ countryCode, phoneNumber, onCountryCodeChange, onPhoneNumberChange, required }) => {
+    const handlePaste = (e) => {
+      e.preventDefault()
+      const pasted = e.clipboardData?.getData('text') || ''
+      const { countryCode: detected, phoneNumber: clean } = parsePhonePaste(pasted)
+      if (detected) onCountryCodeChange(detected)
+      onPhoneNumberChange(clean)
+    }
+
+    const handleChange = (e) => {
+      const val = e.target.value
+      const { countryCode: detected, phoneNumber: clean } = parsePhonePaste(val)
+      if (detected) onCountryCodeChange(detected)
+      onPhoneNumberChange(clean)
+    }
+
+    return (
+      <div className="flex gap-2">
+        <select
+          value={countryCode}
+          onChange={(e) => onCountryCodeChange(e.target.value)}
+          className="w-24 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        >
+          <option value="+91">+91</option>
+          <option value="+1">+1</option>
+          <option value="+44">+44</option>
+          <option value="+61">+61</option>
+          <option value="+81">+81</option>
+          <option value="+86">+86</option>
+        </select>
+        <input
+          type="tel"
+          value={phoneNumber}
+          onChange={handleChange}
+          onPaste={handlePaste}
+          className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+          placeholder="9876543210"
+          required={required}
+        />
+      </div>
+    )
+  }
 
   // ============================================================
   // Stat Card Component
@@ -462,7 +481,7 @@ export default function CRMPipelinePage() {
           </div>
         </div>
         <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-          {typeof value === 'number' && label.includes('Value') 
+          {typeof value === 'number' && label.includes('Value')
             ? `${currency} ${value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
             : typeof value === 'number'
               ? value.toLocaleString('en-IN')
@@ -486,7 +505,7 @@ export default function CRMPipelinePage() {
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
-        
+
         <div className="relative z-10">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
@@ -498,21 +517,21 @@ export default function CRMPipelinePage() {
                   {selectedStageLabel ? `${selectedStageLabel} Pipeline` : 'Sales Pipeline'}
                 </h1>
                 <p className="mt-1 text-indigo-100">
-                  {selectedStageLabel 
-                    ? `Showing leads in the ${selectedStageLabel} stage.` 
+                  {selectedStageLabel
+                    ? `Showing leads in the ${selectedStageLabel} stage.`
                     : 'Manage your leads and move them through the pipeline workflow.'}
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button 
+              <button
                 onClick={() => navigate('/crm/leads?import=1')}
                 className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
               >
                 <Import className="h-4 w-4" />
                 Import
               </button>
-              <button 
+              <button
                 onClick={() => pipelineQuery.refetch()}
                 className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
               >
@@ -528,34 +547,34 @@ export default function CRMPipelinePage() {
       {/* STAT CARDS - 4 Cards with Gradients */}
       {/* ============================================================ */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard 
-          label="Total Leads" 
-          value={pipelineStats.total} 
-          icon={Users} 
+        <StatCard
+          label="Total Leads"
+          value={pipelineStats.total}
+          icon={Users}
           color="indigo"
           subtitle="All leads in pipeline"
         />
-        
-        <StatCard 
-          label="Active Leads" 
-          value={pipelineStats.openLeads} 
-          icon={TrendingUp} 
+
+        <StatCard
+          label="Active Leads"
+          value={pipelineStats.openLeads}
+          icon={TrendingUp}
           color="emerald"
           subtitle="In progress"
         />
-        
-        <StatCard 
-          label="Won" 
-          value={pipelineStats.wonLeads} 
-          icon={Award} 
+
+        <StatCard
+          label="Won"
+          value={pipelineStats.wonLeads}
+          icon={Award}
           color="blue"
           subtitle={`${pipelineStats.conversionRate.toFixed(1)}% conversion`}
         />
-        
-        <StatCard 
-          label="Pipeline Value" 
-          value={pipelineStats.totalValue} 
-          icon={DollarSign} 
+
+        <StatCard
+          label="Pipeline Value"
+          value={pipelineStats.totalValue}
+          icon={DollarSign}
           color="amber"
           subtitle={`${currency} ${pipelineStats.avgValue.toFixed(0)} average`}
         />
@@ -594,12 +613,12 @@ export default function CRMPipelinePage() {
       {/* METRICS RAIL */}
       {/* ============================================================ */}
       <PipelineTopMetrics visibleLeads={visibleLeads} stages={visibleBoard.stages} currency={currency} />
-      
+
       {/* Info Banner */}
       {hasMoreLeads && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
           <AlertCircle className="mr-2 inline h-4 w-4" />
-          Showing the latest {boardLimit.toLocaleString('en-IN')} of {totalLeads.toLocaleString('en-IN')} leads. 
+          Showing the latest {boardLimit.toLocaleString('en-IN')} of {totalLeads.toLocaleString('en-IN')} leads.
           Use filters to narrow the board.
         </div>
       )}
@@ -618,8 +637,8 @@ export default function CRMPipelinePage() {
                 {selectedStageLabel ? `${selectedStageLabel} Board` : 'Pipeline Board'}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {selectedStageLabel 
-                  ? 'This view came from a workflow shortcut. Clear filters to return to the full pipeline.' 
+                {selectedStageLabel
+                  ? 'This view came from a workflow shortcut. Clear filters to return to the full pipeline.'
                   : 'Drag leads between stages, or use the quick actions menu to move them with a single click.'}
               </p>
             </div>
@@ -719,8 +738,13 @@ export default function CRMPipelinePage() {
       {/* CREATE LEAD MODAL - Beautiful Glassmorphism */}
       {/* ============================================================ */}
       {createOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCreateOpen(false)
+          }}
+        >
+          <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="mb-6 flex items-start justify-between border-b border-gray-200 pb-4 dark:border-gray-700">
               <div>
@@ -744,11 +768,11 @@ export default function CRMPipelinePage() {
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     First Name <span className="text-rose-500">*</span>
                   </label>
-                  <input 
+                  <input
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="John" 
-                    value={createForm.first_name} 
-                    onChange={(e) => setCreateForm((state) => ({ ...state, first_name: e.target.value }))} 
+                    placeholder="John"
+                    value={createForm.first_name}
+                    onChange={(e) => setCreateForm((state) => ({ ...state, first_name: e.target.value }))}
                     required
                   />
                 </div>
@@ -758,11 +782,11 @@ export default function CRMPipelinePage() {
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     Last Name <span className="text-rose-500">*</span>
                   </label>
-                  <input 
+                  <input
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="Doe" 
-                    value={createForm.last_name} 
-                    onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))} 
+                    placeholder="Doe"
+                    value={createForm.last_name}
+                    onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))}
                     required
                   />
                 </div>
@@ -784,32 +808,32 @@ export default function CRMPipelinePage() {
                 {/* Email */}
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-                  <input 
+                  <input
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="john@example.com" 
+                    placeholder="john@example.com"
                     type="email"
-                    value={createForm.email} 
-                    onChange={(e) => setCreateForm((state) => ({ ...state, email: e.target.value }))} 
+                    value={createForm.email}
+                    onChange={(e) => setCreateForm((state) => ({ ...state, email: e.target.value }))}
                   />
                 </div>
 
                 {/* Company */}
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company</label>
-                  <input 
+                  <input
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="Acme Corp" 
-                    value={createForm.company_name} 
-                    onChange={(e) => setCreateForm((state) => ({ ...state, company_name: e.target.value }))} 
+                    placeholder="Acme Corp"
+                    value={createForm.company_name}
+                    onChange={(e) => setCreateForm((state) => ({ ...state, company_name: e.target.value }))}
                   />
                 </div>
 
                 {/* Category */}
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
-                  <select 
+                  <select
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.category_id || defaultCategoryId} 
+                    value={createForm.category_id || defaultCategoryId}
                     onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}
                   >
                     <option value="">Select category</option>
@@ -824,9 +848,9 @@ export default function CRMPipelinePage() {
                 {/* Product */}
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Product</label>
-                  <select 
+                  <select
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.product_ids || defaultProductIds} 
+                    value={createForm.product_ids || defaultProductIds}
                     onChange={(e) => setCreateForm((state) => ({ ...state, product_ids: e.target.value }))}
                   >
                     <option value="">Select product</option>
@@ -841,9 +865,9 @@ export default function CRMPipelinePage() {
                 {/* Stage */}
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Stage</label>
-                  <select 
+                  <select
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.current_stage || defaultStageId} 
+                    value={createForm.current_stage || defaultStageId}
                     onChange={(e) => setCreateForm((state) => ({ ...state, current_stage: e.target.value }))}
                   >
                     <option value="">Select stage</option>
@@ -858,9 +882,9 @@ export default function CRMPipelinePage() {
                 {/* Owner */}
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Owner</label>
-                  <select 
+                  <select
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.assigned_to || defaultOwnerId} 
+                    value={createForm.assigned_to || defaultOwnerId}
                     onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}
                   >
                     <option value="">Select owner</option>
@@ -875,9 +899,9 @@ export default function CRMPipelinePage() {
                 {/* Interest Level */}
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Interest Level</label>
-                  <select 
+                  <select
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.interest_level} 
+                    value={createForm.interest_level}
                     onChange={(e) => setCreateForm((state) => ({ ...state, interest_level: e.target.value }))}
                   >
                     <option value="low">Low</option>
@@ -889,33 +913,33 @@ export default function CRMPipelinePage() {
                 {/* Estimated Close */}
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated Close</label>
-                  <input 
+                  <input
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    type="date" 
-                    value={createForm.estimated_close_date} 
-                    onChange={(e) => setCreateForm((state) => ({ ...state, estimated_close_date: e.target.value }))} 
+                    type="date"
+                    value={createForm.estimated_close_date}
+                    onChange={(e) => setCreateForm((state) => ({ ...state, estimated_close_date: e.target.value }))}
                   />
                 </div>
 
                 {/* Tags */}
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Tags</label>
-                  <input 
+                  <input
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="Enter tags separated by | (e.g., hot | priority | enterprise)" 
-                    value={createForm.tag} 
-                    onChange={(e) => setCreateForm((state) => ({ ...state, tag: e.target.value }))} 
+                    placeholder="Enter tags separated by | (e.g., hot | priority | enterprise)"
+                    value={createForm.tag}
+                    onChange={(e) => setCreateForm((state) => ({ ...state, tag: e.target.value }))}
                   />
                 </div>
 
                 {/* Remark */}
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Remarks</label>
-                  <textarea 
+                  <textarea
                     className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white min-h-24"
-                    placeholder="Add any additional notes or remarks..." 
-                    value={createForm.remark} 
-                    onChange={(e) => setCreateForm((state) => ({ ...state, remark: e.target.value }))} 
+                    placeholder="Add any additional notes or remarks..."
+                    value={createForm.remark}
+                    onChange={(e) => setCreateForm((state) => ({ ...state, remark: e.target.value }))}
                   />
                 </div>
               </div>

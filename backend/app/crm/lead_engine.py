@@ -21,7 +21,7 @@ from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
 from app.models.user import User, UserRole, UserStatus
-from app.core.rbac_visibility import require_owned_record_access, visible_user_ids
+from app.core.rbac_visibility import require_owned_record_access
 from app.core.clock import utc_now
 
 
@@ -426,10 +426,6 @@ class AssignmentEngine:
         users = await User.find(
             query
         ).to_list()
-        scoped_user_ids = await visible_user_ids(current_user)
-        if scoped_user_ids is not None:
-            allowed_ids = set(scoped_user_ids)
-            users = [user for user in users if str(user.id) in allowed_ids]
         if not users:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No assignable users found in your company")
         return users
@@ -689,6 +685,8 @@ class LeadEngine:
 
         update = LeadNormalizer.normalize_form_payload(payload, source=prospect.source or "manual")
         now = _now()
+        if "prospect_name" in payload and payload["prospect_name"] is not None:
+            prospect.prospect_name = _normalize_text(payload["prospect_name"])
         if "first_name" in payload and payload["first_name"] is not None:
             prospect.first_name = _normalize_text(payload["first_name"])
         if "last_name" in payload and payload["last_name"] is not None:

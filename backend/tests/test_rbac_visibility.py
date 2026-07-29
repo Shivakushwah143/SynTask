@@ -33,6 +33,21 @@ async def test_admin_scope_is_company_only():
 
 
 @pytest.mark.asyncio
+async def test_sub_admin_scope_is_company_only():
+    from app.core.rbac_visibility import build_visibility_query
+
+    current_user = user("subadmin-1", UserRole.SUB_ADMIN)
+
+    query = await build_visibility_query(
+        current_user,
+        ownership_fields=("created_by",),
+        base_query={"deleted": False},
+    )
+
+    assert query == {"deleted": False, "company_id": "company-1"}
+
+
+@pytest.mark.asyncio
 async def test_manager_scope_includes_self_and_reporting_hierarchy(monkeypatch):
     from app.core.rbac_visibility import build_visibility_query
 

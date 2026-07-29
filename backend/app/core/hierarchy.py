@@ -278,7 +278,7 @@ async def get_creatable_roles(creator: User) -> List[str]:
     elif creator.role == UserRole.SUB_ADMIN:
         roles.extend([UserRole.MANAGER.value, UserRole.EMPLOYEE.value])
     elif creator.role == UserRole.MANAGER:
-        roles.append(UserRole.EMPLOYEE.value)
+        roles.extend([UserRole.LEAD.value, UserRole.EMPLOYEE.value])
     elif creator.role == UserRole.LEAD:
         roles.append(UserRole.EMPLOYEE.value)
     

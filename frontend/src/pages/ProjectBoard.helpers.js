@@ -20,7 +20,6 @@ export const getTaskAssigneeUsers = (users = [], currentUser = null) => {
     const role = normalizeRole(item?.role)
     if (!id || seen.has(id) || id === String(currentUserId || '')) return false
     if (item?.status && String(item.status).toLowerCase() !== 'active') return false
-    if (!['employee', 'junior'].includes(role)) return false
     seen.add(id)
     return true
   })
@@ -80,7 +79,7 @@ export const getProjectRoleAssignmentIds = (projectRecord = {}, assignableUsers 
   return assignedProjectIds.reduce((result, id) => {
     const role = rolesById.get(String(id))
     if (role === 'manager' && !result.manager) result.manager = String(id)
-    if ((role === 'employee' || role === 'lead') && !result.lead) result.lead = String(id)
+    if ((role === 'employee' || role === 'lead' || role === 'manager' || role === 'sub_admin') && !result.lead) result.lead = String(id)
     return result
   }, { manager: '', lead: '' })
 }

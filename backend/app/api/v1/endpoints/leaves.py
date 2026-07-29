@@ -227,7 +227,7 @@ async def approve_leave_request(
     leave, employee = await _load_manageable_leave(leave_id, current_user)
     if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending or forwarded requests can be approved")
-    await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=str(leave.id))
+    await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=leave.id)
     leave.status = LeaveStatus.APPROVED
     leave.reviewed_by = str(current_user.id)
     leave.reviewed_at = utc_now()
@@ -386,23 +386,18 @@ async def _base_query(current_user: User, employee_id: Optional[str]) -> dict:
     if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
         query = leave_visibility_query(current_user, employee_id)
         return query
-    # Managers see their direct/indirect reports
+    # Managers see all company leaves (except their own, shown under "My Requests" tab)
     if current_user.role == UserRole.MANAGER:
-        subordinates = await current_user.get_all_subordinates()
-        visible_roles = {UserRole.EMPLOYEE, UserRole.LEAD}
-        visible_ids = [
-            str(user.id)
-            for user in subordinates
-            if user.role in visible_roles and str(user.id) != str(current_user.id)
-        ]
-        if not visible_ids:
+        return {"company_id": current_user.company_id, "employee_id": {"$ne": str(current_user.id)}}
+    # Employees see only their own submitted leaves
+    if current_user.role == UserRole.EMPLOYEE:
+        if not current_user.company_id:
             return {"employee_id": "__none__"}
-        return {
-            "company_id": current_user.company_id,
-            "employee_id": {"$in": visible_ids},
-        }
-    # Employees and Leads see their own submitted leaves
-    return {"employee_id": str(current_user.id)}
+        return {"employee_id": str(current_user.id), "company_id": current_user.company_id}
+    # Leads see all company leaves (except their own, shown via /my endpoint)
+    if current_user.role == UserRole.LEAD:
+        return {"company_id": current_user.company_id, "employee_id": {"$ne": str(current_user.id)}}
+    return {"employee_id": "__none__"}
 
 
 async def _load_manageable_leave(leave_id: str, current_user: User) -> tuple[LeaveRequest, User]:

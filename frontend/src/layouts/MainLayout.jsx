@@ -28,6 +28,7 @@ const BREADCRUMB_LABELS = {
   interviews: 'Interviews',
   reports: 'Workspace Reports',
   settings: 'System Settings',
+  eod: 'EOD',
 }
 
 const CRM_BREADCRUMB_LABELS = {
@@ -63,8 +64,16 @@ const MainLayout = () => {
       if (isHrPath && segment === 'reports') return 'Recruitment Reports'
       return BREADCRUMB_LABELS[segment] || segment
     })
-  const breadcrumb = breadcrumbSegments.join(' / ')
-  const pageTitle = breadcrumbSegments[breadcrumbSegments.length - 1] || 'Main Dashboard'
+  // For CRM detail/workspace pages with an ID segment, show a readable title instead of the raw ID
+  const isLeadWorkspace = pathSegments.length === 3 && pathSegments[0] === 'crm' && pathSegments[1] === 'leads'
+  const isCompanyWorkspace = pathSegments.length === 3 && pathSegments[0] === 'crm' && pathSegments[1] === 'companies'
+  const displaySegments = isLeadWorkspace
+    ? [breadcrumbSegments[0], breadcrumbSegments[1], 'Lead']
+    : isCompanyWorkspace
+      ? [breadcrumbSegments[0], breadcrumbSegments[1], 'Company']
+      : breadcrumbSegments
+  const breadcrumb = displaySegments.join(' / ')
+  const pageTitle = displaySegments[displaySegments.length - 1] || 'Main Dashboard'
   const pageSubtitle = pathSegments.length ? 'Workspace' : 'Overview'
 
   useKeyboardShortcut('k', openCommand, { ctrlKey: true })

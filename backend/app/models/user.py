@@ -142,9 +142,9 @@ class User(Document):
         if self.role == UserRole.SUB_ADMIN:
             return target_role in [UserRole.MANAGER, UserRole.EMPLOYEE]
 
-        # Manager can create Employee
+        # Manager can create Lead, Employee
         if self.role == UserRole.MANAGER:
-            return target_role == UserRole.EMPLOYEE
+            return target_role in [UserRole.LEAD, UserRole.EMPLOYEE]
 
         # Lead can create Employee
         if self.role == UserRole.LEAD:

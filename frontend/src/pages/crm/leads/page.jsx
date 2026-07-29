@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useOutletContext } from 'react-router-dom'
 import { 
   Area, AreaChart, Bar, BarChart, CartesianGrid, 
   ResponsiveContainer, XAxis, YAxis, PieChart, Pie, 
@@ -114,7 +114,10 @@ export default function CRMLeadsPage() {
   const [categoryForm, setCategoryForm] = useState({ name: '' })
   const [productForm, setProductForm] = useState({ name: '', category_id: '', rate: '', unit: '', state: '', city: '' })
   const [selectedIds, setSelectedIds] = useState([])
-  const [leadSearch, setLeadSearch] = useState('')
+  const [localLeadSearch, setLocalLeadSearch] = useState('')
+  const context = useOutletContext()
+  const leadSearch = context?.searchValue ?? localLeadSearch
+  const setLeadSearch = context?.setSearchValue || setLocalLeadSearch
   const [stageFilter, setStageFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
 
@@ -131,25 +134,17 @@ export default function CRMLeadsPage() {
   const pipelineQuery = useQuery('crm-leads-entry', crmApi.getPipeline, {
     staleTime: 5 * 60 * 1000,
   })
+  // All users fetch the full lead list directly
   const leadsQuery = useQuery(
-    ['crm-all-leads', userRole],
-    () => crmApi.getLeads({ skip: 0, limit: 200 }),
+    ['crm-all-leads', currentUserId],
+    () => crmApi.getLeads({ skip: 0, limit: 500 }),
     {
-      enabled: !isEmployee,
-      staleTime: 60 * 1000,
-    }
-  )
-  const assignedLeadsQuery = useQuery(
-    ['crm-assigned-leads', currentUserId],
-    () => crmApi.getLeads({ limit: 200, skip: 0 }),
-    {
-      enabled: isEmployee && Boolean(currentUserId),
+      enabled: Boolean(currentUserId),
       staleTime: 60 * 1000,
     }
   )
   const duplicatesQuery = useQuery('crm-lead-duplicates', () => salesApi.getDuplicateLeads({}), {
     staleTime: 60 * 1000,
-    enabled: !isEmployee,
   })
   const categoriesQuery = useQuery('crm-lead-categories', salesApi.getCategories, { staleTime: 5 * 60 * 1000 })
   const stagesQuery = useQuery('crm-lead-stages', salesApi.getStages, { staleTime: 5 * 60 * 1000 })
@@ -158,15 +153,27 @@ export default function CRMLeadsPage() {
 
   const board = useMemo(() => buildPipelineBoard(pipelineQuery.data || {}), [pipelineQuery.data])
   const stages = useMemo(() => (Array.isArray(board?.stages) ? board.stages : []), [board])
-  const leadCount = useMemo(() => stages.reduce((sum, stage) => sum + (stage.leads?.length || 0), 0), [stages])
-  const recentLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []).slice(0, 6), [stages])
-  const allAccountLeads = useMemo(() => {
-    const items = leadsQuery.data?.prospects || leadsQuery.data?.items || leadsQuery.data?.data?.prospects || leadsQuery.data?.data?.items || []
-    return Array.isArray(items) ? items : []
-  }, [leadsQuery.data])
+
+  // Primary leads list — prefer direct /crm/leads response (most complete), fall back to pipeline board
+  const allLeads = useMemo(() => {
+    const direct = leadsQuery.data?.prospects || leadsQuery.data?.items || leadsQuery.data?.data?.prospects || leadsQuery.data?.data?.items
+    if (Array.isArray(direct) && direct.length > 0) return direct
+    return stages.flatMap((stage) => stage.leads || [])
+  }, [leadsQuery.data, stages])
+
+  const allAccountLeads = allLeads
+  const leadCount = allLeads.length
+  const recentLeads = allLeads.slice(0, 6)
   const duplicateGroups = useMemo(() => duplicatesQuery.data?.groups || duplicatesQuery.data?.data?.groups || [], [duplicatesQuery.data])
-  const allLeads = useMemo(() => stages.flatMap((stage) => stage.leads || []), [stages])
-  const stageOptions = useMemo(() => stages.filter((stage) => (stage.leads || []).length).map((stage) => ({ value: stage.key, label: stage.name })), [stages])
+  const stageOptions = useMemo(() => {
+    const stageSet = new Map()
+    allLeads.forEach((lead) => {
+      const key = getLeadStageKey(lead) || normalizeText(lead.current_stage || lead.stage || '')
+      const label = lead.current_stage || lead.stage || key
+      if (key) stageSet.set(key, label)
+    })
+    return Array.from(stageSet.entries()).map(([value, label]) => ({ value, label }))
+  }, [allLeads])
   const totalPipelineValue = useMemo(() => allLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0), [allLeads])
   const leadAnalytics = useMemo(() => buildLeadDashboardAnalytics(allLeads, stages, timeService.now(), pipelineQuery.data?.meta?.currency || 'INR'), [allLeads, pipelineQuery.data?.meta?.currency, stages])
   
@@ -192,14 +199,6 @@ export default function CRMLeadsPage() {
   }, [allLeads, leadSearch, priorityFilter, stageFilter])
   
   const selectedLeads = useMemo(() => allLeads.filter((lead) => selectedIds.includes(lead.id || lead._id)), [allLeads, selectedIds])
-  const employeeLeads = useMemo(() => {
-      const items = assignedLeadsQuery.data?.prospects
-        || assignedLeadsQuery.data?.items
-        || assignedLeadsQuery.data?.data?.prospects
-        || assignedLeadsQuery.data?.data?.items
-        || []
-      return Array.isArray(items) ? items : []
-  }, [assignedLeadsQuery.data])
   
   const assignableUsers = useMemo(() => {
     const data = usersQuery.data
@@ -261,6 +260,7 @@ export default function CRMLeadsPage() {
         queryClient.invalidateQueries('crm-leads-entry')
         queryClient.invalidateQueries('crm-pipeline-board')
         queryClient.invalidateQueries('crm-lead-duplicates')
+        queryClient.invalidateQueries('crm-all-leads')
         queryClient.invalidateQueries('sales-prospects')
         setCreateOpen(false)
         setCreateForm({
@@ -443,24 +443,22 @@ export default function CRMLeadsPage() {
           description={isEmployee ? 'Review assigned leads and update status.' : 'Comprehensive view of all leads, analytics, and pipeline status.'}
           actions={(
             <div className="flex flex-wrap items-center gap-2">
-              {!isEmployee && (
-                <>
-                  <Button variant="secondary" onClick={() => setCreateOpen(true)}>
-                    <Plus className="h-4 w-4" />
-                    Add Lead
-                  </Button>
-                  <Button variant="secondary" onClick={() => setImportOpen(true)}>
-                    <Import className="h-4 w-4" />
-                    Import
-                  </Button>
-                  <Button variant="secondary" onClick={exportLeads}>
-                    <Download className="h-4 w-4" />
-                    Export
-                  </Button>
-                  <Button variant="secondary" onClick={() => setBulkOpen(true)} disabled={!selectedIds.length}>
-                    Bulk edit
-                  </Button>
-                </>
+              <Button variant="secondary" onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Add Lead
+              </Button>
+              <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                <Import className="h-4 w-4" />
+                Import
+              </Button>
+              <Button variant="secondary" onClick={exportLeads}>
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
+              {selectedIds.length > 0 && (
+                <Button variant="secondary" onClick={() => setBulkOpen(true)}>
+                  Bulk edit ({selectedIds.length})
+                </Button>
               )}
               <Button variant="primary" onClick={() => navigate('/crm/pipeline')}>
                 Pipeline
@@ -619,8 +617,7 @@ export default function CRMLeadsPage() {
       </div>
 
       {/* Lead Workspace - Search and Filter */}
-      {!isEmployee && (
-        <CRMSection
+      <CRMSection
           title="Lead Workspace"
           description="Search, filter, and manage all leads"
           actions={(
@@ -673,16 +670,16 @@ export default function CRMLeadsPage() {
           </div>
 
           {/* Leads Table */}
-          {pipelineQuery.isLoading ? (
+          {leadsQuery.isLoading ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-xl" />)}
             </div>
-          ) : pipelineQuery.isError ? (
+          ) : leadsQuery.isError ? (
             <CRMEmptyState
               icon={Filter}
               title="Unable to load leads"
-              description={pipelineQuery.error?.response?.data?.detail || 'Try again from the pipeline screen.'}
-              action={<Button variant="secondary" onClick={() => pipelineQuery.refetch()}>Retry</Button>}
+              description={leadsQuery.error?.response?.data?.detail || 'Try again after reloading.'}
+              action={<Button variant="secondary" onClick={() => leadsQuery.refetch()}>Retry</Button>}
             />
           ) : filteredLeads.length ? (
             <>
@@ -767,111 +764,11 @@ export default function CRMLeadsPage() {
             <CRMEmptyState
               icon={Users}
               title="No leads found"
-              description={allLeads.length ? 'Clear filters to see all pipeline leads.' : 'Leads will appear here once the pipeline has records.'}
-              action={allLeads.length ? <Button variant="secondary" onClick={() => { setLeadSearch(''); setStageFilter(''); setPriorityFilter('') }}>Clear filters</Button> : <Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Pipeline</Button>}
+              description={allLeads.length ? 'Clear filters to see all leads.' : 'No leads yet. Add your first lead to get started.'}
+              action={allLeads.length ? <Button variant="secondary" onClick={() => { setLeadSearch(''); setStageFilter(''); setPriorityFilter('') }}>Clear filters</Button> : <Button variant="secondary" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" />Add Lead</Button>}
             />
           )}
         </CRMSection>
-      )}
-
-      {/* Employee Assigned Leads */}
-      {isEmployee && (
-        <CRMSection
-          title="My Assigned Leads"
-          description="Leads assigned to you for follow-up"
-          actions={<Badge label={`${employeeLeads.length} assigned`} colorKey="draft" />}
-        >
-          {assignedLeadsQuery.isLoading ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-24 w-full rounded-xl" />)}
-            </div>
-          ) : assignedLeadsQuery.isError ? (
-            <CRMEmptyState
-              icon={Users}
-              title="Unable to load your leads"
-              description={assignedLeadsQuery.error?.response?.data?.detail || 'Try again after reloading.'}
-              action={<Button variant="secondary" onClick={() => assignedLeadsQuery.refetch()}>Retry</Button>}
-            />
-          ) : employeeLeads.length ? (
-            <>
-              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm dark:bg-black/80">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-border text-sm">
-                    <thead className="bg-surface-muted">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-text-primary">Lead</th>
-                        <th className="px-4 py-3 text-left font-semibold text-text-primary">Company</th>
-                        <th className="px-4 py-3 text-left font-semibold text-text-primary">Stage</th>
-                        <th className="px-4 py-3 text-left font-semibold text-text-primary">Meeting</th>
-                        <th className="px-4 py-3 text-left font-semibold text-text-primary">Dead End</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {employeeLeads.slice(0, showAllEmployeeLeads ? undefined : 6).map((lead) => {
-                        const leadId = lead.id || lead._id
-                        const custom = (() => {
-                          if (typeof lead.custom_fields === 'string') {
-                            try { return JSON.parse(lead.custom_fields) || {} } catch { return {} }
-                          }
-                          return lead.custom_fields || {}
-                        })()
-                        const meetingScheduled = Boolean(custom.meeting_scheduled)
-                        const deadEnd = Boolean(custom.dead_end)
-                        return (
-                          <tr
-                            key={leadId}
-                            className="cursor-pointer hover:bg-surface-muted transition-colors"
-                            onClick={() => navigate(`/crm/leads/${leadId}`)}
-                          >
-                            <td className="px-4 py-3">
-                              <div className="font-medium text-text-primary">{lead.prospect_name || 'Lead'}</div>
-                              <p className="text-xs text-text-muted">{lead.email || lead.phone || '-'}</p>
-                            </td>
-                            <td className="px-4 py-3 text-text-primary">{lead.company_name || '-'}</td>
-                            <td className="px-4 py-3"><Badge label={lead.current_stage || lead.stage || 'Unknown'} colorKey="draft" /></td>
-                            <td className="px-4 py-3">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  employeeStatusMutation.mutate({ leadId, customFields: { ...custom, meeting_scheduled: !meetingScheduled, dead_end: deadEnd } })
-                                }}
-                                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${meetingScheduled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'}`}
-                              >
-                                {meetingScheduled ? 'Scheduled' : 'Not scheduled'}
-                              </button>
-                            </td>
-                            <td className="px-4 py-3">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  employeeStatusMutation.mutate({ leadId, customFields: { ...custom, dead_end: !deadEnd, meeting_scheduled: meetingScheduled } })
-                                }}
-                                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${deadEnd ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200'}`}
-                              >
-                                {deadEnd ? 'Dead end' : 'Open'}
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <ViewMoreButton 
-                show={showAllEmployeeLeads} 
-                setShow={setShowAllEmployeeLeads} 
-                total={employeeLeads.length} 
-                label="assigned leads" 
-              />
-            </>
-          ) : (
-            <CRMEmptyState icon={Users} title="No assigned leads" description="Leads assigned to you will appear here automatically." />
-          )}
-        </CRMSection>
-      )}
 
       {/* Duplicates Section */}
       <CRMSection
@@ -937,96 +834,71 @@ export default function CRMLeadsPage() {
 
       {/* All Account Leads */}
       <CRMSection
-        title={isEmployee ? 'Recent Pipeline Leads' : 'All Account Leads'}
-        description={isEmployee ? 'Recently visible leads from the pipeline.' : 'Complete list of all leads in the account.'}
-        actions={<Badge label={`${isEmployee ? recentLeads.length : allAccountLeads.length} leads`} colorKey="draft" />}
-      >
-        {!isEmployee && (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <Button type="button" variant="secondary" onClick={() => leadsQuery.refetch()}>
+        title="All Leads"
+        description="Complete list of all leads in the account"
+        actions={(
+          <div className="flex items-center gap-2">
+            <Badge label={`${allAccountLeads.length} leads`} colorKey="draft" />
+            <Button type="button" variant="secondary" size="sm" onClick={() => leadsQuery.refetch()}>
               Refresh
             </Button>
           </div>
         )}
-        
-        {((!isEmployee && leadsQuery.isLoading) || (isEmployee && pipelineQuery.isLoading)) ? (
+      >
+        {leadsQuery.isLoading ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-24 w-full rounded-xl" />)}
           </div>
-        ) : ((!isEmployee && leadsQuery.isError) || (isEmployee && pipelineQuery.isError)) ? (
+        ) : leadsQuery.isError ? (
           <CRMEmptyState
             icon={Filter}
             title="Unable to load leads"
-            description={(isEmployee ? pipelineQuery.error?.response?.data?.detail : leadsQuery.error?.response?.data?.detail) || 'Try again from the pipeline screen.'}
-            action={<Button variant="secondary" onClick={() => (isEmployee ? pipelineQuery.refetch() : leadsQuery.refetch())}>Retry</Button>}
+            description={leadsQuery.error?.response?.data?.detail || 'Try again from the pipeline screen.'}
+            action={<Button variant="secondary" onClick={() => leadsQuery.refetch()}>Retry</Button>}
           />
-        ) : !isEmployee ? (
-          allAccountLeads.length ? (
-            <>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {allAccountLeads.slice(0, showAllAccountLeads ? undefined : 6).map((lead) => {
-                  const leadId = lead.id || lead._id
-                  const { meetingScheduled, deadEnd } = getEmployeeLeadFlags(lead)
-                  return (
-                    <div
-                      key={leadId}
-                      className="rounded-xl border border-border bg-surface p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer dark:bg-black/60"
-                      onClick={() => navigate(`/crm/leads/${leadId}`)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-text-primary truncate">{lead.company_name || lead.prospect_name || 'Lead'}</p>
-                          <p className="text-xs text-text-muted mt-1">{lead.email || lead.phone || '-'}</p>
-                        </div>
-                        <Badge label={lead.current_stage || lead.stage || 'Unknown'} colorKey="draft" />
-                      </div>
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className="text-xs text-text-muted">Owner: {getOwnerName(lead, userNameById)}</span>
-                        <div className="flex gap-1">
-                          <Badge label={meetingScheduled ? 'Meeting' : 'No Meeting'} colorKey={meetingScheduled ? 'scheduled' : 'draft'} size="sm" />
-                          {deadEnd && <Badge label="Dead" colorKey="danger" size="sm" />}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              <ViewMoreButton 
-                show={showAllAccountLeads} 
-                setShow={setShowAllAccountLeads} 
-                total={allAccountLeads.length} 
-                label="account leads" 
-              />
-            </>
-          ) : (
-            <CRMEmptyState icon={Users} title="No leads yet" description="Leads will appear here once the account has records." action={<Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Open Pipeline</Button>} />
-          )
-        ) : recentLeads.length ? (
+        ) : allAccountLeads.length ? (
           <>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {recentLeads.slice(0, 6).map((lead) => (
-                <div
-                  key={lead.id || lead._id}
-                  className="rounded-xl border border-border bg-surface p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer dark:bg-black/60"
-                  onClick={() => navigate(`/crm/leads/${lead.id || lead._id}`)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-text-primary truncate">{lead.company_name || lead.prospect_name || 'Lead'}</p>
-                      <p className="text-xs text-text-muted mt-1">{getOwnerName(lead, userNameById)}</p>
+              {allAccountLeads.slice(0, showAllAccountLeads ? undefined : 6).map((lead) => {
+                const leadId = lead.id || lead._id
+                const { meetingScheduled, deadEnd } = getEmployeeLeadFlags(lead)
+                return (
+                  <div
+                    key={leadId}
+                    className="rounded-xl border border-border bg-surface p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer dark:bg-black/60"
+                    onClick={() => navigate(`/crm/leads/${leadId}`)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-text-primary truncate">{lead.company_name || lead.prospect_name || 'Lead'}</p>
+                        <p className="text-xs text-text-muted mt-1">{lead.email || lead.phone || '-'}</p>
+                      </div>
+                      <Badge label={lead.current_stage || lead.stage || 'Unknown'} colorKey="draft" />
                     </div>
-                    <Badge label={lead.current_stage || lead.stage || 'Unknown'} colorKey="draft" />
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-xs text-text-muted">Owner: {getOwnerName(lead, userNameById)}</span>
+                      <div className="flex gap-1">
+                        <Badge label={meetingScheduled ? 'Meeting' : 'No Meeting'} colorKey={meetingScheduled ? 'scheduled' : 'draft'} size="sm" />
+                        {deadEnd && <Badge label="Dead" colorKey="danger" size="sm" />}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
+            <ViewMoreButton 
+              show={showAllAccountLeads} 
+              setShow={setShowAllAccountLeads} 
+              total={allAccountLeads.length} 
+              label="leads" 
+            />
           </>
         ) : (
           <CRMEmptyState
             icon={Users}
             title="No leads yet"
-            description="Leads will appear here once the pipeline has records."
-            action={<Button variant="secondary" onClick={() => navigate('/crm/pipeline')}>Open Pipeline</Button>}
+            description="No leads found. Add your first lead using the button above."
+            action={<Button variant="secondary" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" />Add Lead</Button>}
           />
         )}
       </CRMSection>
@@ -1066,8 +938,7 @@ export default function CRMLeadsPage() {
       />
 
       {/* Create Lead Modal */}
-      {!isEmployee && (
-        <Modal
+      <Modal
           isOpen={createOpen}
           onClose={() => setCreateOpen(false)}
           title="Add New Lead"
@@ -1208,7 +1079,6 @@ export default function CRMLeadsPage() {
             </div>
           </form>
         </Modal>
-      )}
       <Modal
         isOpen={createCategoryOpen}
         onClose={() => setCreateCategoryOpen(false)}

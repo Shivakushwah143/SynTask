@@ -113,14 +113,25 @@ export default function EODReports() {
   const submit = async (event) => {
     event.preventDefault()
     if (!canSubmit) return
+    if (saving) return
     try {
       setSaving(true)
       await eodAPI.submit({ report_date: todayIso(), ...form })
       toast.success(status === 'submitted' ? 'EOD updated' : 'EOD submitted')
-      await loadMine()
-      await loadReview()
+      try {
+        await loadMine()
+      } catch (mineErr) {
+        console.error('Error reloading EOD data:', mineErr)
+      }
+      try {
+        await loadReview()
+      } catch (reviewErr) {
+        console.error('Error reloading review data:', reviewErr)
+      }
     } catch (error) {
-      console.error(error)
+      const msg = error?.response?.data?.detail || error?.message || 'Failed to submit EOD report'
+      toast.error(msg)
+      console.error('EOD submit error:', error)
     } finally {
       setSaving(false)
     }

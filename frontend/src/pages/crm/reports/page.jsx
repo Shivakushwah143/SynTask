@@ -105,7 +105,7 @@ export default function CRMReportsPage() {
   const pipeline = useMemo(() => analytics?.pipeline || {}, [analytics])
   const revenueByClient = useMemo(() => (Array.isArray(analytics?.analytics?.revenue_by_client) ? analytics.analytics.revenue_by_client : []), [analytics])
   const revenueByService = useMemo(() => (Array.isArray(analytics?.analytics?.revenue_by_service) ? analytics.analytics.revenue_by_service : []), [analytics])
-  const revenueBySource = useMemo(() => (Array.isArray(analytics?.analytics?.revenue_by_source) ? analytics.analytics.revenue_by_source : []), [analytics])
+  const revenueBySource = useMemo(() => (Array.isArray(analytics?.analytics?.revenue_by_lead_source) ? analytics.analytics.revenue_by_lead_source : []), [analytics])
   const revenueByIndustry = useMemo(() => (Array.isArray(analytics?.analytics?.revenue_by_industry) ? analytics.analytics.revenue_by_industry : []), [analytics])
   const stageConversion = useMemo(() => (Array.isArray(kpis?.stage_conversion) ? kpis.stage_conversion : []), [kpis])
   const stageBreakdown = useMemo(() => (Array.isArray(pipeline?.deals_by_stage) ? pipeline.deals_by_stage : []), [pipeline])

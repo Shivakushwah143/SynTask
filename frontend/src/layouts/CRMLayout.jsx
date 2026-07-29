@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -37,7 +37,9 @@ import {
 } from 'lucide-react'
 import { CRMWorkspace } from '../components/crm'
 import { CRM_NAV_ITEMS, CRM_ROUTE_DESCRIPTIONS, CRM_ROUTE_LABELS } from '../pages/crm/metadata'
-import { Badge } from '../components/ui'
+import { Badge, Button } from '../components/ui'
+import { useAuthStore } from '../store/authStore'
+import { hasCompanyAdminAccess, isManagerRole } from '../utils/roles'
 
 // Enhanced navigation items with icons and colors
 const ENHANCED_NAV_ITEMS = [
@@ -113,17 +115,15 @@ const NavItem = ({ item, isActive, onClick, collapsed = false }) => {
   return (
     <button
       onClick={onClick}
-      className={`group relative flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-        isActive
-          ? 'bg-indigo-50 text-indigo-700 shadow-sm dark:bg-indigo-950/30 dark:text-indigo-300'
-          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200'
-      } ${collapsed ? 'justify-center px-2' : ''}`}
+      className={`group relative flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 ${isActive
+        ? 'bg-indigo-50 text-indigo-700 shadow-sm dark:bg-indigo-950/30 dark:text-indigo-300'
+        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200'
+        } ${collapsed ? 'justify-center px-2' : ''}`}
       title={collapsed ? item.label : undefined}
     >
       <div
-        className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r ${item.color} text-white shadow-lg shadow-indigo-500/20 transition-all group-hover:scale-105 ${
-          isActive ? 'ring-2 ring-indigo-500/30' : ''
-        }`}
+        className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r ${item.color} text-white shadow-lg shadow-indigo-500/20 transition-all group-hover:scale-105 ${isActive ? 'ring-2 ring-indigo-500/30' : ''
+          }`}
       >
         <Icon className="h-4 w-4" />
       </div>
@@ -149,9 +149,17 @@ const NavItem = ({ item, isActive, onClick, collapsed = false }) => {
 
 const CRMLayout = () => {
   const location = useLocation()
+  const { user } = useAuthStore()
+  const canSeeSettings = hasCompanyAdminAccess(user?.role) || isManagerRole(user?.role)
   const [searchValue, setSearchValue] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const q = params.get('q') || params.get('search') || ''
+    setSearchValue(q)
+  }, [location.pathname, location.search])
 
   const routePath = useMemo(() => {
     const pathname = location.pathname.replace(/\/+$/, '') || '/crm/pipeline'
@@ -215,16 +223,14 @@ const CRMLayout = () => {
     <div className="flex h-full min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Sidebar Navigation */}
       <aside
-        className={`sticky top-0 flex h-screen flex-col overflow-hidden border-r border-gray-200 bg-white transition-all duration-300 dark:border-gray-700 dark:bg-gray-900 ${
-          getSidebarWidth()
-        } ${!sidebarVisible ? 'border-0' : ''}`}
+        className={`sticky top-0 flex h-screen flex-col overflow-hidden border-r border-gray-200 bg-white transition-all duration-300 dark:border-gray-700 dark:bg-gray-900 ${getSidebarWidth()
+          } ${!sidebarVisible ? 'border-0' : ''}`}
       >
         {sidebarVisible && (
           <>
             {/* Logo / Brand with Hide Button */}
-            <div className={`flex items-center border-b border-gray-200 px-4 py-3 dark:border-gray-700 ${
-              sidebarCollapsed ? 'flex-col gap-2' : 'justify-between'
-            }`}>
+            <div className={`flex items-center border-b border-gray-200 px-4 py-3 dark:border-gray-700 ${sidebarCollapsed ? 'flex-col gap-2' : 'justify-between'
+              }`}>
               <div className={`flex items-center ${sidebarCollapsed ? 'flex-col' : 'gap-2'}`}>
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/20">
                   <Sparkles className="h-4 w-4" />
@@ -236,13 +242,12 @@ const CRMLayout = () => {
                   </>
                 )}
               </div>
-              
+
               {/* Hide Sidebar Button - Always visible at top */}
               <button
                 onClick={toggleSidebarVisibility}
-                className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300 ${
-                  sidebarCollapsed ? 'justify-center' : ''
-                }`}
+                className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300 ${sidebarCollapsed ? 'justify-center' : ''
+                  }`}
                 title="Hide sidebar"
               >
                 <EyeOff className="h-4 w-4" />
@@ -254,9 +259,8 @@ const CRMLayout = () => {
             <div className="border-b border-gray-200 px-3 py-2 dark:border-gray-700">
               <button
                 onClick={toggleSidebarCollapse}
-                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 ${
-                  sidebarCollapsed ? 'justify-center' : ''
-                }`}
+                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 ${sidebarCollapsed ? 'justify-center' : ''
+                  }`}
                 title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
                 {sidebarCollapsed ? (
@@ -272,7 +276,7 @@ const CRMLayout = () => {
 
             {/* Navigation */}
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {ENHANCED_NAV_ITEMS.map((item) => (
+              {ENHANCED_NAV_ITEMS.filter((item) => item.id !== 'settings' || canSeeSettings).map((item) => (
                 <NavItem
                   key={item.id}
                   item={item}

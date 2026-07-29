@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink } from 'lucide-react'
+import { Briefcase, Plus, Edit, Trash2, X, Mail, Phone, Calendar, FileText, Upload, Download, Search, Eye, FolderKanban, ExternalLink, Filter, ChevronDown, Building2, MapPin, User, Users, DollarSign, Clock, CheckCircle2, Sparkles, ShieldCheck } from 'lucide-react'
 import { clientsAPI } from '../api/clients'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { Button, CreatableSelectField, EmptyState, FormField, LoadingSpinner, Modal, PhoneInput, SkeletonTable, inputClassName } from '../components/ui'
@@ -12,6 +12,39 @@ import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { timeService } from '@/services/timeService'
+
+const getTotalBudget = (client) => {
+  if (!client) return 0
+  if (client.total_budget != null) return Number(client.total_budget) || 0
+  if (client.budget != null) return Number(client.budget) || 0
+  if (Array.isArray(client.projects)) {
+    return client.projects.reduce((sum, p) => sum + (Number(p.budget) || 0), 0)
+  }
+  return 0
+}
+
+const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
+  const colors = {
+    indigo: 'from-indigo-500 to-purple-500',
+    emerald: 'from-emerald-500 to-teal-500',
+    amber: 'from-amber-500 to-orange-500',
+    rose: 'from-rose-500 to-pink-500',
+    purple: 'from-purple-500 to-pink-500',
+  }
+
+  return (
+    <div className="group rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.01] hover:border-indigo-200 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-indigo-800">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-xl bg-gradient-to-r ${colors[color]} p-2.5 text-white shadow-md transition-transform group-hover:scale-110`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    </div>
+  )
+}
 
 const Clients = () => {
   const { user } = useAuthStore()
@@ -41,6 +74,10 @@ const Clients = () => {
     assigned_to: '',
     notes: '',
     tags: '',
+    client_type: '',
+    budget: '',
+    start_date: '',
+    delivery_date: '',
   })
   const [formErrors, setFormErrors] = useState({})
   const [editingClient, setEditingClient] = useState(null)
@@ -70,6 +107,7 @@ const Clients = () => {
   const [showDocumentModal, setShowDocumentModal] = useState(false)
   const [documentFile, setDocumentFile] = useState(null)
   const [documentName, setDocumentName] = useState('')
+  const [updatingStatusId, setUpdatingStatusId] = useState(null)
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
@@ -145,6 +183,10 @@ const Clients = () => {
           formDataObj.append(key, formData[key])
         }
       })
+      // Handle client_type field name mapping (if needed)
+      if (formData.client_type) {
+        formDataObj.set('client_type', formData.client_type)
+      }
 
       await clientsAPI.createClient(formDataObj)
       toast.success('Client created successfully')
@@ -171,6 +213,10 @@ const Clients = () => {
       Object.keys(formData).forEach(key => {
         formDataObj.append(key, formData[key] || '')
       })
+      // Handle client_type field name mapping (if needed)
+      if (formData.client_type) {
+        formDataObj.set('client_type', formData.client_type)
+      }
 
       await clientsAPI.updateClient(editingClient.id, formDataObj)
       toast.success('Client updated successfully')
@@ -246,11 +292,29 @@ const Clients = () => {
       assigned_to: client.assigned_to || '',
       notes: client.notes || '',
       tags: Array.isArray(client.tags) ? client.tags.join(', ') : '',
+      client_type: client.client_type || '',
+      budget: client.budget || '',
+      start_date: client.start_date ? client.start_date.substring(0, 10) : '',
+      delivery_date: client.delivery_date ? client.delivery_date.substring(0, 10) : '',
     })
     setShowCreateModal(true)
   }
 
-  
+  const handleStatusChange = async (clientId, newStatus) => {
+    if (updatingStatusId) return
+    try {
+      setUpdatingStatusId(clientId)
+      await clientsAPI.updateClientStatus(clientId, newStatus)
+      toast.success(`Client status updated to ${newStatus}`)
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
+      )
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update status')
+    } finally {
+      setUpdatingStatusId(null)
+    }
+  }
 
   const handleCreateProject = async (e) => {
     e.preventDefault()
@@ -258,18 +322,19 @@ const Clients = () => {
 
     try {
       setCreatingProject(true)
-      
+
+      const keyVal = (projectForm.key || (projectForm.name || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16)).trim()
       // Create project first
       const projectData = {
-        project_id: projectForm.project_id,
+        project_id: keyVal,
         name: projectForm.name,
-        key: projectForm.key,
+        key: keyVal,
         description: projectForm.description || '',
         type: projectForm.type || 'software',
         assigned_to: projectForm.assigned_to || '',
         client_id: selectedClient.id,
       }
-      
+
       // Convert dates to ISO format
       if (projectForm.start_date) {
         projectData.start_date = timeService.toUtcISOString(projectForm.start_date)
@@ -280,7 +345,7 @@ const Clients = () => {
 
       const projectResponse = await projectsApi.createProject(projectData)
       const projectId = projectResponse.data.project_id || projectResponse.data.id
-      
+
       if (!projectId) {
         throw new Error('Failed to get project ID from response')
       }
@@ -439,6 +504,10 @@ const Clients = () => {
       assigned_to: '',
       notes: '',
       tags: '',
+      client_type: '',
+      budget: '',
+      start_date: '',
+      delivery_date: '',
     })
     setEditingClient(null)
     setFormErrors({})
@@ -463,7 +532,7 @@ const Clients = () => {
   }
 
   const filteredClients = clients.filter(client => {
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       client.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       client.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       client.company_name?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -492,7 +561,7 @@ const Clients = () => {
           }
         })
         .filter(date => date !== null)
-      
+
       if (dates.length > 0) {
         return timeService.instant(Math.min(...dates.map(d => d.getTime())))
       }
@@ -514,7 +583,7 @@ const Clients = () => {
           }
         })
         .filter(date => date !== null)
-      
+
       if (dates.length > 0) {
         return timeService.instant(Math.max(...dates.map(d => d.getTime())))
       }
@@ -522,59 +591,90 @@ const Clients = () => {
     return null
   }
 
+  const activeCount = useMemo(() => clients.filter(c => (c.status || 'active') === 'active').length, [clients])
+  const totalPortfolioBudget = useMemo(() => clients.reduce((sum, c) => sum + getTotalBudget(c), 0), [clients])
+  const totalProjectsCount = useMemo(() => clients.reduce((sum, c) => sum + (c.projects?.length || c.project_ids?.length || 0), 0), [clients])
+
   if (loading) {
     return (
-      <div className="p-4">
+      <div className="p-4 md:p-6 space-y-6">
         <SkeletonTable rows={8} cols={5} />
       </div>
     )
   }
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Clients</h1>
-          <p className="text-gray-600 text-xs mt-0.5">Manage your clients and their projects</p>
+    <div className="space-y-6 p-4 md:p-6">
+      {/* Hero Header Banner */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
+              <Briefcase className="h-7 w-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">Clients Directory</h1>
+              <p className="mt-1 text-indigo-100 text-sm">Manage enterprise client accounts, linked projects, contract budgets & files</p>
+            </div>
+          </div>
+          {(isCompanyAdmin || isLead) && (
+            <button
+              type="button"
+              onClick={() => {
+                resetForm()
+                setShowCreateModal(true)
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20 self-start md:self-auto"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Client</span>
+            </button>
+          )}
         </div>
-        {(isCompanyAdmin || isLead) && (
-          <button
-            onClick={() => {
-              resetForm()
-              setShowCreateModal(true)
-            }}
-            className="btn btn-primary flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Client</span>
-          </button>
-        )}
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center space-x-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search clients..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input pl-10"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="input"
-        >
-          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All Status</option>
-          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="active">Active</option>
-          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="inactive">Inactive</option>
-          <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="archived">Archived</option>
-        </select>
+      {/* Metrics Stats Row */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Total Clients" value={clients.length} icon={Users} color="indigo" subtitle="Registered Accounts" />
+        <StatCard label="Active Accounts" value={activeCount} icon={CheckCircle2} color="emerald" subtitle="In Operations" />
+        <StatCard label="Portfolio Budget" value={`₹${totalPortfolioBudget > 0 ? totalPortfolioBudget.toLocaleString() : '0'}`} icon={DollarSign} color="amber" subtitle="Total Contract Value" />
+        <StatCard label="Linked Projects" value={totalProjectsCount} icon={FolderKanban} color="purple" subtitle="Active Deliverables" />
       </div>
+
+      {/* Search & Filter Controls Surface */}
+      <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search clients by name, company, email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 pl-10 pr-4 py-2 text-xs font-medium text-gray-900 shadow-sm transition placeholder:text-gray-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800/50 dark:text-white dark:focus:bg-gray-800"
+            />
+          </div>
+          <div className="relative flex items-center">
+            <Filter className="absolute left-3.5 h-4 w-4 text-gray-400 pointer-events-none z-10" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-10 w-full sm:w-auto rounded-xl border border-gray-200 bg-white pl-10 pr-9 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-indigo-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-600 cursor-pointer appearance-none"
+            >
+              <option value="">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="on_hold">On Hold</option>
+              <option value="archived">Archived</option>
+            </select>
+            <ChevronDown className="absolute right-3 h-4 w-4 text-gray-400 pointer-events-none" />
+          </div>
+        </div>
+      </div>
+
+      {/* Clients Table / Cards Container */}
 
       {/* Clients Table */}
       {loadError ? (
@@ -607,130 +707,183 @@ const Clients = () => {
           ) : null}
         />
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-gray-500 border-b">
-                <th className="py-3 pr-4 font-medium">Client</th>
-                <th className="py-3 pr-4 font-medium">Contact</th>
-                <th className="py-3 pr-4 font-medium">Email</th>
-                <th className="py-3 pr-4 font-medium">Projects</th>
-                <th className="py-3 pr-4 font-medium">Budget</th>
-                <th className="py-3 pr-4 font-medium">Start Date</th>
-                <th className="py-3 pr-4 font-medium">Delivery Date</th>
-                <th className="py-3 pr-4 font-medium">Status</th>
-                <th className="py-3 pr-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filteredClients.map((client) => (
-                <tr
-                  key={client.id}
-                  className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => handleViewClient(client)}
-                >
-                  <td className="py-3 pr-4">
-                    <div className="text-sm font-semibold text-gray-900">{client.name}</div>
-                    {client.company_name && (
-                      <div className="text-xs text-gray-500">{client.company_name}</div>
-                    )}
-                  </td>
-                  <td className="py-3 pr-4 text-xs text-gray-700">
-                    {client.contact || '-'}
-                  </td>
-                  <td className="py-3 pr-4 text-xs text-gray-700">
-                    {client.email || '-'}
-                  </td>
-                  <td className="py-3 pr-4 text-xs text-gray-700">
-                    {client.total_projects ?? client.project_ids?.length ?? 0}
-                  </td>
-                  <td className="py-3 pr-4 text-xs text-gray-700">
-                    {getTotalBudget(client) > 0 ? `₹${getTotalBudget(client).toLocaleString()}` : '-'}
-                  </td>
-                  <td className="py-3 pr-4 text-xs text-gray-700">
-                    {(() => {
-                      const startDate = getEarliestStartDate(client)
-                      return startDate ? format(startDate, 'MMM d, yyyy') : '-'
-                    })()}
-                  </td>
-                  <td className="py-3 pr-4 text-xs text-gray-700">
-                    {(() => {
-                      const deliveryDate = getLatestDeliveryDate(client)
-                      return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
-                    })()}
-                  </td>
-                  <td className="py-3 pr-4">
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full ${
-                        client.status === 'active'
-                          ? 'bg-green-100 text-green-700'
-                          : client.status === 'inactive'
-                          ? 'bg-gray-100 text-gray-700'
-                          : 'bg-yellow-100 text-yellow-700'
-                      }`}
-                    >
-                      {client.status}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleViewClient(client)
-                        }}
-                        className="p-1 text-gray-600 hover:text-primary-600"
-                        title="View"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openClientWorkspace(client.id)
-                        }}
-                        className="p-1 text-gray-600 hover:text-primary-600"
-                        title="Open workspace"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </button>
-                      {(isCompanyAdmin || isLead) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleEditClient(client)
-                          }}
-                          className="p-1 text-gray-600 hover:text-primary-600"
-                          title="Edit"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                      )}
-                      {isCompanyAdmin && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteClient(client.id)
-                          }}
-                          className="p-1 text-gray-600 hover:text-red-600"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
+        <div className="rounded-2xl border border-gray-200/80 bg-white shadow-sm overflow-hidden dark:border-gray-800 dark:bg-gray-900">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-gray-200/80 bg-gray-50/70 font-semibold text-gray-500 uppercase tracking-wider dark:border-gray-800 dark:bg-gray-800/60 dark:text-gray-400">
+                  <th className="py-3.5 px-4">Client</th>
+                  <th className="py-3.5 px-4">Contact</th>
+                  <th className="py-3.5 px-4">Email</th>
+                  <th className="py-3.5 px-4">Type</th>
+                  <th className="py-3.5 px-4">Projects</th>
+                  <th className="py-3.5 px-4">Budget</th>
+                  <th className="py-3.5 px-4">Start Date</th>
+                  <th className="py-3.5 px-4">Delivery Date</th>
+                  <th className="py-3.5 px-4">Status</th>
+                  <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {filteredClients.map((client) => (
+                  <tr
+                    key={client.id}
+                    className="group cursor-pointer transition hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
+                    onClick={() => handleViewClient(client)}
+                  >
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-xs font-bold text-white shadow-sm">
+                          {client.name?.[0]?.toUpperCase() || 'C'}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">{client.name}</div>
+                          {client.company_name && (
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400">{client.company_name}</div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300 font-medium">
+                      {client.contact || '-'}
+                    </td>
+                    <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
+                      {client.email || '-'}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {client.client_type === 'monthly' ? (
+                        <span className="inline-flex items-center rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">Monthly</span>
+                      ) : client.client_type === 'one_time' ? (
+                        <span className="inline-flex items-center rounded-lg bg-purple-50 px-2.5 py-1 text-[11px] font-semibold text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/60">One Time</span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-gray-900 dark:text-white font-bold">
+                      {client.total_projects ?? client.project_ids?.length ?? 0}
+                    </td>
+                    <td className="py-3.5 px-4 text-gray-900 dark:text-white font-bold">
+                      {client.budget > 0 ? `₹${Number(client.budget).toLocaleString()}` : getTotalBudget(client) > 0 ? `₹${getTotalBudget(client).toLocaleString()}` : '-'}
+                    </td>
+                    <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
+                      {client.start_date ? format(timeService.instant(client.start_date), 'MMM d, yyyy') : (() => {
+                        const startDate = getEarliestStartDate(client)
+                        return startDate ? format(startDate, 'MMM d, yyyy') : '-'
+                      })()}
+                    </td>
+                    <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
+                      {client.delivery_date ? format(timeService.instant(client.delivery_date), 'MMM d, yyyy') : (() => {
+                        const deliveryDate = getLatestDeliveryDate(client)
+                        return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
+                      })()}
+                    </td>
+                    <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
+                      {(isCompanyAdmin || isLead) ? (
+                        <select
+                          value={client.status || 'active'}
+                          onChange={(e) => handleStatusChange(client.id, e.target.value)}
+                          disabled={updatingStatusId === client.id}
+                          className={`text-xs rounded-full px-2.5 py-1 border-0 font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 transition ${client.status === 'active'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : client.status === 'inactive'
+                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                              : client.status === 'on_hold'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                : client.status === 'archived'
+                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                            }`}
+                        >
+                          <option value="active">Active</option>
+                          <option value="inactive">Inactive</option>
+                          <option value="on_hold">On Hold</option>
+                          <option value="archived">Archived</option>
+                        </select>
+                      ) : (
+                        <span
+                          className={`text-xs px-2.5 py-1 rounded-full font-semibold ${client.status === 'active'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : client.status === 'inactive'
+                              ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                              : client.status === 'on_hold'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                : client.status === 'archived'
+                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                            }`}
+                        >
+                          {client.status || 'active'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleViewClient(client)
+                          }}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition"
+                          title="View Client Details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openClientWorkspace(client.id)
+                          }}
+                          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition"
+                          title="Open Workspace"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </button>
+                        {(isCompanyAdmin || isLead) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleEditClient(client)
+                            }}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition"
+                            title="Edit Client"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                        )}
+                        {isCompanyAdmin && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteClient(client.id)
+                            }}
+                            className="rounded-lg p-1.5 text-gray-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 transition"
+                            title="Delete Client"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* Create/Edit Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowCreateModal(false)
+              resetForm()
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-gray-900">
@@ -870,7 +1023,52 @@ const Clients = () => {
                     />
                   </div>
                 </div>
+                {/* Client Type & Financial Info */}
+                <div className="md:col-span-2">
+                  <h3 className="text-xs font-semibold text-gray-700 mb-2 border-b pb-1 dark:text-gray-300">Financial & Scheduling</h3>
+                </div>
                 <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Client Type</label>
+                  <select
+                    value={formData.client_type}
+                    onChange={(e) => setFormData({ ...formData, client_type: e.target.value })}
+                    className="input"
+                  >
+                    <option value="">Select type...</option>
+                    <option value="monthly">Monthly Client</option>
+                    <option value="one_time">One Time Client</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Budget (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.budget}
+                    onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                    className="input"
+                    step="0.01"
+                    placeholder="Total client budget"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Start Date</label>
+                  <input
+                    type="date"
+                    value={formData.start_date}
+                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                    className="input"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-gray-200">Delivery Date</label>
+                  <input
+                    type="date"
+                    value={formData.delivery_date}
+                    onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })}
+                    className="input"
+                  />
+                </div>
+                <div className="md:col-span-2">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Tags (comma separated)</label>
                   <input
                     type="text"
@@ -880,7 +1078,7 @@ const Clients = () => {
                     placeholder="e.g., important, vip, recurring"
                   />
                 </div>
-                <div>
+                <div className="md:col-span-2">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
                   <textarea
                     value={formData.notes}
@@ -915,81 +1113,185 @@ const Clients = () => {
         </div>
       )}
 
-      {/* Client Detail Modal */}
+      {/* Client Detail Modal - Redesigned & Beautiful */}
       {showDetailModal && selectedClient && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">{selectedClient.name}</h2>
-                  {selectedClient.company_name && (
-                    <p className="text-xs text-gray-600">{selectedClient.company_name}</p>
-                  )}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-md"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowDetailModal(false)
+          }}
+        >
+          <div
+            className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl border border-gray-100 bg-white shadow-2xl transition-all dark:border-gray-800 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Hero Banner */}
+            <div className="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 p-6 sm:p-8 text-white">
+              <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-3xl"></div>
+              <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-3xl"></div>
+
+              <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/30 bg-white/20 text-2xl font-bold text-white shadow-lg backdrop-blur-md">
+                    {selectedClient.name?.[0]?.toUpperCase() || 'C'}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-2xl font-bold tracking-tight text-white">{selectedClient.name}</h2>
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${selectedClient.status === 'active' ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30' :
+                        selectedClient.status === 'on_hold' ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30' :
+                          selectedClient.status === 'archived' ? 'bg-rose-500/20 text-rose-200 border border-rose-400/30' :
+                            'bg-white/20 text-gray-200 border border-white/30'
+                        }`}>
+                        {selectedClient.status || 'Active'}
+                      </span>
+                    </div>
+                    {selectedClient.company_name && (
+                      <p className="mt-1 flex items-center gap-1.5 text-sm text-indigo-100">
+                        <Building2 className="h-4 w-4 opacity-80" />
+                        {selectedClient.company_name}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
                   <button
+                    type="button"
                     onClick={() => openClientWorkspace(selectedClient.id)}
-                    className="btn btn-sm btn-secondary inline-flex items-center gap-1"
+                    className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40"
                   >
-                    <ExternalLink className="h-3 w-3" />
-                    Workspace
+                    <ExternalLink className="h-4 w-4" />
+                    Open Workspace
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setShowDetailModal(false)
                       setSelectedClient(null)
                     }}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="rounded-xl bg-black/20 p-2.5 text-white/80 backdrop-blur-md transition hover:bg-black/30 hover:text-white"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* Client Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Contact Information</h3>
-                  <div className="space-y-2 text-xs">
-                    {selectedClient.email && (
-                      <div className="flex items-center text-gray-600">
-                        <Mail className="h-3 w-3 mr-2" />
-                        <span>{selectedClient.email}</span>
-                      </div>
-                    )}
-                    {selectedClient.contact && (
-                      <div className="flex items-center text-gray-600">
-                        <Phone className="h-3 w-3 mr-2" />
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-2 gap-3 border-b border-gray-100 bg-gray-50/50 p-4 sm:grid-cols-4 dark:border-gray-800 dark:bg-gray-900/50">
+              <div className="rounded-2xl border border-gray-200/60 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-800/80">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Total Budget</span>
+                <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">
+                  ₹{getTotalBudget(selectedClient) > 0 ? getTotalBudget(selectedClient).toLocaleString() : '0'}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-200/60 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-800/80">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Projects</span>
+                <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">
+                  {selectedClient.projects?.length || selectedClient.project_ids?.length || 0} Linked
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-200/60 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-800/80">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Documents</span>
+                <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">
+                  {selectedClient.documents?.length || 0} Files
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-200/60 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-800/80">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Assigned Lead</span>
+                <p className="mt-1 text-sm font-semibold truncate text-gray-900 dark:text-white">
+                  {selectedClient.assigned_to_name || 'Unassigned'}
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Body Content */}
+            <div className="space-y-6 p-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Contact Information Card */}
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800/40">
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white mb-4">
+                    <User className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    Contact & Address
+                  </h3>
+                  <div className="space-y-3 text-xs">
+                    {selectedClient.email ? (
+                      <a href={`mailto:${selectedClient.email}`} className="flex items-center gap-2.5 text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400 transition">
+                        <div className="rounded-lg bg-indigo-50 p-1.5 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
+                          <Mail className="h-3.5 w-3.5" />
+                        </div>
+                        <span className="font-medium">{selectedClient.email}</span>
+                      </a>
+                    ) : null}
+                    {selectedClient.contact ? (
+                      <div className="flex items-center gap-2.5 text-gray-700 dark:text-gray-300">
+                        <div className="rounded-lg bg-emerald-50 p-1.5 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+                          <Phone className="h-3.5 w-3.5" />
+                        </div>
                         <span>{selectedClient.contact}</span>
                       </div>
-                    )}
-                    {selectedClient.address && (
-                      <div className="text-gray-600">
-                        <span>{selectedClient.address}</span>
-                        {(selectedClient.city || selectedClient.state) && (
-                          <span>, {selectedClient.city} {selectedClient.state}</span>
-                        )}
+                    ) : null}
+                    {selectedClient.address ? (
+                      <div className="flex items-start gap-2.5 text-gray-700 dark:text-gray-300">
+                        <div className="rounded-lg bg-amber-50 p-1.5 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400 mt-0.5">
+                          <MapPin className="h-3.5 w-3.5" />
+                        </div>
+                        <div>
+                          <p>{selectedClient.address}</p>
+                          {(selectedClient.city || selectedClient.state || selectedClient.country) && (
+                            <p className="text-gray-500 dark:text-gray-400 text-[11px] mt-0.5">
+                              {[selectedClient.city, selectedClient.state, selectedClient.country, selectedClient.zip_code].filter(Boolean).join(', ')}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Details</h3>
-                  <div className="space-y-2 text-xs text-gray-600">
-                    {selectedClient.industry && <div>Industry: {selectedClient.industry}</div>}
-                    {selectedClient.assigned_to_name && (
-                      <div>Assigned To: {selectedClient.assigned_to_name}</div>
+
+                {/* Additional Details Card */}
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800/40">
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white mb-4">
+                    <Briefcase className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    Account Details
+                  </h3>
+                  <div className="space-y-3 text-xs">
+                    {selectedClient.industry && (
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-800">
+                        <span className="text-gray-500 dark:text-gray-400">Industry</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">{selectedClient.industry}</span>
+                      </div>
                     )}
-                    <div>Status: <span className="capitalize">{selectedClient.status}</span></div>
+                    {selectedClient.client_type && (
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-800">
+                        <span className="text-gray-500 dark:text-gray-400">Billing Type</span>
+                        <span className="font-semibold capitalize text-indigo-600 dark:text-indigo-400">{selectedClient.client_type}</span>
+                      </div>
+                    )}
+                    {selectedClient.tags?.length ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 dark:text-gray-400">Tags</span>
+                        <div className="flex flex-wrap gap-1">
+                          {selectedClient.tags.map((tag, i) => (
+                            <span key={i} className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
 
-              {/* Projects Section */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold text-gray-700">Projects</h3>
+              {/* Linked Projects Card */}
+              <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FolderKanban className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Linked Projects</h3>
+                  </div>
                   {(isCompanyAdmin || isLead) && (
                     <div className="flex items-center gap-2">
                       <button
@@ -999,10 +1301,10 @@ const Clients = () => {
                           setProjectSearch('')
                           setShowAddProjectModal(true)
                         }}
-                        className="btn btn-sm btn-secondary flex items-center space-x-1"
+                        className="inline-flex items-center gap-1 rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                       >
-                        <FolderKanban className="h-3 w-3" />
-                        <span>Add Project</span>
+                        <FolderKanban className="h-3.5 w-3.5 text-indigo-500" />
+                        Link Project
                       </button>
                       <button
                         type="button"
@@ -1020,75 +1322,101 @@ const Clients = () => {
                           })
                           setShowCreateProjectModal(true)
                         }}
-                        className="btn btn-sm btn-primary flex items-center space-x-1"
+                        className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
                       >
-                        <Plus className="h-3 w-3" />
-                        <span>Create Project</span>
+                        <Plus className="h-3.5 w-3.5" />
+                        Create Project
                       </button>
                     </div>
                   )}
                 </div>
+
                 {selectedClient.projects && selectedClient.projects.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     {selectedClient.projects.map((project) => (
-                      <div key={project.id} className="card p-3">
-                        <div className="flex items-center justify-between mb-2">
+                      <div key={project.id} className="group rounded-xl border border-gray-200/70 bg-gray-50/50 p-4 transition hover:border-indigo-300 hover:bg-white hover:shadow-md dark:border-gray-800 dark:bg-gray-800/60 dark:hover:border-indigo-700">
+                        <div className="flex items-start justify-between gap-2">
                           <div>
-                            <h4 className="text-sm font-semibold text-gray-900">{project.name}</h4>
-                            <p className="text-xs text-gray-600">{project.key}</p>
+                            <h4 className="text-sm font-bold text-gray-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400 transition">{project.name}</h4>
+                            <span className="mt-1 inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                              {project.key}
+                            </span>
                           </div>
                           {project.budget > 0 && (
-                            <div className="text-sm font-semibold text-primary-600">
-                              ₹{project.budget.toLocaleString()}
-                            </div>
+                            <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                              ₹{Number(project.budget).toLocaleString()}
+                            </span>
                           )}
                         </div>
-                        <div className="flex items-center space-x-4 text-xs text-gray-600">
-                          {project.start_date && (
-                            <div className="flex items-center">
-                              <Calendar className="h-3 w-3 mr-1" />
-                              <span>Start: {format(timeService.instant(project.start_date), 'MMM d, yyyy')}</span>
-                            </div>
-                          )}
-                          {project.delivery_date && (
-                            <div className="flex items-center">
-                              <Calendar className="h-3 w-3 mr-1" />
-                              <span>Delivery: {format(timeService.instant(project.delivery_date), 'MMM d, yyyy')}</span>
-                            </div>
-                          )}
+
+                        <div className="mt-3 flex items-center justify-between border-t border-gray-200/60 pt-3 dark:border-gray-700/60">
+                          <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+                            {project.start_date && (
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-indigo-500" />
+                                {format(timeService.instant(project.start_date), 'MMM d')}
+                              </span>
+                            )}
+                            {project.delivery_date && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-amber-500" />
+                                {format(timeService.instant(project.delivery_date), 'MMM d, yyyy')}
+                              </span>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowDetailModal(false)
+                              navigate(`/projects/${project.id}/board`)
+                            }}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 transition hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+                          >
+                            Open Board <ExternalLink className="h-3 w-3" />
+                          </button>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500">No projects linked yet</p>
+                  <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-800">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">No projects linked to this client yet.</p>
+                  </div>
                 )}
               </div>
 
-              {/* Documents Section */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold text-gray-700">Documents</h3>
+              {/* Uploaded Documents Card */}
+              <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Uploaded Documents</h3>
+                  </div>
                   {(isCompanyAdmin || isLead) && (
                     <button
+                      type="button"
                       onClick={() => setShowDocumentModal(true)}
-                      className="btn btn-sm btn-primary flex items-center space-x-1"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
                     >
-                      <Upload className="h-3 w-3" />
-                      <span>Upload Document</span>
+                      <Upload className="h-3.5 w-3.5" />
+                      Upload Document
                     </button>
                   )}
                 </div>
+
                 {selectedClient.documents && selectedClient.documents.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     {selectedClient.documents.map((doc, index) => (
-                      <div key={index} className="flex items-center justify-between card p-3">
-                        <div className="flex items-center space-x-3">
-                          <FileText className="h-4 w-4 text-gray-400" />
-                          <div>
-                            <p className="text-xs font-medium text-gray-900">{doc.name}</p>
-                            <p className="text-xs text-gray-500">
-                              {doc.type} • {(doc.size / 1024).toFixed(2)} KB
+                      <div key={index} className="flex items-center justify-between rounded-xl border border-gray-200/70 bg-gray-50/50 p-3 dark:border-gray-800 dark:bg-gray-800/60">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                            <FileText className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-bold text-gray-900 dark:text-white">{doc.name}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                              {(doc.size / 1024).toFixed(1)} KB
                             </p>
                           </div>
                         </div>
@@ -1096,23 +1424,26 @@ const Clients = () => {
                           href={`${import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${doc.url}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="btn btn-sm btn-secondary"
+                          className="rounded-lg p-2 text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/50"
+                          title="Download document"
                         >
-                          <Download className="h-3 w-3" />
+                          <Download className="h-4 w-4" />
                         </a>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500">No documents uploaded yet</p>
+                  <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-800">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">No documents uploaded yet.</p>
+                  </div>
                 )}
               </div>
 
-              {/* Notes */}
+              {/* Notes Card */}
               {selectedClient.notes && (
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Notes</h3>
-                  <p className="text-xs text-gray-600 whitespace-pre-wrap">{selectedClient.notes}</p>
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800/40">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Internal Notes</h3>
+                  <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{selectedClient.notes}</p>
                 </div>
               )}
             </div>
@@ -1231,8 +1562,13 @@ const Clients = () => {
 
       {/* Create Project Modal */}
       {showCreateProjectModal && selectedClient && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCreateProjectModal(false)
+          }}
+        >
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-gray-900">Create New Project for {selectedClient.name}</h2>
@@ -1260,36 +1596,29 @@ const Clients = () => {
               <form onSubmit={handleCreateProject} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Project ID *</label>
-                    <input
-                      type="text"
-                      value={projectForm.project_id}
-                      onChange={(e) => setProjectForm({ ...projectForm, project_id: e.target.value })}
-                      className="input"
-                      required
-                      placeholder="e.g., PROJ-001"
-                    />
-                  </div>
-                  <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Project Name *</label>
                     <input
                       type="text"
                       value={projectForm.name}
-                      onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        const autoKey = val.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16)
+                        setProjectForm({ ...projectForm, name: val, key: autoKey, project_id: autoKey })
+                      }}
                       className="input"
                       required
+                      placeholder="Enter project name"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Project Key *</label>
                     <input
                       type="text"
+                      readOnly
+                      tabIndex={-1}
                       value={projectForm.key}
-                      onChange={(e) => setProjectForm({ ...projectForm, key: e.target.value.toUpperCase() })}
-                      className="input"
-                      required
-                      placeholder="e.g., PROJ"
-                      maxLength={10}
+                      className="input bg-gray-100 dark:bg-gray-800 cursor-not-allowed font-mono"
+                      placeholder="Auto-generated"
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -1398,8 +1727,13 @@ const Clients = () => {
 
       {/* Upload Document Modal */}
       {showDocumentModal && selectedClient && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowDocumentModal(false)
+          }}
+        >
+          <div className="bg-white rounded-lg max-w-md w-full" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <h2 className="text-lg font-bold text-gray-900 mb-4">Upload Document</h2>
               <div className="space-y-4">

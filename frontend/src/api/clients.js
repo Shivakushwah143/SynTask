@@ -65,6 +65,14 @@ export const clientsAPI = {
     return response.data
   },
 
+  // Update client status only
+  updateClientStatus: async (clientId, status) => {
+    const formData = new FormData()
+    formData.append('status', status)
+    const response = await api.put(`/clients/${clientId}`, formData)
+    return response.data
+  },
+
   // Delete client document
   deleteDocument: async (clientId, documentIndex) => {
     const response = await api.delete(`/clients/${clientId}/documents/${documentIndex}`)

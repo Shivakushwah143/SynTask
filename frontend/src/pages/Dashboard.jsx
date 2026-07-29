@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, addDays } from 'date-fns'
 import { 
@@ -86,8 +86,8 @@ import { ChartTooltip } from '../components/charts/ChartTooltip'
 import { WorkflowGuide } from '../components/workflow/WorkflowGuide'
 import WorkflowJourney from '../components/workflow/WorkflowJourney'
 import { ChartCard } from '../components/charts/ChartCard'
-import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
-import DonutLegendChart from '../components/charts/DonutLegendChart'
+const IncomeExpenseBarChart = lazy(() => import('../components/charts/IncomeExpenseBarChart'))
+const DonutLegendChart = lazy(() => import('../components/charts/DonutLegendChart'))
 import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthData, buildTaskDuePriorityData } from './dashboardData'
 import { DashboardSectionVisibilityPanel } from './DashboardSectionVisibilityPanelView.jsx'
 import { timeService } from '@/services/timeService'
@@ -201,6 +201,18 @@ const readStoredSectionOrder = () => {
   }
 }
 
+// Session storage cache helpers for stale‑while‑revalidate
+const DASHBOARD_CACHE_KEY = 'syntask-dashboard-cache'
+const readDashboardCache = () => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(DASHBOARD_CACHE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
 const getDefaultSectionPanelCollapsed = () => {
   if (typeof window === 'undefined') return true
   return !window.matchMedia('(min-width: 1280px)').matches
@@ -253,40 +265,80 @@ const Dashboard = () => {
   const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
   const [sectionSearch, setSectionSearch] = useState('')
 
+  // Load cached dashboard data on mount (stale‑while‑revalidate)
+  useEffect(() => {
+    const cached = readDashboardCache()
+    if (cached) {
+      setStats(cached.stats)
+      setMetrics(cached.metrics)
+      setCrmDashboard(cached.crmDashboard)
+      setRecentTasks(cached.recentTasks)
+      setRecentTickets(cached.recentTickets)
+      setUpcomingMeetings(cached.upcomingMeetings)
+      setProjects(cached.projects)
+      setTaskHealth(cached.taskHealth)
+      setTaskExtensions(cached.taskExtensions)
+      setTeamCompletion(cached.teamCompletion)
+      setAttendanceToday(cached.attendanceToday)
+      setEodToday(cached.eodToday)
+      setAttendanceStats(cached.attendanceStats)
+      setRevenueMode(cached.revenueMode ?? 'Accrual')
+      setLoading(false)
+    }
+  }, [])
+
   const refreshDashboard = useCallback(async (isMounted = () => true) => {
     try {
       setLoading(true)
-      const statsData = await dashboardAPI.getStats().catch(() => null)
+      // Fire all primary API calls concurrently using Promise.allSettled
+      const primaryPromises = {
+        stats: dashboardAPI.getStats().catch(() => null),
+        tasks: tasksAPI.listTasks({ limit: 8 }).catch(() => null),
+        meetings: meetingsApi.list({ limit: 6, upcoming: true }).catch(() => null),
+        projects: projectsApi.getProjects({ limit: 8 }).catch(() => null),
+        metrics: dashboardAPI.getMetrics().catch(() => null),
+      }
+      const primaryResults = await Promise.allSettled(Object.values(primaryPromises))
+      const [statsData, tasksData, meetingsData, projectsData, metricsData] = primaryResults.map((r) => (r.status === 'fulfilled' ? r.value : null))
+
       const dashboardRole = normalizeRole(statsData?.role || user?.role)
       const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
-      const [tasksData, meetingsData, projectsData] = await Promise.all([
-        tasksAPI.listTasks({ limit: 8 }),
-        meetingsApi.list({ limit: 6, upcoming: true }),
-        projectsApi.getProjects({ limit: 8 }),
-      ])
-      const [metricsData] = await Promise.all([
-        dashboardAPI.getMetrics().catch(() => null),
-      ])
-      const crmDashboardData = shouldLoadCrmDashboard
-        ? await crmApi.getDashboard().then((response) => response?.data || null).catch(() => null)
-        : null
-      const [healthData, extensionData, teamData] = await Promise.all([
-        dashboardRole === ROLE.EMPLOYEE ? tasksAPI.getMyTaskHealth().catch(() => null) : tasksAPI.getTaskHealthSummary().catch(() => null),
-        tasksAPI.getExtensionRequestSummary().catch(() => null),
-        dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null),
-      ])
 
-      let ticketsData = { tickets: [] }
-      if (dashboardRole === ROLE.EMPLOYEE) {
-        ticketsData = await ticketsAPI.listTickets({ limit: 8 })
-      }
+      // Conditional and additional parallel calls
+      const crmDashboardPromise = shouldLoadCrmDashboard
+        ? crmApi.getDashboard().then((r) => r?.data || null).catch(() => null)
+        : Promise.resolve(null)
+      const healthPromise =
+        dashboardRole === ROLE.EMPLOYEE
+          ? tasksAPI.getMyTaskHealth().catch(() => null)
+          : tasksAPI.getTaskHealthSummary().catch(() => null)
+      const extensionPromise = tasksAPI.getExtensionRequestSummary().catch(() => null)
+      const teamPromise =
+        dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null)
+      const ticketsPromise =
+        dashboardRole === ROLE.EMPLOYEE ? ticketsAPI.listTickets({ limit: 8 }).catch(() => null) : Promise.resolve({ tickets: [] })
+      const attendancePromise =
+        dashboardRole === ROLE.EMPLOYEE ? attendanceAPI.getTodayAttendance().catch(() => null) : attendanceAPI.getDashboardStats().catch(() => null)
+      const eodPromise = dashboardRole === ROLE.EMPLOYEE ? eodAPI.today().catch(() => null) : Promise.resolve(null)
+
+      const [crmDashboardData, healthData, extensionData, teamData, ticketsData, attendanceRes, eodTodayRes] = await Promise.all([
+        crmDashboardPromise,
+        healthPromise,
+        extensionPromise,
+        teamPromise,
+        ticketsPromise,
+        attendancePromise,
+        eodPromise,
+      ])
 
       if (!isMounted()) return
+
+      // Update state
       setStats(statsData || { role: dashboardRole || 'employee' })
       setMetrics(metricsData)
       setCrmDashboard(crmDashboardData)
-      setRecentTasks(tasksData.tasks || [])
-      setRecentTickets(ticketsData.tickets || [])
+      setRecentTasks(tasksData?.tasks || [])
+      setRecentTickets(ticketsData?.tickets || [])
       setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
       setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
       setTaskHealth(healthData)
@@ -294,32 +346,40 @@ const Dashboard = () => {
       setTeamCompletion(teamData)
 
       if (dashboardRole === ROLE.EMPLOYEE) {
-        try {
-          const attTodayRes = await attendanceAPI.getTodayAttendance()
-          if (attTodayRes && attTodayRes.data) {
-            setAttendanceToday(attTodayRes.data)
-          }
-          const eodTodayRes = await eodAPI.today()
-          setEodToday(eodTodayRes)
-        } catch (e) {
-          console.error(e)
-        }
+        if (attendanceRes && attendanceRes.data) setAttendanceToday(attendanceRes.data)
+        setEodToday(eodTodayRes)
       } else {
-        try {
-          const attStatsRes = await attendanceAPI.getDashboardStats()
-          if (attStatsRes && attStatsRes.data) {
-            setAttendanceStats(attStatsRes.data)
-          }
-        } catch (e) {
-          console.error(e)
+        if (attendanceRes && attendanceRes.data) setAttendanceStats(attendanceRes.data)
+      }
+
+      // Stale‑while‑revalidate: cache the fetched dashboard data in sessionStorage
+      try {
+        const cachePayload = {
+          stats: statsData,
+          metrics: metricsData,
+          crmDashboard: crmDashboardData,
+          recentTasks: tasksData?.tasks || [],
+          recentTickets: ticketsData?.tickets || [],
+          upcomingMeetings: (meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6),
+          projects: (projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8),
+          taskHealth: healthData,
+          taskExtensions: extensionData,
+          teamCompletion: teamData,
+          attendanceToday: attendanceRes?.data || null,
+          eodToday: eodTodayRes,
+          attendanceStats: attendanceRes?.data || null,
+          revenueMode,
         }
+        sessionStorage.setItem('syntask-dashboard-cache', JSON.stringify(cachePayload))
+      } catch (e) {
+        // ignore storage errors
       }
     } catch (error) {
       console.error('Error loading dashboard:', error)
     } finally {
       if (isMounted()) setLoading(false)
     }
-  }, [user?.role])
+  }, [user?.role, revenueMode])
 
   useEffect(() => {
     let active = true;
@@ -328,8 +388,26 @@ const Dashboard = () => {
       await refreshDashboard(() => active);
     };
     run();
+
+    // Auto-sync polling every 10 seconds for live graph updates
+    const interval = setInterval(run, 10000);
+
+    // Event listeners for instant live updates on actions across the app
+    const handleLiveSync = () => {
+      if (active) refreshDashboard(() => active);
+    };
+    window.addEventListener('syntask:tasks-updated', handleLiveSync);
+    window.addEventListener('syntask:projects-updated', handleLiveSync);
+    window.addEventListener('syntask:crm-updated', handleLiveSync);
+    window.addEventListener('syntask:data-updated', handleLiveSync);
+
     return () => {
       active = false;
+      clearInterval(interval);
+      window.removeEventListener('syntask:tasks-updated', handleLiveSync);
+      window.removeEventListener('syntask:projects-updated', handleLiveSync);
+      window.removeEventListener('syntask:crm-updated', handleLiveSync);
+      window.removeEventListener('syntask:data-updated', handleLiveSync);
     };
   }, [refreshDashboard]);
 
@@ -891,20 +969,24 @@ const Dashboard = () => {
       {renderDashboardSection('sales-pipeline', (
         canSeeSalesWidgets ? (
           <section className="grid gap-6 xl:grid-cols-2">
-            <IncomeExpenseBarChart
-              title="Revenue and Deals"
-              data={revenueTrend}
-              primaryLabel="Closed Revenue"
-              secondaryLabel="Pipeline Value"
-              primaryTotal={`₹${(metrics?.revenue ?? 0).toLocaleString('en-IN')}`}
-              secondaryTotal={`₹${revenueTrend.reduce((sum, item) => sum + (Number(item.secondary) || 0), 0).toLocaleString('en-IN')}`}
-              toggleOptions={['Accrual', 'Cash']}
-              activeToggle={revenueMode}
-              onToggle={setRevenueMode}
-              footnote="Closed revenue and pipeline value use CRM lead/deal records for the last 12 months."
-              onBarClick={() => navigate('/crm/pipeline')}
-            />
-            <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.route || (item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline') }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
+            <Suspense fallback={<div className="h-72 flex items-center justify-center">Loading chart...</div>}>
+              <IncomeExpenseBarChart
+                title="Revenue and Deals"
+                data={revenueTrend}
+                primaryLabel="Closed Revenue"
+                secondaryLabel="Pipeline Value"
+                primaryTotal={`₹${(metrics?.revenue ?? 0).toLocaleString('en-IN')}`}
+                secondaryTotal={`₹${revenueTrend.reduce((sum, item) => sum + (Number(item.secondary) || 0), 0).toLocaleString('en-IN')}`}
+                toggleOptions={['Accrual', 'Cash']}
+                activeToggle={revenueMode}
+                onToggle={setRevenueMode}
+                footnote="Closed revenue and pipeline value use CRM lead/deal records for the last 12 months."
+                onBarClick={() => navigate('/crm/pipeline')}
+              />
+            </Suspense>
+            <Suspense fallback={<div className="h-72 flex items-center justify-center">Loading chart...</div>}>
+              <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.route || (item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline') }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
+            </Suspense>
           </section>
         ) : (
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
