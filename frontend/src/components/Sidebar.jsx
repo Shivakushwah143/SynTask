@@ -343,7 +343,9 @@ const Sidebar = ({ isOpen, onClose }) => {
       href: "/hr",
       match: "/hr",
       icon: UserCog,
-      roles: HR_ROLES,
+      // roles: HR_ROLES,
+      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
+      
     },
     {
       name: "Bulk Lead Import",
