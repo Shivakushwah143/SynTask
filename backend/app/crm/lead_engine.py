@@ -442,10 +442,16 @@ class DuplicateResolver:
 class AssignmentEngine:
     @staticmethod
     async def load_assignable_users(current_user: User, *, department_id: Optional[str] = None) -> list[User]:
+        from bson import ObjectId
         if not current_user.company_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
+        # Try both string and ObjectId formats for company_id to handle type mismatches
+        raw_id = current_user.company_id
+        company_ids = [raw_id]
+        if isinstance(raw_id, str) and ObjectId.is_valid(raw_id):
+            company_ids.append(ObjectId(raw_id))
         query: Dict[str, Any] = {
-            "company_id": current_user.company_id,
+            "company_id": {"$in": company_ids},
             "status": UserStatus.ACTIVE,
             "role": {"$in": [UserRole.ADMIN.value, UserRole.SUB_ADMIN.value, UserRole.MANAGER.value, UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
         }
@@ -458,7 +464,7 @@ class AssignmentEngine:
             query
         ).to_list()
         if not users:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No assignable users found in your company")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"No assignable users found in your company (company_id={raw_id})")
         return users
 
     @staticmethod
@@ -478,7 +484,7 @@ class AssignmentEngine:
             if not target_user_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")
             if target_user_id not in user_ids:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user must be an active Lead or Employee in your company")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user must be an active user in your company")
             return target_user_id
         if strategy == "round-robin":
             return user_ids[index % len(user_ids)]
@@ -746,7 +752,7 @@ class LeadEngine:
                 if str(target_assignee) not in {str(user.id) for user in assignable_users}:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Target user is not a valid assignee. They must be an active Lead or Employee in your company."
+                        detail="Target user is not a valid assignee in your company."
                     )
                 previous_assignee = prospect.assigned_to
                 prospect.assigned_to = str(target_assignee)
@@ -830,7 +836,7 @@ class LeadEngine:
             if not target_user_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")
             if target_user_id not in {str(user.id) for user in assignable_users}:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user must be an active Lead or Employee in your company")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user must be an active user in your company")
 
         seen_phones: set[str] = set()
         parsed_rows: list[dict[str, Any]] = []

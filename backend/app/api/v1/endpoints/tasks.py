@@ -51,7 +51,7 @@ async def _get_user_scope_ids(current_user: User) -> list[str]:
 
 
 async def _can_access_project_for_task(current_user: User, project) -> bool:
-    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER}:
+    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER}:
         return True
     assignee_ids = set(getattr(project, "assigned_user_ids", None) or [])
     if getattr(project, "assigned_to", None):
@@ -72,7 +72,7 @@ async def _can_access_project_for_task(current_user: User, project) -> bool:
 
 async def _assert_task_view(current_user: User, task: Task) -> None:
     check_company_access(current_user, task.company_id)
-    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return
     current_user_id = str(current_user.id)
     if task.created_by == current_user_id or task.assigned_to == current_user_id:
@@ -142,7 +142,7 @@ def build_task_list_query(
 
 
 def can_update_task_field(current_user: User, task: Task, field_name: str) -> bool:
-    if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         return True
     if current_user.role == UserRole.EMPLOYEE:
         return field_name == "status" and task.assigned_to == str(current_user.id)
@@ -173,7 +173,7 @@ def build_employee_project_visibility_query(current_user: User, project_ids: lis
 async def _assert_can_assign_task(current_user: User, assignee: Optional[User]) -> None:
     if not assignee:
         return
-    if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         if assignee.role not in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid assignee role")
         return
@@ -225,7 +225,7 @@ async def _task_comment_recipient_ids(task: Task, current_user: User) -> list[st
     try:
         admins = await User.find({
             "company_id": task.company_id,
-            "role": {"$in": [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]},
+            "role": {"$in": [UserRole.ADMIN.value, UserRole.SUB_ADMIN.value, UserRole.SUPER_ADMIN.value]},
         }).to_list()
         recipients.update(str(admin.id) for admin in admins)
     except Exception:
@@ -547,7 +547,7 @@ async def create_task(
 
 @router.post("/health/sync")
 async def sync_task_health_endpoint(current_user: User = Depends(get_current_user)):
-    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+    if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
     count = await sync_task_health_for_company(None if current_user.role == UserRole.SUPER_ADMIN else current_user.company_id)
     return {"message": "Task health synced", "processed": count}
@@ -565,7 +565,7 @@ async def task_health_summary(current_user: User = Depends(get_current_user)):
 
 @router.get("/health/team-completion")
 async def team_completion_summary(current_user: User = Depends(get_current_user)):
-    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+    if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
     return await build_team_completion_summary(current_user)
 
@@ -589,7 +589,7 @@ async def get_production_dashboard(
     Returns per-employee quantitative task stats + team totals.
     Excludes Sub Admin.
     """
-    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER}:
+    if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only Admins and Managers can view production dashboard"

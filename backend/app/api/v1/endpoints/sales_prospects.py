@@ -121,7 +121,7 @@ def _normalize_lead_csv_header(header: str) -> str:
 
 def _ensure_create_permission(user: User):
     # Allow all roles including EMPLOYEE to create prospects
-    if user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE, UserRole.SUPER_ADMIN]:
+    if user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to add prospects"
