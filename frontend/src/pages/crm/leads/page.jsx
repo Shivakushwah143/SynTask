@@ -30,7 +30,7 @@ import { timeService } from '@/services/timeService'
 const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
 const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
 const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
-const isValidLeadOwner = (item) => ['lead', 'employee'].includes(normalizeRole(item?.role))
+const isValidLeadOwner = (item) => ['admin', 'sub_admin', 'manager', 'lead', 'employee'].includes(normalizeRole(item?.role))
 const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || '').trim())
 export const hasSalesCrmModule = (modules = []) => modules.includes('sales_crm') || modules.includes('sales')
 const PRODUCT_LOCATION_OPTIONS = [
