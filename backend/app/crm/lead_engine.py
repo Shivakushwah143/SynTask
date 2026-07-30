@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import re
 import zipfile
 from collections import defaultdict
@@ -20,10 +21,13 @@ from app.models.sales_import_job import SalesImportJob
 from app.models.ownership_transfer import OwnershipTransfer
 from app.models.sales_pipeline_history import SalesPipelineHistory
 from app.crm.models import InterestLevel, ProspectStatus, SalesProspect
-from app.models.user import User, UserRole, UserStatus
+from app.models.user import User, UserRole
 from app.core.rbac_visibility import require_owned_record_access
+from app.core.assignable_users import load_assignable_users_for_company
 from app.core.clock import utc_now
 
+
+logger = logging.getLogger(__name__)
 
 CSV_EMAIL_ALIASES = {"email_address", "email_id", "e_mail"}
 DEFAULT_ASSIGNMENT_STRATEGIES = {"round-robin", "evenly", "least-loaded", "manual"}
@@ -442,30 +446,51 @@ class DuplicateResolver:
 class AssignmentEngine:
     @staticmethod
     async def load_assignable_users(current_user: User, *, department_id: Optional[str] = None) -> list[User]:
-        from bson import ObjectId
-        if not current_user.company_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
-        # Try both string and ObjectId formats for company_id to handle type mismatches
-        raw_id = current_user.company_id
-        company_ids = [raw_id]
-        if isinstance(raw_id, str) and ObjectId.is_valid(raw_id):
-            company_ids.append(ObjectId(raw_id))
-        query: Dict[str, Any] = {
-            "company_id": {"$in": company_ids},
-            "status": UserStatus.ACTIVE,
-            "role": {"$in": [UserRole.ADMIN.value, UserRole.SUB_ADMIN.value, UserRole.MANAGER.value, UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
-        }
-        if department_id:
-            query["$or"] = [
-                {"department_id": department_id},
-                {"department": department_id},
-            ]
-        users = await User.find(
-            query
-        ).to_list()
+        users = await load_assignable_users_for_company(
+            getattr(current_user, "company_id", None),
+            department_id=department_id,
+        )
         if not users:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"No assignable users found in your company (company_id={raw_id})")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No assignable users found in your company (company_id={getattr(current_user, 'company_id', None)})",
+            )
         return users
+
+    @staticmethod
+    async def validate_target_user(
+        current_user: User,
+        target_user_id: Optional[str],
+        *,
+        department_id: Optional[str] = None,
+    ) -> tuple[User, list[User]]:
+        normalized_target_user_id = str(target_user_id or "").strip()
+        logger.info(
+            "Validating lead owner assignment ownerId=%s companyId=%s departmentId=%s actorId=%s",
+            normalized_target_user_id or None,
+            getattr(current_user, "company_id", None),
+            department_id,
+            getattr(current_user, "id", None),
+        )
+        assignable_users = await AssignmentEngine.load_assignable_users(
+            current_user,
+            department_id=department_id,
+        )
+        for user in assignable_users:
+            if str(getattr(user, "id", "")) == normalized_target_user_id:
+                return user, assignable_users
+        logger.warning(
+            "Lead owner validation failed ownerId=%s companyId=%s departmentId=%s actorId=%s candidateOwnerIds=%s",
+            normalized_target_user_id or None,
+            getattr(current_user, "company_id", None),
+            department_id,
+            getattr(current_user, "id", None),
+            [str(getattr(user, "id", "")) for user in assignable_users],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Target user must be an active user in your company",
+        )
 
     @staticmethod
     def choose_assignee(
@@ -484,6 +509,13 @@ class AssignmentEngine:
             if not target_user_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")
             if target_user_id not in user_ids:
+                logger.warning(
+                    "Manual owner assignment rejected ownerId=%s companyId=%s actorId=%s candidateOwnerIds=%s",
+                    target_user_id,
+                    getattr(current_user, "company_id", None) if current_user else None,
+                    getattr(current_user, "id", None) if current_user else None,
+                    user_ids,
+                )
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user must be an active user in your company")
             return target_user_id
         if strategy == "round-robin":
@@ -579,11 +611,16 @@ class LeadEngine:
         assigned_to = normalized.get("assigned_to")
         department_id = normalized.get("department_id") or getattr(current_user, "department_id", None)
         if assigned_to:
-            assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
+            _, assignable_users = await AssignmentEngine.validate_target_user(
+                current_user,
+                assigned_to,
+                department_id=department_id,
+            )
             normalized["assigned_to"] = AssignmentEngine.choose_assignee(
                 "manual",
                 assignable_users,
                 target_user_id=str(assigned_to),
+                current_user=current_user,
             )
         else:
             assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
@@ -748,12 +785,11 @@ class LeadEngine:
             target_assignee = payload.get("assigned_to") or prospect.assigned_to
             if target_assignee:
                 department_id = getattr(prospect, "department_id", None) or getattr(current_user, "department_id", None)
-                assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
-                if str(target_assignee) not in {str(user.id) for user in assignable_users}:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Target user is not a valid assignee in your company."
-                    )
+                await AssignmentEngine.validate_target_user(
+                    current_user,
+                    str(target_assignee),
+                    department_id=department_id,
+                )
                 previous_assignee = prospect.assigned_to
                 prospect.assigned_to = str(target_assignee)
                 if previous_assignee != prospect.assigned_to:
@@ -835,8 +871,11 @@ class LeadEngine:
         if strategy == "manual":
             if not target_user_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_user_id is required for manual assignment")
-            if target_user_id not in {str(user.id) for user in assignable_users}:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user must be an active user in your company")
+            await AssignmentEngine.validate_target_user(
+                current_user,
+                target_user_id,
+                department_id=target_department_id,
+            )
 
         seen_phones: set[str] = set()
         parsed_rows: list[dict[str, Any]] = []

@@ -23,6 +23,7 @@ from app.api.dependencies import (
 )
 from app.services.user_service import UserService
 from app.api.deps import Pagination20, PaginationParams
+from app.core.assignable_users import load_assignable_users_for_company
 from app.core.clock import utc_now
 from app.schemas.admin_permissions import normalize_modules
 
@@ -268,16 +269,11 @@ async def get_assignable_users(
     project_id: Optional[str] = Query(None, description="Filter assignable users by project"),
 ):
     """Get users that can be assigned work. Project lead is assignment-level, not a user role."""
+    # Valid owner roles remain: UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE.
     users: list[User] = []
 
     if current_user.company_id:
-        users = await User.find(
-            {
-                "company_id": current_user.company_id,
-                "status": UserStatus.ACTIVE,
-                "role": {"$in": [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE]},
-            }
-        ).to_list()
+        users = await load_assignable_users_for_company(current_user.company_id)
 
     if project_id:
         project = await Project.get(project_id)
@@ -298,6 +294,8 @@ async def get_assignable_users(
                 "last_name": user.last_name,
                 "role": user.role.value,
                 "status": user.status.value,
+                "isActive": True,
+                "deleted": False,
                 "department_id": getattr(user, "department_id", None),
                 "department": getattr(user, "department", None),
             }
