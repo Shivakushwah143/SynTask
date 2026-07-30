@@ -1,8 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, BadgeInfo, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Route, Sparkles, StickyNote, Video, Wand2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeInfo, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Route, Save, Sparkles, StickyNote, Video, Wand2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -119,6 +119,8 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   onBack,
   onRefresh,
   onSendEmail,
+  onSaveLead,
+  users = [],
   body,
   sidebar,
 }) {
@@ -149,7 +151,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
         )}
       />
 
-      <LeadHeader lead={lead} breadcrumbs={breadcrumbs} />
+      <LeadHeader lead={lead} breadcrumbs={breadcrumbs} onSave={onSaveLead} users={users} />
 
       <section className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -182,10 +184,12 @@ export const LeadWorkspaceLayout = memo(function LeadWorkspaceLayout({ body, sid
   )
 })
 
-export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [] }) {
+export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onSave, users = [] }) {
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({})
+
   const companyName = lead?.crm_company_name || lead?.company_name || lead?.prospect_name || 'Lead'
   const contactName = getLeadContactLabel(lead)
-  const ownerName = getLeadOwnerLabel(lead)
   const leadTags = getLeadTags(lead)
   const dealValue = lead?.won_amount ?? lead?.deal_value ?? 0
   const stage = lead?.current_stage || 'Unassigned'
@@ -193,22 +197,170 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [] }) {
   const status = lead?.status || 'active'
   const createdDate = formatShortDate(lead?.created_at || lead?.createdAt || lead?.created_date)
 
+  // Resolve owner name: use the users list when the raw value is a DB ObjectId
+  const ownerName = useMemo(() => {
+    const rawOwner = getLeadOwnerLabel(lead)
+    // If it looks like a MongoDB ObjectId (24 hex chars), resolve from users list
+    if (/^[a-f\d]{24}$/i.test(rawOwner)) {
+      const rawId = lead?.assigned_to || lead?.owner_id || ''
+      const found = users.find((u) => {
+        const uid = String(u.id || u._id || u.user_id || '')
+        return uid === rawId || uid === rawOwner
+      })
+      if (found) return formatUserName(found) || rawOwner
+    }
+    return rawOwner
+  }, [lead, users])
+
+  const ownerOptions = useMemo(() => {
+    return [
+      { value: '', label: 'Unassigned' },
+      ...users.map((user) => ({
+        value: String(user.id || user._id || user.user_id),
+        label: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email || user.id,
+      })),
+    ]
+  }, [users])
+
+  useEffect(() => {
+    setForm({
+      company_name: lead?.company_name || '',
+      prospect_name: lead?.prospect_name || '',
+      first_name: lead?.first_name || '',
+      last_name: lead?.last_name || '',
+      assigned_to: lead?.assigned_to || '',
+      won_amount: String(lead?.won_amount ?? lead?.deal_value ?? ''),
+    })
+  }, [lead])
+
+  const updateField = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleSave = () => {
+    const payload = {}
+    if (form.company_name !== (lead?.company_name || '')) payload.company_name = form.company_name
+    if (form.prospect_name !== (lead?.prospect_name || '')) payload.prospect_name = form.prospect_name
+    if (form.first_name !== (lead?.first_name || '')) payload.first_name = form.first_name
+    if (form.last_name !== (lead?.last_name || '')) payload.last_name = form.last_name
+    if (form.assigned_to !== (lead?.assigned_to || '')) payload.assigned_to = form.assigned_to
+    if (form.won_amount !== String(lead?.won_amount ?? lead?.deal_value ?? '')) payload.won_amount = Number(form.won_amount) || 0
+
+    if (Object.keys(payload).length === 0) {
+      setEditing(false)
+      return
+    }
+
+    onSave?.(payload)
+    setEditing(false)
+  }
+
+  const handleCancel = () => {
+    setForm({
+      company_name: lead?.company_name || '',
+      prospect_name: lead?.prospect_name || '',
+      first_name: lead?.first_name || '',
+      last_name: lead?.last_name || '',
+      assigned_to: lead?.assigned_to || '',
+      won_amount: String(lead?.won_amount ?? lead?.deal_value ?? ''),
+    })
+    setEditing(false)
+  }
+
   return (
     <section className="overflow-hidden rounded-2xl border border-emerald-100/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <div className="h-1.5 bg-gradient-to-r from-primary-500 via-emerald-400 to-amber-300" />
-      <div className="p-5">
+      <div className="group p-5">
+        {/* Edit/Save/Cancel actions */}
+        <div className="mb-4 flex justify-end gap-1.5">
+          {editing ? (
+            <>
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-semibold text-gray-500 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-700"
+              >
+                <X className="h-3 w-3" />
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+              >
+                <Save className="h-3 w-3" />
+                Save
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-gray-500 shadow-sm transition-all hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700"
+              title="Edit header fields"
+            >
+              <Pencil className="h-3 w-3" />
+              Edit
+            </button>
+          )}
+        </div>
+
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <LeadPill label="Stage" value={stage} />
               <LeadPill label="Priority" value={priority} />
               <LeadPill label="Status" value={status} />
             </div>
-            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-            {companyName}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{contactName || 'Primary contact not available'}</p>
-            {breadcrumbs?.length ? (
+
+            {editing ? (
+              <div className="mt-4 space-y-3">
+                {/* Company / Lead Name */}
+                <HeaderEditField
+                  label="Company name"
+                  value={form.company_name}
+                  onChange={(v) => updateField('company_name', v)}
+                  placeholder="Company name"
+                />
+                <HeaderEditField
+                  label="Lead name"
+                  value={form.prospect_name}
+                  onChange={(v) => updateField('prospect_name', v)}
+                  placeholder="Lead / prospect name"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <HeaderEditField
+                    label="First name"
+                    value={form.first_name}
+                    onChange={(v) => updateField('first_name', v)}
+                    placeholder="First name"
+                  />
+                  <HeaderEditField
+                    label="Last name"
+                    value={form.last_name}
+                    onChange={(v) => updateField('last_name', v)}
+                    placeholder="Last name"
+                  />
+                </div>
+                <HeaderEditField label="Owner (assigned to)" type="select" value={form.assigned_to} onChange={(v) => updateField('assigned_to', v)} options={ownerOptions} />
+                <HeaderEditField
+                  label="Deal value"
+                  type="number"
+                  value={form.won_amount}
+                  onChange={(v) => updateField('won_amount', v)}
+                  placeholder="0"
+                />
+              </div>
+            ) : (
+              <>
+                <h2 className="mt-4 text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                  {companyName}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{contactName || 'Primary contact not available'}</p>
+              </>
+            )}
+
+            {!editing && breadcrumbs?.length ? (
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                 {breadcrumbs.map((crumb, index) => (
                   <span key={`${crumb}-${index}`} className="inline-flex items-center gap-2">
@@ -219,13 +371,15 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [] }) {
               </div>
             ) : null}
           </div>
+
+          {/* Right side summary chips */}
           <div className="grid min-w-[240px] gap-3 sm:grid-cols-3 lg:grid-cols-1">
             <SummaryChip label="Owner" value={ownerName} compact />
             <SummaryChip label="Deal value" value={formatCurrency(dealValue)} compact />
             <SummaryChip label="Created" value={createdDate} compact />
           </div>
         </div>
-        {leadTags.length ? (
+        {!editing && leadTags.length ? (
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
             {leadTags.slice(0, 5).map((tag) => <Badge key={tag} label={tag} colorKey="draft" />)}
           </div>
@@ -234,6 +388,38 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [] }) {
     </section>
   )
 })
+
+function HeaderEditField({ label, value, onChange, type = 'text', placeholder, options }) {
+  const inputId = `header-edit-${label.replace(/\s+/g, '-').toLowerCase()}`
+  return (
+    <label htmlFor={inputId} className="block">
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">{label}</span>
+      {type === 'select' && options ? (
+        <select
+          id={inputId}
+          className={`${inputClassName} text-sm`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {options.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          id={inputId}
+          className={`${inputClassName} text-sm`}
+          type={type}
+          value={value ?? ''}
+          onChange={(e) => onChange(type === 'number' ? e.target.value.replace(/[^0-9.]/g, '') : e.target.value)}
+          placeholder={placeholder}
+        />
+      )}
+    </label>
+  )
+}
 
 export const LeadTabs = memo(function LeadTabs({ activeTab, onTabChange }) {
   const primaryTabs = LEAD_TABS.filter((tab) => PRIMARY_LEAD_TAB_KEYS.has(tab.key))

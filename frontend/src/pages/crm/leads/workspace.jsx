@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
+import { usersAPI } from '../../../api/users'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
 import { EmailComposer } from '../../../components/EmailComposer'
 import { Button, ConfirmDialog } from '../../../components/ui'
@@ -38,6 +39,19 @@ export default function CRMLeadWorkspacePage() {
   })
 
   const activeTab = searchParams.get(ACTIVE_TAB_KEY) || 'overview'
+
+  const usersQuery = useQuery(
+    'crm-lead-workspace-users',
+    () => usersAPI.getAssignableUsersWithJuniors(),
+    {
+      enabled: Boolean(leadId),
+      staleTime: 5 * 60 * 1000,
+    }
+  )
+  const users = useMemo(() => {
+    const raw = usersQuery.data?.users || usersQuery.data || []
+    return Array.isArray(raw) ? raw : []
+  }, [usersQuery.data])
 
   const leadQuery = useQuery(
     [WORKSPACE_QUERY_KEY, leadId],
@@ -187,6 +201,10 @@ export default function CRMLeadWorkspacePage() {
     setPendingLeadUpdate(payload)
   }, [])
 
+  const handleHeaderSave = useCallback((payload) => {
+    leadUpdateMutation.mutate(payload)
+  }, [leadUpdateMutation])
+
   const handleConfirmLeadUpdate = useCallback(() => {
     if (!pendingLeadUpdate) return
     leadUpdateMutation.mutate(pendingLeadUpdate)
@@ -309,6 +327,8 @@ export default function CRMLeadWorkspacePage() {
         onBack={() => navigate('/crm/pipeline')}
         onRefresh={handleRefresh}
         onSendEmail={openComposer}
+        onSaveLead={handleHeaderSave}
+        users={users}
         body={body}
         sidebar={<LeadSidebar lead={lead} onSendEmail={openComposer} />}
       />

@@ -61,8 +61,8 @@ async def create_client(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new client"""
-    # Check if user has permission (Admin, Manager, Lead, or Super Admin)
-    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]:
+    # Check if user has permission (Admin, Sub Admin, Manager, Lead, or Super Admin)
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin, Manager, or Lead access required"
@@ -79,7 +79,7 @@ async def create_client(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid assigned user"
                 )
-        if assigned_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD]:
+        if assigned_user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Can only assign clients to Admins, Managers, or Leads"
