@@ -165,4 +165,16 @@ export const tasksAPI = {
     })
     return response.data
   },
+
+  // Production: update completed quantity for a quantitative task
+  updateProductionProgress: async (taskId, data) => {
+    const response = await api.post(`/tasks/${taskId}/production-progress`, data)
+    return response.data
+  },
+
+  // Production: get aggregated production dashboard (Admin/Manager only)
+  getProductionDashboard: async () => {
+    const response = await api.get('/tasks/production/dashboard')
+    return response.data
+  },
 }

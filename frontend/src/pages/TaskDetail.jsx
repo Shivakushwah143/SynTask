@@ -77,6 +77,11 @@ const TaskDetail = () => {
   const [submittingExtension, setSubmittingExtension] = useState(false)
   const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+
+  // Production tracking state
+  const [productionCompleted, setProductionCompleted] = useState(0)
+  const [productionNotes, setProductionNotes] = useState('')
+  const [updatingProduction, setUpdatingProduction] = useState(false)
   const [dragOverColumn, setDragOverColumn] = useState(null)
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
@@ -120,6 +125,10 @@ const TaskDetail = () => {
       const data = await tasksAPI.getTask(taskId)
       setTask(data)
       setTaskStatus(data.status)
+
+      // Initialize production tracking state
+      setProductionCompleted(data.completed_quantity || 0)
+      setProductionNotes('')
 
       if (data.attachments) {
         const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
@@ -773,6 +782,142 @@ const TaskDetail = () => {
               </div>
             </div>
           )}
+
+          {/* Task Info Card — shows all key metadata */}
+          <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <h3 className="mb-4 text-sm font-bold text-gray-900 dark:text-white">Task Information</h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Priority */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Priority</p>
+                <p className={`mt-1 text-sm font-semibold ${
+                  task.priority === 'critical' ? 'text-red-600' :
+                  task.priority === 'high' ? 'text-orange-600' :
+                  task.priority === 'medium' ? 'text-blue-600' :
+                  'text-gray-600'
+                }`}>
+                  {priorities[task.priority]?.label || task.priority || '—'}
+                </p>
+              </div>
+
+              {/* Status */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white capitalize">
+                  {String(task.status || 'todo').replace(/_/g, ' ')}
+                </p>
+              </div>
+
+              {/* Due Date */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Due Date</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.due_date ? format(timeService.instant(task.due_date), 'MMM d, yyyy') : '—'}
+                </p>
+              </div>
+
+              {/* Estimated Hours */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Est. Hours</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.estimated_hours ? `${task.estimated_hours}h` : '—'}
+                </p>
+              </div>
+
+              {/* Assignee */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Assignee</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {currentAssignee ? `${currentAssignee.first_name} ${currentAssignee.last_name}` : 'Unassigned'}
+                </p>
+              </div>
+
+              {/* Health */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Health</p>
+                <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${
+                  task.health_status === 'overdue'
+                    ? 'bg-red-100 text-red-700'
+                    : task.health_status === 'due_today'
+                      ? 'bg-amber-100 text-amber-700'
+                      : task.health_status === 'extended'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-emerald-100 text-emerald-700'
+                }`}>
+                  {(task.health_status || 'healthy').replace(/_/g, ' ')}
+                </span>
+              </div>
+
+              {/* Task Type */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Task Type</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.task_type === 'quantitative' ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span>🎯</span> Quantitative
+                    </span>
+                  ) : 'Standard'}
+                </p>
+              </div>
+
+              {/* Created */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Created</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.created_at ? format(timeService.instant(task.created_at), 'MMM d, yyyy') : '—'}
+                </p>
+              </div>
+
+              {/* Labels / Tags */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Labels</p>
+                <div className="mt-1">
+                  {task.tags && task.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {task.tags.map((tag, i) => (
+                        <span key={i} className="rounded-md bg-gray-200 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">None</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quantitative task extra info */}
+            {task.task_type === 'quantitative' && (
+              <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50/60 p-3 dark:border-purple-900/40 dark:bg-purple-950/20">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-purple-700 dark:text-purple-300">Production Details</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-4">
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Measurement</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white capitalize">
+                      {task.custom_measurement_label || task.measurement_type || '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Target</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {task.target_quantity ?? '—'} {task.target_unit || ''}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Completed</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{task.completed_quantity ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Remaining</p>
+                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                      {Math.max(0, (task.target_quantity || 0) - (task.completed_quantity || 0))}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* AI Task Breakdown */}
           <div className="mb-6 rounded-2xl border border-primary-200 bg-primary-50/60 p-4 dark:border-primary-900/40 dark:bg-primary-950/20">
@@ -1518,6 +1663,118 @@ const TaskDetail = () => {
                 </div>
               )}
             </div>
+
+            {/* Production Tracking — only for quantitative tasks */}
+            {task.task_type === 'quantitative' && (
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  🎯 Production Tracking
+                </h3>
+                <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-4 dark:border-purple-900/40 dark:bg-purple-950/20">
+                  {/* Progress stats */}
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                        {productionCompleted}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Completed</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                        {task.target_quantity || '?'}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Target</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                        {Math.max(0, (task.target_quantity || 0) - productionCompleted)}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Remaining</p>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="mb-3">
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
+                        style={{
+                          width: `${Math.min(100, Math.round((productionCompleted / (task.target_quantity || 1)) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-1 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {Math.min(100, Math.round((productionCompleted / (task.target_quantity || 1)) * 100))}%
+                    </p>
+                  </div>
+
+                  {/* Quick-add buttons */}
+                  <div className="mb-3">
+                    <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">Quick add</p>
+                    <div className="flex gap-2">
+                      {[1, 3, 5].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={updatingProduction || productionCompleted + n > (task.target_quantity || Infinity)}
+                          onClick={async () => {
+                            try {
+                              setUpdatingProduction(true)
+                              const newQty = productionCompleted + n
+                              await tasksAPI.updateProductionProgress(task.id, {
+                                completed_quantity: newQty,
+                                notes: productionNotes || undefined,
+                              })
+                              setProductionCompleted(newQty)
+                              toast.success(`Added ${n} ${task.target_unit || 'unit'}${n > 1 ? 's' : ''}`)
+                            } catch (error) {
+                              toast.error('Failed to update progress')
+                            } finally {
+                              setUpdatingProduction(false)
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-purple-300 bg-white px-3 py-2 text-sm font-semibold text-purple-700 transition hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-700 dark:bg-gray-800 dark:text-purple-300 dark:hover:bg-purple-900/30"
+                        >
+                          +{n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Notes + Update button */}
+                  <div className="space-y-2">
+                    <textarea
+                      value={productionNotes}
+                      onChange={(e) => setProductionNotes(e.target.value)}
+                      placeholder="Add notes (optional)..."
+                      rows={2}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-900 shadow-sm transition focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+                    />
+                    <button
+                      type="button"
+                      disabled={updatingProduction}
+                      onClick={async () => {
+                        try {
+                          setUpdatingProduction(true)
+                          await tasksAPI.updateProductionProgress(task.id, {
+                            completed_quantity: productionCompleted,
+                            notes: productionNotes || undefined,
+                          })
+                          toast.success('Production progress updated')
+                        } catch (error) {
+                          toast.error('Failed to update progress')
+                        } finally {
+                          setUpdatingProduction(false)
+                        }
+                      }}
+                      className="w-full rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {updatingProduction ? 'Updating...' : 'Update Progress'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {task.assigned_to === String(user?.id || user?._id) && task.status !== 'completed' && task.due_date ? (
               <div className="pt-4 border-t border-gray-200">
