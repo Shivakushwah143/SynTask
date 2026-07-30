@@ -130,11 +130,16 @@ class TaskService:
         department_id: Optional[str] = None,
         story_points: Optional[int] = None,
         estimated_hours: Optional[float] = None,
+        task_type: str = "standard",
+        measurement_type: Optional[str] = None,
+        custom_measurement_label: Optional[str] = None,
+        target_quantity: Optional[int] = None,
+        target_unit: Optional[str] = None,
         current_user: User,
         background_tasks = None
     ) -> dict:
         from fastapi import HTTPException, status
-        from app.models.task import Task, TaskPriority, TaskStatus
+        from app.models.task import Task, TaskPriority, TaskStatus, TaskType
         from app.models.user import User, UserRole
         from app.models.timeline import TimelineEventType, TimelineModule
         from app.services.timeline_service import create_timeline_event
@@ -277,6 +282,11 @@ class TaskService:
             sprint_id=sprint_id,
             story_points=story_points,
             estimated_hours=estimated_hours,
+            task_type=TaskType(task_type) if task_type else TaskType.STANDARD,
+            measurement_type=measurement_type,
+            custom_measurement_label=custom_measurement_label,
+            target_quantity=target_quantity,
+            target_unit=target_unit,
         )
 
         await task.insert()

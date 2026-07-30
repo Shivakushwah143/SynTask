@@ -38,6 +38,22 @@ class TaskExtensionStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class TaskType(str, Enum):
+    STANDARD = "standard"
+    QUANTITATIVE = "quantitative"
+
+
+class MeasurementType(str, Enum):
+    POSTS = "posts"
+    REELS = "reels"
+    VIDEOS = "videos"
+    THUMBNAILS = "thumbnails"
+    DESIGNS = "designs"
+    BANNERS = "banners"
+    STORIES = "stories"
+    OTHER = "other"
+
+
 class Task(Document):
     """Task Model. project_id is the logical project identifier (Project.project_id string), not MongoDB ObjectId."""
     title: str
@@ -57,6 +73,15 @@ class Task(Document):
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
     progress_percentage: float = 0.0
+
+    # Production / Quantitative Tracking
+    task_type: TaskType = TaskType.STANDARD
+    measurement_type: Optional[str] = None  # MeasurementType enum value or custom string when "other"
+    custom_measurement_label: Optional[str] = None  # User-typed label when measurement_type="other"
+    target_quantity: Optional[int] = Field(None, ge=1)
+    target_unit: Optional[str] = None  # e.g. "Posts", "Reels", "Videos", or custom
+    completed_quantity: int = 0
+
     expected_completion_time: Optional[datetime] = None
     
     # Dates

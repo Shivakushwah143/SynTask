@@ -14,6 +14,11 @@ class CreateTaskRequest(BaseModel):
     tags: List[str] = []
     story_points: Optional[int] = Field(None, ge=0, le=100)
     estimated_hours: Optional[float] = Field(None, ge=0)
+    task_type: str = "standard"
+    measurement_type: Optional[str] = None
+    custom_measurement_label: Optional[str] = None
+    target_quantity: Optional[int] = Field(None, ge=1)
+    target_unit: Optional[str] = None
 
 
 class UpdateTaskRequest(BaseModel):
@@ -26,6 +31,11 @@ class UpdateTaskRequest(BaseModel):
     tags: Optional[List[str]] = None
     story_points: Optional[int] = Field(None, ge=0, le=100)
     estimated_hours: Optional[float] = Field(None, ge=0)
+    task_type: Optional[str] = None
+    measurement_type: Optional[str] = None
+    custom_measurement_label: Optional[str] = None
+    target_quantity: Optional[int] = Field(None, ge=1)
+    target_unit: Optional[str] = None
 
 
 class TaskResponse(BaseModel):
@@ -42,3 +52,38 @@ class TaskResponse(BaseModel):
     tags: List[str] = []
     created_at: datetime
     updated_at: datetime
+    task_type: str = "standard"
+    measurement_type: Optional[str] = None
+    custom_measurement_label: Optional[str] = None
+    target_quantity: Optional[int] = None
+    target_unit: Optional[str] = None
+    completed_quantity: int = 0
+    remaining_quantity: Optional[int] = None
+
+
+class UpdateProductionProgressRequest(BaseModel):
+    completed_quantity: int = Field(..., ge=0)
+    notes: Optional[str] = Field(None, max_length=2000)
+
+
+class ProductionEmployeeMetric(BaseModel):
+    employee_id: str
+    employee_name: str
+    department: Optional[str] = None
+    task_id: str
+    task_title: str
+    measurement_type: Optional[str] = None
+    measurement_label: Optional[str] = None
+    target_quantity: int
+    target_unit: Optional[str] = None
+    completed_quantity: int
+    remaining_quantity: int
+    completion_percentage: float
+
+
+class ProductionDashboardResponse(BaseModel):
+    employees: List[ProductionEmployeeMetric] = []
+    team_total_target: int = 0
+    team_total_completed: int = 0
+    team_total_remaining: int = 0
+    team_completion_percentage: float = 0.0
