@@ -288,3 +288,25 @@ async def test_load_assignable_users_includes_managers(monkeypatch):
 
     assert users[0].id == "manager-1"
     assert UserRole.MANAGER.value in captured_query["role"]["$in"]
+    and_conditions = captured_query["$and"]
+    assert {"status": "active"} in and_conditions
+    assert {"$or": [{"isActive": {"$exists": False}}, {"isActive": True}]} in and_conditions
+    assert {"$or": [{"deleted": {"$exists": False}}, {"deleted": False}]} in and_conditions
+    assert {"$or": [{"deleted_at": {"$exists": False}}, {"deleted_at": None}]} in and_conditions
+
+
+@pytest.mark.asyncio
+async def test_validate_target_user_rejects_non_assignable_owner(monkeypatch):
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1"), SimpleNamespace(id="user-2")]
+
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await AssignmentEngine.validate_target_user(
+            SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER),
+            "user-9",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Target user must be an active user in your company"

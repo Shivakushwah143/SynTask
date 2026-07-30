@@ -8,6 +8,7 @@ import { salesApi } from '../../api/sales'
 import { usersAPI } from '../../api/users'
 import { Badge, Button, EmptyState, FormField, inputClassName, Modal, PageHeader, PhoneInput, SkeletonTable, Table } from '../../components/ui'
 import { asArray, formatDate, getId } from '../phase4Utils'
+import { isAssignableActiveUser } from '../../utils/userFilters'
 import { timeService } from '@/services/timeService'
 
 const normalizeLeadCsvHeader = (header = '') => {
@@ -83,7 +84,7 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
   const [step, setStep] = useState('upload')
   const [summary, setSummary] = useState(null)
   const { data: usersData } = useQuery('assignable-users-for-bulk-upload', () => usersAPI.getAssignableUsers(), { enabled: isOpen })
-  const users = asArray(usersData, ['users'])
+  const users = useMemo(() => asArray(usersData, ['users']).filter(isAssignableActiveUser), [usersData])
 
   const mutation = useMutation((formData) => salesApi.bulkUploadLeads(formData), {
     onSuccess: (result) => {
@@ -370,7 +371,7 @@ function LeadModal({ isOpen, onClose, onDone }) {
   const stages = asArray(stagesData, ['stages'])
   const categories = asArray(categoriesData, ['categories'])
   const products = asArray(productsData, ['products'])
-  const users = asArray(usersData, ['users'])
+  const users = useMemo(() => asArray(usersData, ['users']).filter(isAssignableActiveUser), [usersData])
 
   const mutation = useMutation((payload) => salesApi.createLead(payload), {
     onSuccess: () => {

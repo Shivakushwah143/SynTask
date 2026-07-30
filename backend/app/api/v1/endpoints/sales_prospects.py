@@ -1,6 +1,7 @@
 """
 Sales Prospects API - CRUD, bulk upload, contact conversion
 """
+import logging
 from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form, Body, status as http_status
@@ -26,6 +27,7 @@ from app.core.clock import utc_now
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class LeadMergeRequest(BaseModel):
@@ -539,6 +541,13 @@ async def create_prospect(
 ):
     """Create a new prospect"""
     _ensure_create_permission(current_user)
+    logger.info(
+        "Create prospect request ownerId=%s companyId=%s actorId=%s phone=%s",
+        assigned_to,
+        getattr(current_user, "company_id", None),
+        getattr(current_user, "id", None),
+        phone,
+    )
     result = await LeadEngine.create_lead(
         current_user,
         {
@@ -597,6 +606,13 @@ async def update_prospect(
     current_user: User = Depends(get_current_user)
 ):
     """Update prospect fields without mutating pipeline stage or status."""
+    logger.info(
+        "Update prospect request prospectId=%s ownerId=%s companyId=%s actorId=%s",
+        prospect_id,
+        assigned_to,
+        getattr(current_user, "company_id", None),
+        getattr(current_user, "id", None),
+    )
     result = await LeadEngine.update_lead(
         current_user,
         prospect_id,
@@ -673,4 +689,3 @@ async def preview_bulk_upload_prospects(
 @router.post("/imports/{job_id}/retry")
 async def retry_import_job(job_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
     return await LeadEngine.retry_import_job(current_user, job_id)
-

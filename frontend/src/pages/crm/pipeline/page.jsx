@@ -38,6 +38,7 @@ import {
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
+import { isAssignableActiveUser } from '../../../utils/userFilters'
 import { useDebounce } from '../../../hooks/useDebounce'
 import {
   PipelineBoard,
@@ -142,7 +143,10 @@ export default function CRMPipelinePage() {
   const board = useMemo(() => buildPipelineBoard(rawPipeline || {}), [rawPipeline])
   const categories = useMemo(() => getResponseItems(categoriesQuery.data, 'categories'), [categoriesQuery.data])
   const stages = useMemo(() => getResponseItems(stagesQuery.data, 'stages'), [stagesQuery.data])
-  const users = useMemo(() => getResponseItems(usersQuery.data, 'users'), [usersQuery.data])
+  const users = useMemo(
+    () => getResponseItems(usersQuery.data, 'users').filter(isAssignableActiveUser),
+    [usersQuery.data]
+  )
   const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
   const filters = useMemo(() => parsePipelineFilters(searchParams), [searchParams])
 

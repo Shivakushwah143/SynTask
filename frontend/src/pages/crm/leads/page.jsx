@@ -23,6 +23,7 @@ import { Badge, Button, Modal, PhoneInput, Skeleton, inputClassName } from '../.
 import BulkImportLeadsModal from '../../../components/BulkImportProspectsModal'
 import { useAuthStore } from '../../../store/authStore'
 import { isEmployeeRole, normalizeRole } from '../../../utils/roles'
+import { isAssignableActiveUser } from '../../../utils/userFilters'
 import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, normalizeText } from '../pipeline/utils'
 import { timeService } from '@/services/timeService'
 
@@ -30,7 +31,7 @@ import { timeService } from '@/services/timeService'
 const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
 const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
 const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
-const isValidLeadOwner = (item) => ['admin', 'sub_admin', 'manager', 'lead', 'employee'].includes(normalizeRole(item?.role))
+const isValidLeadOwner = (item) => isAssignableActiveUser(item) && ['admin', 'sub_admin', 'manager', 'lead', 'employee'].includes(normalizeRole(item?.role))
 const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || '').trim())
 export const hasSalesCrmModule = (modules = []) => modules.includes('sales_crm') || modules.includes('sales')
 const PRODUCT_LOCATION_OPTIONS = [
