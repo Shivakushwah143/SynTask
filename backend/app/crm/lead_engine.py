@@ -447,7 +447,7 @@ class AssignmentEngine:
         query: Dict[str, Any] = {
             "company_id": current_user.company_id,
             "status": UserStatus.ACTIVE,
-            "role": {"$in": [UserRole.ADMIN.value, UserRole.MANAGER.value, UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
+            "role": {"$in": [UserRole.ADMIN.value, UserRole.SUB_ADMIN.value, UserRole.MANAGER.value, UserRole.LEAD.value, UserRole.EMPLOYEE.value]},
         }
         if department_id:
             query["$or"] = [

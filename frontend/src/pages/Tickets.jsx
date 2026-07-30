@@ -347,7 +347,7 @@ const Tickets = () => {
   const { user } = useAuthStore()
   const { confirm } = useConfirmation()
   const userRole = normalizeRole(user?.role)
-  const canManageRequests = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
+  const canManageRequests = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -404,7 +404,7 @@ const Tickets = () => {
     }, {})
   }, [statuses])
 
-  const canManageColumns = [ROLE.ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
+  const canManageColumns = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.SUPER_ADMIN, ROLE.LEAD].includes(userRole)
   const [showColumnModal, setShowColumnModal] = useState(false)
   const [editingColumn, setEditingColumn] = useState(null)
   const [columnForm, setColumnForm] = useState({ label: '', color: 'badge-secondary' })

@@ -113,7 +113,7 @@ def _user_full_name(user: Optional[User], fallback: Optional[str] = None) -> str
 
 
 def _can_write_pipeline(current_user: User, prospect: SalesProspect) -> bool:
-    if current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]:
+    if current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]:
         return True
     if current_user.role == UserRole.EMPLOYEE:
         current_user_id = str(getattr(current_user, "id", ""))

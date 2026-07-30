@@ -7,7 +7,7 @@ import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
-import { format } from 'date-fns'
+import { format, formatDistanceToNow } from 'date-fns'
 import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/ui'
 import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
@@ -120,17 +120,35 @@ const Tasks = () => {
   // Edit / Delete state
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingTask, setEditingTask] = useState(null)
-  const [editFormData, setEditFormData] = useState({ title: '', description: '', priority: 'medium', status: 'todo', due_date: '', estimated_hours: '' })
+  const [editFormData, setEditFormData] = useState({ title: '', description: '', priority: 'medium', status: 'todo', due_date: '', estimated_hours: '', task_type: 'standard', measurement_type: '', custom_measurement_label: '', target_quantity: '', target_unit: '' })
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deletingTask, setDeletingTask] = useState(null)
   const [deleteSubmitting, setDeleteSubmitting] = useState(false)
 
+  // Production / Quantitative task state
+  const [taskType, setTaskType] = useState('standard')
+  const [measurementType, setMeasurementType] = useState('')
+  const [customMeasurementLabel, setCustomMeasurementLabel] = useState('')
+  const [targetQuantity, setTargetQuantity] = useState('')
+  const [targetUnit, setTargetUnit] = useState('')
+
+  const MEASUREMENT_OPTIONS = [
+    { value: 'posts', label: 'Posts' },
+    { value: 'reels', label: 'Reels' },
+    { value: 'videos', label: 'Videos' },
+    { value: 'thumbnails', label: 'Thumbnails' },
+    { value: 'designs', label: 'Designs' },
+    { value: 'banners', label: 'Banners' },
+    { value: 'stories', label: 'Stories' },
+    { value: 'other', label: 'Other' },
+  ]
+
 // Update estimated hours when due date changes
 useEffect(() => {
   if (dueDateValue) {
-    const hrs = calculateWorkingHours(dueDateValue);
-    setEstimatedHoursValue(hrs.toString());
+    const hrs = Math.round(calculateWorkingHours(dueDateValue));
+    setEstimatedHoursValue(String(hrs));
   }
 }, [dueDateValue]);
 
@@ -339,7 +357,6 @@ useEffect(() => {
   const highPriorityTasks = tasks.filter(t => t.priority === 'high' || t.priority === 'critical').length
 
   const closeCreateModal = () => {
-    if (submitting) return
     setShowCreateModal(false)
     setSelectedDepartmentId('')
     setSelectedAssigneeId('')
@@ -347,6 +364,11 @@ useEffect(() => {
     setEstimatedHoursValue('')
     setCreateMode('now')
     setScheduleRunAt('')
+    setTaskType('standard')
+    setMeasurementType('')
+    setCustomMeasurementLabel('')
+    setTargetQuantity('')
+    setTargetUnit('')
   }
 
   const resetFilters = () => {
@@ -392,10 +414,21 @@ useEffect(() => {
         priority: formData.get('priority') || 'medium',
         due_date: formData.get('due_date') || dueDateValue || '',
         estimated_hours: formData.get('estimated_hours') || estimatedHoursValue || '',
+        task_type: taskType || 'standard',
       }
 
       if (isCompanyAdmin && selectedDepartmentId) {
         taskData.department_id = selectedDepartmentId
+      }
+
+      // Add production fields for quantitative tasks
+      if (taskType === 'quantitative') {
+        taskData.measurement_type = measurementType || ''
+        if (measurementType === 'other' && customMeasurementLabel.trim()) {
+          taskData.custom_measurement_label = customMeasurementLabel.trim()
+        }
+        taskData.target_quantity = targetQuantity ? parseInt(targetQuantity, 10) : undefined
+        taskData.target_unit = targetUnit || measurementType || ''
       }
 
       if (createMode === 'schedule') {
@@ -473,8 +506,14 @@ useEffect(() => {
       toast.success('✅ Task created successfully!')
       setShowCreateModal(false)
       setSelectedDepartmentId('')
+      setSelectedAssigneeId('')
       setDueDateValue('')
       setEstimatedHoursValue('')
+      setTaskType('standard')
+      setMeasurementType('')
+      setCustomMeasurementLabel('')
+      setTargetQuantity('')
+      setTargetUnit('')
       fetchTasks({ isRefresh: true })
       e.target.reset()
     } catch (error) {
@@ -503,6 +542,11 @@ useEffect(() => {
       status: task.status || 'todo',
       due_date: task.due_date ? task.due_date.substring(0, 16) : '',
       estimated_hours: task.estimated_hours || '',
+      task_type: task.task_type || 'standard',
+      measurement_type: task.measurement_type || '',
+      custom_measurement_label: task.custom_measurement_label || '',
+      target_quantity: task.target_quantity != null ? String(task.target_quantity) : '',
+      target_unit: task.target_unit || '',
     })
     setShowEditModal(true)
   }
@@ -514,6 +558,15 @@ useEffect(() => {
       setEditSubmitting(true)
       const payload = { ...editFormData }
       if (payload.due_date) payload.due_date = timeService.toUtcISOString(payload.due_date)
+      // Handle quantitative fields: send empty strings to clear them when switching to standard
+      if (payload.task_type !== 'quantitative') {
+        payload.measurement_type = ''
+        payload.custom_measurement_label = ''
+        payload.target_quantity = ''
+        payload.target_unit = ''
+      } else {
+        payload.target_quantity = payload.target_quantity ? parseInt(payload.target_quantity, 10) : ''
+      }
       await tasksAPI.updateTask(editingTask.id, payload)
       toast.success('Task updated successfully')
       setShowEditModal(false)
@@ -853,7 +906,19 @@ useEffect(() => {
                         onClick={() => handleTaskClick(task)}
                         className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50"
                       >
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{task.title}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                          <div className="flex items-center gap-2">
+                            <span>{task.title}</span>
+                            {task.task_type === 'quantitative' && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                <span>🎯</span>
+                                {task.completed_quantity != null && task.target_quantity != null
+                                  ? `${task.completed_quantity}/${task.target_quantity}`
+                                  : task.measurement_type || 'Quant'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[task.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
                             {String(task.status || '').replace(/_/g, ' ')}
@@ -942,6 +1007,14 @@ useEffect(() => {
                               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{task.description}</p>
                             )}
                             <div className="mt-2 flex flex-wrap items-center gap-2">
+                              {task.task_type === 'quantitative' && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                  <span>🎯</span>
+                                  {task.completed_quantity != null && task.target_quantity != null
+                                    ? `${task.completed_quantity}/${task.target_quantity}`
+                                    : task.measurement_type || 'Quant'}
+                                </span>
+                              )}
                               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[task.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
                                 {priorities[task.priority]?.label || task.priority}
                               </span>
@@ -1081,6 +1154,92 @@ useEffect(() => {
                   />
                 </div>
               </div>
+
+              {/* Edit Task Type */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Task Type</label>
+                <div className="flex gap-3">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium transition hover:bg-gray-50 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-700 dark:border-gray-600 dark:hover:bg-gray-700 dark:has-[:checked]:border-indigo-500 dark:has-[:checked]:bg-indigo-900/20 dark:has-[:checked]:text-indigo-300">
+                    <input
+                      type="radio"
+                      value="standard"
+                      checked={editFormData.task_type === 'standard'}
+                      onChange={() => setEditFormData((s) => ({ ...s, task_type: 'standard' }))}
+                      className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Standard Task
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium transition hover:bg-gray-50 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-700 dark:border-gray-600 dark:hover:bg-gray-700 dark:has-[:checked]:border-indigo-500 dark:has-[:checked]:bg-indigo-900/20 dark:has-[:checked]:text-indigo-300">
+                    <input
+                      type="radio"
+                      value="quantitative"
+                      checked={editFormData.task_type === 'quantitative'}
+                      onChange={() => setEditFormData((s) => ({ ...s, task_type: 'quantitative' }))}
+                      className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>🎯 Quantitative Task</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Edit Production Fields — only shown for Quantitative tasks */}
+              {editFormData.task_type === 'quantitative' && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Measurement Type</label>
+                    <select
+                      value={editFormData.measurement_type}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setEditFormData((s) => ({
+                          ...s,
+                          measurement_type: val,
+                          target_unit: val && val !== 'other' ? val.charAt(0).toUpperCase() + val.slice(1) : s.target_unit,
+                        }))
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="">Select measurement type</option>
+                      {MEASUREMENT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {editFormData.measurement_type === 'other' && (
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Custom Label</label>
+                      <input
+                        type="text"
+                        value={editFormData.custom_measurement_label}
+                        onChange={(e) => setEditFormData((s) => ({ ...s, custom_measurement_label: e.target.value, target_unit: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      />
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Target Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={editFormData.target_quantity}
+                        onChange={(e) => setEditFormData((s) => ({ ...s, target_quantity: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Target Unit</label>
+                      <input
+                        type="text"
+                        value={editFormData.target_unit}
+                        onChange={(e) => setEditFormData((s) => ({ ...s, target_unit: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -1184,6 +1343,100 @@ useEffect(() => {
                   placeholder="Task description"
                 />
               </div>
+
+              {/* Task Type */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Task Type</label>
+                <div className="flex gap-3">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium transition hover:bg-gray-50 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-700 dark:border-gray-600 dark:hover:bg-gray-700 dark:has-[:checked]:border-indigo-500 dark:has-[:checked]:bg-indigo-900/20 dark:has-[:checked]:text-indigo-300">
+                    <input
+                      type="radio"
+                      name="task_type"
+                      value="standard"
+                      checked={taskType === 'standard'}
+                      onChange={() => setTaskType('standard')}
+                      className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Standard Task
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium transition hover:bg-gray-50 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-700 dark:border-gray-600 dark:hover:bg-gray-700 dark:has-[:checked]:border-indigo-500 dark:has-[:checked]:bg-indigo-900/20 dark:has-[:checked]:text-indigo-300">
+                    <input
+                      type="radio"
+                      name="task_type"
+                      value="quantitative"
+                      checked={taskType === 'quantitative'}
+                      onChange={() => setTaskType('quantitative')}
+                      className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>🎯 Quantitative Task</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Production Fields — only shown for Quantitative tasks */}
+              {taskType === 'quantitative' && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Measurement Type</label>
+                    <select
+                      value={measurementType}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setMeasurementType(val)
+                        if (val !== 'other') {
+                          setTargetUnit(val.charAt(0).toUpperCase() + val.slice(1))
+                        }
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="">Select measurement type</option>
+                      {MEASUREMENT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {measurementType === 'other' && (
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Custom Label</label>
+                      <input
+                        type="text"
+                        value={customMeasurementLabel}
+                        onChange={(e) => {
+                          setCustomMeasurementLabel(e.target.value)
+                          setTargetUnit(e.target.value)
+                        }}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        placeholder="e.g. Infographics, Whitepapers"
+                      />
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Target Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={targetQuantity}
+                        onChange={(e) => setTargetQuantity(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        placeholder="e.g. 12"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Unit</label>
+                      <input
+                        type="text"
+                        value={targetUnit}
+                        onChange={(e) => setTargetUnit(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        placeholder="e.g. Posts"
+                        readOnly={measurementType !== 'other'}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div>
                 <CreatableSelectField
                   name="assigned_to"
@@ -1249,11 +1502,21 @@ useEffect(() => {
                 <input
                   type="number"
                   name="estimated_hours"
-                  min="0.25"
-                  step="0.25"
+                  min="1"
+                  step="1"
                   required
                   value={estimatedHoursValue}
-                  onChange={(event) => setEstimatedHoursValue(event.target.value)}
+                  onChange={(event) => {
+                    const raw = event.target.value
+                    if (raw === '' || raw === '0') {
+                      setEstimatedHoursValue(raw)
+                    } else {
+                      const num = parseFloat(raw)
+                      if (!isNaN(num)) {
+                        setEstimatedHoursValue(String(Math.round(num)))
+                      }
+                    }
+                  }}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                   placeholder="8"
                 />
@@ -1421,6 +1684,25 @@ function TaskCard({ task, onOpen }) {
     critical: 'from-rose-400 to-rose-500',
   }
 
+  // Format creation time: show relative time for < 2 days, otherwise show date
+  const formatCreatedTime = (createdAt) => {
+    if (!createdAt) return null
+    try {
+      const createdDate = new Date(createdAt)
+      const now = new Date()
+      const diffMs = now - createdDate
+      const diffDays = diffMs / (1000 * 60 * 60 * 24)
+      if (diffDays < 2) {
+        return formatDistanceToNow(createdDate, { addSuffix: true })
+      }
+      return format(createdDate, 'MMM d, yyyy')
+    } catch {
+      return null
+    }
+  }
+
+  const createdTimeLabel = formatCreatedTime(task.created_at)
+
   return (
     <button
       type="button"
@@ -1470,13 +1752,21 @@ function TaskCard({ task, onOpen }) {
         </div>
       </div>
 
-      {/* Due Date */}
-      {task.dueDate && (
-        <div className="mt-2 flex items-center text-xs text-gray-500 dark:text-gray-400">
-          <Calendar className="h-3 w-3 mr-1" />
-          {format(new Date(task.dueDate), 'MMM d, yyyy')}
-        </div>
-      )}
+      {/* Due Date & Creation Time */}
+      <div className="mt-2 space-y-1">
+        {task.dueDate && (
+          <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
+            <Calendar className="h-3 w-3 mr-1" />
+            {format(new Date(task.dueDate), 'MMM d, yyyy')}
+          </div>
+        )}
+        {createdTimeLabel && (
+          <div className="flex items-center text-xs text-gray-400 dark:text-gray-500">
+            <Clock className="h-3 w-3 mr-1" />
+            {createdTimeLabel}
+          </div>
+        )}
+      </div>
     </button>
   )
 }

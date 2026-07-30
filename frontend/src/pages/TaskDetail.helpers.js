@@ -42,7 +42,7 @@ export const getProjectLeadName = (project = {}, users = [], currentUser = null)
 
 export const canEditTaskDetails = (currentUser = null, task = {}) => {
   const role = normalizeRole(currentUser?.role)
-  if (role === 'admin' || role === 'super_admin') return true
+  if (role === 'admin' || role === 'super_admin' || role === 'sub_admin') return true
   if (role === 'employee') return false
   if (role === 'manager') {
     return Boolean(currentUser?.department_id && task?.department_id && String(currentUser.department_id) === String(task.department_id))

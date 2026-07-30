@@ -43,7 +43,13 @@ const getOwner = (project) => (
 )
 
 export function buildProjectGraphRows(projects, limit = 6) {
-  return projects.slice(0, limit).map((project) => {
+  // Sort by created_at descending (newest first) so the most recent projects appear at the top
+  const sorted = [...projects].sort((a, b) => {
+    const aTime = new Date(a.created_at || 0).getTime()
+    const bTime = new Date(b.created_at || 0).getTime()
+    return bTime - aTime
+  })
+  return sorted.slice(0, limit).map((project) => {
     const totalTasks = Number(project.task_count || project.tasks_count || project.tasks?.length || 0)
     const progress = getProgress(project)
     const completedTasks = Number(project.completed_task_count ?? Math.round((progress / 100) * totalTasks))
@@ -51,6 +57,7 @@ export function buildProjectGraphRows(projects, limit = 6) {
       id: project.id,
       name: project.name || 'Untitled project',
       key: project.key || project.project_id || '',
+      created_at: project.created_at,
       owner: getOwner(project),
       assigned_to: project.assigned_to || '',
       lead_id: project.lead_id || '',

@@ -8,12 +8,12 @@ export const BUSINESS_WORKFLOW_STEPS = [
   { key: 'proposal', label: 'Proposal', href: '/crm/pipeline?stage=proposal', owner: 'crm' },
   { key: 'negotiation', label: 'Negotiation', href: '/crm/pipeline?stage=negotiation', owner: 'crm' },
   { key: 'won', label: 'Won', href: '/crm/pipeline?stage=won', owner: 'crm' },
-  { key: 'client', label: 'Client', href: '/clients', roles: ['admin'], owner: 'crm', legacyModule: 'task' },
+  { key: 'client', label: 'Client', href: '/clients', roles: ['admin', 'sub_admin'], owner: 'crm', legacyModule: 'task' },
   { key: 'project', label: 'Project', href: '/projects', owner: 'projects' },
   { key: 'tasks', label: 'Tasks', href: '/tasks', owner: 'tasks' },
   { key: 'execution', label: 'Execution', href: '/time-tracking', owner: 'tasks' },
-  { key: 'invoice', label: 'Invoice', href: '/invoices', roles: ['admin'], owner: 'finance' },
-  { key: 'payment', label: 'Payment', href: '/ledger', roles: ['admin'], owner: 'finance' },
+  { key: 'invoice', label: 'Invoice', href: '/invoices', roles: ['admin', 'sub_admin'], owner: 'finance' },
+  { key: 'payment', label: 'Payment', href: '/ledger', roles: ['admin', 'sub_admin'], owner: 'finance' },
   { key: 'reports', label: 'Reports', href: '/reports', owner: 'reporting' },
 ]
 

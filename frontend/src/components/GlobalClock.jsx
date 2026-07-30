@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Clock, Settings2 } from 'lucide-react'
 import { Button } from './ui'
 import { useAuthStore } from '@/store/authStore'
-import { isAdminRole, isSuperAdminRole } from '@/utils/roles'
+import { hasCompanyAdminAccess, isSuperAdminRole } from '@/utils/roles'
 import { detectBrowserTimezone, timeService, useTimeStore } from '@/services/timeService'
 
 const TIMEZONES = ['UTC', 'Asia/Kolkata', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Singapore', 'Australia/Sydney']
@@ -13,7 +13,7 @@ export default function GlobalClock() {
   const [open, setOpen] = useState(false)
   const [tick, setTick] = useState(0)
   const panelRef = useRef(null)
-  const canEdit = isAdminRole(user?.role) || isSuperAdminRole(user?.role)
+  const canEdit = hasCompanyAdminAccess(user?.role) || isSuperAdminRole(user?.role)
 
   useEffect(() => {
     if (!user) return

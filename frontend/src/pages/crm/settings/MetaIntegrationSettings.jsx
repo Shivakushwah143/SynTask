@@ -7,7 +7,7 @@ import { Button, FormField, inputClassName } from '../../../components/ui'
 import { MetaAnalyticsPanel } from './MetaAnalyticsPanel'
 import { MetaReadinessDashboard } from './MetaReadinessDashboard'
 
-const ADMIN_ROLES = new Set(['admin', 'super_admin'])
+const ADMIN_ROLES = new Set(['admin', 'sub_admin', 'super_admin'])
 const EMPTY_FORM = {
   enabled: false,
   lead_sync_enabled: false,

@@ -15,7 +15,7 @@ from app.core.clock import parse_to_utc, utc_now
 from app.services.timeline_service import create_timeline_event
 
 
-MANAGER_ROLES = {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
+MANAGER_ROLES = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
 
 
 def _task_status_value(task: Task) -> str:
@@ -92,7 +92,7 @@ async def assert_task_view_access(current_user: User, task: Task) -> None:
         return
     if current_user.company_id != task.company_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return
     if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
         if task.assigned_to and await _user_in_scope(current_user, task.assigned_to):
@@ -111,7 +111,7 @@ async def assert_task_manage_access(current_user: User, task: Task) -> None:
         return
     if current_user.company_id != task.company_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return
     if task.assigned_to and await _user_in_scope(current_user, task.assigned_to):
         return
@@ -269,7 +269,7 @@ async def visible_employees(current_user: User) -> list[User]:
         return []
     if current_user.role == UserRole.EMPLOYEE:
         return [current_user]
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return await User.find(User.company_id == current_user.company_id, User.status == UserStatus.ACTIVE).to_list()
     if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
         return [current_user, *(await current_user.get_all_subordinates())]

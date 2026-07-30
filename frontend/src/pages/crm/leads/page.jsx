@@ -84,7 +84,7 @@ export default function CRMLeadsPage() {
   const isEmployee = isEmployeeRole(userRole)
   const currentUserId = user?.id || user?._id || ''
   const userModules = user?.modules || []
-  const canCreateCategory = Boolean(user && (userRole === 'admin' || userRole === 'manager' || userRole === 'lead' || userRole === 'super_admin') && hasSalesCrmModule(userModules))
+  const canCreateCategory = Boolean(user && (userRole === 'admin' || userRole === 'sub_admin' || userRole === 'manager' || userRole === 'lead' || userRole === 'super_admin') && hasSalesCrmModule(userModules))
   const [mergeGroup, setMergeGroup] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -654,7 +654,7 @@ export default function CRMLeadsPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge label={`${filteredLeads.length} visible`} colorKey="draft" />
               <Badge label={`${selectedIds.length} selected`} colorKey="scheduled" />
-              {(userRole === 'admin' || userRole === 'manager' || userRole === 'super_admin') && selectedIds.length > 0 ? (
+              {(userRole === 'admin' || userRole === 'sub_admin' || userRole === 'manager' || userRole === 'super_admin') && selectedIds.length > 0 ? (
                 <Button variant="secondary" size="sm" onClick={() => { setAssignEmployeeId(''); setAssignOpen(true) }}>
                   <Users className="h-4 w-4" />
                   Assign ({selectedIds.length})

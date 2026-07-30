@@ -12,7 +12,7 @@ async def _check_capability(user: User, capability: str) -> None:
 
 
 async def require_recruitment_access(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role in (UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER):
+    if current_user.role in (UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER):
         return current_user
     if not current_user.company_id or not current_user.department_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HR department access required")
@@ -26,7 +26,7 @@ async def require_recruitment_access(current_user: User = Depends(get_current_us
 
 
 async def require_recruitment_manager(current_user: User = Depends(require_recruitment_access)) -> User:
-    if current_user.role not in (UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD):
+    if current_user.role not in (UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Recruitment manager access required")
     return current_user
 

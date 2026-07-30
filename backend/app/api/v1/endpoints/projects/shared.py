@@ -78,7 +78,7 @@ async def can_manage_project(project: Project, current_user: User) -> bool:
 
 
 async def can_create_project(current_user: User) -> bool:
-    return getattr(current_user, "role", UserRole.ADMIN) in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
+    return getattr(current_user, "role", UserRole.ADMIN) in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
 
 
 async def validate_project_assignees(
@@ -97,7 +97,7 @@ async def validate_project_assignees(
         assignee = await User.get(user_id)
         if not assignee or assignee.company_id != company_id:
             raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid project assignee")
-        if current_user.role in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
+        if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
             allowed_roles = {UserRole.MANAGER, UserRole.EMPLOYEE}
             if assignee.role not in allowed_roles:
                 raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Project lead must be a Manager or Employee")

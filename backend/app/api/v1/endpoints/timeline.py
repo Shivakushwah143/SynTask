@@ -65,7 +65,7 @@ async def _assert_timeline_access(current_user: User, target_user: User) -> None
         return
     if current_user.company_id != target_user.company_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this timeline")
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return
     if current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
         if target_user.reports_to == str(current_user.id) or str(current_user.id) in (target_user.ancestors or []):

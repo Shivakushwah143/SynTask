@@ -15,7 +15,7 @@ import { changelogApi } from '../api/changelog'
 import { projectsApi } from '../api/projects'
 import { useAuthStore } from '../store/authStore'
 import { EmailComposer } from '../components/EmailComposer'
-import { EmptyState } from '../components/ui'
+import { Badge, EmptyState } from '../components/ui'
 import { TASK_STATUS_TONES, buildTaskAssignmentOptions, canEditTaskDetails, getProjectLeadName, getTaskStatusTone, getUserDisplayName, getUserId } from './TaskDetail.helpers'
 import { normalizeRole } from '../utils/roles'
 import { buildTaskShareUrl, resolveTaskBackTarget, resolveTaskCloseFallback } from './taskNavigation'
@@ -77,6 +77,11 @@ const TaskDetail = () => {
   const [submittingExtension, setSubmittingExtension] = useState(false)
   const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+
+  // Production tracking state
+  const [productionCompleted, setProductionCompleted] = useState(0)
+  const [productionNotes, setProductionNotes] = useState('')
+  const [updatingProduction, setUpdatingProduction] = useState(false)
   const [dragOverColumn, setDragOverColumn] = useState(null)
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
@@ -120,6 +125,10 @@ const TaskDetail = () => {
       const data = await tasksAPI.getTask(taskId)
       setTask(data)
       setTaskStatus(data.status)
+
+      // Initialize production tracking state
+      setProductionCompleted(data.completed_quantity || 0)
+      setProductionNotes('')
 
       if (data.attachments) {
         const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
@@ -723,6 +732,13 @@ const TaskDetail = () => {
                 <span className={`h-2 w-2 rounded-full ${currentStatusTone.dotClass}`} />
                 {currentStatusTone.label}
               </span>
+              {/* Task Type Badge */}
+              <Badge
+                label={task.task_type === 'quantitative' ? 'QUANTITATIVE' : 'STANDARD'}
+                colorKey={task.task_type === 'quantitative' ? 'high' : 'draft'}
+                pill
+                className={task.task_type === 'quantitative' ? 'font-bold tracking-wide' : 'font-semibold tracking-wide'}
+              />
             </div>
           </div>
 
@@ -773,6 +789,194 @@ const TaskDetail = () => {
               </div>
             </div>
           )}
+
+          {/* Task Info Card — shows all key metadata */}
+          <div className="mb-6 rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            {/* Type-specific header bar */}
+            {task.task_type === 'quantitative' ? (
+              <div className="flex items-center gap-2 rounded-t-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5">
+                <span className="text-lg">🎯</span>
+                <span className="text-sm font-bold text-white tracking-wide">QUANTITATIVE TASK</span>
+                <span className="ml-auto text-xs text-purple-200">
+                  {task.measurement_type ? task.measurement_type.replace(/_/g, ' ') : ''}
+                  {task.custom_measurement_label ? ` — ${task.custom_measurement_label}` : ''}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-t-xl bg-gradient-to-r from-gray-600 to-gray-500 px-4 py-2.5">
+                <span className="text-lg">📋</span>
+                <span className="text-sm font-bold text-white tracking-wide">STANDARD TASK</span>
+              </div>
+            )}
+
+            {/* Overview grid — common fields */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {/* Priority */}
+              <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Priority</p>
+                <p className={`mt-0.5 text-sm font-semibold ${
+                  task.priority === 'critical' ? 'text-red-600' :
+                  task.priority === 'high' ? 'text-orange-600' :
+                  task.priority === 'medium' ? 'text-blue-600' :
+                  'text-gray-600'
+                }`}>
+                  {priorities[task.priority]?.label || task.priority || '—'}
+                </p>
+              </div>
+
+              {/* Status */}
+              <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Status</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white capitalize">
+                  {String(task.status || 'todo').replace(/_/g, ' ')}
+                </p>
+              </div>
+
+              {/* Health */}
+              <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Health</p>
+                <div className="mt-0.5">
+                  <Badge
+                    label={(task.health_status || 'healthy').replace(/_/g, ' ')}
+                    colorKey={task.health_status || 'healthy'}
+                    pill
+                  />
+                </div>
+              </div>
+
+              {/* Assignee */}
+              <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Assignee</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white truncate">
+                  {currentAssignee ? `${currentAssignee.first_name} ${currentAssignee.last_name}` : '—'}
+                </p>
+              </div>
+
+              {/* Labels / Tags */}
+              <div className="border-b border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Labels</p>
+                <div className="mt-0.5">
+                  {(() => {
+                    const tagList = Array.isArray(task.tags) ? task.tags : (task.tags ? String(task.tags).split(',').map(t => t.trim()).filter(Boolean) : [])
+                    return tagList.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {tagList.map((tag, i) => (
+                          <Badge key={i} label={tag} pill />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400">—</p>
+                    )
+                  })()}
+                </div>
+              </div>
+
+              {/* Due Date */}
+              <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Due Date</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.due_date ? (() => { try { return format(timeService.instant(task.due_date), 'MMM d, yyyy') } catch { return String(task.due_date).slice(0, 10) } })() : '—'}
+                </p>
+              </div>
+
+              {/* Created */}
+              <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.created_at ? (() => { try { return format(timeService.instant(task.created_at), 'MMM d, yyyy') } catch { return String(task.created_at).slice(0, 10) } })() : '—'}
+                </p>
+              </div>
+
+              {/* Estimated Hours — shown for both types */}
+              <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Est. Hours</p>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.estimated_hours != null && task.estimated_hours !== '' ? `${Number(task.estimated_hours)}h` : '—'}
+                </p>
+              </div>
+
+              {/* Story Points — if set */}
+              {task.story_points != null ? (
+                <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Story Points</p>
+                  <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">{task.story_points}</p>
+                </div>
+              ) : null}
+
+              {/* Department — if set */}
+              {task.department || task.department_id ? (
+                <div className="border-b border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Department</p>
+                  <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white truncate">
+                    {task.department || 'Assigned'}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Quantitative Task — Progress & Metrics Section */}
+            {task.task_type === 'quantitative' && (
+              <div className="border-t border-purple-200 bg-gradient-to-b from-purple-50/80 to-white px-4 py-4 dark:border-purple-900/40 dark:from-purple-950/20 dark:to-gray-800">
+                <div className="mb-3 flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-purple-800 dark:text-purple-300">📊 Production Progress</h4>
+                  <span className="rounded-full bg-purple-100 px-3 py-1 text-[11px] font-semibold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                    {task.measurement_type ? task.measurement_type.replace(/_/g, ' ') : task.custom_measurement_label || 'Quantitative'}
+                  </span>
+                </div>
+
+                {/* Big progress stat */}
+                <div className="mb-3 flex items-baseline gap-2">
+                  <span className="text-3xl font-bold text-purple-700 dark:text-purple-300">
+                    {task.completed_quantity ?? 0}
+                  </span>
+                  <span className="text-lg font-semibold text-gray-500 dark:text-gray-400">/</span>
+                  <span className="text-3xl font-bold text-gray-900 dark:text-white">
+                    {task.target_quantity ?? '∞'}
+                  </span>
+                  <span className="ml-1 text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {task.target_unit || ''}
+                  </span>
+                  <span className="ml-auto text-lg font-bold text-purple-600 dark:text-purple-400">
+                    {task.target_quantity && task.target_quantity > 0
+                      ? `${Math.min(100, Math.round(((task.completed_quantity ?? 0) / task.target_quantity) * 100))}%`
+                      : '0%'}
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="mb-4 h-3 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
+                    style={{
+                      width: `${Math.min(100, Math.round(((task.completed_quantity ?? 0) / (task.target_quantity || 1)) * 100))}%`,
+                    }}
+                  />
+                </div>
+
+                {/* Target details */}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg border border-purple-200 bg-white/80 px-3 py-2 dark:border-purple-900/40 dark:bg-gray-800/80">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Completed</p>
+                    <p className="text-lg font-bold text-purple-700 dark:text-purple-300">{task.completed_quantity ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg border border-purple-200 bg-white/80 px-3 py-2 dark:border-purple-900/40 dark:bg-gray-800/80">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Target</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">{task.target_quantity ?? '—'}</p>
+                  </div>
+                  <div className="rounded-lg border border-purple-200 bg-white/80 px-3 py-2 dark:border-purple-900/40 dark:bg-gray-800/80">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Remaining</p>
+                    <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                      {Math.max(0, (task.target_quantity ?? 0) - (task.completed_quantity ?? 0))}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-purple-200 bg-white/80 px-3 py-2 dark:border-purple-900/40 dark:bg-gray-800/80">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Unit</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">{task.target_unit || '—'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* AI Task Breakdown */}
           <div className="mb-6 rounded-2xl border border-primary-200 bg-primary-50/60 p-4 dark:border-primary-900/40 dark:bg-primary-950/20">
@@ -1450,74 +1654,183 @@ const TaskDetail = () => {
                   </div>
 
                   {/* Parent */}
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Parent</label>
-                    <p className="text-sm text-gray-700">None</p>
-                  </div>
+                  {task.parent_task_id ? (
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 block mb-1">Parent</label>
+                      <p className="text-sm text-gray-700">{task.parent_task_id}</p>
+                    </div>
+                  ) : null}
 
                   {/* Due Date */}
                   <div>
                     <label className="text-xs font-medium text-gray-500 block mb-1">Due date</label>
                     {task.due_date ? (
                       <p className="text-sm text-gray-700">
-                        {format(timeService.instant(task.due_date), 'MMM d, yyyy')}
+                        {(() => { try { return format(timeService.instant(task.due_date), 'MMM d, yyyy') } catch { return String(task.due_date).slice(0, 10) } })()}
                       </p>
                     ) : (
-                      <p className="text-sm text-gray-500">None</p>
+                      <p className="text-sm text-gray-400">—</p>
                     )}
                   </div>
 
                   <div>
                     <label className="text-xs font-medium text-gray-500 block mb-1">Health</label>
-                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold capitalize ${
-                      task.health_status === 'overdue'
-                        ? 'bg-red-100 text-red-700'
-                        : task.health_status === 'due_today'
-                          ? 'bg-amber-100 text-amber-700'
-                          : task.health_status === 'extended'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {(task.health_status || 'healthy').replace(/_/g, ' ')}
-                    </span>
+                    <Badge
+                      label={(task.health_status || 'healthy').replace(/_/g, ' ')}
+                      colorKey={task.health_status || 'healthy'}
+                      pill
+                    />
                   </div>
 
                   {/* Labels */}
                   <div>
                     <label className="text-xs font-medium text-gray-500 block mb-1">Labels</label>
-                    {task.tags && task.tags.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {task.tags.map((tag, index) => (
-                          <span key={index} className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">None</p>
-                    )}
-                  </div>
-
-                  {/* Team */}
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Team</label>
-                    <p className="text-sm text-gray-500">None</p>
+                    {(() => {
+                      const tagList = Array.isArray(task.tags) ? task.tags : (task.tags ? String(task.tags).split(',').map(t => t.trim()).filter(Boolean) : [])
+                      return tagList.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {tagList.map((tag, index) => (
+                            <Badge key={index} label={tag} pill />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400">—</p>
+                      )
+                    })()}
                   </div>
 
                   {/* Start Date */}
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Start date</label>
-                    <p className="text-sm text-gray-500">None</p>
-                  </div>
+                  {task.start_date ? (
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 block mb-1">Start date</label>
+                      <p className="text-sm text-gray-700">
+                        {(() => { try { return format(timeService.instant(task.start_date), 'MMM d, yyyy') } catch { return String(task.start_date).slice(0, 10) } })()}
+                      </p>
+                    </div>
+                  ) : null}
 
                   {/* Sprint */}
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Sprint</label>
-                    <p className="text-sm text-gray-500">None</p>
-                  </div>
+                  {task.sprint_id ? (
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 block mb-1">Sprint</label>
+                      <p className="text-sm text-gray-700">{task.sprint_id}</p>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
+
+            {/* Production Tracking — only for quantitative tasks */}
+            {task.task_type === 'quantitative' && (
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  🎯 Production Tracking
+                </h3>
+                <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-4 dark:border-purple-900/40 dark:bg-purple-950/20">
+                  {/* Progress stats */}
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                        {productionCompleted}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Completed</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                        {task.target_quantity || '?'}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Target</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                        {Math.max(0, (task.target_quantity || 0) - productionCompleted)}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Remaining</p>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="mb-3">
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
+                        style={{
+                          width: `${Math.min(100, Math.round((productionCompleted / (task.target_quantity || 1)) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-1 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {Math.min(100, Math.round((productionCompleted / (task.target_quantity || 1)) * 100))}%
+                    </p>
+                  </div>
+
+                  {/* Quick-add buttons */}
+                  <div className="mb-3">
+                    <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">Quick add</p>
+                    <div className="flex gap-2">
+                      {[1, 3, 5].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={updatingProduction || productionCompleted + n > (task.target_quantity || Infinity)}
+                          onClick={async () => {
+                            try {
+                              setUpdatingProduction(true)
+                              const newQty = productionCompleted + n
+                              await tasksAPI.updateProductionProgress(task.id, {
+                                completed_quantity: newQty,
+                                notes: productionNotes || undefined,
+                              })
+                              setProductionCompleted(newQty)
+                              toast.success(`Added ${n} ${task.target_unit || 'unit'}${n > 1 ? 's' : ''}`)
+                            } catch (error) {
+                              toast.error('Failed to update progress')
+                            } finally {
+                              setUpdatingProduction(false)
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-purple-300 bg-white px-3 py-2 text-sm font-semibold text-purple-700 transition hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-700 dark:bg-gray-800 dark:text-purple-300 dark:hover:bg-purple-900/30"
+                        >
+                          +{n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Notes + Update button */}
+                  <div className="space-y-2">
+                    <textarea
+                      value={productionNotes}
+                      onChange={(e) => setProductionNotes(e.target.value)}
+                      placeholder="Add notes (optional)..."
+                      rows={2}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-900 shadow-sm transition focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+                    />
+                    <button
+                      type="button"
+                      disabled={updatingProduction}
+                      onClick={async () => {
+                        try {
+                          setUpdatingProduction(true)
+                          await tasksAPI.updateProductionProgress(task.id, {
+                            completed_quantity: productionCompleted,
+                            notes: productionNotes || undefined,
+                          })
+                          toast.success('Production progress updated')
+                        } catch (error) {
+                          toast.error('Failed to update progress')
+                        } finally {
+                          setUpdatingProduction(false)
+                        }
+                      }}
+                      className="w-full rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {updatingProduction ? 'Updating...' : 'Update Progress'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {task.assigned_to === String(user?.id || user?._id) && task.status !== 'completed' && task.due_date ? (
               <div className="pt-4 border-t border-gray-200">

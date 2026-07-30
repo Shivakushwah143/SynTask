@@ -6,7 +6,8 @@ from typing import Optional
 from datetime import datetime
 from bson import ObjectId
 
-from app.models.task import Task, TaskExtensionRequest, TaskStatus, TaskPriority
+from app.models.task import Task, TaskExtensionRequest, TaskStatus, TaskPriority, TaskType
+from app.schemas.tasks import UpdateProductionProgressRequest, ProductionDashboardResponse, ProductionEmployeeMetric
 from app.models.department import Department
 from app.models.user import User, UserRole
 from app.events import publish_event
@@ -467,8 +468,12 @@ async def list_tasks(
                 "department_id": getattr(task, "department_id", None),
                 "department": getattr(task, "department", None),
                 "due_date": task.due_date,
+                "start_date": task.start_date,
                 "health_status": getattr(task.health_status, "value", task.health_status),
                 "extension_count": getattr(task, "extension_count", 0),
+                "estimated_hours": getattr(task, "estimated_hours", None),
+                "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+                "tags": task.tags,
                 "created_at": task.created_at,
             }
             for task in tasks
@@ -495,6 +500,11 @@ async def create_task(
     department_id: Optional[str] = Form(None),
     story_points: Optional[int] = Form(None),
     estimated_hours: Optional[float] = Form(None),
+    task_type: str = Form("standard"),
+    measurement_type: Optional[str] = Form(None),
+    custom_measurement_label: Optional[str] = Form(None),
+    target_quantity: Optional[int] = Form(None),
+    target_unit: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -503,6 +513,13 @@ async def create_task(
     We resolve to the project and store the custom project_id in task.project_id so tasks are
     linked by logical ID, not by ObjectId.
     """
+    # Validate quantitative task fields
+    if task_type == "quantitative":
+        if not measurement_type:
+            raise HTTPException(status_code=400, detail="Measurement type is required for quantitative tasks")
+        if not target_quantity or target_quantity < 1:
+            raise HTTPException(status_code=400, detail="Target quantity must be at least 1 for quantitative tasks")
+
     from app.services.task_service import TaskService
     return await TaskService.create_task_core(
         title=title,
@@ -518,6 +535,11 @@ async def create_task(
         department_id=department_id,
         story_points=story_points,
         estimated_hours=estimated_hours,
+        task_type=task_type,
+        measurement_type=measurement_type,
+        custom_measurement_label=custom_measurement_label,
+        target_quantity=target_quantity,
+        target_unit=target_unit,
         current_user=current_user,
         background_tasks=background_tasks
     )
@@ -556,6 +578,91 @@ async def overdue_task_summary(current_user: User = Depends(get_current_user)):
 @router.get("/health/extensions")
 async def extension_request_summary(current_user: User = Depends(get_current_user)):
     return await build_extension_request_summary(current_user)
+
+
+@router.get("/production/dashboard", response_model=ProductionDashboardResponse)
+async def get_production_dashboard(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Aggregated production metrics for Admin and Manager roles.
+    Returns per-employee quantitative task stats + team totals.
+    Excludes Sub Admin.
+    """
+    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admins and Managers can view production dashboard"
+        )
+
+    company_id = current_user.company_id
+    if not company_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User must belong to a company"
+        )
+
+    pipeline = [
+        {"$match": {
+            "company_id": company_id,
+            "task_type": "quantitative",
+            "target_quantity": {"$ne": None, "$gt": 0},
+        }},
+        {"$lookup": {
+            "from": "users",
+            "localField": "assigned_to",
+            "foreignField": "_id",
+            "as": "assignee",
+        }},
+        {"$unwind": {"path": "$assignee", "preserveNullAndEmptyArrays": True}},
+        {"$project": {
+            "_id": 0,
+            "task_id": {"$toString": "$_id"},
+            "task_title": "$title",
+            "employee_id": {"$toString": "$assigned_to"},
+            "employee_name": {
+                "$cond": {
+                    "if": {"$and": [{"$ne": ["$assignee", None]}, {"$ne": ["$assignee.first_name", None]}]},
+                    "then": {"$concat": ["$assignee.first_name", " ", "$assignee.last_name"]},
+                    "else": "Unassigned",
+                }
+            },
+            "department": "$department",
+            "measurement_type": "$measurement_type",
+            "measurement_label": {
+                "$cond": {
+                    "if": {"$and": [{"$eq": ["$measurement_type", "other"]}, {"$ne": ["$custom_measurement_label", None]}]},
+                    "then": "$custom_measurement_label",
+                    "else": "$measurement_type",
+                }
+            },
+            "target_quantity": "$target_quantity",
+            "target_unit": "$target_unit",
+            "completed_quantity": "$completed_quantity",
+            "remaining_quantity": {"$subtract": ["$target_quantity", "$completed_quantity"]},
+            "completion_percentage": {
+                "$round": [{"$multiply": [{"$divide": ["$completed_quantity", "$target_quantity"]}, 100]}, 1]
+            },
+        }},
+        {"$sort": {"employee_name": 1}},
+    ]
+
+    results = await Task.aggregate(pipeline).to_list(length=1000)
+
+    employees = [ProductionEmployeeMetric(**r) for r in results]
+
+    team_target = sum(e.target_quantity for e in employees)
+    team_completed = sum(e.completed_quantity for e in employees)
+    team_remaining = team_target - team_completed
+    team_pct = round((team_completed / team_target) * 100, 1) if team_target > 0 else 0.0
+
+    return ProductionDashboardResponse(
+        employees=employees,
+        team_total_target=team_target,
+        team_total_completed=team_completed,
+        team_total_remaining=team_remaining,
+        team_completion_percentage=team_pct,
+    )
 
 
 @router.get("/{task_id}/health")
@@ -661,15 +768,51 @@ async def get_task(
         "created_by": task.created_by,
         "created_by_name": f"{created_by_user.first_name} {created_by_user.last_name}" if created_by_user else None,
         "project_id": str(task.project_id) if task.project_id else None,
+        "project_object_id": str(task.project_object_id) if task.project_object_id else None,
         "department_id": getattr(task, "department_id", None),
         "department": getattr(task, "department", None),
         "due_date": task.due_date,
+        "start_date": task.start_date,
+        "completed_at": task.completed_at,
         "health_status": getattr(task.health_status, "value", task.health_status),
         "extension_count": getattr(task, "extension_count", 0),
         "tags": task.tags,
         "attachments": task.attachments if hasattr(task, 'attachments') and task.attachments else [],
         "created_at": task.created_at,
         "updated_at": task.updated_at,
+        # Task type
+        "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+        # Quantitative fields
+        "measurement_type": getattr(task, "measurement_type", None),
+        "custom_measurement_label": getattr(task, "custom_measurement_label", None),
+        "target_quantity": getattr(task, "target_quantity", None),
+        "target_unit": getattr(task, "target_unit", None),
+        "completed_quantity": getattr(task, "completed_quantity", 0),
+        "expected_completion_time": getattr(task, "expected_completion_time", None),
+        # Estimates & progress
+        "estimated_hours": getattr(task, "estimated_hours", None),
+        "actual_hours": getattr(task, "actual_hours", None),
+        "progress_percentage": getattr(task, "progress_percentage", 0.0),
+        # Parent & hierarchy
+        "parent_task_id": getattr(task, "parent_task_id", None),
+        "epic_id": getattr(task, "epic_id", None),
+        "sprint_id": getattr(task, "sprint_id", None),
+        # Agile
+        "story_points": getattr(task, "story_points", None),
+        # Workflow
+        "workflow_id": getattr(task, "workflow_id", None),
+        "issue_type_id": getattr(task, "issue_type_id", None),
+        "component_id": getattr(task, "component_id", None),
+        "fix_version_id": getattr(task, "fix_version_id", None),
+        "affects_version_ids": getattr(task, "affects_version_ids", []),
+        # Resolution
+        "resolution": getattr(task, "resolution", None),
+        "resolved_at": getattr(task, "resolved_at", None),
+        "resolved_by": getattr(task, "resolved_by", None),
+        # Tracking
+        "time_logs": getattr(task, "time_logs", []),
+        "checklist": getattr(task, "checklist", []),
+        "dependencies": getattr(task, "dependencies", []),
     }
 
 
@@ -1040,6 +1183,12 @@ async def update_task(
     start_date: Optional[str] = Form(None),
     story_points: Optional[int] = Form(None),
     estimated_hours: Optional[float] = Form(None),
+    task_type: Optional[str] = Form(None),
+    measurement_type: Optional[str] = Form(None),
+    custom_measurement_label: Optional[str] = Form(None),
+    target_quantity: Optional[int] = Form(None),
+    target_unit: Optional[str] = Form(None),
+    completed_quantity: Optional[int] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
     """Update task details"""
@@ -1145,6 +1294,24 @@ async def update_task(
     if estimated_hours is not None:
         task.estimated_hours = float(estimated_hours) if estimated_hours != '' else None
 
+    # Production / Quantitative fields
+    if task_type is not None:
+        if task_type == "quantitative" and not task.target_quantity:
+            raise HTTPException(status_code=400, detail="Set a target quantity before converting to quantitative task")
+        task.task_type = TaskType(task_type)
+    if measurement_type is not None:
+        task.measurement_type = measurement_type if measurement_type != '' else None
+    if custom_measurement_label is not None:
+        task.custom_measurement_label = custom_measurement_label if custom_measurement_label != '' else None
+    if target_quantity is not None:
+        if target_quantity != '' and int(target_quantity) < 1:
+            raise HTTPException(status_code=400, detail="Target quantity must be at least 1")
+        task.target_quantity = int(target_quantity) if target_quantity != '' else None
+    if target_unit is not None:
+        task.target_unit = target_unit if target_unit != '' else None
+    if completed_quantity is not None:
+        task.completed_quantity = int(completed_quantity) if completed_quantity != '' else 0
+
     task.updated_at = utc_now()
     await task.save()
     await sync_task_health(task)
@@ -1215,9 +1382,19 @@ async def update_task(
         "assigned_to": task.assigned_to,
         "assigned_to_name": f"{assigned_user.first_name} {assigned_user.last_name}" if assigned_user else None,
         "due_date": task.due_date,
+        "start_date": task.start_date,
+        "completed_at": task.completed_at,
         "health_status": getattr(task.health_status, "value", task.health_status),
         "extension_count": getattr(task, "extension_count", 0),
         "tags": task.tags,
+        "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+        "measurement_type": getattr(task, "measurement_type", None),
+        "custom_measurement_label": getattr(task, "custom_measurement_label", None),
+        "target_quantity": getattr(task, "target_quantity", None),
+        "target_unit": getattr(task, "target_unit", None),
+        "completed_quantity": getattr(task, "completed_quantity", 0),
+        "estimated_hours": getattr(task, "estimated_hours", None),
+        "story_points": getattr(task, "story_points", None),
         "updated_at": task.updated_at,
         "message": "Task updated successfully"
     }
@@ -1272,4 +1449,61 @@ async def add_task_attachment(
         "id": str(task.id),
         "attachments": task.attachments,
         "message": "Attachment added successfully"
+    }
+
+
+@router.post("/{task_id}/production-progress")
+async def update_task_production_progress(
+    task_id: str,
+    body: UpdateProductionProgressRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update the completed quantity for a quantitative task.
+    Accessible to the assigned employee, their manager, admin, and super admin.
+    """
+    task = await Task.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    await _assert_task_view(current_user, task)
+
+    if task.task_type != TaskType.QUANTITATIVE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task is not a quantitative task")
+    if task.target_quantity is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantitative task has no target quantity set")
+
+    task.completed_quantity = body.completed_quantity
+    task.updated_at = utc_now()
+    await task.save()
+
+    remaining = task.target_quantity - task.completed_quantity
+    completion_pct = round((task.completed_quantity / task.target_quantity) * 100, 1) if task.target_quantity > 0 else 0.0
+
+    # Fire event for cache invalidation
+    await publish_event(
+        build_domain_event(
+            event_name="TaskProductionProgressUpdated",
+            aggregate_type="task",
+            aggregate_id=str(task.id),
+            company_id=str(current_user.company_id),
+            actor_id=str(current_user.id),
+            payload={
+                "completed_quantity": task.completed_quantity,
+                "target_quantity": task.target_quantity,
+                "remaining_quantity": remaining,
+                "completion_percentage": completion_pct,
+                "notes": body.notes,
+            },
+            project_id=str(task.project_id) if task.project_id else None,
+            metadata={"source": "production_progress_update"},
+        )
+    )
+
+    return {
+        "id": str(task.id),
+        "completed_quantity": task.completed_quantity,
+        "remaining_quantity": remaining,
+        "completion_percentage": completion_pct,
     }

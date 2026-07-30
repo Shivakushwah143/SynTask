@@ -19,7 +19,7 @@ from app.core.clock import parse_to_utc, utc_now
 logger = logging.getLogger(__name__)
 
 
-APPROVER_ROLES = {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
+APPROVER_ROLES = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
 TERMINAL_LEAVE_STATUSES = {LeaveStatus.APPROVED, LeaveStatus.REJECTED, LeaveStatus.CANCELLED}
 
 
@@ -30,7 +30,7 @@ async def assert_leave_view_access(current_user: User, employee: User) -> None:
         return
     if current_user.company_id != employee.company_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return
     if current_user.role in {UserRole.MANAGER, UserRole.LEAD}:
         if employee.reports_to == str(current_user.id) or str(current_user.id) in (employee.ancestors or []):
@@ -64,7 +64,7 @@ def can_approve_leave(current_user: User, employee: User, leave: LeaveRequest) -
     if current_user.role == UserRole.MANAGER:
         return employee.role in {UserRole.EMPLOYEE, UserRole.LEAD}
     # Admins must be in pending_with_user_ids (set via forwarding)
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         pending_with = {str(item) for item in getattr(leave, "pending_with_user_ids", []) or []}
         if current_user_id not in pending_with:
             return False
@@ -121,7 +121,7 @@ async def initial_pending_reviewers(employee: User) -> list[str]:
         if admins:
             return admins
         return [str(employee.id)]
-    if employee.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+    if employee.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         admins = await company_admin_ids(employee.company_id)
         other_admins = [a for a in admins if a != str(employee.id)]
         return other_admins if other_admins else [str(employee.id)]
@@ -137,7 +137,7 @@ def leave_visibility_query(current_user: User, employee_id: Optional[str] = None
     if current_user.role == UserRole.SUPER_ADMIN:
         return {}
     query: Dict[str, Any] = {"company_id": current_user.company_id, "employee_id": {"$ne": current_user_id}}
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return query
     if current_user.role == UserRole.MANAGER:
         query["pending_with_user_ids"] = current_user_id

@@ -17,7 +17,7 @@ from app.core.clock import utc_now
 class AIMemoryService:
     """Tenant-scoped memory retrieval and update helpers for the existing AI pipeline."""
 
-    COMPANY_MEMORY_ROLES = {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
+    COMPANY_MEMORY_ROLES = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
 
     @staticmethod
     def _serialize_memory(memory: Any) -> dict[str, Any]:

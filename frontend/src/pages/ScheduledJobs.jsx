@@ -385,7 +385,7 @@ function JobRowMenu({ job, onView, onEdit, onCancel, onRetry, onDelete }) {
 export default function ScheduledJobs() {
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)
-  const canSchedule = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(userRole)
+  const canSchedule = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(userRole)
 
   const [jobs, setJobs] = useState([])
   const [total, setTotal] = useState(0)

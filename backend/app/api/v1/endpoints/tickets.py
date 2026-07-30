@@ -67,7 +67,7 @@ async def _ticket_visibility_user_ids(current_user: User) -> list[str]:
 
 async def _can_view_ticket(ticket: Ticket, current_user: User) -> bool:
     """Check ticket visibility using both creator and assignee ownership."""
-    if current_user.role == UserRole.SUPER_ADMIN or current_user.role == UserRole.ADMIN:
+    if current_user.role == UserRole.SUPER_ADMIN or current_user.role == UserRole.ADMIN or current_user.role == UserRole.SUB_ADMIN:
         return True
 
     visible_user_ids = await _ticket_visibility_user_ids(current_user)

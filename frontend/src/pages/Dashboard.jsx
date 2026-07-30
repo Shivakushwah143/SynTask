@@ -253,6 +253,7 @@ const Dashboard = () => {
   const [taskHealth, setTaskHealth] = useState(null)
   const [taskExtensions, setTaskExtensions] = useState(null)
   const [teamCompletion, setTeamCompletion] = useState(null)
+  const [productionDashboard, setProductionDashboard] = useState(null)
   const [revenueMode, setRevenueMode] = useState('Accrual')
   const [todayEvents, setTodayEvents] = useState([])
   const [upcomingDeadlines, setUpcomingDeadlines] = useState([])
@@ -279,6 +280,7 @@ const Dashboard = () => {
       setTaskHealth(cached.taskHealth)
       setTaskExtensions(cached.taskExtensions)
       setTeamCompletion(cached.teamCompletion)
+      setProductionDashboard(cached.productionDashboard)
       setAttendanceToday(cached.attendanceToday)
       setEodToday(cached.eodToday)
       setAttendanceStats(cached.attendanceStats)
@@ -302,7 +304,7 @@ const Dashboard = () => {
       const [statsData, tasksData, meetingsData, projectsData, metricsData] = primaryResults.map((r) => (r.status === 'fulfilled' ? r.value : null))
 
       const dashboardRole = normalizeRole(statsData?.role || user?.role)
-      const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
+      const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
 
       // Conditional and additional parallel calls
       const crmDashboardPromise = shouldLoadCrmDashboard
@@ -320,8 +322,12 @@ const Dashboard = () => {
       const attendancePromise =
         dashboardRole === ROLE.EMPLOYEE ? attendanceAPI.getTodayAttendance().catch(() => null) : attendanceAPI.getDashboardStats().catch(() => null)
       const eodPromise = dashboardRole === ROLE.EMPLOYEE ? eodAPI.today().catch(() => null) : Promise.resolve(null)
+      const productionDashboardPromise =
+        [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(dashboardRole)
+          ? tasksAPI.getProductionDashboard().catch(() => null)
+          : Promise.resolve(null)
 
-      const [crmDashboardData, healthData, extensionData, teamData, ticketsData, attendanceRes, eodTodayRes] = await Promise.all([
+      const [crmDashboardData, healthData, extensionData, teamData, ticketsData, attendanceRes, eodTodayRes, productionDashboardData] = await Promise.all([
         crmDashboardPromise,
         healthPromise,
         extensionPromise,
@@ -329,6 +335,7 @@ const Dashboard = () => {
         ticketsPromise,
         attendancePromise,
         eodPromise,
+        productionDashboardPromise,
       ])
 
       if (!isMounted()) return
@@ -344,6 +351,7 @@ const Dashboard = () => {
       setTaskHealth(healthData)
       setTaskExtensions(extensionData)
       setTeamCompletion(teamData)
+      setProductionDashboard(productionDashboardData)
 
       if (dashboardRole === ROLE.EMPLOYEE) {
         if (attendanceRes && attendanceRes.data) setAttendanceToday(attendanceRes.data)
@@ -530,7 +538,7 @@ const Dashboard = () => {
   }
 
   const role = normalizeRole(stats?.role || user?.role)
-  const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
+  const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
   const taskSource = recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
   const salesSummary = crmDashboard?.sales || {}
@@ -651,6 +659,7 @@ const Dashboard = () => {
     { id: 'ai-briefing', name: 'AI Briefing Center' },
     { id: 'work-meetings', name: 'Work & Meetings' },
     { id: 'project-health', name: 'Project Health' },
+    { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && Boolean(productionDashboard) },
     { id: 'recent-activity', name: 'Recent Activity' },
     { id: 'calendar-overview', name: 'Calendar Overview' },
   ].filter((section) => section.available !== false)
@@ -1372,6 +1381,93 @@ const Dashboard = () => {
               <div className="flex h-72 items-center justify-center text-sm text-gray-500 dark:text-gray-400">No projects to chart yet</div>
             )}
           </ChartCard>
+        </section>
+      ))}
+
+      {/* ============================================================ */}
+      {/* PRODUCTION TRACKING */}
+      {/* ============================================================ */}
+      {renderDashboardSection('production-tracking', (
+        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <SectionHeader
+            icon={Target}
+            title="Production Tracking"
+            description="Team production progress across quantitative tasks"
+          />
+          <div className="p-5">
+            {productionDashboard?.employees?.length ? (
+              <div className="space-y-6">
+                {/* Team aggregate */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-4 text-center dark:border-purple-900/40 dark:bg-purple-950/20">
+                    <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{productionDashboard.team_total_target || 0}</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Team Target</p>
+                  </div>
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-center dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                    <p className="text-2xl font-bold text-indigo-700 dark:text-indigo-300">{productionDashboard.team_total_completed || 0}</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Team Completed</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
+                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{productionDashboard.team_completion_percentage || 0}%</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Completion</p>
+                  </div>
+                </div>
+
+                {/* Team progress bar */}
+                <div>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
+                      style={{ width: `${Math.min(100, productionDashboard.team_completion_percentage || 0)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Per-employee cards */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {productionDashboard.employees.map((emp) => {
+                    const pct = emp.completion_percentage || 0
+                    return (
+                      <div key={emp.employee_id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md dark:border-gray-700 dark:bg-gray-900">
+                        <div className="mb-2 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{emp.employee_name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{emp.department || 'No department'}</p>
+                          </div>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                            🎯 {emp.measurement_label || emp.measurement_type || 'Quant'}
+                          </span>
+                        </div>
+                        <div className="mb-2 flex items-center justify-between text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">{emp.completed_quantity} / {emp.target_quantity}</span>
+                          <span className="font-semibold text-gray-900 dark:text-white">{pct}%</span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
+                            style={{ width: `${Math.min(100, pct)}%` }}
+                          />
+                        </div>
+                        {emp.task_title && (
+                          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 truncate" title={emp.task_title}>
+                            {emp.task_title}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Target className="h-12 w-12 text-gray-300 dark:text-gray-600" />
+                <p className="mt-3 text-sm font-medium text-gray-500 dark:text-gray-400">No production data yet</p>
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  Create quantitative tasks and track progress to see production metrics here.
+                </p>
+              </div>
+            )}
+          </div>
         </section>
       ))}
 

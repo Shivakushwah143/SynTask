@@ -67,7 +67,7 @@ async def resolve_rag_scope(
         department = await Department.get(requested_department_id)
         if not department or department.company_id != company_id or department.deleted_at is not None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Department scope denied")
-        if current_user.role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER}:
+        if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER}:
             if getattr(current_user, "department_id", None) != requested_department_id:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Department scope denied")
 
@@ -108,7 +108,7 @@ async def ensure_project_visibility(project: Project, current_user: User) -> Non
 
 
 async def can_approve_source(current_user: User, source_visibility: dict[str, Any], company_id: str) -> bool:
-    if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         return True
     if current_user.role != UserRole.MANAGER:
         return False

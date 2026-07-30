@@ -9,6 +9,7 @@ export default function NaturalDateInput({ value = '', onChange, onDateResolved 
   const [manualMode, setManualMode] = useState(false)
 
   useEffect(() => {
+    if (manualMode) return
     const timeout = setTimeout(() => {
       const parsed = parseNaturalDate(text, timeService.now())
       setPreview(parsed)
@@ -16,13 +17,14 @@ export default function NaturalDateInput({ value = '', onChange, onDateResolved 
     }, 200)
 
     return () => clearTimeout(timeout)
-  }, [text, onDateResolved])
+  }, [text, onDateResolved, manualMode])
 
   if (manualMode) {
     return (
       <div className="flex items-center gap-2">
         <input
           type="datetime-local"
+          value={typeof value === 'string' && value.includes('T') ? value.slice(0, 16) : ''}
           onChange={(e) => {
             const val = e.target.value
             onDateResolved?.(val ? timeService.instant(timeService.toUtcISOString(val)) : null)

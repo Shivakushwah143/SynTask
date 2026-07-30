@@ -130,11 +130,16 @@ class TaskService:
         department_id: Optional[str] = None,
         story_points: Optional[int] = None,
         estimated_hours: Optional[float] = None,
+        task_type: str = "standard",
+        measurement_type: Optional[str] = None,
+        custom_measurement_label: Optional[str] = None,
+        target_quantity: Optional[int] = None,
+        target_unit: Optional[str] = None,
         current_user: User,
         background_tasks = None
     ) -> dict:
         from fastapi import HTTPException, status
-        from app.models.task import Task, TaskPriority, TaskStatus
+        from app.models.task import Task, TaskPriority, TaskStatus, TaskType
         from app.models.user import User, UserRole
         from app.models.timeline import TimelineEventType, TimelineModule
         from app.services.timeline_service import create_timeline_event
@@ -151,7 +156,7 @@ class TaskService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User must belong to a company"
             )
-        if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+        if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to create tasks",
@@ -277,6 +282,11 @@ class TaskService:
             sprint_id=sprint_id,
             story_points=story_points,
             estimated_hours=estimated_hours,
+            task_type=TaskType(task_type) if task_type else TaskType.STANDARD,
+            measurement_type=measurement_type,
+            custom_measurement_label=custom_measurement_label,
+            target_quantity=target_quantity,
+            target_unit=target_unit,
         )
 
         await task.insert()
@@ -314,8 +324,19 @@ class TaskService:
             "department_id": task.department_id,
             "department": task.department,
             "due_date": task.due_date,
+            "start_date": task.start_date,
+            "completed_at": task.completed_at,
             "health_status": getattr(task.health_status, "value", task.health_status),
             "extension_count": getattr(task, "extension_count", 0),
+            "tags": task.tags,
+            "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+            "measurement_type": getattr(task, "measurement_type", None),
+            "custom_measurement_label": getattr(task, "custom_measurement_label", None),
+            "target_quantity": getattr(task, "target_quantity", None),
+            "target_unit": getattr(task, "target_unit", None),
+            "completed_quantity": getattr(task, "completed_quantity", 0),
+            "estimated_hours": getattr(task, "estimated_hours", None),
+            "story_points": getattr(task, "story_points", None),
             "created_at": task.created_at,
             "message": "Task created successfully",
             "task_id": str(task.id)
