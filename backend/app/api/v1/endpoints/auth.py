@@ -61,7 +61,7 @@ def _auth_response(user: User, remember_me: bool = False) -> Dict:
         "sub": str(user.id),
         "email": user.email,
         "role": user.role,
-        "modules": getattr(user, "modules", ["task"]),
+        "modules": getattr(user, "modules", ["task", "attendance_leaves"]),
         "active_module": getattr(user, "active_module", "task")
     }
     access_token = create_access_token(
@@ -83,7 +83,7 @@ def _auth_response(user: User, remember_me: bool = False) -> Dict:
             "last_name": user.last_name,
             "role": user.role,
             "company_id": user.company_id,
-            "modules": getattr(user, "modules", ["task"]),
+            "modules": getattr(user, "modules", ["task", "attendance_leaves"]),
             "active_module": getattr(user, "active_module", "task"),
             "notification_preferences": getattr(user, 'notification_preferences', {
                 "email_notifications": True,
@@ -283,7 +283,7 @@ async def google_login(
             last_name=last_name,
             role=UserRole.EMPLOYEE,
             status=UserStatus.ACTIVE,
-            modules=["task"],
+            modules=["task", "attendance_leaves"],
             active_module="task",
             is_email_verified=True,
             last_login=utc_now(),
@@ -338,7 +338,7 @@ async def refresh_token(
                 "sub": str(user.id),
                 "email": user.email,
                 "role": user.role,
-                "modules": getattr(user, "modules", ["task"]),
+                "modules": getattr(user, "modules", ["task", "attendance_leaves"]),
                 "active_module": getattr(user, "active_module", "task"),
             }
         )

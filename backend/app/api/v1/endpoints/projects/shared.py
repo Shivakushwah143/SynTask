@@ -68,7 +68,7 @@ async def scoped_user_ids(current_user: User) -> list[str]:
 
 
 async def can_manage_project(project: Project, current_user: User) -> bool:
-    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN}:
+    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return True
     if current_user.company_id != project.company_id:
         return False
@@ -107,29 +107,103 @@ async def validate_project_assignees(
     return users
 
 
+# async def check_project_access(project: Project, current_user: User) -> bool:
+#     """
+#     Check if user has access to a project based on hierarchical visibility
+    
+#     Returns True if user can access the project, False otherwise
+#     """
+#     # Super Admin, Admin, and Manager can access all projects in their company.
+#     if current_user.role == UserRole.SUPER_ADMIN:
+#         return True
+#     if current_user.company_id != project.company_id:
+#         return False
+#     if current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUB_ADMIN]:
+#         return True
+    
+#     assignee_ids = set(project_assignee_ids(project))
+#     if current_user.role == UserRole.LEAD:
+#         return str(current_user.id) in assignee_ids
+    
+#     elif current_user.role == UserRole.EMPLOYEE:
+#         return str(current_user.id) in (getattr(project, "team_member_ids", None) or [])
+    
+#     return False
+
 async def check_project_access(project: Project, current_user: User) -> bool:
     """
-    Check if user has access to a project based on hierarchical visibility
-    
-    Returns True if user can access the project, False otherwise
+    Check whether the current user can access the project.
+
+    Rules:
+    - Super Admin: all projects
+    - Admin/Sub Admin/Manager: all projects in their company
+    - Lead: projects directly associated with them
+    - Employee: projects directly associated with them, projects where they are
+      a team member, or projects containing a task assigned to them
     """
-    # Super Admin, Admin, and Manager can access all projects in their company.
+
+    # Super Admin has global access
     if current_user.role == UserRole.SUPER_ADMIN:
         return True
-    if current_user.company_id != project.company_id:
-        return False
-    if current_user.role in [UserRole.ADMIN, UserRole.MANAGER]:
-        return True
-    
-    assignee_ids = set(project_assignee_ids(project))
-    if current_user.role == UserRole.LEAD:
-        return str(current_user.id) in assignee_ids
-    
-    elif current_user.role == UserRole.EMPLOYEE:
-        return str(current_user.id) in (getattr(project, "team_member_ids", None) or [])
-    
-    return False
 
+    # Everyone else must belong to the same company
+    if str(current_user.company_id) != str(project.company_id):
+        return False
+
+    # Company-wide project visibility
+    if current_user.role in {
+        UserRole.ADMIN,
+        UserRole.SUB_ADMIN,
+        UserRole.MANAGER,
+    }:
+        return True
+
+    user_id = str(current_user.id)
+
+    # Normalize all project-level assignments
+    assignee_ids = {
+        str(uid)
+        for uid in project_assignee_ids(project)
+        if uid
+    }
+
+    team_member_ids = {
+        str(uid)
+        for uid in (getattr(project, "team_member_ids", None) or [])
+        if uid
+    }
+
+    # Lead access
+    if current_user.role == UserRole.LEAD:
+        return user_id in assignee_ids or user_id in team_member_ids
+
+    # Employee access
+    if current_user.role == UserRole.EMPLOYEE:
+
+        # Direct project assignment / membership
+        if user_id in assignee_ids or user_id in team_member_ids:
+            return True
+
+        # Also allow access when employee has a task in this project
+        project_ids = {
+            str(project.id),
+        }
+
+        if getattr(project, "project_id", None):
+            project_ids.add(str(project.project_id))
+
+        assigned_task = await Task.find_one({
+            "company_id": project.company_id,
+            "project_id": {"$in": list(project_ids)},
+            "assigned_to": user_id,
+        })
+
+        if assigned_task:
+            return True
+
+        return False
+
+    return False
 
 async def ensure_project_access_for_user(project: Project, current_user: User):
     """

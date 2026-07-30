@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, addDays } from 'date-fns'
 import { 
@@ -86,8 +86,8 @@ import { ChartTooltip } from '../components/charts/ChartTooltip'
 import { WorkflowGuide } from '../components/workflow/WorkflowGuide'
 import WorkflowJourney from '../components/workflow/WorkflowJourney'
 import { ChartCard } from '../components/charts/ChartCard'
-import IncomeExpenseBarChart from '../components/charts/IncomeExpenseBarChart'
-import DonutLegendChart from '../components/charts/DonutLegendChart'
+const IncomeExpenseBarChart = lazy(() => import('../components/charts/IncomeExpenseBarChart'))
+const DonutLegendChart = lazy(() => import('../components/charts/DonutLegendChart'))
 import { DASHBOARD_PROJECT_STATUSES, TASK_PRIORITY_COLORS, buildProjectHealthData, buildTaskDuePriorityData } from './dashboardData'
 import { DashboardSectionVisibilityPanel } from './DashboardSectionVisibilityPanelView.jsx'
 import { timeService } from '@/services/timeService'
@@ -201,6 +201,18 @@ const readStoredSectionOrder = () => {
   }
 }
 
+// Session storage cache helpers for stale‑while‑revalidate
+const DASHBOARD_CACHE_KEY = 'syntask-dashboard-cache'
+const readDashboardCache = () => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(DASHBOARD_CACHE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
 const getDefaultSectionPanelCollapsed = () => {
   if (typeof window === 'undefined') return true
   return !window.matchMedia('(min-width: 1280px)').matches
@@ -241,6 +253,7 @@ const Dashboard = () => {
   const [taskHealth, setTaskHealth] = useState(null)
   const [taskExtensions, setTaskExtensions] = useState(null)
   const [teamCompletion, setTeamCompletion] = useState(null)
+  const [productionDashboard, setProductionDashboard] = useState(null)
   const [revenueMode, setRevenueMode] = useState('Accrual')
   const [todayEvents, setTodayEvents] = useState([])
   const [upcomingDeadlines, setUpcomingDeadlines] = useState([])
@@ -253,73 +266,128 @@ const Dashboard = () => {
   const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
   const [sectionSearch, setSectionSearch] = useState('')
 
+  // Load cached dashboard data on mount (stale‑while‑revalidate)
+  useEffect(() => {
+    const cached = readDashboardCache()
+    if (cached) {
+      setStats(cached.stats)
+      setMetrics(cached.metrics)
+      setCrmDashboard(cached.crmDashboard)
+      setRecentTasks(cached.recentTasks)
+      setRecentTickets(cached.recentTickets)
+      setUpcomingMeetings(cached.upcomingMeetings)
+      setProjects(cached.projects)
+      setTaskHealth(cached.taskHealth)
+      setTaskExtensions(cached.taskExtensions)
+      setTeamCompletion(cached.teamCompletion)
+      setProductionDashboard(cached.productionDashboard)
+      setAttendanceToday(cached.attendanceToday)
+      setEodToday(cached.eodToday)
+      setAttendanceStats(cached.attendanceStats)
+      setRevenueMode(cached.revenueMode ?? 'Accrual')
+      setLoading(false)
+    }
+  }, [])
+
   const refreshDashboard = useCallback(async (isMounted = () => true) => {
     try {
       setLoading(true)
-      const statsData = await dashboardAPI.getStats().catch(() => null)
+      // Fire all primary API calls concurrently using Promise.allSettled
+      const primaryPromises = {
+        stats: dashboardAPI.getStats().catch(() => null),
+        tasks: tasksAPI.listTasks({ limit: 8 }).catch(() => null),
+        meetings: meetingsApi.list({ limit: 6, upcoming: true }).catch(() => null),
+        projects: projectsApi.getProjects({ limit: 8 }).catch(() => null),
+        metrics: dashboardAPI.getMetrics().catch(() => null),
+      }
+      const primaryResults = await Promise.allSettled(Object.values(primaryPromises))
+      const [statsData, tasksData, meetingsData, projectsData, metricsData] = primaryResults.map((r) => (r.status === 'fulfilled' ? r.value : null))
+
       const dashboardRole = normalizeRole(statsData?.role || user?.role)
       const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
-      const [tasksData, meetingsData, projectsData] = await Promise.all([
-        tasksAPI.listTasks({ limit: 8 }),
-        meetingsApi.list({ limit: 6, upcoming: true }),
-        projectsApi.getProjects({ limit: 8 }),
-      ])
-      const [metricsData] = await Promise.all([
-        dashboardAPI.getMetrics().catch(() => null),
-      ])
-      const crmDashboardData = shouldLoadCrmDashboard
-        ? await crmApi.getDashboard().then((response) => response?.data || null).catch(() => null)
-        : null
-      const [healthData, extensionData, teamData] = await Promise.all([
-        dashboardRole === ROLE.EMPLOYEE ? tasksAPI.getMyTaskHealth().catch(() => null) : tasksAPI.getTaskHealthSummary().catch(() => null),
-        tasksAPI.getExtensionRequestSummary().catch(() => null),
-        dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null),
-      ])
 
-      let ticketsData = { tickets: [] }
-      if (dashboardRole === ROLE.EMPLOYEE) {
-        ticketsData = await ticketsAPI.listTickets({ limit: 8 })
-      }
+      // Conditional and additional parallel calls
+      const crmDashboardPromise = shouldLoadCrmDashboard
+        ? crmApi.getDashboard().then((r) => r?.data || null).catch(() => null)
+        : Promise.resolve(null)
+      const healthPromise =
+        dashboardRole === ROLE.EMPLOYEE
+          ? tasksAPI.getMyTaskHealth().catch(() => null)
+          : tasksAPI.getTaskHealthSummary().catch(() => null)
+      const extensionPromise = tasksAPI.getExtensionRequestSummary().catch(() => null)
+      const teamPromise =
+        dashboardRole !== ROLE.EMPLOYEE ? tasksAPI.getTeamCompletionSummary().catch(() => null) : Promise.resolve(null)
+      const ticketsPromise =
+        dashboardRole === ROLE.EMPLOYEE ? ticketsAPI.listTickets({ limit: 8 }).catch(() => null) : Promise.resolve({ tickets: [] })
+      const attendancePromise =
+        dashboardRole === ROLE.EMPLOYEE ? attendanceAPI.getTodayAttendance().catch(() => null) : attendanceAPI.getDashboardStats().catch(() => null)
+      const eodPromise = dashboardRole === ROLE.EMPLOYEE ? eodAPI.today().catch(() => null) : Promise.resolve(null)
+      const productionDashboardPromise =
+        [ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(dashboardRole)
+          ? tasksAPI.getProductionDashboard().catch(() => null)
+          : Promise.resolve(null)
+
+      const [crmDashboardData, healthData, extensionData, teamData, ticketsData, attendanceRes, eodTodayRes, productionDashboardData] = await Promise.all([
+        crmDashboardPromise,
+        healthPromise,
+        extensionPromise,
+        teamPromise,
+        ticketsPromise,
+        attendancePromise,
+        eodPromise,
+        productionDashboardPromise,
+      ])
 
       if (!isMounted()) return
+
+      // Update state
       setStats(statsData || { role: dashboardRole || 'employee' })
       setMetrics(metricsData)
       setCrmDashboard(crmDashboardData)
-      setRecentTasks(tasksData.tasks || [])
-      setRecentTickets(ticketsData.tickets || [])
+      setRecentTasks(tasksData?.tasks || [])
+      setRecentTickets(ticketsData?.tickets || [])
       setUpcomingMeetings((meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6))
       setProjects((projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8))
       setTaskHealth(healthData)
       setTaskExtensions(extensionData)
       setTeamCompletion(teamData)
+      setProductionDashboard(productionDashboardData)
 
       if (dashboardRole === ROLE.EMPLOYEE) {
-        try {
-          const attTodayRes = await attendanceAPI.getTodayAttendance()
-          if (attTodayRes && attTodayRes.data) {
-            setAttendanceToday(attTodayRes.data)
-          }
-          const eodTodayRes = await eodAPI.today()
-          setEodToday(eodTodayRes)
-        } catch (e) {
-          console.error(e)
-        }
+        if (attendanceRes && attendanceRes.data) setAttendanceToday(attendanceRes.data)
+        setEodToday(eodTodayRes)
       } else {
-        try {
-          const attStatsRes = await attendanceAPI.getDashboardStats()
-          if (attStatsRes && attStatsRes.data) {
-            setAttendanceStats(attStatsRes.data)
-          }
-        } catch (e) {
-          console.error(e)
+        if (attendanceRes && attendanceRes.data) setAttendanceStats(attendanceRes.data)
+      }
+
+      // Stale‑while‑revalidate: cache the fetched dashboard data in sessionStorage
+      try {
+        const cachePayload = {
+          stats: statsData,
+          metrics: metricsData,
+          crmDashboard: crmDashboardData,
+          recentTasks: tasksData?.tasks || [],
+          recentTickets: ticketsData?.tickets || [],
+          upcomingMeetings: (meetingsData?.data?.meetings || meetingsData?.meetings || []).slice(0, 6),
+          projects: (projectsData?.data?.projects || projectsData?.projects || []).slice(0, 8),
+          taskHealth: healthData,
+          taskExtensions: extensionData,
+          teamCompletion: teamData,
+          attendanceToday: attendanceRes?.data || null,
+          eodToday: eodTodayRes,
+          attendanceStats: attendanceRes?.data || null,
+          revenueMode,
         }
+        sessionStorage.setItem('syntask-dashboard-cache', JSON.stringify(cachePayload))
+      } catch (e) {
+        // ignore storage errors
       }
     } catch (error) {
       console.error('Error loading dashboard:', error)
     } finally {
       if (isMounted()) setLoading(false)
     }
-  }, [user?.role])
+  }, [user?.role, revenueMode])
 
   useEffect(() => {
     let active = true;
@@ -328,8 +396,25 @@ const Dashboard = () => {
       await refreshDashboard(() => active);
     };
     run();
+
+    // Event listeners for instant updates after user actions (tasks, projects, CRM).
+    // NOTE: 10s interval polling was removed as the PRIMARY CAUSE of the infinite
+    // API loop. Event-driven sync is sufficient: components dispatch these events
+    // after successful create/update/delete operations.
+    // The cascade that previously made this dangerous (NotificationBell dispatching
+    // on every poll) has been eliminated.
+    const handleLiveSync = () => {
+      if (active) refreshDashboard(() => active);
+    };
+    window.addEventListener('syntask:tasks-updated', handleLiveSync);
+    window.addEventListener('syntask:projects-updated', handleLiveSync);
+    window.addEventListener('syntask:data-updated', handleLiveSync);
+
     return () => {
       active = false;
+      window.removeEventListener('syntask:tasks-updated', handleLiveSync);
+      window.removeEventListener('syntask:projects-updated', handleLiveSync);
+      window.removeEventListener('syntask:data-updated', handleLiveSync);
     };
   }, [refreshDashboard]);
 
@@ -574,6 +659,7 @@ const Dashboard = () => {
     { id: 'ai-briefing', name: 'AI Briefing Center' },
     { id: 'work-meetings', name: 'Work & Meetings' },
     { id: 'project-health', name: 'Project Health' },
+    { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && Boolean(productionDashboard) },
     { id: 'recent-activity', name: 'Recent Activity' },
     { id: 'calendar-overview', name: 'Calendar Overview' },
   ].filter((section) => section.available !== false)
@@ -891,20 +977,24 @@ const Dashboard = () => {
       {renderDashboardSection('sales-pipeline', (
         canSeeSalesWidgets ? (
           <section className="grid gap-6 xl:grid-cols-2">
-            <IncomeExpenseBarChart
-              title="Revenue and Deals"
-              data={revenueTrend}
-              primaryLabel="Closed Revenue"
-              secondaryLabel="Pipeline Value"
-              primaryTotal={`₹${(metrics?.revenue ?? 0).toLocaleString('en-IN')}`}
-              secondaryTotal={`₹${revenueTrend.reduce((sum, item) => sum + (Number(item.secondary) || 0), 0).toLocaleString('en-IN')}`}
-              toggleOptions={['Accrual', 'Cash']}
-              activeToggle={revenueMode}
-              onToggle={setRevenueMode}
-              footnote="Closed revenue and pipeline value use CRM lead/deal records for the last 12 months."
-              onBarClick={() => navigate('/crm/pipeline')}
-            />
-            <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.route || (item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline') }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
+            <Suspense fallback={<div className="h-72 flex items-center justify-center">Loading chart...</div>}>
+              <IncomeExpenseBarChart
+                title="Revenue and Deals"
+                data={revenueTrend}
+                primaryLabel="Closed Revenue"
+                secondaryLabel="Pipeline Value"
+                primaryTotal={`₹${(metrics?.revenue ?? 0).toLocaleString('en-IN')}`}
+                secondaryTotal={`₹${revenueTrend.reduce((sum, item) => sum + (Number(item.secondary) || 0), 0).toLocaleString('en-IN')}`}
+                toggleOptions={['Accrual', 'Cash']}
+                activeToggle={revenueMode}
+                onToggle={setRevenueMode}
+                footnote="Closed revenue and pipeline value use CRM lead/deal records for the last 12 months."
+                onBarClick={() => navigate('/crm/pipeline')}
+              />
+            </Suspense>
+            <Suspense fallback={<div className="h-72 flex items-center justify-center">Loading chart...</div>}>
+              <DonutLegendChart title="Pipeline Funnel" data={funnelData.map((item) => ({ ...item, route: item.route || (item.name === 'New Leads' ? '/crm/leads' : '/crm/pipeline') }))} emptyLabel="No pipeline activity yet" onItemClick={(item) => navigateFromChart(item, '/crm/pipeline')} />
+            </Suspense>
           </section>
         ) : (
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -1291,6 +1381,93 @@ const Dashboard = () => {
               <div className="flex h-72 items-center justify-center text-sm text-gray-500 dark:text-gray-400">No projects to chart yet</div>
             )}
           </ChartCard>
+        </section>
+      ))}
+
+      {/* ============================================================ */}
+      {/* PRODUCTION TRACKING */}
+      {/* ============================================================ */}
+      {renderDashboardSection('production-tracking', (
+        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <SectionHeader
+            icon={Target}
+            title="Production Tracking"
+            description="Team production progress across quantitative tasks"
+          />
+          <div className="p-5">
+            {productionDashboard?.employees?.length ? (
+              <div className="space-y-6">
+                {/* Team aggregate */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-4 text-center dark:border-purple-900/40 dark:bg-purple-950/20">
+                    <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{productionDashboard.team_total_target || 0}</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Team Target</p>
+                  </div>
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-center dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                    <p className="text-2xl font-bold text-indigo-700 dark:text-indigo-300">{productionDashboard.team_total_completed || 0}</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Team Completed</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
+                    <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{productionDashboard.team_completion_percentage || 0}%</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Completion</p>
+                  </div>
+                </div>
+
+                {/* Team progress bar */}
+                <div>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
+                      style={{ width: `${Math.min(100, productionDashboard.team_completion_percentage || 0)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Per-employee cards */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {productionDashboard.employees.map((emp) => {
+                    const pct = emp.completion_percentage || 0
+                    return (
+                      <div key={emp.employee_id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md dark:border-gray-700 dark:bg-gray-900">
+                        <div className="mb-2 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{emp.employee_name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{emp.department || 'No department'}</p>
+                          </div>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                            🎯 {emp.measurement_label || emp.measurement_type || 'Quant'}
+                          </span>
+                        </div>
+                        <div className="mb-2 flex items-center justify-between text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">{emp.completed_quantity} / {emp.target_quantity}</span>
+                          <span className="font-semibold text-gray-900 dark:text-white">{pct}%</span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all"
+                            style={{ width: `${Math.min(100, pct)}%` }}
+                          />
+                        </div>
+                        {emp.task_title && (
+                          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 truncate" title={emp.task_title}>
+                            {emp.task_title}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Target className="h-12 w-12 text-gray-300 dark:text-gray-600" />
+                <p className="mt-3 text-sm font-medium text-gray-500 dark:text-gray-400">No production data yet</p>
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  Create quantitative tasks and track progress to see production metrics here.
+                </p>
+              </div>
+            )}
+          </div>
         </section>
       ))}
 

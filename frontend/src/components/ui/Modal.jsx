@@ -56,21 +56,29 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', descripti
   if (!isOpen) return null
 
   return (
-    <div className={`fixed inset-0 ${zIndexClass} flex max-w-[100vw] items-center justify-center overflow-x-hidden overflow-y-auto p-3 sm:p-4`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <div className="fixed inset-0 bg-black/60" onClick={() => onCloseRef.current?.()} aria-hidden="true" />
-      <div ref={modalRef} className={`relative flex max-h-[calc(100dvh-1.5rem)] min-w-0 w-full flex-col overflow-hidden rounded-2xl border border-surface-border bg-white shadow-modal dark:border-[var(--color-app-border)] dark:bg-[var(--color-app-surface)] dark:shadow-lg sm:max-h-[90vh] ${sizes[size]}`}>
-        <div className="flex min-w-0 items-start justify-between gap-3 border-b border-gray-200/80 bg-gradient-to-r from-primary-50/80 via-white to-white px-4 py-4 dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface-muted)] dark:via-[var(--color-app-surface)] dark:to-[var(--color-app-surface)] sm:px-6">
+    <div
+      className={`fixed inset-0 ${zIndexClass} flex max-w-[100vw] items-center justify-center overflow-x-hidden overflow-y-auto p-3 sm:p-4`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCloseRef.current?.()
+      }}
+    >
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md" onClick={() => onCloseRef.current?.()} aria-hidden="true" />
+      <div ref={modalRef} className={`relative flex max-h-[calc(100dvh-1.5rem)] min-w-0 w-full flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-2xl transition-all dark:border-gray-800 dark:bg-gray-900 sm:max-h-[90vh] ${sizes[size]}`}>
+        <div className="flex min-w-0 items-start justify-between gap-3 border-b border-gray-100 bg-gradient-to-r from-indigo-50/70 via-white to-white px-5 py-5 dark:border-gray-800 dark:from-indigo-950/30 dark:via-gray-900 dark:to-gray-900 sm:px-6">
           <div className="min-w-0">
-            <h2 id={titleId} className="min-w-0 break-words text-lg font-semibold text-gray-900 dark:text-[var(--color-app-text)]">{title}</h2>
-            {description ? <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-[var(--color-app-text-muted)]">{description}</p> : null}
+            <h2 id={titleId} className="min-w-0 break-words text-xl font-bold tracking-tight text-gray-900 dark:text-white">{title}</h2>
+            {description ? <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</p> : null}
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500/25 dark:text-[var(--color-app-text-secondary)] dark:hover:bg-[var(--color-app-surface-subtle)]" aria-label="Close modal">
+          <button type="button" onClick={onClose} className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white" aria-label="Close modal">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 ${bodyClassName}`}>{children}</div>
+        <div className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-5 sm:p-6 ${bodyClassName}`}>{children}</div>
         {footer ? (
-          <div className="border-t border-gray-200/80 bg-white/95 px-4 py-4 backdrop-blur dark:border-[var(--color-app-border)] dark:bg-[rgb(29_24_19_/_0.96)] sm:px-6">
+          <div className="border-t border-gray-100 bg-gray-50/80 px-5 py-4 backdrop-blur dark:border-gray-800 dark:bg-gray-900/90 sm:px-6">
             {footer}
           </div>
         ) : null}

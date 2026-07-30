@@ -11,7 +11,7 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-from app.crm.models import Client, ClientStatus
+from app.crm.models import Client, ClientStatus, ClientType
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.crm.client_workspace import ClientWorkspaceService
@@ -54,6 +54,10 @@ async def create_client(
     assigned_to: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
+    client_type: Optional[str] = Form(None),
+    budget: Optional[float] = Form(None),
+    start_date: Optional[str] = Form(None),
+    delivery_date: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
 ):
     """Create a new client"""
@@ -93,6 +97,29 @@ async def create_client(
     company_id = current_user.company_id if current_user.role != UserRole.SUPER_ADMIN else None
     
     # Create client
+    # Parse client type
+    parsed_client_type = None
+    if client_type:
+        try:
+            parsed_client_type = ClientType(client_type)
+        except:
+            pass
+    
+    # Parse dates
+    parsed_start_date = None
+    if start_date:
+        try:
+            parsed_start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        except:
+            pass
+    
+    parsed_delivery_date = None
+    if delivery_date:
+        try:
+            parsed_delivery_date = datetime.fromisoformat(delivery_date.replace('Z', '+00:00'))
+        except:
+            pass
+    
     client = Client(
         name=name,
         company_id=company_id,
@@ -111,6 +138,10 @@ async def create_client(
         tags=parsed_tags,
         created_by=str(current_user.id),
         status=ClientStatus.ACTIVE,
+        client_type=parsed_client_type,
+        budget=budget,
+        start_date=parsed_start_date,
+        delivery_date=parsed_delivery_date,
     )
     
     await client.insert()
@@ -188,6 +219,10 @@ async def list_clients(
             "total_projects": len(client.project_ids),
             "total_budget": sum(client.projects_budget.values()),
             "documents_count": len(client.documents),
+            "client_type": client.client_type.value if client.client_type else None,
+            "budget": client.budget,
+            "start_date": client.start_date,
+            "delivery_date": client.delivery_date,
             "created_at": client.created_at,
             "updated_at": client.updated_at,
         })
@@ -263,6 +298,10 @@ async def get_client(
         "documents": client.documents,
         "notes": client.notes,
         "tags": client.tags,
+        "client_type": client.client_type.value if client.client_type else None,
+        "budget": client.budget,
+        "start_date": client.start_date,
+        "delivery_date": client.delivery_date,
         "created_at": client.created_at,
         "updated_at": client.updated_at,
         "created_by": client.created_by,
@@ -292,10 +331,14 @@ async def update_client(
     zip_code: Optional[str] = Form(None),
     company_name: Optional[str] = Form(None),
     industry: Optional[str] = Form(None),
-    status: Optional[str] = Form(None),
+    client_status: Optional[str] = Form(None, alias="status"),
     assigned_to: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
+    client_type: Optional[str] = Form(None),
+    budget: Optional[float] = Form(None),
+    start_date: Optional[str] = Form(None),
+    delivery_date: Optional[str] = Form(None),
     current_user: User = Depends(get_current_company_admin_or_lead),
 ):
     """Update client details"""
@@ -332,9 +375,9 @@ async def update_client(
         client.company_name = company_name
     if industry is not None:
         client.industry = industry
-    if status is not None:
+    if client_status is not None:
         try:
-            client.status = ClientStatus(status)
+            client.status = ClientStatus(client_status)
         except:
             pass
     if assigned_to is not None:
@@ -351,6 +394,23 @@ async def update_client(
     if tags is not None:
         try:
             client.tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
+        except:
+            pass
+    if client_type is not None:
+        try:
+            client.client_type = ClientType(client_type)
+        except:
+            pass
+    if budget is not None:
+        client.budget = budget
+    if start_date is not None:
+        try:
+            client.start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        except:
+            pass
+    if delivery_date is not None:
+        try:
+            client.delivery_date = datetime.fromisoformat(delivery_date.replace('Z', '+00:00'))
         except:
             pass
     

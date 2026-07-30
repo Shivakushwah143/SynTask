@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useOutletContext } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Building2, CircleDot, Clock3, Plus, Search, Users, Briefcase, Mail, Phone, Globe, FileText, TrendingUp, Activity, Building, Award } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -121,7 +121,10 @@ function CompanyModal({ isOpen, onClose, onSave, company = null }) {
 export default function CRMCompaniesPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [search, setSearch] = useState('')
+  const [localSearch, setLocalSearch] = useState('')
+  const context = useOutletContext()
+  const search = context?.searchValue ?? localSearch
+  const setSearch = context?.setSearchValue || setLocalSearch
   const [companyModalOpen, setCompanyModalOpen] = useState(false)
   const [editingCompany, setEditingCompany] = useState(null)
   const [deleteId, setDeleteId] = useState(null)

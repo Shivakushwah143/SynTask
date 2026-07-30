@@ -48,11 +48,6 @@ def history_entry(action: str, actor_id: str, *, comment: Optional[str] = None, 
     }
 
 
-def is_direct_or_indirect_report(manager: User, employee: User) -> bool:
-    manager_id = str(manager.id)
-    return employee.reports_to == manager_id or manager_id in (employee.ancestors or [])
-
-
 def can_approve_leave(current_user: User, employee: User, leave: LeaveRequest) -> bool:
     current_user_id = str(current_user.id)
     if current_user_id == str(employee.id) or current_user_id == leave.employee_id:
@@ -65,13 +60,15 @@ def can_approve_leave(current_user: User, employee: User, leave: LeaveRequest) -
         return False
     if current_user.company_id != employee.company_id:
         return False
-    pending_with = {str(item) for item in getattr(leave, "pending_with_user_ids", []) or []}
-    if current_user_id not in pending_with:
-        return False
-    if current_user.role == UserRole.ADMIN:
-        return employee.role == UserRole.MANAGER or bool(getattr(leave, "forwarded_by", None))
+    # Managers can approve any employee or lead leave in the company
     if current_user.role == UserRole.MANAGER:
-        return employee.role in {UserRole.EMPLOYEE, UserRole.LEAD} and is_direct_or_indirect_report(current_user, employee)
+        return employee.role in {UserRole.EMPLOYEE, UserRole.LEAD}
+    # Admins must be in pending_with_user_ids (set via forwarding)
+    if current_user.role == UserRole.ADMIN:
+        pending_with = {str(item) for item in getattr(leave, "pending_with_user_ids", []) or []}
+        if current_user_id not in pending_with:
+            return False
+        return employee.role == UserRole.MANAGER or bool(getattr(leave, "forwarded_by", None))
     return False
 
 
@@ -115,10 +112,20 @@ async def initial_pending_reviewers(employee: User) -> list[str]:
         manager = await nearest_manager(employee)
         if manager:
             return [str(manager.id)]
-        return await company_admin_ids(employee.company_id)
+        admins = await company_admin_ids(employee.company_id)
+        if admins:
+            return admins
+        return [str(employee.id)]
     if employee.role == UserRole.MANAGER:
-        return await company_admin_ids(employee.company_id)
-    return []
+        admins = await company_admin_ids(employee.company_id)
+        if admins:
+            return admins
+        return [str(employee.id)]
+    if employee.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+        admins = await company_admin_ids(employee.company_id)
+        other_admins = [a for a in admins if a != str(employee.id)]
+        return other_admins if other_admins else [str(employee.id)]
+    return [str(employee.id)]
 
 
 def leave_visibility_query(current_user: User, employee_id: Optional[str] = None) -> Dict[str, Any]:
@@ -152,19 +159,32 @@ async def assert_forward_target(current_user: User, leave: LeaveRequest, employe
 
 
 def parse_leave_date(value: str, *, end_of_day: bool = False) -> datetime:
+    if not value or not isinstance(value, str) or not value.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Date string cannot be empty"
+        )
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        parsed = datetime.strptime(value, "%Y-%m-%d")
-    if "T" not in value:
-        return datetime.combine(parsed.date(), time.max if end_of_day else time.min)
-    return parse_to_utc(parsed)
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            parsed = datetime.strptime(value, "%Y-%m-%d")
+        if "T" not in value:
+            return datetime.combine(parsed.date(), time.max if end_of_day else time.min)
+        return parse_to_utc(parsed)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid date format: '{value}'. Expected YYYY-MM-DD or ISO 8601 string."
+        )
 
 
-async def ensure_no_overlap(employee_id: str, start_date: datetime, end_date: datetime, exclude_id: Optional[str] = None) -> None:
+async def ensure_no_overlap(employee_id: str, start_date: datetime, end_date: datetime, exclude_id: Any = None) -> None:
     query: Dict[str, Any] = {
         "employee_id": employee_id,
-        "status": {"$in": [LeaveStatus.PENDING.value, LeaveStatus.APPROVED.value]},
+        "status": {"$in": [LeaveStatus.PENDING.value, LeaveStatus.FORWARDED.value, LeaveStatus.APPROVED.value]},
         "start_date": {"$lte": end_date},
         "end_date": {"$gte": start_date},
     }

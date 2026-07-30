@@ -80,7 +80,15 @@ export const salesApi = {
   getImportHistory: () => api.get('/sales/prospects/imports'),
   retryImportJob: (id) => api.post(`/sales/prospects/imports/${id}/retry`),
   updateProspect: (id, data) => api.put(`/sales/prospects/${id}`, data),
-  updateProspectForm: (id, data) => api.put(`/sales/prospects/${id}`, toFormData(data)),
+  updateProspectForm: (id, data) => {
+    // Always include all fields, even empty ones, so users can clear values
+    const formData = new FormData()
+    Object.entries(data || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null) return
+      formData.append(key, Array.isArray(value) ? value.join('|') : value)
+    })
+    return api.put(`/sales/prospects/${id}`, formData)
+  },
   updateStage: (id, stageId) => {
     return crmApi.updatePipelineStage(id, { stage: stageId })
   },

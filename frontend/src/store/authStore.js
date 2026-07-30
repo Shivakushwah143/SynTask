@@ -7,6 +7,7 @@ import {
 } from '../utils/storage'
 import { normalizeRole } from '../utils/roles'
 import { queryClient } from '../api/queryClient'
+import api from '../api/axios'
 
 const normalizeUser = (user) => {
   if (!user) return user
@@ -110,5 +111,32 @@ export const useAuthStore = create(
     getToken: () => get().token,
 
     getUser: () => get().user,
+
+    // Fetch the latest user profile from the server and update local state.
+    // Call this periodically or after an admin makes changes so the employee
+    // sees module/role updates without having to log out and back in.
+    refreshUser: async () => {
+      const { token } = get()
+      if (!token) return
+      try {
+        const response = await api.get('/auth/me')
+        const freshUser = response?.data ?? response
+        if (!freshUser || typeof freshUser !== 'object') return
+        const normalized = normalizeRole(freshUser.role)
+          ? { ...freshUser, role: normalizeRole(freshUser.role) }
+          : freshUser
+
+        // Only update store if data actually changed to avoid cascading re-renders
+        // across all components subscribed to `user`.
+        const currentUser = get().user
+        if (currentUser && JSON.stringify(currentUser) === JSON.stringify(normalized)) return
+
+        // Persist the refreshed data
+        saveUserData(normalized)
+        set({ user: normalized })
+      } catch {
+        // Network errors are silently ignored — don't break the session
+      }
+    },
   })
 )

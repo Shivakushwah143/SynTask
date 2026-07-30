@@ -60,7 +60,8 @@ async def create_leave_request(
     if not pending_with_user_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No leave approver found")
 
-    stored_attachment = await _save_attachment(attachment) if attachment else None
+    has_attachment = bool(attachment and getattr(attachment, "filename", None) and attachment.filename.strip())
+    stored_attachment = await _save_attachment(attachment) if has_attachment else None
     leave = LeaveRequest(
         employee_id=str(current_user.id),
         employee_role=current_user.role.value,
@@ -171,6 +172,30 @@ async def get_leave_calendar(
     }
 
 
+@router.get("/my")
+async def get_my_leave_requests(
+    status_filter: Optional[LeaveStatus] = Query(None, alias="status"),
+    leave_type: Optional[LeaveType] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the current user's own submitted leave requests."""
+    query: dict = {"employee_id": str(current_user.id)}
+    if status_filter:
+        query["status"] = status_filter.value
+    if leave_type:
+        query["leave_type"] = leave_type.value
+    leaves = await LeaveRequest.find(query).sort("-created_at").skip(skip).limit(limit).to_list()
+    total = await LeaveRequest.find(query).count()
+    return {
+        "leaves": [serialize_leave(leave, current_user) for leave in leaves],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
 @router.get("/forward-targets")
 async def get_leave_forward_targets(current_user: User = Depends(get_current_user)):
     if current_user.role != UserRole.MANAGER:
@@ -202,7 +227,7 @@ async def approve_leave_request(
     leave, employee = await _load_manageable_leave(leave_id, current_user)
     if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending or forwarded requests can be approved")
-    await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=str(leave.id))
+    await ensure_no_overlap(leave.employee_id, leave.start_date, leave.end_date, exclude_id=leave.id)
     leave.status = LeaveStatus.APPROVED
     leave.reviewed_by = str(current_user.id)
     leave.reviewed_at = utc_now()
@@ -324,8 +349,8 @@ async def cancel_leave_request(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
     if leave.employee_id != str(current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only requester can cancel leave")
-    if leave.status != LeaveStatus.PENDING:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be cancelled")
+    if leave.status not in {LeaveStatus.PENDING, LeaveStatus.FORWARDED}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending or forwarded requests can be cancelled")
     leave.status = LeaveStatus.CANCELLED
     leave.cancelled_at = utc_now()
     leave.pending_with_user_ids = []
@@ -357,25 +382,22 @@ async def _base_query(current_user: User, employee_id: Optional[str]) -> dict:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
         await assert_leave_view_access(current_user, employee)
         return {"employee_id": str(employee.id), "company_id": employee.company_id}
+    # Admins and super-admins see all company leaves except their own (managed via admin view)
+    if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+        query = leave_visibility_query(current_user, employee_id)
+        return query
+    # Managers see all company leaves (except their own, shown under "My Requests" tab)
     if current_user.role == UserRole.MANAGER:
-        subordinates = await current_user.get_all_subordinates()
-        visible_roles = {UserRole.EMPLOYEE}
-        visible_roles.add(UserRole.LEAD)
-        visible_ids = [
-            str(user.id)
-            for user in subordinates
-            if user.role in visible_roles and str(user.id) != str(current_user.id)
-        ]
-        if not visible_ids:
+        return {"company_id": current_user.company_id, "employee_id": {"$ne": str(current_user.id)}}
+    # Employees see only their own submitted leaves
+    if current_user.role == UserRole.EMPLOYEE:
+        if not current_user.company_id:
             return {"employee_id": "__none__"}
-        return {
-            "company_id": current_user.company_id,
-            "employee_id": {"$in": visible_ids},
-        }
+        return {"employee_id": str(current_user.id), "company_id": current_user.company_id}
+    # Leads see all company leaves (except their own, shown via /my endpoint)
     if current_user.role == UserRole.LEAD:
-        return {"company_id": current_user.company_id, "employee_id": "__none__"}
-    query = leave_visibility_query(current_user, employee_id)
-    return query
+        return {"company_id": current_user.company_id, "employee_id": {"$ne": str(current_user.id)}}
+    return {"employee_id": "__none__"}
 
 
 async def _load_manageable_leave(leave_id: str, current_user: User) -> tuple[LeaveRequest, User]:

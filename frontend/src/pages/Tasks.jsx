@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Zap, Target, Award, TrendingUp, Activity, BarChart3 } from 'lucide-react'
+import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Zap, Target, Award, TrendingUp, Activity, BarChart3, X, Pencil, Trash2 } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { usersAPI } from '../api/users'
@@ -12,6 +12,7 @@ import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/
 import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
 import NaturalDateInput from '../components/tasks/NaturalDateInput'
+import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
@@ -115,6 +116,33 @@ const Tasks = () => {
   const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
   const pageSize = 20;
+
+  // Edit / Delete state
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingTask, setEditingTask] = useState(null)
+  const [editFormData, setEditFormData] = useState({ title: '', description: '', priority: 'medium', status: 'todo', due_date: '', estimated_hours: '' })
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deletingTask, setDeletingTask] = useState(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
+
+  // Production / Quantitative task state
+  const [taskType, setTaskType] = useState('standard')
+  const [measurementType, setMeasurementType] = useState('')
+  const [customMeasurementLabel, setCustomMeasurementLabel] = useState('')
+  const [targetQuantity, setTargetQuantity] = useState('')
+  const [targetUnit, setTargetUnit] = useState('')
+
+  const MEASUREMENT_OPTIONS = [
+    { value: 'posts', label: 'Posts' },
+    { value: 'reels', label: 'Reels' },
+    { value: 'videos', label: 'Videos' },
+    { value: 'thumbnails', label: 'Thumbnails' },
+    { value: 'designs', label: 'Designs' },
+    { value: 'banners', label: 'Banners' },
+    { value: 'stories', label: 'Stories' },
+    { value: 'other', label: 'Other' },
+  ]
 
 // Update estimated hours when due date changes
 useEffect(() => {
@@ -294,10 +322,10 @@ useEffect(() => {
       fetchTasks({ isRefresh: true })
     }
     window.addEventListener('syntask:tasks-updated', handleTasksUpdated)
-    const interval = setInterval(handleTasksUpdated, 30000)
+    window.addEventListener('syntask:data-updated', handleTasksUpdated)
     return () => {
       window.removeEventListener('syntask:tasks-updated', handleTasksUpdated)
-      clearInterval(interval)
+      window.removeEventListener('syntask:data-updated', handleTasksUpdated)
     }
   }, [fetchTasks])
 
@@ -329,7 +357,6 @@ useEffect(() => {
   const highPriorityTasks = tasks.filter(t => t.priority === 'high' || t.priority === 'critical').length
 
   const closeCreateModal = () => {
-    if (submitting) return
     setShowCreateModal(false)
     setSelectedDepartmentId('')
     setSelectedAssigneeId('')
@@ -337,6 +364,11 @@ useEffect(() => {
     setEstimatedHoursValue('')
     setCreateMode('now')
     setScheduleRunAt('')
+    setTaskType('standard')
+    setMeasurementType('')
+    setCustomMeasurementLabel('')
+    setTargetQuantity('')
+    setTargetUnit('')
   }
 
   const resetFilters = () => {
@@ -386,6 +418,17 @@ useEffect(() => {
 
       if (isCompanyAdmin && selectedDepartmentId) {
         taskData.department_id = selectedDepartmentId
+      }
+
+      // Add production fields for quantitative tasks
+      if (taskType === 'quantitative') {
+        taskData.task_type = 'quantitative'
+        taskData.measurement_type = measurementType
+        if (measurementType === 'other' && customMeasurementLabel.trim()) {
+          taskData.custom_measurement_label = customMeasurementLabel.trim()
+        }
+        taskData.target_quantity = parseInt(targetQuantity, 10)
+        taskData.target_unit = targetUnit || measurementType
       }
 
       if (createMode === 'schedule') {
@@ -463,8 +506,14 @@ useEffect(() => {
       toast.success('✅ Task created successfully!')
       setShowCreateModal(false)
       setSelectedDepartmentId('')
+      setSelectedAssigneeId('')
       setDueDateValue('')
       setEstimatedHoursValue('')
+      setTaskType('standard')
+      setMeasurementType('')
+      setCustomMeasurementLabel('')
+      setTargetQuantity('')
+      setTargetUnit('')
       fetchTasks({ isRefresh: true })
       e.target.reset()
     } catch (error) {
@@ -480,6 +529,61 @@ useEffect(() => {
       navigate(`/projects/${task.project_id}/tasks/${task.id}`)
     } else {
       navigate(`/tasks/${task.id}`)
+    }
+  }
+
+  const openEditModal = (task, e) => {
+    e?.stopPropagation()
+    setEditingTask(task)
+    setEditFormData({
+      title: task.title || '',
+      description: task.description || '',
+      priority: task.priority || 'medium',
+      status: task.status || 'todo',
+      due_date: task.due_date ? task.due_date.substring(0, 16) : '',
+      estimated_hours: task.estimated_hours || '',
+    })
+    setShowEditModal(true)
+  }
+
+  const handleEditTask = async (e) => {
+    e.preventDefault()
+    if (editSubmitting) return
+    try {
+      setEditSubmitting(true)
+      const payload = { ...editFormData }
+      if (payload.due_date) payload.due_date = timeService.toUtcISOString(payload.due_date)
+      await tasksAPI.updateTask(editingTask.id, payload)
+      toast.success('Task updated successfully')
+      setShowEditModal(false)
+      setEditingTask(null)
+      fetchTasks({ isRefresh: true })
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update task')
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
+  const openDeleteConfirm = (task, e) => {
+    e?.stopPropagation()
+    setDeletingTask(task)
+    setShowDeleteConfirm(true)
+  }
+
+  const handleDeleteTask = async () => {
+    if (deleteSubmitting) return
+    try {
+      setDeleteSubmitting(true)
+      await tasksAPI.deleteTask(deletingTask.id)
+      toast.success('Task deleted successfully')
+      setShowDeleteConfirm(false)
+      setDeletingTask(null)
+      fetchTasks({ isRefresh: true })
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to delete task')
+    } finally {
+      setDeleteSubmitting(false)
     }
   }
 
@@ -730,6 +834,12 @@ useEffect(() => {
         </div>
       </div>
 
+      {/* Quick Assign Panel */}
+      <QuickAssignPanel
+        users={uniqueAssignableUsers}
+        onTaskCreated={() => fetchTasks({ isRefresh: true })}
+      />
+
       {/* Task Graph Panel */}
       <TaskGraphPanel
         rows={taskGraphRows}
@@ -751,6 +861,7 @@ useEffect(() => {
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Priority</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Due Date</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Assignee</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -781,7 +892,19 @@ useEffect(() => {
                         onClick={() => handleTaskClick(task)}
                         className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50"
                       >
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{task.title}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                          <div className="flex items-center gap-2">
+                            <span>{task.title}</span>
+                            {task.task_type === 'quantitative' && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                <span>🎯</span>
+                                {task.completed_quantity != null && task.target_quantity != null
+                                  ? `${task.completed_quantity}/${task.target_quantity}`
+                                  : task.measurement_type || 'Quant'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[task.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
                             {String(task.status || '').replace(/_/g, ' ')}
@@ -797,6 +920,26 @@ useEffect(() => {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                           {assignedUser ? `${assignedUser.first_name} ${assignedUser.last_name}` : 'Unassigned'}
+                        </td>
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => openEditModal(task, e)}
+                              className="rounded-lg p-1.5 text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
+                              title="Edit task"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => openDeleteConfirm(task, e)}
+                              className="rounded-lg p-1.5 text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                              title="Delete task"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -838,29 +981,58 @@ useEffect(() => {
                       return (
                         <div
                           key={task.id}
-                          onClick={() => handleTaskClick(task)}
-                          className="cursor-pointer rounded-xl border border-gray-200 bg-white p-3 transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700"
+                          className="rounded-xl border border-gray-200 bg-white p-3 transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700"
                         >
-                          <p className="font-medium text-gray-900 text-sm dark:text-white">{task.title}</p>
-                          {task.description && (
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{task.description}</p>
-                          )}
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[task.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
-                              {priorities[task.priority]?.label || task.priority}
-                            </span>
-                            {task.due_date && (
-                              <span className="text-xs text-gray-500 dark:text-gray-400">
-                                <Calendar className="inline h-3 w-3 mr-1" />
-                                {format(new Date(task.due_date), 'MMM d')}
-                              </span>
+                          <button
+                            type="button"
+                            onClick={() => handleTaskClick(task)}
+                            className="w-full text-left"
+                          >
+                            <p className="font-medium text-gray-900 text-sm dark:text-white">{task.title}</p>
+                            {task.description && (
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{task.description}</p>
                             )}
-                            {assignedUser && (
-                              <span className="text-xs text-gray-500 dark:text-gray-400">
-                                <User className="inline h-3 w-3 mr-1" />
-                                {assignedUser.first_name}
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              {task.task_type === 'quantitative' && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                  <span>🎯</span>
+                                  {task.completed_quantity != null && task.target_quantity != null
+                                    ? `${task.completed_quantity}/${task.target_quantity}`
+                                    : task.measurement_type || 'Quant'}
+                                </span>
+                              )}
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[task.priority] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
+                                {priorities[task.priority]?.label || task.priority}
                               </span>
-                            )}
+                              {task.due_date && (
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  <Calendar className="inline h-3 w-3 mr-1" />
+                                  {format(new Date(task.due_date), 'MMM d')}
+                                </span>
+                              )}
+                              {assignedUser && (
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  <User className="inline h-3 w-3 mr-1" />
+                                  {assignedUser.first_name}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                          <div className="mt-2 flex items-center gap-1 border-t border-gray-100 pt-2 dark:border-gray-700">
+                            <button
+                              type="button"
+                              onClick={(e) => openEditModal(task, e)}
+                              className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
+                            >
+                              <Pencil className="h-3 w-3" /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => openDeleteConfirm(task, e)}
+                              className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-rose-500 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                            >
+                              <Trash2 className="h-3 w-3" /> Delete
+                            </button>
                           </div>
                         </div>
                       )
@@ -873,10 +1045,171 @@ useEffect(() => {
         </div>
       )}
 
+      {/* Edit Task Modal */}
+      {showEditModal && editingTask && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowEditModal(false)
+          }}
+        >
+          <div
+            className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Edit Task</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update task details</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleEditTask} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Title</label>
+                <input
+                  type="text"
+                  required
+                  value={editFormData.title}
+                  onChange={(e) => setEditFormData((s) => ({ ...s, title: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
+                <textarea
+                  rows={3}
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData((s) => ({ ...s, description: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+                  <select
+                    value={editFormData.status}
+                    onChange={(e) => setEditFormData((s) => ({ ...s, status: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="in_review">Review</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Priority</label>
+                  <select
+                    value={editFormData.priority}
+                    onChange={(e) => setEditFormData((s) => ({ ...s, priority: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Due Date</label>
+                  <input
+                    type="datetime-local"
+                    value={editFormData.due_date}
+                    onChange={(e) => setEditFormData((s) => ({ ...s, due_date: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Est. Hours</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={editFormData.estimated_hours}
+                    onChange={(e) => setEditFormData((s) => ({ ...s, estimated_hours: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {editSubmitting ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Task Confirmation */}
+      {showDeleteConfirm && deletingTask && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) { setShowDeleteConfirm(false); setDeletingTask(null) }
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Delete Task</h2>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Are you sure you want to delete <span className="font-semibold text-gray-700 dark:text-gray-200">&ldquo;{deletingTask.title}&rdquo;</span>? This action cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowDeleteConfirm(false); setDeletingTask(null) }}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteSubmitting}
+                onClick={handleDeleteTask}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+              >
+                {deleteSubmitting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Create Task Modal */}
       {canManageTasks && showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeCreateModal()
+          }}
+        >
+          <div
+            className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">New Task</h2>
@@ -910,6 +1243,100 @@ useEffect(() => {
                   placeholder="Task description"
                 />
               </div>
+
+              {/* Task Type */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Task Type</label>
+                <div className="flex gap-3">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium transition hover:bg-gray-50 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-700 dark:border-gray-600 dark:hover:bg-gray-700 dark:has-[:checked]:border-indigo-500 dark:has-[:checked]:bg-indigo-900/20 dark:has-[:checked]:text-indigo-300">
+                    <input
+                      type="radio"
+                      name="task_type"
+                      value="standard"
+                      checked={taskType === 'standard'}
+                      onChange={() => setTaskType('standard')}
+                      className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Standard Task
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium transition hover:bg-gray-50 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-700 dark:border-gray-600 dark:hover:bg-gray-700 dark:has-[:checked]:border-indigo-500 dark:has-[:checked]:bg-indigo-900/20 dark:has-[:checked]:text-indigo-300">
+                    <input
+                      type="radio"
+                      name="task_type"
+                      value="quantitative"
+                      checked={taskType === 'quantitative'}
+                      onChange={() => setTaskType('quantitative')}
+                      className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>🎯 Quantitative Task</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Production Fields — only shown for Quantitative tasks */}
+              {taskType === 'quantitative' && (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Measurement Type</label>
+                    <select
+                      value={measurementType}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setMeasurementType(val)
+                        if (val !== 'other') {
+                          setTargetUnit(val.charAt(0).toUpperCase() + val.slice(1))
+                        }
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="">Select measurement type</option>
+                      {MEASUREMENT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {measurementType === 'other' && (
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Custom Label</label>
+                      <input
+                        type="text"
+                        value={customMeasurementLabel}
+                        onChange={(e) => {
+                          setCustomMeasurementLabel(e.target.value)
+                          setTargetUnit(e.target.value)
+                        }}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        placeholder="e.g. Infographics, Whitepapers"
+                      />
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Target Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={targetQuantity}
+                        onChange={(e) => setTargetQuantity(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        placeholder="e.g. 12"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Unit</label>
+                      <input
+                        type="text"
+                        value={targetUnit}
+                        onChange={(e) => setTargetUnit(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        placeholder="e.g. Posts"
+                        readOnly={measurementType !== 'other'}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div>
                 <CreatableSelectField
                   name="assigned_to"
@@ -1230,7 +1657,6 @@ function TaskProgressRing({ value, color }) {
   )
 }
 
-// Missing X import
-import { X } from 'lucide-react'
+
 
 export default Tasks

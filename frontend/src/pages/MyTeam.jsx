@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { ROLE, normalizeRole } from '../utils/roles'
 import { PasswordInput, PhoneInput } from '../components/ui'
+import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { timeService } from '@/services/timeService'
 
 const allowedTeamRoles = [ROLE.LEAD, ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN]
@@ -178,25 +179,41 @@ const MyTeam = () => {
 
   return (
     <div className="p-4 space-y-4">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">My Team</h1>
-          <p className="text-xs sm:text-sm font-medium text-gray-700 truncate">
-            {lead_info?.team_name ? `Team: ${lead_info.team_name}` : 'Manage your team members'}
-          </p>
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
+              <Users className="h-7 w-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">My Team Workspace</h1>
+              <p className="mt-1 text-indigo-100 text-sm">
+                {lead_info?.team_name ? `Team: ${lead_info.team_name}` : 'Manage your direct reports, workload & deliverables'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingMember(null)
+              setShowAddModal(true)
+            }}
+            className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20 self-start md:self-auto"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Member</span>
+          </button>
         </div>
-        <button
-          onClick={() => {
-            setEditingMember(null)
-            setShowAddModal(true)
-          }}
-          className="btn btn-primary flex items-center justify-center text-sm px-3 py-1.5 w-full sm:w-auto"
-        >
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add Member
-        </button>
       </div>
+
+      {/* Quick Assign Panel */}
+      <QuickAssignPanel
+        users={team_members}
+        onTaskCreated={fetchTeam}
+      />
 
       {/* Team Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

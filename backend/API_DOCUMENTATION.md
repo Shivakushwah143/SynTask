@@ -590,7 +590,7 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/users/` | `list_users` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/users/assignable` | `get_assignable_users` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/users/assignable` | `get_assignable_users` | Returns active company users eligible for assignment, including admins, managers, leads, and employees; `project_id` still narrows the list to project members. |
 | GET | `/api/v1/users/creatable-roles` | `get_creatable_roles` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/users/create-employee` | `create_employee` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/users/create-lead` | `create_lead` | Uses router/endpoint dependencies where configured. |

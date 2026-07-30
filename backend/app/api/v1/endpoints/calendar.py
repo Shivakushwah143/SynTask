@@ -70,15 +70,23 @@ def build_calendar_task_query(
     project_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     task_query: Dict[str, Any] = {"company_id": current_user.company_id}
+    
+    # User scope
     if view_type == "my_calendar":
-        task_query["assigned_to"] = str(current_user.id)
+        user_cond = {"$or": [{"assigned_to": str(current_user.id)}, {"created_by": str(current_user.id)}]}
     else:
-        task_query["assigned_to"] = {"$in": user_ids_to_fetch}
+        user_cond = {"assigned_to": {"$in": user_ids_to_fetch}}
 
-    task_query["$or"] = [
-        {"due_date": {"$gte": start_at, "$lte": end_at}},
-        {"due_date": None, "created_at": {"$gte": start_at, "$lte": end_at}},
-    ]
+    # Date scope (check due_date, start_date, or created_at)
+    date_cond = {
+        "$or": [
+            {"due_date": {"$gte": start_at, "$lte": end_at}},
+            {"start_date": {"$gte": start_at, "$lte": end_at}},
+            {"due_date": None, "start_date": None, "created_at": {"$gte": start_at, "$lte": end_at}},
+        ]
+    }
+
+    task_query["$and"] = [user_cond, date_cond]
 
     if project_id:
         from bson import ObjectId
@@ -419,18 +427,21 @@ async def get_calendar_events(
                     events.append({
                         "id": f"task_start_{task.id}",
                         "type": "task_assigned",
-                        "title": f"Task Assigned: {task.title}",
+                        "title": f"Task Scheduled: {task.title}",
                         "description": task.description,
                         "start": t_start_date.isoformat(),
                         "time": task.start_date.strftime("%H:%M") if isinstance(task.start_date, datetime) else None,
+                        "start_date": task.start_date.isoformat() if getattr(task, "start_date", None) else None,
                         "due_date": task.due_date.isoformat() if getattr(task, "due_date", None) else None,
+                        "created_at": task.created_at.isoformat() if getattr(task, "created_at", None) else None,
+                        "is_scheduled": True,
                         "assignee": assignee_name,
                         "assignee_id": task.assigned_to,
                         "project_id": str(task.project_id) if getattr(task, "project_id", None) else None,
                         "project_name": proj_name,
                         "priority": priority,
                         "status": task_status,
-                        "color": "#9CA3AF" if task_completed else "#10B981",  # Green (Task Assigned) / Gray (Completed)
+                        "color": "#9CA3AF" if task_completed else "#10B981",  # Green (Task Scheduled) / Gray (Completed)
                     })
 
             # Task Due Event (Orange/Yellow/Gray)
@@ -455,7 +466,10 @@ async def get_calendar_events(
                         "description": task.description,
                         "start": t_due_date_parsed.isoformat(),
                         "time": t_due_date.strftime("%H:%M") if isinstance(t_due_date, datetime) else None,
+                        "start_date": task.start_date.isoformat() if getattr(task, "start_date", None) else None,
                         "due_date": task.due_date.isoformat() if getattr(task, "due_date", None) else None,
+                        "created_at": task.created_at.isoformat() if getattr(task, "created_at", None) else None,
+                        "is_scheduled": False,
                         "assignee": assignee_name,
                         "assignee_id": task.assigned_to,
                         "project_id": str(task.project_id) if getattr(task, "project_id", None) else None,

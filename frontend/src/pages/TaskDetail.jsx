@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { 
   ArrowLeft, Trash2, Paperclip, Eye, History, Mail,
   X, Lock, Share2, MoreVertical, Maximize2, CheckSquare,
-  Zap, Sparkles
+  Zap, Sparkles, Plus, List
 } from 'lucide-react'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { aiAPI } from '../api/ai'
@@ -67,10 +67,22 @@ const TaskDetail = () => {
   const [updatingField, setUpdatingField] = useState(null)
   const [composerOpen, setComposerOpen] = useState(false)
   const [extensionRequests, setExtensionRequests] = useState([])
+  const [subtasks, setSubtasks] = useState([])
+  const [showSubtaskForm, setShowSubtaskForm] = useState(false)
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
+  const [newSubtaskDueDate, setNewSubtaskDueDate] = useState('')
+  const [newSubtaskEstimatedHours, setNewSubtaskEstimatedHours] = useState('')
+  const [creatingSubtask, setCreatingSubtask] = useState(false)
   const [extensionForm, setExtensionForm] = useState({ requested_due_date: '', reason: '' })
   const [submittingExtension, setSubmittingExtension] = useState(false)
   const [reviewingExtensionId, setReviewingExtensionId] = useState(null)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+
+  // Production tracking state
+  const [productionCompleted, setProductionCompleted] = useState(0)
+  const [productionNotes, setProductionNotes] = useState('')
+  const [updatingProduction, setUpdatingProduction] = useState(false)
+  const [dragOverColumn, setDragOverColumn] = useState(null)
   const pageRef = useRef(null)
   const detailsRef = useRef(null)
   const historyRef = useRef(null)
@@ -113,6 +125,10 @@ const TaskDetail = () => {
       const data = await tasksAPI.getTask(taskId)
       setTask(data)
       setTaskStatus(data.status)
+
+      // Initialize production tracking state
+      setProductionCompleted(data.completed_quantity || 0)
+      setProductionNotes('')
 
       if (data.attachments) {
         const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
@@ -169,13 +185,6 @@ const TaskDetail = () => {
       }
 
       try {
-        const usersData = await usersAPI.getAssignableUsers()
-        setUsers(dedupeUsersById(usersData.users || []))
-      } catch (error) {
-        console.error('Error loading users:', error)
-      }
-
-      try {
         const watchersResponse = await watchersApi.getWatchers(data.id)
         setWatchers(watchersResponse.data.watchers || [])
         setIsWatching(watchersResponse.data.watchers?.some(w => w.user_id === user.id) || false)
@@ -196,6 +205,13 @@ const TaskDetail = () => {
       } catch (error) {
         console.error('Error loading extension requests:', error)
       }
+
+      try {
+        const subtaskData = await tasksAPI.getSubtasks(data.id)
+        setSubtasks(subtaskData.subtasks || [])
+      } catch (error) {
+        console.error('Error loading subtasks:', error)
+      }
     } catch (error) {
       console.error('Error loading task:', error)
       setLoadError(error.response?.data?.detail || error.message || 'Failed to load task')
@@ -206,6 +222,19 @@ const TaskDetail = () => {
     }
   }, [navigate, taskId, user.id])
 
+  // Fetch assignable users only on mount — not on every task update event
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const usersData = await usersAPI.getAssignableUsers()
+        setUsers(dedupeUsersById(usersData.users || []))
+      } catch (error) {
+        console.error('Error loading users:', error)
+      }
+    }
+    if (taskId) loadUsers()
+  }, [taskId])
+
   useEffect(() => {
     if (taskId) {
       loadTask()
@@ -213,6 +242,10 @@ const TaskDetail = () => {
   }, [taskId, loadTask])
 
   useEffect(() => {
+    // Debounce timer to prevent cascading re-fetches when multiple
+    // syntask:tasks-updated events fire in quick succession.
+    let debounceTimer = null
+
     const refreshCurrentTask = (event) => {
       const relatedId = event?.detail?.relatedId
       const metadataTaskId = event?.detail?.metadata?.task_id
@@ -223,6 +256,8 @@ const TaskDetail = () => {
       ) return
       const notificationType = String(event?.detail?.type || '').toLowerCase()
       const eventName = String(event?.detail?.metadata?.event || '').toLowerCase()
+
+      // Comments refresh immediately (no debounce needed — lightweight)
       if (notificationType === 'task_comment' || eventName === 'task_comment_added') {
         const refreshComments = async () => {
           try {
@@ -235,12 +270,20 @@ const TaskDetail = () => {
         refreshComments()
         return
       }
-      if (taskId) {
-        loadTask()
-      }
+
+      // Full task reload is debounced to avoid rapid re-fetches from cascade events
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        if (taskId) {
+          loadTask()
+        }
+      }, 2000)
     }
     window.addEventListener('syntask:tasks-updated', refreshCurrentTask)
-    return () => window.removeEventListener('syntask:tasks-updated', refreshCurrentTask)
+    return () => {
+      window.removeEventListener('syntask:tasks-updated', refreshCurrentTask)
+      if (debounceTimer) clearTimeout(debounceTimer)
+    }
   }, [taskId, loadTask])
 
   const loadWatchers = async () => {
@@ -740,6 +783,142 @@ const TaskDetail = () => {
             </div>
           )}
 
+          {/* Task Info Card — shows all key metadata */}
+          <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <h3 className="mb-4 text-sm font-bold text-gray-900 dark:text-white">Task Information</h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Priority */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Priority</p>
+                <p className={`mt-1 text-sm font-semibold ${
+                  task.priority === 'critical' ? 'text-red-600' :
+                  task.priority === 'high' ? 'text-orange-600' :
+                  task.priority === 'medium' ? 'text-blue-600' :
+                  'text-gray-600'
+                }`}>
+                  {priorities[task.priority]?.label || task.priority || '—'}
+                </p>
+              </div>
+
+              {/* Status */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white capitalize">
+                  {String(task.status || 'todo').replace(/_/g, ' ')}
+                </p>
+              </div>
+
+              {/* Due Date */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Due Date</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.due_date ? format(timeService.instant(task.due_date), 'MMM d, yyyy') : '—'}
+                </p>
+              </div>
+
+              {/* Estimated Hours */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Est. Hours</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.estimated_hours ? `${task.estimated_hours}h` : '—'}
+                </p>
+              </div>
+
+              {/* Assignee */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Assignee</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {currentAssignee ? `${currentAssignee.first_name} ${currentAssignee.last_name}` : 'Unassigned'}
+                </p>
+              </div>
+
+              {/* Health */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Health</p>
+                <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${
+                  task.health_status === 'overdue'
+                    ? 'bg-red-100 text-red-700'
+                    : task.health_status === 'due_today'
+                      ? 'bg-amber-100 text-amber-700'
+                      : task.health_status === 'extended'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-emerald-100 text-emerald-700'
+                }`}>
+                  {(task.health_status || 'healthy').replace(/_/g, ' ')}
+                </span>
+              </div>
+
+              {/* Task Type */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Task Type</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.task_type === 'quantitative' ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span>🎯</span> Quantitative
+                    </span>
+                  ) : 'Standard'}
+                </p>
+              </div>
+
+              {/* Created */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Created</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  {task.created_at ? format(timeService.instant(task.created_at), 'MMM d, yyyy') : '—'}
+                </p>
+              </div>
+
+              {/* Labels / Tags */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 dark:border-gray-700 dark:bg-gray-900/50">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Labels</p>
+                <div className="mt-1">
+                  {task.tags && task.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {task.tags.map((tag, i) => (
+                        <span key={i} className="rounded-md bg-gray-200 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">None</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quantitative task extra info */}
+            {task.task_type === 'quantitative' && (
+              <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50/60 p-3 dark:border-purple-900/40 dark:bg-purple-950/20">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-purple-700 dark:text-purple-300">Production Details</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-4">
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Measurement</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white capitalize">
+                      {task.custom_measurement_label || task.measurement_type || '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Target</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {task.target_quantity ?? '—'} {task.target_unit || ''}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Completed</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{task.completed_quantity ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Remaining</p>
+                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                      {Math.max(0, (task.target_quantity || 0) - (task.completed_quantity || 0))}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* AI Task Breakdown */}
           <div className="mb-6 rounded-2xl border border-primary-200 bg-primary-50/60 p-4 dark:border-primary-900/40 dark:bg-primary-950/20">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -832,6 +1011,238 @@ const TaskDetail = () => {
                 </div>
               </div>
             ) : null}
+          </div>
+
+          {/* Subtasks Section - Kanban Board */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900">Subtasks ({subtasks.length})</h3>
+              <button
+                onClick={() => setShowSubtaskForm(!showSubtaskForm)}
+                className="inline-flex items-center gap-1 rounded-lg bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100 dark:bg-primary-900/20 dark:text-primary-300 dark:hover:bg-primary-900/30"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Subtask
+              </button>
+            </div>
+            
+            {showSubtaskForm && (
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                if (!newSubtaskTitle.trim()) return
+                try {
+                  setCreatingSubtask(true)
+                  await tasksAPI.createTask({
+                    title: newSubtaskTitle,
+                    parent_task_id: task.id,
+                    priority: 'medium',
+                    due_date: newSubtaskDueDate || null,
+                    estimated_hours: newSubtaskEstimatedHours ? parseFloat(newSubtaskEstimatedHours) : null,
+                  })
+                  toast.success('Subtask created')
+                  setNewSubtaskTitle('')
+                  setNewSubtaskDueDate('')
+                  setNewSubtaskEstimatedHours('')
+                  setShowSubtaskForm(false)
+                  const data = await tasksAPI.getSubtasks(task.id)
+                  setSubtasks(data.subtasks || [])
+                } catch (error) {
+                  toast.error('Failed to create subtask')
+                } finally {
+                  setCreatingSubtask(false)
+                }
+              }} className="mb-4 space-y-2">
+                <input
+                  type="text"
+                  value={newSubtaskTitle}
+                  onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                  placeholder="Subtask title..."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+                  required
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Due date</label>
+                    <input
+                      type="date"
+                      value={newSubtaskDueDate}
+                      onChange={(e) => setNewSubtaskDueDate(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="w-24">
+                    <label className="mb-0.5 block text-[10px] font-medium text-gray-500">Hours</label>
+                    <input
+                      type="number"
+                      min="0.25"
+                      step="0.25"
+                      value={newSubtaskEstimatedHours}
+                      onChange={(e) => setNewSubtaskEstimatedHours(e.target.value)}
+                      placeholder="0.5"
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="submit" disabled={creatingSubtask} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-60 flex-1">
+                    {creatingSubtask ? 'Creating...' : 'Add'}
+                  </button>
+                  <button type="button" onClick={() => { setShowSubtaskForm(false); setNewSubtaskTitle(''); setNewSubtaskDueDate(''); setNewSubtaskEstimatedHours(''); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+            
+            {subtasks.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {[
+                  { id: 'todo', label: 'To Do', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+                  { id: 'in_progress', label: 'In Progress', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+                  { id: 'in_review', label: 'Review', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' },
+                  { id: 'completed', label: 'Completed', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+                ].map((column) => {
+                  const columnSubtasks = subtasks.filter((s) => s.status === column.id)
+                  const isOver = dragOverColumn === column.id
+                  return (
+                    <div key={column.id}
+                      onDragOver={(e) => { e.preventDefault(); setDragOverColumn(column.id) }}
+                      onDragEnter={(e) => { e.preventDefault(); setDragOverColumn(column.id) }}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget)) return
+                        setDragOverColumn(null)
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault()
+                        setDragOverColumn(null)
+                        const draggedId = e.dataTransfer.getData('text/plain')
+                        if (!draggedId) return
+                        const draggedSubtask = subtasks.find((s) => s.id === draggedId)
+                        if (!draggedSubtask || draggedSubtask.status === column.id) return
+                        try {
+                          await tasksAPI.updateTaskStatus(draggedId, column.id)
+                          toast.success('Subtask moved')
+                          const data = await tasksAPI.getSubtasks(task.id)
+                          setSubtasks(data.subtasks || [])
+                        } catch (error) {
+                          toast.error('Failed to move subtask')
+                        }
+                      }}
+                      className={`rounded-xl border bg-white shadow-sm transition-all duration-200 ${
+                        isOver
+                          ? 'border-indigo-400 bg-indigo-50/50 shadow-md ring-2 ring-indigo-200 dark:border-indigo-500 dark:bg-indigo-950/20 dark:ring-indigo-800'
+                          : 'border-gray-200 dark:border-gray-700 dark:bg-gray-800/50'
+                      }`}
+                    >
+                      <div className="border-b border-gray-100 px-3 py-2 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${column.color}`}>
+                            {column.label}
+                          </span>
+                          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-indigo-100 px-1.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                            {columnSubtasks.length}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={`space-y-2 p-2 min-h-[80px] transition-colors ${isOver ? 'bg-indigo-50/30 dark:bg-indigo-950/10' : ''}`}>
+                        {columnSubtasks.length === 0 ? (
+                          <div className={`flex min-h-[60px] items-center justify-center rounded-lg border-2 border-dashed transition-colors ${
+                            isOver ? 'border-indigo-300 bg-indigo-50/50 dark:border-indigo-600 dark:bg-indigo-950/30' : 'border-gray-200 dark:border-gray-700'
+                          }`}>
+                            <p className="text-[11px] text-gray-400">{isOver ? 'Drop here' : 'Empty'}</p>
+                          </div>
+                        ) : (
+                          columnSubtasks.map((subtask) => (
+                            <div key={subtask.id}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('text/plain', subtask.id)
+                                e.dataTransfer.effectAllowed = 'move'
+                              }}
+                              className="group rounded-lg border border-gray-200 bg-white p-2.5 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700 cursor-grab active:cursor-grabbing"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-xs font-medium text-gray-900 dark:text-gray-100 line-clamp-2">{subtask.title}</p>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                                  subtask.priority === 'critical' ? 'bg-red-100 text-red-700' :
+                                  subtask.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                                  subtask.priority === 'medium' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {(subtask.priority || 'medium').charAt(0).toUpperCase() + (subtask.priority || 'medium').slice(1)}
+                                </span>
+                                <select
+                                  value={subtask.assigned_to || ''}
+                                  onChange={async (e) => {
+                                    try {
+                                      await tasksAPI.updateTask(subtask.id, { assigned_to: e.target.value || null })
+                                      toast.success('Subtask reassigned')
+                                      const data = await tasksAPI.getSubtasks(task.id)
+                                      setSubtasks(data.subtasks || [])
+                                    } catch (error) {
+                                      toast.error('Failed to reassign subtask')
+                                    }
+                                  }}
+                                  className="max-w-[100px] rounded-md border border-gray-200 px-1 py-0.5 text-[10px] text-gray-600 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={users.find(u => u.id === subtask.assigned_to) ? `${users.find(u => u.id === subtask.assigned_to).first_name} ${users.find(u => u.id === subtask.assigned_to).last_name}` : 'Assign to...'}
+                                >
+                                  <option value="">Unassigned</option>
+                                  {users.map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.first_name} {u.last_name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="mt-2">
+                                <select
+                                  value={subtask.status}
+                                  onChange={async (e) => {
+                                    try {
+                                      await tasksAPI.updateTaskStatus(subtask.id, e.target.value)
+                                      toast.success('Subtask status updated')
+                                      const data = await tasksAPI.getSubtasks(task.id)
+                                      setSubtasks(data.subtasks || [])
+                                    } catch (error) {
+                                      toast.error('Failed to update subtask status')
+                                    }
+                                  }}
+                                  className="w-full rounded-md border border-gray-200 px-1.5 py-1 text-[10px] font-medium text-gray-700 focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <option value="todo">To Do</option>
+                                  <option value="in_progress">In Progress</option>
+                                  <option value="in_review">Review</option>
+                                  <option value="completed">Completed</option>
+                                </select>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="flex min-h-[100px] items-center justify-center rounded-xl border-2 border-dashed border-gray-200 p-4 dark:border-gray-700">
+                <div className="text-center">
+                  <List className="mx-auto h-6 w-6 text-gray-300 dark:text-gray-600" />
+                  <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">No subtasks yet</p>
+                  <button
+                    onClick={() => setShowSubtaskForm(true)}
+                    className="mt-2 inline-flex items-center gap-1 rounded-lg bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition hover:bg-primary-100 dark:bg-primary-900/20 dark:text-primary-300"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Create first subtask
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Attachments */}
@@ -1253,6 +1664,118 @@ const TaskDetail = () => {
               )}
             </div>
 
+            {/* Production Tracking — only for quantitative tasks */}
+            {task.task_type === 'quantitative' && (
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  🎯 Production Tracking
+                </h3>
+                <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-4 dark:border-purple-900/40 dark:bg-purple-950/20">
+                  {/* Progress stats */}
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                        {productionCompleted}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Completed</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                        {task.target_quantity || '?'}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Target</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                        {Math.max(0, (task.target_quantity || 0) - productionCompleted)}
+                      </p>
+                      <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Remaining</p>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="mb-3">
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
+                        style={{
+                          width: `${Math.min(100, Math.round((productionCompleted / (task.target_quantity || 1)) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-1 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {Math.min(100, Math.round((productionCompleted / (task.target_quantity || 1)) * 100))}%
+                    </p>
+                  </div>
+
+                  {/* Quick-add buttons */}
+                  <div className="mb-3">
+                    <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">Quick add</p>
+                    <div className="flex gap-2">
+                      {[1, 3, 5].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={updatingProduction || productionCompleted + n > (task.target_quantity || Infinity)}
+                          onClick={async () => {
+                            try {
+                              setUpdatingProduction(true)
+                              const newQty = productionCompleted + n
+                              await tasksAPI.updateProductionProgress(task.id, {
+                                completed_quantity: newQty,
+                                notes: productionNotes || undefined,
+                              })
+                              setProductionCompleted(newQty)
+                              toast.success(`Added ${n} ${task.target_unit || 'unit'}${n > 1 ? 's' : ''}`)
+                            } catch (error) {
+                              toast.error('Failed to update progress')
+                            } finally {
+                              setUpdatingProduction(false)
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-purple-300 bg-white px-3 py-2 text-sm font-semibold text-purple-700 transition hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-700 dark:bg-gray-800 dark:text-purple-300 dark:hover:bg-purple-900/30"
+                        >
+                          +{n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Notes + Update button */}
+                  <div className="space-y-2">
+                    <textarea
+                      value={productionNotes}
+                      onChange={(e) => setProductionNotes(e.target.value)}
+                      placeholder="Add notes (optional)..."
+                      rows={2}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-900 shadow-sm transition focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+                    />
+                    <button
+                      type="button"
+                      disabled={updatingProduction}
+                      onClick={async () => {
+                        try {
+                          setUpdatingProduction(true)
+                          await tasksAPI.updateProductionProgress(task.id, {
+                            completed_quantity: productionCompleted,
+                            notes: productionNotes || undefined,
+                          })
+                          toast.success('Production progress updated')
+                        } catch (error) {
+                          toast.error('Failed to update progress')
+                        } finally {
+                          setUpdatingProduction(false)
+                        }
+                      }}
+                      className="w-full rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {updatingProduction ? 'Updating...' : 'Update Progress'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {task.assigned_to === String(user?.id || user?._id) && task.status !== 'completed' && task.due_date ? (
               <div className="pt-4 border-t border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-900">Request extension</h3>
@@ -1310,19 +1833,7 @@ const TaskDetail = () => {
             {/* Actions */}
             <div className="pt-4 border-t border-gray-200">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleToggleWatch}
-                  disabled={updatingWatch}
-                  aria-busy={updatingWatch || undefined}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${
-                    isWatching
-                      ? 'bg-primary-100 text-primary-700'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <Eye className="h-4 w-4" />
-                  {updatingWatch ? 'Updating...' : isWatching ? 'Watching' : 'Watch'}
-                </button>
+                {/* Watch button removed from sidebar — it already exists in the top header */}
                 <button
                   onClick={handleDelete}
                   disabled={deleting}

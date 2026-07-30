@@ -148,8 +148,8 @@ api_router.include_router(attendance.router, prefix="/attendance", tags=["Attend
 # WebSocket handler for attendance is mounted without module dependency so token-auth via query param works for WS clients
 api_router.include_router(attendance.ws_router, prefix="/attendance")
 api_router.include_router(timeline.router, prefix="/timeline", tags=["Timeline"])
-api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"], dependencies=[Depends(require_module("attendance_leaves"))])
-api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"], dependencies=[Depends(require_module("attendance_leaves"))])
+api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"])
+api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"])
 api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"], dependencies=[Depends(require_module("recruitment"))])
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
 api_router.include_router(meta_integration.router, prefix="/integrations/meta", tags=["Meta Integration"])

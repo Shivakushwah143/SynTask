@@ -1,2613 +1,2281 @@
-import { useState, useEffect, useRef } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import {
-  ArrowRight,
-  BarChart3,
-  BadgeDollarSign,
-  BrainCircuit,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ChevronLeft,
-  Clock3,
-  Globe,
-  Headphones,
-  Layers3,
-  Mail,
-  MapPin,
-  Menu,
-  MessageSquare,
-  Moon,
-  Play,
-  ShieldCheck,
-  Sparkles,
-  Star,
-  Sun,
-  Workflow,
-  X,
-  Zap,
-  Clock,
-  CheckCircle,
-  Heart,
-  Phone,
-  FileText,
-  Rocket,
-  TrendingUp,
-  Monitor,
-  Factory,
-  Scale,
-  Hotel,
-  HardHat,
-  Landmark,
-  UtensilsCrossed,
-  User,
-  LogIn,
-  Settings,
-  HelpCircle,
-} from 'lucide-react'
-import { useTheme } from '../hooks/useTheme'
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
-const navItems = [
-  { label: 'Features', href: '#features' },
-  { label: 'Solutions', href: '#solutions' },
-  { label: 'How it works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#pricing' },
-  { label: 'FAQ', href: '#faq' },
-]
-
-const stats = [
-  { value: '500+', label: 'Agencies onboarded' },
-  { value: '2.4x', label: 'Faster delivery cycles' },
-  { value: '94%', label: 'Renewal rate' },
-  { value: '18h', label: 'Saved weekly per team' },
-]
-
-const solutions = [
-  {
-    title: 'Project delivery',
-    description: 'Plan campaigns, manage tasks, and keep every client deliverable moving on schedule.',
-    image: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1200&h=800&fit=crop',
-  },
-  {
-    title: 'Sales pipeline',
-    description: 'Track leads, proposals, and follow-ups in a pipeline built for agency growth.',
-    image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&h=800&fit=crop',
-  },
-  {
-    title: 'Client operations',
-    description: 'Centralize support, billing, approvals, and communication without switching tools.',
-    image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1200&h=800&fit=crop',
-  },
-]
-
-const features = [
-  { icon: Workflow, title: 'Task Management', description: 'Structure work by client, project, and team with clear ownership.' },
-  { icon: BarChart3, title: 'CRM Pipeline', description: 'Move every lead through a sales process designed for agencies.' },
-  { icon: Headphones, title: 'Support Ticketing', description: 'Handle client requests with SLA-aware ticket queues.' },
-  { icon: Clock3, title: 'Time Tracking', description: 'Capture billable and non-billable time with minimal friction.' },
-  { icon: BadgeDollarSign, title: 'Invoicing', description: 'Create polished invoices and recurring billing from the same workspace.' },
-  { icon: BrainCircuit, title: 'AI Insights', description: 'Spot risk, bottlenecks, and revenue opportunities faster.' },
-]
-
-const testimonialsData = [
-  {
-    quote: 'SynTask transformed our agency operations. We are 2x more efficient.',
-    name: 'Sarah Chen',
-    role: 'CEO, DigitalFlow',
-    image: 'https://images.unsplash.com/photo-1494790108378-be9c29b29330?w=120&h=120&fit=crop&crop=face',
-  },
-  {
-    quote: 'The all-in-one platform we have been searching for.',
-    name: 'Mike Rodriguez',
-    role: 'Operations Director, CreativeHub',
-    image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face',
-  },
-  {
-    quote: 'Finally, a tool that understands how agencies work.',
-    name: 'Emma Thompson',
-    role: 'Managing Partner, GrowthAgency',
-    image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=120&h=120&fit=crop&crop=face',
-  },
-]
-
-const pricing = [
-  {
-    name: 'Starter',
-    price: '$29',
-    period: '/mo',
-    description: 'Best for small teams getting organized.',
-    features: ['5 users', 'Task management', 'CRM pipeline', 'Basic reporting'],
-    accent: false,
-  },
-  {
-    name: 'Professional',
-    price: '$79',
-    period: '/mo',
-    description: 'The growth plan for scaling agencies.',
-    features: ['20 users', 'All features', 'Automation', 'Advanced analytics'],
-    accent: true,
-  },
-  {
-    name: 'Enterprise',
-    price: 'Custom',
-    period: '',
-    description: 'For high-volume teams with dedicated support needs.',
-    features: ['Unlimited users', 'Dedicated support', 'Custom onboarding', 'SLA controls'],
-    accent: false,
-  },
-]
-
-const faqs = [
-  {
-    question: 'Can SynTask replace our existing project, CRM, and billing stack?',
-    answer:
-      'Yes. SynTask is designed as an agency operating system so you can consolidate project delivery, sales, support, and billing into one workspace.',
-  },
-  {
-    question: 'Is the platform suitable for digital marketing agencies?',
-    answer:
-      'Yes. The workflows, views, and reporting were built around the day-to-day needs of creative, performance, and growth teams.',
-  },
-  {
-    question: 'Can we onboard our team quickly?',
-    answer:
-      'Absolutely. Most teams can set up the core workspace, add clients, and start tracking work in a single onboarding cycle.',
-  },
-  {
-    question: 'Do you support recurring billing and invoices?',
-    answer:
-      'Yes. You can create invoices, manage recurring billing, and keep revenue data connected to the right client and project context.',
-  },
-]
-
-const compareRows = [
-  ['Project delivery', false, true, true],
-  ['CRM pipeline', false, true, true],
-  ['Support tickets', false, false, true],
-  ['Time tracking', false, true, true],
-  ['Billing + invoices', false, false, true],
-  ['Agency reporting', false, false, true],
-]
-
-// TrustedBy Component Data
-const logos = [
-  { name: "Accenture", abbr: "AC" },
-  { name: "Deloitte", abbr: "DL" },
-  { name: "McKinsey", abbr: "MC" },
-  { name: "Bosch", abbr: "BS" },
-  { name: "Siemens", abbr: "SI" },
-  { name: "Honeywell", abbr: "HW" },
-  { name: "Infosys", abbr: "IF" },
-  { name: "Wipro", abbr: "WP" },
-  { name: "Cognizant", abbr: "CG" },
-  { name: "HCLTech", abbr: "HC" },
-  { name: "Philips", abbr: "PH" },
-  { name: "3M", abbr: "3M" },
-]
-
-// Statistics Component Data
-const statsData = [
-  { value: 48, suffix: "h", label: "Average Team Deployment", sublabel: "From kickoff to first commit", icon: Clock, color: "#25eb46" },
-  { value: 250, suffix: "+", label: "Projects Delivered", sublabel: "Across 12 industries globally", icon: CheckCircle, color: "#46b5e5" },
-  { value: 95, suffix: "%", label: "Client Retention", sublabel: "Long-term partnership model", icon: Heart, color: "#7C3AED" },
-  { value: 24, suffix: "/7", label: "Managed Support", sublabel: "Always-on NOC & L1–L3", icon: Headphones, color: "#10B981" },
-  { label: "Global Delivery", sublabel: "USA + India Delivery Centers", icon: Globe, color: "#F59E0B", custom: "2 Hubs" },
-]
-
-// HowItWorks Component Data
-const howItWorksSteps = [
-  {
-    icon: Phone,
-    number: "01",
-    title: "Discovery Call",
-    description: "We map your business challenges, existing stack, and goals in a focused 60-minute session with our solutions architects.",
-    duration: "Day 1",
-    color: "#2563EB",
-  },
-  {
-    icon: FileText,
-    number: "02",
-    title: "Solution Blueprint",
-    description: "Our team delivers a detailed technical and operational blueprint: team structure, tech stack, timelines, and ROI projections.",
-    duration: "Days 2–3",
-    color: "#4F46E5",
-  },
-  {
-    icon: Rocket,
-    number: "03",
-    title: "Team Deployment",
-    description: "Vetted engineers and AI specialists are onboarded to your project. Credentials, repos, and comms channels set up in hours.",
-    duration: "Days 3–5",
-    color: "#7C3AED",
-  },
-  {
-    icon: Play,
-    number: "04",
-    title: "Execution & Delivery",
-    description: "Sprints begin. Weekly demos, async standups, and full transparency via your preferred project management tools.",
-    duration: "Week 2+",
-    color: "#0891B2",
-  },
-  {
-    icon: TrendingUp,
-    number: "05",
-    title: "Optimization & Scale",
-    description: "Continuous improvement cycles. We scale teams up or down, introduce AI automation, and optimize for long-term business outcomes.",
-    duration: "Ongoing",
-    color: "#10B981",
-  },
-]
-
-// Industries Component Data
-const industries = [
-  { name: "Information Technology", icon: Monitor, color: "#2563EB", desc: "Digital transformation, product engineering, cloud migration" },
-  { name: "Manufacturing", icon: Factory, color: "#4F46E5", desc: "Smart factory, predictive maintenance, QA automation" },
-  { name: "Legal", icon: Scale, color: "#7C3AED", desc: "Document automation, compliance, contract intelligence" },
-  { name: "Healthcare", icon: Heart, color: "#EF4444", desc: "Patient ops, claims processing, clinical AI" },
-  { name: "Hospitality", icon: Hotel, color: "#F59E0B", desc: "Guest experience, booking ops, revenue management" },
-  { name: "Construction", icon: HardHat, color: "#EA580C", desc: "Project tracking, safety compliance, BIM integration" },
-  { name: "Finance", icon: Landmark, color: "#0891B2", desc: "Risk management, regulatory reporting, fraud detection" },
-  { name: "Food & Beverage", icon: UtensilsCrossed, color: "#10B981", desc: "Supply chain, inventory ops, demand forecasting" },
-]
-
-const sectionVariants = {
-  hidden: { opacity: 0, y: 28 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.6, ease: 'easeOut' },
-  },
-}
-
-const staggerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.12 },
-  },
-}
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 18 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.45 } },
-}
-
-const themeTheme = {
-  surface: 'bg-[var(--color-app-surface)]',
-  muted: 'bg-[var(--color-app-surface-muted)]',
-  border: 'border-[var(--color-app-border)]',
-  text: 'text-[var(--color-app-text)]',
-  textSecondary: 'text-[var(--color-app-text-secondary)]',
-}
-
-function SectionHeading({ eyebrow, title, description, center = false }) {
-  return (
-    <div className={center ? 'mx-auto max-w-3xl text-center' : 'max-w-3xl'}>
-      <motion.p
-        variants={itemVariants}
-        className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary-200 bg-primary-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary-700"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        {eyebrow}
-      </motion.p>
-      <motion.h2 variants={itemVariants} className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">
-        {title}
-      </motion.h2>
-      <motion.p variants={itemVariants} className={`mt-5 text-base leading-8 sm:text-lg ${themeTheme.textSecondary}`}>
-        {description}
-      </motion.p>
-    </div>
-  )
-}
-
-function ImageCard({ image, title, description, badge, className = '' }) {
-  return (
-    <motion.article
-      variants={itemVariants}
-      whileHover={{ y: -6 }}
-      className={`overflow-hidden rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface} shadow-[0_20px_60px_rgba(15,23,42,0.08)] ${className}`}
-    >
-      <div className="relative aspect-[4/3] overflow-hidden">
-        <img src={image} alt={title} className="h-full w-full object-cover transition duration-700 hover:scale-105" />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-transparent" />
-        <div className="absolute left-5 top-5 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-700">
-          {badge}
-        </div>
-      </div>
-      <div className="p-6">
-        <h3 className="text-xl font-bold text-[var(--color-app-text)]">{title}</h3>
-        <p className={`mt-3 text-sm leading-7 ${themeTheme.textSecondary}`}>{description}</p>
-        <div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary-700">
-          Learn more
-          <ChevronRight className="h-4 w-4" />
-        </div>
-      </div>
-    </motion.article>
-  )
-}
-
-function StatCard({ value, label }) {
-  return (
-    <motion.div
-      variants={itemVariants}
-      whileHover={{ y: -4 }}
-      className={`rounded-[1.75rem] border ${themeTheme.border} ${themeTheme.surface} p-6 shadow-[0_12px_30px_rgba(15,23,42,0.05)]`}
-    >
-      <div className="text-3xl font-black tracking-tight text-[var(--color-app-text)]">{value}</div>
-      <div className={`mt-2 text-sm font-medium ${themeTheme.textSecondary}`}>{label}</div>
-    </motion.div>
-  )
-}
-
-// ---- TrustedBy Component ----
-function LogoChip({ name, abbr }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "10px 24px",
-        background: "white",
-        border: "1px solid #E2E8F0",
-        borderRadius: 10,
-        flexShrink: 0,
-        whiteSpace: "nowrap",
-      }}
-    >
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: "linear-gradient(135deg, #1E3A5F, #2563EB)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
-          fontSize: 11,
-          fontWeight: 800,
-          color: "white",
-          letterSpacing: "0.02em",
-        }}
-      >
-        {abbr}
-      </div>
-      <span
-        style={{
-          fontFamily: "'Inter', sans-serif",
-          fontSize: 14,
-          fontWeight: 600,
-          color: "#64748B",
-          letterSpacing: "-0.01em",
-        }}
-      >
-        {name}
-      </span>
-    </div>
-  );
-}
-
-function TrustedBy() {
-  const trackRef = useRef(null);
+export default function NewLanding() {
+  const [activeTab, setActiveTab] = useState('crm');
 
   useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    let pos = 0;
-    let rafId;
-    const speed = 0.5;
-
-    function tick() {
-      pos -= speed;
-      const half = track.scrollWidth / 2;
-      if (Math.abs(pos) >= half) pos = 0;
-      track.style.transform = `translateX(${pos}px)`;
-      rafId = requestAnimationFrame(tick);
+    // 6. Stats Bar Numbers Counter Animation
+    function animateCounter(el) {
+      const target = parseInt(el.getAttribute('data-target'));
+      const suffix = el.getAttribute('data-suffix') || '';
+      const prefix = el.getAttribute('data-prefix') || '';
+      const duration = 1500;
+      const step = target / (duration / 16);
+      let current = 0;
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) {
+          current = target;
+          clearInterval(timer);
+        }
+        el.textContent = prefix + Math.floor(current).toLocaleString() + suffix;
+      }, 16);
     }
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
 
-  const allLogos = [...logos, ...logos];
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.querySelectorAll('[data-target]').forEach(animateCounter);
+          observer.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.3 });
 
-  return (
-    <section style={{ padding: "64px 0", background: "#F8FAFC", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto", paddingBottom: 32, textAlign: "center" }}>
-        <p
-          style={{
-            fontFamily: "'Inter', sans-serif",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#94A3B8",
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-          }}
-        >
-          Trusted by Industry Leaders
-        </p>
-      </div>
+    document.querySelectorAll('.stats-section').forEach(s => observer.observe(s));
 
-      <div style={{ overflow: "hidden", position: "relative" }}>
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 120,
-            background: "linear-gradient(to right, #F8FAFC, transparent)",
-            zIndex: 2,
-            pointerEvents: "none",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: 120,
-            background: "linear-gradient(to left, #F8FAFC, transparent)",
-            zIndex: 2,
-            pointerEvents: "none",
-          }}
-        />
+    // 7. Testimonials Carousel
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.testimonial-slide');
+    const dots = document.querySelectorAll('.carousel-dot');
 
-        <div
-          ref={trackRef}
-          style={{
-            display: "flex",
-            gap: 12,
-            willChange: "transform",
-            width: "max-content",
-          }}
-        >
-          {allLogos.map((logo, i) => (
-            <LogoChip key={`${logo.name}-${i}`} name={logo.name} abbr={logo.abbr} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---- Statistics Component ----
-function useCountUp(target, duration, start) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    if (!start) return;
-    let startTime = null;
-    function tick(ts) {
-      if (!startTime) startTime = ts;
-      const progress = Math.min((ts - startTime) / (duration * 1000), 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.floor(ease * target));
-      if (progress < 1) requestAnimationFrame(tick);
+    function goToSlide(n) {
+      if (slides.length === 0) return;
+      slides.forEach((s, i) => s.classList.toggle('hidden', i !== n));
+      currentSlide = n;
     }
-    requestAnimationFrame(tick);
-  }, [target, duration, start]);
-  return count;
-}
 
-function StatCardWithCount({ stat, inView }) {
-  const count = useCountUp(stat.value ?? 0, 1.5, inView);
-  const Icon = stat.icon;
+    const prevBtn = document.querySelector('.carousel-prev');
+    const nextBtn = document.querySelector('.carousel-next');
 
-  return (
-    <div
-      style={{
-        background: "white",
-        border: "1px solid #E2E8F0",
-        borderRadius: 16,
-        padding: 32,
-        position: "relative",
-        overflow: "hidden",
-        transition: "transform 0.2s, box-shadow 0.2s",
-        cursor: "default",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "translateY(-4px)";
-        e.currentTarget.style.boxShadow = "0 16px 40px rgba(15,23,42,0.1)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.boxShadow = "none";
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 3,
-          background: `linear-gradient(90deg, ${stat.color}, ${stat.color}88)`,
-        }}
-      />
+    const handlePrev = () => {
+      if (slides.length > 0) {
+        goToSlide((currentSlide - 1 + slides.length) % slides.length);
+      }
+    };
+    const handleNext = () => {
+      if (slides.length > 0) {
+        goToSlide((currentSlide + 1) % slides.length);
+      }
+    };
 
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 12,
-          background: `${stat.color}12`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: 20,
-        }}
-      >
-        <Icon size={22} color={stat.color} />
-      </div>
+    if (prevBtn) prevBtn.addEventListener('click', handlePrev);
+    if (nextBtn) nextBtn.addEventListener('click', handleNext);
 
-      <div
-        style={{
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
-          fontSize: 44,
-          fontWeight: 800,
-          color: "#0F172A",
-          letterSpacing: "-0.03em",
-          lineHeight: 1,
-          marginBottom: 8,
-        }}
-      >
-        {stat.custom ? stat.custom : `${count}${stat.suffix}`}
-      </div>
+    let carouselInterval;
+    if (slides.length > 0) {
+      goToSlide(0);
+      carouselInterval = setInterval(handleNext, 5000);
+    }
 
-      <div
-        style={{
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
-          fontSize: 16,
-          fontWeight: 600,
-          color: "#0F172A",
-          marginBottom: 4,
-        }}
-      >
-        {stat.label}
-      </div>
-      <div
-        style={{
-          fontFamily: "'Inter', sans-serif",
-          fontSize: 13,
-          color: "#94A3B8",
-        }}
-      >
-        {stat.sublabel}
-      </div>
-    </div>
-  );
-}
+    // 8. Pricing Toggle
+    const billingToggle = document.getElementById('billing-toggle');
+    const monthlyPrices = ['₹1,999', '₹4,999', '₹9,999'];
+    const yearlyPrices = ['₹1,599', '₹3,999', '₹7,999'];
+    const priceEls = document.querySelectorAll('.plan-price');
+    const periodEls = document.querySelectorAll('.plan-period');
 
-function Statistics() {
-  const ref = useRef(null);
-  const [inView, setInView] = useState(false);
+    const handleBillingToggle = () => {
+      if (!billingToggle) return;
+      const isYearly = billingToggle.checked;
+      priceEls.forEach((el, i) => {
+        if (i < monthlyPrices.length) {
+          el.style.transform = 'scale(0.8)';
+          el.style.opacity = '0';
+          setTimeout(() => {
+            el.textContent = isYearly ? yearlyPrices[i] : monthlyPrices[i];
+            el.style.transform = 'scale(1)';
+            el.style.opacity = '1';
+          }, 200);
+        }
+      });
+      periodEls.forEach(el => {
+        el.textContent = isYearly ? '/month, billed yearly' : '/month';
+      });
+    };
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setInView(true); },
-      { threshold: 0.2 }
-    );
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
+    if (billingToggle) {
+      billingToggle.addEventListener('change', handleBillingToggle);
+      billingToggle.style.transition = 'all 0.2s';
+    }
+    priceEls.forEach(el => el.style.transition = 'all 0.2s ease');
+
+    // 9. ROI Calculator
+    const empSlider = document.getElementById('employee-slider');
+    const toolSlider = document.getElementById('tool-slider');
+    const empVal = document.getElementById('employee-count') || document.getElementById('emp-value');
+    const toolVal = document.getElementById('tool-count') || document.getElementById('tool-value');
+    const savingsEl = document.getElementById('roi-savings');
+
+    function calcROI() {
+      if (!empSlider || !toolSlider) return;
+      const emp = parseInt(empSlider.value);
+      const tools = parseInt(toolSlider.value);
+      if (empVal) empVal.textContent = emp >= 1000 ? '1000+' : emp;
+      if (toolVal) toolVal.textContent = tools >= 20 ? '20+' : tools;
+      const savings = Math.min(emp * tools * 450, 2450000);
+      if (savingsEl) {
+        savingsEl.textContent = '₹' + savings.toLocaleString('en-IN');
+      }
+    }
+
+    if (empSlider && toolSlider) {
+      empSlider.addEventListener('input', calcROI);
+      toolSlider.addEventListener('input', calcROI);
+      calcROI();
+    }
+
+    // 10. Card Hover Classes
+    const selectors = [
+      "div.grid.grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3.gap-8 > div",
+      "div.grid.md\\:grid-cols-3.gap-8 > div",
+      "div.grid.grid-cols-2.md\\:grid-cols-3.gap-6 > div",
+      "div.grid.grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3.gap-8.mb-16 > div",
+      "div.grid.grid-cols-2.md\\:grid-cols-4.lg\\:grid-cols-7.gap-4 > div",
+      "div.grid.grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3.gap-6.mb-12 > div"
+    ];
+    selectors.forEach(sel => {
+      try {
+        document.querySelectorAll(sel).forEach(el => {
+          el.classList.add('card-hover');
+        });
+      } catch (e) { }
+    });
+
+    // Cleanup listeners
+    return () => {
+      if (carouselInterval) clearInterval(carouselInterval);
+      if (prevBtn) prevBtn.removeEventListener('click', handlePrev);
+      if (nextBtn) nextBtn.removeEventListener('click', handleNext);
+      if (billingToggle) billingToggle.removeEventListener('change', handleBillingToggle);
+      if (empSlider) empSlider.removeEventListener('input', calcROI);
+      if (toolSlider) toolSlider.removeEventListener('input', calcROI);
+    };
   }, []);
 
   return (
-    <section ref={ref} style={{ padding: "96px 24px", background: "#FAFBFC" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 56 }}>
-          <p
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#2563EB",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              marginBottom: 12,
-            }}
-          >
-            Our Track Record
-          </p>
-          <h2
-            style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontSize: "clamp(28px, 4vw, 48px)",
-              fontWeight: 800,
-              color: "#0F172A",
-              letterSpacing: "-0.02em",
-              lineHeight: 1.2,
-            }}
-          >
-            Numbers that define our impact
-          </h2>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 20,
-          }}
-        >
-          {statsData.map((stat) => (
-            <StatCardWithCount key={stat.label} stat={stat} inView={inView} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---- HowItWorks Component ----
-function HowItWorks() {
-  const [activeStep, setActiveStep] = useState(0);
-
-  return (
-    <section style={{ padding: "96px 24px", background: "#F8FAFC" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 56 }}>
-          <p
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#2563EB",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              marginBottom: 12,
-            }}
-          >
-            How It Works
-          </p>
-          <h2
-            style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontSize: "clamp(28px, 4vw, 48px)",
-              fontWeight: 800,
-              color: "#0F172A",
-              letterSpacing: "-0.02em",
-              lineHeight: 1.2,
-              marginBottom: 16,
-            }}
-          >
-            From first call to full operation
-          </h2>
-          <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, color: "#475569", maxWidth: 480, margin: "0 auto" }}>
-            A structured process built for enterprise speed and reliability.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 0,
-            marginBottom: 48,
-            background: "#E2E8F0",
-            borderRadius: 100,
-            overflow: "hidden",
-            height: 4,
-          }}
-        >
-          <div
-            style={{
-              height: "100%",
-              background: "linear-gradient(90deg, #2563EB, #10B981)",
-              borderRadius: 100,
-              transition: "width 0.5s ease",
-              width: `${((activeStep + 1) / howItWorksSteps.length) * 100}%`,
-            }}
-          />
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 40,
-            overflowX: "auto",
-            paddingBottom: 4,
-          }}
-        >
-          {howItWorksSteps.map((step, i) => (
-            <button
-              key={step.number}
-              onClick={() => setActiveStep(i)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "10px 18px",
-                borderRadius: 100,
-                border: "none",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                fontFamily: "'Inter', sans-serif",
-                fontSize: 13,
-                fontWeight: 600,
-                transition: "all 0.2s",
-                background: activeStep === i ? step.color : "white",
-                color: activeStep === i ? "white" : "#64748B",
-                boxShadow: activeStep === i ? `0 2px 8px ${step.color}30` : "0 0 0 1px #E2E8F0",
-              }}
-            >
-              <span
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: "50%",
-                  background: activeStep === i ? "rgba(255,255,255,0.25)" : "#F1F5F9",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 11,
-                  fontWeight: 700,
-                }}
-              >
-                {step.number}
-              </span>
-              {step.title}
+    <>
+      <header id="main-nav" className="sticky top-0 z-50 bg-white/90 dark:bg-[#0A0B1A]/90 backdrop-blur-md border-b border-gray-100 dark:border-slate-800 transition-shadow duration-300">
+        <nav className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-10">
+            <div className="flex items-center gap-2" data-purpose="logo">
+              <div className="w-8 h-8 bg-brand-orange rounded-lg flex items-center justify-center">
+                <div className="w-4 h-4 bg-white dark:bg-[#0A0B1A] rounded-sm transform rotate-45"></div>
+              </div>
+              <span className="text-2xl font-bold tracking-tight">SynTask</span>
+            </div>
+            <div className="hidden lg:flex items-center gap-8 text-sm font-medium text-gray-600 dark:text-gray-300">
+              <a className="hover:text-black flex items-center gap-1" href="#features">Features</a>
+              <a className="hover:text-black flex items-center gap-1" href="#demo-preview">Live Demo</a>
+              <a className="hover:text-black" href="#roi-calc">ROI Calculator</a>
+              <a className="hover:text-black" href="#pricing">Pricing</a>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <button id="theme-toggle-btn" className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 rounded-full hover:text-gray-900 transition dark:hover:bg-slate-800 dark:hover:text-white">
+              <svg id="theme-sun-icon" className="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z"></path>
+              </svg>
+              <svg id="theme-moon-icon" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+              </svg>
             </button>
-          ))}
-        </div>
+            <button id="mobile-menu-btn" className="lg:hidden p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 rounded-full hover:text-gray-900 transition">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+            </button>
+            <Link className="text-sm font-semibold px-4 py-2 rounded-full border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800" to="/login">
+              Login
+            </Link>
+            <Link className="bg-brand-orange text-white text-sm font-bold px-5 py-2.5 rounded-full hover:bg-orange-600 shadow-md shadow-orange-500/20" to="/login">
+              Start Free Demo
+            </Link>
+          </div>
+        </nav>
 
-        {(() => {
-          const step = howItWorksSteps[activeStep];
-          const Icon = step.icon;
-          return (
-            <div
-              key={activeStep}
-              style={{
-                background: "white",
-                border: `1px solid ${step.color}20`,
-                borderRadius: 20,
-                padding: 48,
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 48,
-                alignItems: "center",
-                animation: "fadeIn 0.3s ease",
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    background: `${step.color}10`,
-                    border: `1px solid ${step.color}20`,
-                    borderRadius: 100,
-                    padding: "6px 14px",
-                    marginBottom: 20,
-                  }}
-                >
-                  <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, fontWeight: 600, color: step.color }}>
-                    {step.duration}
-                  </span>
+        <div id="mobile-menu" className="hidden lg:hidden bg-white dark:bg-[#0A0B1A] border-b border-gray-100 dark:border-slate-800 shadow-md px-6 py-4 flex flex-col gap-4">
+          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#features">Features</a>
+          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#demo-preview">Live Demo</a>
+          <a className="hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" href="#pricing">Pricing</a>
+          <hr className="border-gray-100 dark:border-slate-800" />
+          <Link className="flex items-center gap-2 hover:text-[#FF5C00] font-medium dark:text-gray-300 dark:hover:text-white" to="/login">
+            Login
+          </Link>
+          <Link className="bg-brand-orange text-white text-center font-bold py-2.5 rounded-full hover:bg-orange-600" to="/login">
+            Start Free Demo
+          </Link>
+        </div>
+      </header>
+
+      <div id="content-sections">
+        <main className="relative overflow-hidden pt-16 pb-20 lg:pt-20 bg-white dark:bg-[#0A0B1A]">
+          {/* Ambient Glow Circles */}
+          <div className="absolute top-10 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-brand-orange/10 rounded-full blur-[140px] pointer-events-none animate-pulse-glow"></div>
+
+          <div className="max-w-7xl mx-auto px-4 grid lg:grid-cols-2 gap-12 items-center">
+            <div data-purpose="hero-content" className="z-10">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-purple-500/10 border border-brand-orange/30 mb-6 shadow-sm">
+                <span className="flex h-2 w-2 rounded-full bg-brand-orange animate-ping"></span>
+                <span className="text-xs font-extrabold uppercase tracking-widest text-brand-orange">✨ The AI Business Operating System</span>
+              </div>
+              <h1 className="text-5xl lg:text-7xl font-extrabold text-slate-900 dark:text-white leading-[1.1] mb-6 tracking-tight">
+                Run Your Entire Company<br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-orange via-amber-500 to-orange-600">On Autopilot.</span>
+              </h1>
+              <p className="text-lg text-slate-600 dark:text-gray-300 mb-8 max-w-xl leading-relaxed">
+                No complex tech setup needed. SynTask brings your clients, team tasks, automated invoicing &amp; AI workforce into one simple, beautiful workspace.
+              </p>
+              
+              {/* Call-to-Action Buttons */}
+              <div className="flex flex-wrap items-center gap-4 mb-10">
+                <Link to="/login" className="px-8 py-4 rounded-2xl bg-brand-orange text-white font-bold shadow-xl shadow-orange-500/25 hover:bg-orange-600 hover:scale-[1.02] transition-all flex items-center gap-2 group">
+                  <span>Start Free Demo</span>
+                  <svg className="w-5 h-5 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"></path></svg>
+                </Link>
+                <a href="#demo-preview" className="px-6 py-4 rounded-2xl border border-gray-200 dark:border-slate-800 text-slate-800 dark:text-white font-semibold hover:bg-gray-50 dark:hover:bg-slate-800/80 transition-all flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-orange-100 dark:bg-orange-950/50 flex items-center justify-center text-brand-orange">▶</div>
+                  <span>Watch 2-Min Tour</span>
+                </a>
+              </div>
+
+              {/* 4 Non-Techie Value Badges */}
+              <div className="grid grid-cols-2 gap-3.5">
+                <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-[#111224]/80 shadow-sm transition hover:border-brand-orange/40">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md flex items-center justify-center font-bold text-sm">⚡</div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Zero Tech Setup</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Ready in 2 minutes</p>
+                  </div>
                 </div>
-                <h3
-                  style={{
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontSize: 36,
-                    fontWeight: 800,
-                    color: "#0F172A",
-                    letterSpacing: "-0.02em",
-                    marginBottom: 16,
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {step.title}
-                </h3>
-                <p
-                  style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: 16,
-                    color: "#475569",
-                    lineHeight: 1.7,
-                    marginBottom: 28,
-                  }}
-                >
-                  {step.description}
-                </p>
+                <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-[#111224]/80 shadow-sm transition hover:border-brand-orange/40">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-md flex items-center justify-center font-bold text-sm">🤖</div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">AI Assistants</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Handle routine work</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-[#111224]/80 shadow-sm transition hover:border-brand-orange/40">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 text-white shadow-md flex items-center justify-center font-bold text-sm">📊</div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Unified Dashboard</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Clients, tasks &amp; bills</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/70 dark:bg-[#111224]/80 shadow-sm transition hover:border-brand-orange/40">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 text-white shadow-md flex items-center justify-center font-bold text-sm">🔒</div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900 dark:text-white">Bank-Grade Security</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">100% Encrypted Data</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Interactive Hero Preview Card Container */}
+            <div className="relative z-10" data-purpose="hero-image-container">
+              {/* Animated Floating Glass Card 1 */}
+              <div className="absolute -top-6 -left-6 z-20 hidden sm:flex items-center gap-3 p-4 rounded-2xl bg-white/90 dark:bg-[#111224]/90 backdrop-blur-xl border border-white/40 dark:border-slate-800 shadow-2xl animate-float-slow">
+                <div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500 text-lg">
+                  🚀
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">+340% Output</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">AI Task Automation Active</p>
+                </div>
+              </div>
+
+              {/* Animated Floating Glass Card 2 */}
+              <div className="absolute -bottom-6 -right-6 z-20 hidden sm:flex items-center gap-3 p-4 rounded-2xl bg-white/90 dark:bg-[#111224]/90 backdrop-blur-xl border border-white/40 dark:border-slate-800 shadow-2xl animate-float-delayed">
+                <div className="h-10 w-10 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-brand-orange text-lg">
+                  🧾
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">1-Click GST Invoices</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">₹14.8L Billed This Month</p>
+                </div>
+              </div>
+
+              {/* Main Dashboard Preview */}
+              <div className="overflow-hidden rounded-3xl border border-gray-200/80 dark:border-slate-800 bg-white dark:bg-[#111224] shadow-2xl p-2.5 transition-transform hover:scale-[1.01]">
+                <div className="rounded-2xl overflow-hidden bg-slate-900">
+                  <img alt="SynTask Dashboard Preview" className="w-full h-auto rounded-2xl transition duration-700 hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCLeaLr-L9QlJqIws1q3315eXnXcYwpU_aoRZc47oIJz_0HiemVGEqsF-tcYQkK-MFCeUvIpBGx20OCsFk13prCPqmSuypHtZwfLKpfFK2SoEOGwECkHnj9tlYIja3ge1XyhwWuppNRFkygQQF4mq_L2Ho3-zwNyPSBRjNYxf1j4hRU11ml8y-IMuNdrnovrlVXtuaezhbFs3GXqLHgqzvG-yLJxXwg9SOk9utpP3zibS1YkoOvaIyV8w9sAQDT9QSZuWlSbCL4Pg" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Feature Demo Tabs Container */}
+          <div id="demo-preview" className="max-w-6xl mx-auto px-4 mt-20">
+            <div className="p-8 rounded-3xl bg-gradient-to-b from-gray-50 to-white dark:from-[#111224] dark:to-[#0A0B1A] border border-gray-100 dark:border-slate-800 shadow-xl">
+              <div className="text-center max-w-2xl mx-auto mb-8">
+                <span className="text-xs font-extrabold uppercase tracking-widest text-brand-orange">EXPLORE SYNTASK IN ACTION</span>
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-white mt-1">See How Simple Business Can Be</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Click any tab below to preview real workflows without code</p>
+              </div>
+
+              {/* Tab Selector Buttons */}
+              <div className="flex flex-wrap justify-center gap-2 mb-8">
                 <button
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: step.color,
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                  onClick={() => setActiveStep((activeStep + 1) % howItWorksSteps.length)}
+                  type="button"
+                  onClick={() => setActiveTab('crm')}
+                  className={activeTab === 'crm' ? "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-brand-orange text-white shadow-lg shadow-orange-500/20 scale-105" : "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-white dark:bg-slate-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"}
                 >
-                  {activeStep < howItWorksSteps.length - 1 ? "Next Step" : "Start Over"} <ArrowRight size={14} />
+                  <span>💼 Client CRM &amp; Pipeline</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('ai')}
+                  className={activeTab === 'ai' ? "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-brand-orange text-white shadow-lg shadow-orange-500/20 scale-105" : "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-white dark:bg-slate-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"}
+                >
+                  <span>⚡ AI Automation Teammates</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('tasks')}
+                  className={activeTab === 'tasks' ? "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-brand-orange text-white shadow-lg shadow-orange-500/20 scale-105" : "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-white dark:bg-slate-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"}
+                >
+                  <span>📁 Kanban Projects &amp; Tasks</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('invoices')}
+                  className={activeTab === 'invoices' ? "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-brand-orange text-white shadow-lg shadow-orange-500/20 scale-105" : "px-5 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 bg-white dark:bg-slate-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"}
+                >
+                  <span>🧾 1-Click Billing &amp; GST</span>
                 </button>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "center" }}>
-                <div
-                  style={{
-                    width: 200,
-                    height: 200,
-                    borderRadius: "50%",
-                    background: `linear-gradient(135deg, ${step.color}15, ${step.color}05)`,
-                    border: `2px solid ${step.color}20`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    position: "relative",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 120,
-                      height: 120,
-                      borderRadius: "50%",
-                      background: `linear-gradient(135deg, ${step.color}25, ${step.color}10)`,
-                      border: `2px solid ${step.color}30`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 72,
-                        height: 72,
-                        borderRadius: "50%",
-                        background: `linear-gradient(135deg, ${step.color}, ${step.color}CC)`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        boxShadow: `0 8px 24px ${step.color}40`,
-                      }}
-                    >
-                      <Icon size={32} color="white" />
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 12,
-                      right: 12,
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontSize: 48,
-                      fontWeight: 800,
-                      color: `${step.color}15`,
-                      letterSpacing: "-0.04em",
-                      lineHeight: 1,
-                    }}
-                  >
-                    {step.number}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-      </div>
-
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-    </section>
-  );
-}
-
-// ---- Industries Component ----
-function Industries() {
-  const [hovered, setHovered] = useState(null);
-
-  return (
-    <section id="industries" style={{ padding: "96px 24px", background: "#F8FAFC" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 56 }}>
-          <p
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#2563EB",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              marginBottom: 12,
-            }}
-          >
-            Industries We Serve
-          </p>
-          <h2
-            style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontSize: "clamp(28px, 4vw, 48px)",
-              fontWeight: 800,
-              color: "#0F172A",
-              letterSpacing: "-0.02em",
-              lineHeight: 1.2,
-              marginBottom: 16,
-            }}
-          >
-            Built for every vertical
-          </h2>
-          <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, color: "#475569", maxWidth: 480, margin: "0 auto" }}>
-            Deep domain expertise across industries that demand reliability, scale, and precision.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: 16,
-          }}
-        >
-          {industries.map((ind, i) => {
-            const Icon = ind.icon;
-            const isHovered = hovered === i;
-            return (
-              <div
-                key={ind.name}
-                onMouseEnter={() => setHovered(i)}
-                onMouseLeave={() => setHovered(null)}
-                style={{
-                  background: isHovered ? "white" : "white",
-                  border: `1px solid ${isHovered ? ind.color + "40" : "#E2E8F0"}`,
-                  borderRadius: 16,
-                  padding: "28px 24px",
-                  cursor: "default",
-                  transition: "all 0.2s ease",
-                  transform: isHovered ? "translateY(-4px)" : "translateY(0)",
-                  boxShadow: isHovered ? `0 12px 24px rgba(15,23,42,0.08)` : "none",
-                }}
-              >
-                <div
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 12,
-                    background: isHovered ? `linear-gradient(135deg, ${ind.color}, ${ind.color}AA)` : `${ind.color}12`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: 16,
-                    transition: "all 0.2s",
-                  }}
-                >
-                  <Icon size={22} color={isHovered ? "white" : ind.color} />
-                </div>
-                <h3
-                  style={{
-                    fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: "#0F172A",
-                    letterSpacing: "-0.01em",
-                    marginBottom: 6,
-                  }}
-                >
-                  {ind.name}
-                </h3>
-                <p
-                  style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: 13,
-                    color: "#64748B",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {ind.desc}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---- Testimonials Component ----
-function TestimonialsSection() {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [direction, setDirection] = useState(0);
-
-  const nextTestimonial = () => {
-    setDirection(1);
-    setActiveIndex((prev) => (prev + 1) % testimonialsData.length);
-  };
-
-  const prevTestimonial = () => {
-    setDirection(-1);
-    setActiveIndex((prev) => (prev - 1 + testimonialsData.length) % testimonialsData.length);
-  };
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      nextTestimonial();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const slideVariants = {
-    enter: (direction) => ({
-      x: direction > 0 ? 100 : -100,
-      opacity: 0,
-      scale: 0.95
-    }),
-    center: {
-      x: 0,
-      opacity: 1,
-      scale: 1,
-      transition: {
-        duration: 0.6,
-        ease: [0.4, 0, 0.2, 1]
-      }
-    },
-    exit: (direction) => ({
-      x: direction < 0 ? 100 : -100,
-      opacity: 0,
-      scale: 0.95,
-      transition: {
-        duration: 0.5,
-        ease: [0.4, 0, 0.2, 1]
-      }
-    })
-  };
-
-  const floatingAnimation = {
-    initial: { y: 0 },
-    animate: {
-      y: [0, -8, 0],
-      transition: {
-        duration: 4,
-        repeat: Infinity,
-        ease: "easeInOut"
-      }
-    }
-  };
-
-  return (
-    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-      <motion.div 
-        variants={sectionVariants} 
-        initial="hidden" 
-        whileInView="visible" 
-        viewport={{ once: true, amount: 0.25 }}
-      >
-        <SectionHeading
-          eyebrow="Testimonials"
-          title="What our clients say about us"
-          description="Real stories from agencies that have transformed their operations with SynTask."
-        />
-      </motion.div>
-
-      <div className="mt-16">
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-[600px] h-[600px] rounded-full bg-gradient-to-br from-primary-100/20 to-violet-100/20 blur-3xl" />
-          </div>
-
-          <AnimatePresence mode="wait" custom={direction}>
-            <motion.div
-              key={activeIndex}
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              className="relative z-10"
-            >
-              <div className="grid gap-8 lg:grid-cols-[1fr_0.6fr] items-center">
-                <div className="space-y-8">
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.5, delay: 0.2 }}
-                    className="text-7xl font-serif text-primary-200 dark:text-primary-800"
-                  >
-                    &quot;
-                  </motion.div>
-
-                  <motion.blockquote
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.3 }}
-                    className="text-2xl font-light leading-relaxed text-slate-700 dark:text-slate-200 sm:text-3xl lg:text-4xl"
-                  >
-                    {testimonialsData[activeIndex].quote}
-                  </motion.blockquote>
-
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.4 }}
-                    className="flex items-center gap-6 pt-4"
-                  >
-                    <div className="relative">
-                      <div className="h-16 w-16 overflow-hidden rounded-full ring-4 ring-primary-100 dark:ring-primary-900">
-                        <img
-                          src={testimonialsData[activeIndex].image}
-                          alt={testimonialsData[activeIndex].name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <motion.div
-                        className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary-500 flex items-center justify-center"
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: 0.6 }}
-                      >
-                        <Check className="h-3 w-3 text-white" />
-                      </motion.div>
-                    </div>
-
-                    <div>
-                      <div className="text-xl font-bold text-slate-900 dark:text-white">
-                        {testimonialsData[activeIndex].name}
-                      </div>
-                      <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                        {testimonialsData[activeIndex].role}
-                      </div>
-                    </div>
-                  </motion.div>
-
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                    className="flex items-center gap-1 text-amber-400"
-                  >
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} className="h-5 w-5 fill-current" />
-                    ))}
-                  </motion.div>
-                </div>
-
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.6, delay: 0.3 }}
-                  className="relative flex justify-center"
-                >
-                  <div className="relative">
-                    <motion.div
-                      variants={floatingAnimation}
-                      initial="initial"
-                      animate="animate"
-                      className="relative rounded-3xl bg-gradient-to-br from-primary-500/10 to-violet-500/10 p-8 backdrop-blur-sm border border-primary-200/30 dark:border-primary-800/30"
-                    >
-                      <div className="grid grid-cols-2 gap-4">
-                        {[
-                          { label: 'Client Satisfaction', value: '98%', icon: Heart },
-                          { label: 'Faster Delivery', value: '2.4x', icon: Zap },
-                        ].map((stat, i) => {
-                          const Icon = stat.icon;
-                          return (
-                            <motion.div
-                              key={stat.label}
-                              initial={{ opacity: 0, y: 20 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: 0.5 + i * 0.1 }}
-                              className="rounded-2xl bg-white/80 dark:bg-slate-900/80 p-4 shadow-lg backdrop-blur"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="rounded-full bg-primary-100 dark:bg-primary-900 p-2">
-                                  <Icon className="h-4 w-4 text-primary-600 dark:text-primary-400" />
-                                </div>
-                                <div>
-                                  <div className="text-lg font-bold text-slate-900 dark:text-white">
-                                    {stat.value}
-                                  </div>
-                                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                                    {stat.label}
-                                  </div>
-                                </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-
-                      <motion.div
-                        className="absolute -top-4 -right-4 h-20 w-20 rounded-full bg-primary-200/30 blur-xl"
-                        animate={{
-                          scale: [1, 1.2, 1],
-                          opacity: [0.5, 0.8, 0.5]
-                        }}
-                        transition={{
-                          duration: 3,
-                          repeat: Infinity,
-                          ease: "easeInOut"
-                        }}
-                      />
-                      <motion.div
-                        className="absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-violet-200/30 blur-xl"
-                        animate={{
-                          scale: [1, 1.3, 1],
-                          opacity: [0.4, 0.7, 0.4]
-                        }}
-                        transition={{
-                          duration: 4,
-                          repeat: Infinity,
-                          ease: "easeInOut",
-                          delay: 0.5
-                        }}
-                      />
-                    </motion.div>
-                  </div>
-                </motion.div>
-              </div>
-            </motion.div>
-          </AnimatePresence>
-
-          <div className="mt-12 flex items-center justify-center gap-4">
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={prevTestimonial}
-              className="rounded-full border border-slate-200 dark:border-slate-700 p-3 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              aria-label="Previous testimonial"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </motion.button>
-
-            <div className="flex gap-2">
-              {testimonialsData.map((_, index) => (
-                <motion.button
-                  key={index}
-                  onClick={() => {
-                    setDirection(index > activeIndex ? 1 : -1);
-                    setActiveIndex(index);
-                  }}
-                  whileHover={{ scale: 1.2 }}
-                  whileTap={{ scale: 0.8 }}
-                  className="relative h-3 w-3 rounded-full transition-all duration-300"
-                >
-                  <div
-                    className={`absolute inset-0 rounded-full transition-all duration-300 ${
-                      index === activeIndex
-                        ? 'bg-primary-600 scale-100'
-                        : 'bg-slate-300 dark:bg-slate-600 scale-75'
-                    }`}
-                  />
-                  {index === activeIndex && (
-                    <motion.div
-                      layoutId="activeDot"
-                      className="absolute inset-0 rounded-full bg-primary-600"
-                      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                    />
-                  )}
-                </motion.button>
-              ))}
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={nextTestimonial}
-              className="rounded-full border border-slate-200 dark:border-slate-700 p-3 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              aria-label="Next testimonial"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </motion.button>
-          </div>
-
-          <motion.div
-            className="mt-6 h-1 w-full max-w-xs mx-auto overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
-          >
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-primary-500 to-violet-500"
-              initial={{ width: '0%' }}
-              animate={{ width: `${((activeIndex + 1) / testimonialsData.length) * 100}%` }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
-            />
-          </motion.div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---- Enhanced Header Component ----
-const Header = () => {
-  const { theme, toggleTheme } = useTheme();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const menuItems = [
-    { icon: User, label: 'Profile', href: '#profile' },
-    { icon: Settings, label: 'Settings', href: '#settings' },
-    { icon: HelpCircle, label: 'Help', href: '#help' },
-  ];
-
-  // Get login URL from environment variables (Vite uses import.meta.env)
-  const loginUrl = import.meta.env.VITE_LOGIN_URL || '/login';
-
-  // Animation variants
-  const headerVariants = {
-    hidden: { y: -100, opacity: 0 },
-    visible: { 
-      y: 0, 
-      opacity: 1,
-      transition: { 
-        type: 'spring',
-        stiffness: 100,
-        damping: 20,
-        delay: 0.1
-      }
-    }
-  };
-
-  const navItemVariants = {
-    hidden: { y: -20, opacity: 0 },
-    visible: (i) => ({
-      y: 0,
-      opacity: 1,
-      transition: {
-        delay: 0.1 + i * 0.05,
-        type: 'spring',
-        stiffness: 100,
-        damping: 12
-      }
-    })
-  };
-
-  const buttonVariants = {
-    hover: { 
-      scale: 1.05,
-      transition: { type: 'spring', stiffness: 400, damping: 10 }
-    },
-    tap: { scale: 0.95 }
-  };
-
-  const mobileMenuVariants = {
-    hidden: { 
-      opacity: 0, 
-      y: -20,
-      height: 0
-    },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      height: 'auto',
-      transition: { 
-        type: 'spring',
-        stiffness: 300,
-        damping: 25
-      }
-    },
-    exit: {
-      opacity: 0,
-      y: -20,
-      height: 0,
-      transition: { duration: 0.2 }
-    }
-  };
-
-  const menuDropdownVariants = {
-    hidden: { 
-      opacity: 0, 
-      y: -10,
-      scale: 0.95
-    },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      scale: 1,
-      transition: { 
-        type: 'spring',
-        stiffness: 300,
-        damping: 20,
-        duration: 0.2
-      }
-    },
-    exit: {
-      opacity: 0,
-      y: -10,
-      scale: 0.95,
-      transition: { duration: 0.15 }
-    }
-  };
-
-  return (
-    <motion.header
-      initial="hidden"
-      animate="visible"
-      variants={headerVariants}
-      className={`sticky top-0 z-50 transition-all duration-300 ${
-        scrolled 
-          ? 'border-b border-white/40 bg-white/95 backdrop-blur-xl shadow-lg dark:border-slate-700/40 dark:bg-slate-900/95' 
-          : 'border-b border-white/40 bg-white/80 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80'
-      }`}
-    >
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-        {/* Logo */}
-        <motion.a 
-          href="#top" 
-          className="flex items-center gap-3"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <motion.div 
-            className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-600 text-white shadow-lg shadow-primary-200 dark:shadow-primary-900/30"
-            whileHover={{ rotate: 180 }}
-            transition={{ duration: 0.5 }}
-          >
-            <Layers3 className="h-6 w-6" />
-          </motion.div>
-          <div>
-            <div className="font-display text-lg font-extrabold tracking-tight dark:text-white">SynTask</div>
-            <div className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Agency OS</div>
-          </div>
-        </motion.a>
-
-        {/* Desktop Navigation */}
-        <nav className="hidden items-center gap-8 lg:flex">
-          {navItems.map((item, i) => (
-            <motion.a
-              key={item.href}
-              href={item.href}
-              custom={i}
-              initial="hidden"
-              animate="visible"
-              variants={navItemVariants}
-              whileHover={{ 
-                scale: 1.05,
-                color: '#0f172a'
-              }}
-              whileTap={{ scale: 0.95 }}
-              className="text-sm font-medium text-slate-600 transition hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
-            >
-              {item.label}
-            </motion.a>
-          ))}
-        </nav>
-
-        {/* Desktop Actions */}
-        <div className="hidden items-center gap-3 lg:flex">
-          {/* Theme Toggle */}
-          <motion.button
-            type="button"
-            onClick={toggleTheme}
-            variants={buttonVariants}
-            whileHover="hover"
-            whileTap="tap"
-            className={`inline-flex h-11 w-11 items-center justify-center rounded-full border transition hover:bg-slate-50 dark:hover:bg-slate-700 ${
-              theme === 'dark' 
-                ? 'border-slate-700 bg-slate-800 text-white' 
-                : 'border-slate-200 bg-white text-slate-700'
-            }`}
-            aria-label="Toggle theme"
-          >
-            <motion.div
-              initial={false}
-              animate={{ rotate: theme === 'dark' ? 180 : 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </motion.div>
-          </motion.button>
-
-          {/* Dedicated Menu Dropdown Button */}
-          <motion.div 
-            className="relative"
-            onMouseEnter={() => setIsMenuOpen(true)}
-            onMouseLeave={() => setIsMenuOpen(false)}
-          >
-            <motion.button
-              variants={buttonVariants}
-              whileHover="hover"
-              whileTap="tap"
-              className="inline-flex items-center gap-2 rounded-full bg-transparent px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800"
-            >
-              <Menu className="h-5 w-5" />
-              <span>Menu</span>
-              <motion.div
-                animate={{ rotate: isMenuOpen ? 180 : 0 }}
-                transition={{ duration: 0.2 }}
-              >
-                <ChevronDown className="h-4 w-4" />
-              </motion.div>
-            </motion.button>
-
-            <AnimatePresence>
-              {isMenuOpen && (
-                <motion.div
-                  variants={menuDropdownVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
-                >
-                  <div className="space-y-1">
-                    {navItems.map((item, i) => (
-                      <motion.a
-                        key={item.href}
-                        href={item.href}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.05 * i }}
-                        whileHover={{ 
-                          scale: 1.02,
-                          backgroundColor: '#f1f5f9'
-                        }}
-                        whileTap={{ scale: 0.98 }}
-                        className="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800"
-                      >
-                        <span className="w-2 h-2 rounded-full bg-primary-500" />
-                        {item.label}
-                      </motion.a>
-                    ))}
-                  </div>
-
-                  <div className="my-2 border-t border-slate-200 dark:border-slate-700" />
-
-                  <div className="space-y-1">
-                    <motion.a
-                      href="#contact"
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.25 }}
-                      whileHover={{ 
-                        scale: 1.02,
-                        backgroundColor: '#eff6ff'
-                      }}
-                      whileTap={{ scale: 0.98 }}
-                      className="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium text-primary-600 transition hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-950/50"
-                    >
-                      <Rocket className="h-4 w-4" />
-                      Start Free Trial
-                    </motion.a>
-                    <motion.a
-                      href="#pricing"
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.3 }}
-                      whileHover={{ 
-                        scale: 1.02,
-                        backgroundColor: '#f1f5f9'
-                      }}
-                      whileTap={{ scale: 0.98 }}
-                      className="flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800"
-                    >
-                      <BadgeDollarSign className="h-4 w-4" />
-                      View Pricing
-                    </motion.a>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-
-          {/* Login Button with Environment Variable */}
-          <motion.button
-            variants={buttonVariants}
-            whileHover="hover"
-            whileTap="tap"
-            onClick={() => {
-              window.location.href = loginUrl;
-            }}
-            className="inline-flex items-center gap-2 rounded-full bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 hover:shadow-md dark:bg-primary-500 dark:hover:bg-primary-600"
-          >
-            <User className="h-5 w-5" />
-            <span>Login</span>
-          </motion.button>
-
-          {/* CTA Button */}
-          <motion.a
-            href="#contact"
-            variants={buttonVariants}
-            whileHover="hover"
-            whileTap="tap"
-            className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-[#ffffff] dark:text-slate-950 dark:hover:bg-slate-200"
-          >
-            Start Free Trial
-            <motion.span
-              animate={{ x: [0, 4, 0] }}
-              transition={{ 
-                duration: 1.5,
-                repeat: Infinity,
-                repeatType: 'loop'
-              }}
-            >
-              <ArrowRight className="h-4 w-4" />
-            </motion.span>
-          </motion.a>
-        </div>
-
-        {/* Mobile Menu Button */}
-        <motion.button
-          type="button"
-          variants={buttonVariants}
-          whileHover="hover"
-          whileTap="tap"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 lg:hidden dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle navigation"
-        >
-          <motion.div
-            animate={{ rotate: mobileOpen ? 180 : 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </motion.div>
-        </motion.button>
-      </div>
-
-      {/* Mobile Menu */}
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.div
-            variants={mobileMenuVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            className="border-t border-slate-200 bg-white px-4 py-4 shadow-2xl lg:hidden dark:border-slate-700 dark:bg-slate-900"
-          >
-            <div className="mx-auto flex max-w-7xl flex-col gap-3">
-              {navItems.map((item, i) => (
-                <motion.a
-                  key={item.href}
-                  href={item.href}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.05 * i }}
-                  whileHover={{ 
-                    scale: 1.02,
-                    backgroundColor: '#f1f5f9'
-                  }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setMobileOpen(false)}
-                  className="rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:text-white dark:hover:bg-slate-800"
-                >
-                  {item.label}
-                </motion.a>
-              ))}
-
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.25 }}
-                className="mt-2"
-              >
-                <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                  {/* Mobile Login Button */}
-                  <motion.a
-                    href={loginUrl}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setMobileOpen(false)}
-                    className="flex w-full items-center justify-center gap-2 rounded-full bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-700"
-                  >
-                    <LogIn className="h-4 w-4" />
-                    Login
-                  </motion.a>
-
-                  {menuItems.map((item, i) => (
-                    <motion.a
-                      key={item.label}
-                      href={item.href}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.25 + 0.05 * i }}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-3 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </motion.a>
-                  ))}
-
-                  <motion.button
-                    type="button"
-                    onClick={toggleTheme}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800"
-                  >
-                    {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                    Toggle Theme
-                  </motion.button>
-                </div>
-              </motion.div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.header>
-  );
-};
-
-// ---- Main NewLanding Component ----
-function NewLanding() {
-  useTheme()
-  const [openFaq, setOpenFaq] = useState(0)
-
-  return (
-    <div className={`min-h-screen ${themeTheme.muted} ${themeTheme.text}`}>
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.5, ease: "easeOut" }}
-          className="absolute left-[-10%] top-[-10%] h-96 w-96 rounded-full bg-primary-100/70 blur-3xl"
-        />
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.5, delay: 0.3, ease: "easeOut" }}
-          className="absolute right-[-10%] top-24 h-[28rem] w-[28rem] rounded-full bg-violet-100/70 blur-3xl"
-        />
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.5, delay: 0.6, ease: "easeOut" }}
-          className="absolute bottom-[-12%] left-1/3 h-[26rem] w-[26rem] rounded-full bg-sky-100/70 blur-3xl"
-        />
-      </div>
-
-      <Header />
-
-      <main id="top">
-        {/* Hero Section */}
-        <section className="mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-6 lg:px-8 lg:pb-28 lg:pt-24">
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            animate="visible"
-            className="grid items-center gap-14 lg:grid-cols-[1.1fr_0.9fr]"
-          >
-            <div>
-              <motion.p
-                variants={itemVariants}
-                className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary-200 bg-primary-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.26em] text-primary-700"
-              >
-                <Zap className="h-3.5 w-3.5" />
-                One platform for every agency workflow
-              </motion.p>
-              <motion.h1 variants={itemVariants} className="font-display max-w-3xl text-4xl font-black leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
-                The agency operating system you have been waiting for
-              </motion.h1>
-              <motion.p variants={itemVariants} className={`mt-7 max-w-2xl text-lg leading-8 sm:text-xl ${themeTheme.textSecondary}`}>
-                Task management, CRM, support tickets, time tracking, and billing all in one place so your agency can move faster with less chaos.
-              </motion.p>
-
-              <motion.div variants={itemVariants} className="mt-10 flex flex-col gap-4 sm:flex-row">
-                <motion.a
-                  href="#contact"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-primary-600 px-7 py-4 text-sm font-semibold text-white shadow-lg shadow-primary-200 transition hover:bg-primary-700"
-                >
-                  Start Free Trial
-                  <ArrowRight className="h-4 w-4" />
-                </motion.a>
-                <motion.a
-                  href="#how-it-works"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-7 py-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
-                >
-                  <Play className="h-4 w-4" />
-                  Watch Demo
-                </motion.a>
-              </motion.div>
-
-              <motion.div variants={itemVariants} className="mt-10 grid gap-3 sm:grid-cols-3">
-                {['Built for digital agencies', 'Lightweight onboarding', 'Fast, polished UI'].map((pill) => (
-                  <div
-                    key={pill}
-                    className="rounded-full border border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium text-slate-600 shadow-sm"
-                  >
-                    {pill}
-                  </div>
-                ))}
-              </motion.div>
-            </div>
-
-            <motion.div variants={itemVariants} className="relative">
-              <div className="absolute -left-6 top-8 h-24 w-24 rounded-full bg-primary-100 blur-2xl" />
-              <div className="absolute -right-4 bottom-4 h-28 w-28 rounded-full bg-violet-100 blur-2xl" />
-              <div className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-white p-4 shadow-[0_30px_90px_rgba(15,23,42,0.15)]`}>
-                <img
-                  src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&h=800&fit=crop"
-                  alt="Agency dashboard"
-                  className="h-[520px] w-full rounded-[1.8rem] object-cover"
-                />
-                <div className="absolute left-8 top-8 rounded-2xl border border-white/60 bg-white/90 px-4 py-3 shadow-lg backdrop-blur">
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Active campaigns</div>
-                  <div className="mt-1 text-2xl font-black text-slate-900">128</div>
-                </div>
-                <div className="absolute bottom-8 left-8 right-8 grid gap-3 sm:grid-cols-3">
-                  {[
-                    ['Revenue', '$48.2k'],
-                    ['Tasks', '312 open'],
-                    ['SLA', '98.4%'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-white/60 bg-white/90 p-4 shadow-lg backdrop-blur">
-                      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</div>
-                      <div className="mt-1 text-lg font-black text-slate-900">{value}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        </section>
-
-        <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <div className={`rounded-[2rem] border ${themeTheme.border} bg-white px-6 py-7 shadow-[0_20px_50px_rgba(15,23,42,0.05)] sm:px-8`}>
-              <p className="text-center text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-                Trusted by 500+ agencies worldwide
-              </p>
-              <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-                {['Agency X', 'Digital Co', 'Northstar', 'Creative Lab', 'Studio Flow'].map((name, index) => (
-                  <div
-                    key={name}
-                    className={`flex items-center justify-center rounded-2xl px-4 py-5 text-sm font-bold ${
-                      index % 2 === 0 ? 'bg-slate-950 text-white' : 'bg-primary-50 text-primary-800'
-                    }`}
-                  >
-                    {name}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        </section>
-
-        <TrustedBy />
-
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Performance snapshot"
-              title="A clearer view of the agency business"
-              description="SynTask connects the operational pieces that usually live in separate tools so leaders can manage delivery, sales, and cash flow from one place."
-            />
-          </motion.div>
-
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.2 }}
-            className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4"
-          >
-            {stats.map((stat) => (
-              <StatCard key={stat.label} {...stat} />
-            ))}
-          </motion.div>
-        </section>
-
-        <Statistics />
-
-        <section id="solutions" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Solutions"
-              title="One product, three core agency workflows"
-              description="From pitches to delivery to billing, every part of the client journey stays connected and visible."
-            />
-          </motion.div>
-
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-6 lg:grid-cols-3"
-          >
-            {solutions.map((item) => (
-              <ImageCard
-                key={item.title}
-                image={item.image}
-                title={item.title}
-                description={item.description}
-                badge="Core module"
-              />
-            ))}
-          </motion.div>
-        </section>
-
-        <HowItWorks />
-
-        <section id="features" className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
-          <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-            <div className="absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-primary-100/70 blur-3xl" />
-            <div className="absolute right-0 top-20 h-80 w-80 rounded-full bg-violet-100/60 blur-3xl" />
-          </div>
-
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Features"
-              title="Everything an agency team needs, in one system"
-              description="Built to reduce tool sprawl while giving operators, account managers, and leadership the controls they need."
-            />
-          </motion.div>
-
-          <div className="mt-12 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-            <motion.div
-              variants={itemVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.2 }}
-              whileHover={{ y: -6 }}
-              className={`overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-gradient-to-br from-white via-primary-50/60 to-white p-7 shadow-[0_24px_80px_rgba(15,23,42,0.08)] sm:p-8`}
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="inline-flex items-center gap-2 rounded-full border border-primary-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.26em] text-primary-700">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Agency control center
-                </span>
-                <span className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700">
-                  Live operational visibility
-                </span>
-              </div>
-
-              <div className="mt-6 grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-                <div>
-                  <h3 className="font-display text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                    Run every client account from one elegant workspace.
-                  </h3>
-                  <p className={`mt-4 max-w-lg text-base leading-8 ${themeTheme.textSecondary}`}>
-                    Keep your team aligned with shared task boards, deal visibility, support queues, and billing context that feels built for agencies.
-                  </p>
-
-                  <div className="mt-6 space-y-3">
-                    {[
-                      'Unified delivery, sales, support, and billing',
-                      'Designed for agency owners and operations leads',
-                      'Clear ownership across every client workflow',
-                    ].map((item) => (
-                      <div key={item} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm font-medium text-slate-700">
-                        <Check className="h-4 w-4 text-emerald-600" />
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-7 grid grid-cols-3 gap-3">
-                    {[
-                      ['58%', 'Less admin'],
-                      ['3.2x', 'Faster handoffs'],
-                      ['94%', 'Visibility'],
-                    ].map(([value, label]) => (
-                      <div key={label} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-                        <div className="text-2xl font-black tracking-tight text-slate-950">{value}</div>
-                        <div className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <div className="absolute -left-4 -top-4 h-24 w-24 rounded-full bg-primary-200/50 blur-2xl" />
-                  <div className="overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.12)]">
-                    <img
-                      src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=800&fit=crop"
-                      alt="Agency team working"
-                      className="h-[290px] w-full object-cover"
-                    />
-                    <div className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Command view</div>
-                          <div className="mt-1 text-lg font-bold text-slate-950">This week at a glance</div>
+              {/* Active Tab Preview Display */}
+              <div className="rounded-2xl border border-gray-200/80 dark:border-slate-800 bg-white dark:bg-[#0A0B1A] p-6 shadow-md transition-all duration-300">
+                {activeTab === 'crm' && (
+                  <div className="grid md:grid-cols-3 gap-6 items-center">
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="inline-block px-3 py-1 rounded-full bg-blue-50 text-blue-600 font-semibold text-[11px]">Visual Sales Funnel</div>
+                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Track Every Inquiry From Lead to Contract</h3>
+                      <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                        Drag and drop leads through stages. SynTask automatically assigns account leads, sends welcome packages, and logs contact history.
+                      </p>
+                      <div className="flex gap-4 pt-2">
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
+                          <p className="text-[10px] text-gray-400 uppercase font-bold">Total Pipeline</p>
+                          <p className="text-lg font-bold text-slate-900 dark:text-white">₹48,50,000</p>
                         </div>
-                        <div className="rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">Updated now</div>
+                        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40">
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">Win Rate</p>
+                          <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">68.4%</p>
+                        </div>
                       </div>
-                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                        {[
-                          ['12', 'Active clients'],
-                          ['48', 'Open tasks'],
-                          ['$84k', 'Pipeline'],
-                        ].map(([value, label]) => (
-                          <div key={label} className="rounded-2xl bg-slate-50 px-4 py-4">
-                            <div className="text-xl font-black tracking-tight text-slate-950">{value}</div>
-                            <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
-                          </div>
-                        ))}
+                    </div>
+                    <div className="p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-[#111224] space-y-3">
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <span className="text-xs font-bold text-slate-800 dark:text-white">Apex Tech Solutions</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">Proposal Sent</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <span className="text-xs font-bold text-slate-800 dark:text-white">Quantum Leap Labs</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-bold">In Negotiation</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <span className="text-xs font-bold text-slate-800 dark:text-white">Horizon Media Co</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">Discovery Call</span>
                       </div>
                     </div>
                   </div>
+                )}
+
+                {activeTab === 'ai' && (
+                  <div className="grid md:grid-cols-3 gap-6 items-center">
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="inline-block px-3 py-1 rounded-full bg-purple-50 text-purple-600 font-semibold text-[11px]">24/7 Digital Workers</div>
+                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white">AI Assistant Agents Handling Daily Chores</h3>
+                      <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                        Let AI draft progress emails, organize task deadlines, analyze project risk, and notify team members automatically.
+                      </p>
+                      <div className="flex gap-4 pt-2">
+                        <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/40">
+                          <p className="text-[10px] text-purple-600 dark:text-purple-400 uppercase font-bold">Hours Saved / Month</p>
+                          <p className="text-lg font-bold text-purple-600 dark:text-purple-400">140+ Hours</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-orange-50 dark:bg-orange-950/40">
+                          <p className="text-[10px] text-brand-orange uppercase font-bold">Errors Reduced</p>
+                          <p className="text-lg font-bold text-brand-orange">99.8%</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-[#111224] space-y-3">
+                      <div className="p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-brand-orange">🤖 Invoicing Bot</span>
+                          <span className="text-emerald-500 font-bold">Active</span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">Sent 12 monthly retainer reminders</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-purple-600">🧠 Summary Assistant</span>
+                          <span className="text-emerald-500 font-bold">Active</span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">Generated weekly client status briefs</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'tasks' && (
+                  <div className="grid md:grid-cols-3 gap-6 items-center">
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="inline-block px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 font-semibold text-[11px]">Visual Deliverables</div>
+                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Clean Kanban Boards Your Team Will Love</h3>
+                      <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                        Organize work by status, assign leads, attach files, and track deliverables in real time without messy spreadsheet email threads.
+                      </p>
+                      <div className="flex gap-4 pt-2">
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-slate-800">
+                          <p className="text-[10px] text-gray-400 uppercase font-bold">Active Tasks</p>
+                          <p className="text-lg font-bold text-slate-900 dark:text-white">128 Deliverables</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40">
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">On-Time Completion</p>
+                          <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">97.2%</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-[#111224] space-y-2">
+                      <div className="p-2.5 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white">Website UI Redesign</p>
+                        <p className="text-[10px] text-indigo-500 font-semibold mt-0.5">Assigned: Sarah M. • Due Tomorrow</p>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-white dark:bg-slate-800 shadow-sm">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white">API Integration Testing</p>
+                        <p className="text-[10px] text-emerald-500 font-semibold mt-0.5">Completed Today</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'invoices' && (
+                  <div className="grid md:grid-cols-3 gap-6 items-center">
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="inline-block px-3 py-1 rounded-full bg-amber-50 text-amber-600 font-semibold text-[11px]">Financial Operations</div>
+                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Automated Tax Invoices &amp; Instant Billing</h3>
+                      <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                        Create GST compliant invoices, track paid vs outstanding balances, and send instant PDF invoices directly to clients.
+                      </p>
+                      <div className="flex gap-4 pt-2">
+                        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40">
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase font-bold">Collected This Month</p>
+                          <p className="text-lg font-bold text-amber-600 dark:text-amber-400">₹18,40,000</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40">
+                          <p className="text-[10px] text-blue-600 dark:text-blue-400 uppercase font-bold">Avg Payment Time</p>
+                          <p className="text-lg font-bold text-blue-600 dark:text-blue-400">2.4 Days</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-[#111224] space-y-3">
+                      <div className="p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm border-l-4 border-emerald-500">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white">INV-2026-084</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-white dark:bg-slate-800 shadow-sm border-l-4 border-amber-500">
+                        <p className="text-xs font-bold text-slate-800 dark:text-white">INV-2026-085</p>
+                        <p className="text-[10px] text-gray-500">Quantum Leap • ₹4,20,000 (Pending)</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <section id="features" className="py-24 bg-gray-50/30 dark:bg-[#111224]/30">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="text-center mb-16">
+              <div className="inline-block px-4 py-1.5 rounded-full bg-orange-50 dark:bg-orange-950/20 mb-4">
+                <span className="text-xs font-bold uppercase tracking-widest text-brand-orange">WHY BUSINESSES CHOOSE SYNTASK</span>
+              </div>
+              <h2 className="text-4xl font-bold text-slate-900 dark:text-white">Replace Multiple Tools. Replace Manual Work.<br />Replace Limits.</h2>
+            </div>
+            <div className="grid lg:grid-cols-3 gap-8 items-stretch">
+              <div className="bg-white dark:bg-[#0A0B1A] p-10 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-8 text-center">The Traditional Way</h3>
+                <ul className="space-y-6">
+                  <li className="flex items-center gap-3">
+                    <div className="w-5 h-5 flex-shrink-0 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-xs">✕</div>
+                    <span className="text-gray-600 dark:text-gray-300 font-medium">10+ different tools &amp; subscriptions</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="w-5 h-5 flex-shrink-0 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-xs">✕</div>
+                    <span className="text-gray-600 dark:text-gray-300 font-medium">Manual follow-ups &amp; updates</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="w-5 h-5 flex-shrink-0 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-xs">✕</div>
+                    <span className="text-gray-600 dark:text-gray-300 font-medium">Scattered data &amp; reports</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="relative bg-white dark:bg-[#0A0B1A] p-10 rounded-3xl border-2 border-green-500 shadow-xl lg:-mt-4 lg:mb-4">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-green-500 text-white text-[10px] font-bold uppercase rounded-full">VS</div>
+                <h3 className="text-xl font-bold text-green-600 dark:text-green-400 mb-8 text-center">The SynTask Way</h3>
+                <ul className="space-y-6">
+                  <li className="flex items-center gap-3">
+                    <div className="w-5 h-5 flex-shrink-0 bg-green-100 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-xs font-bold">✓</div>
+                    <span className="text-slate-800 dark:text-white font-semibold">One AI-powered Business Operating System</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="w-5 h-5 flex-shrink-0 bg-green-100 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-xs font-bold">✓</div>
+                    <span className="text-slate-800 dark:text-white font-semibold">Real-time dashboards &amp; unified data</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="w-5 h-5 flex-shrink-0 bg-green-100 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-xs font-bold">✓</div>
+                    <span className="text-slate-800 dark:text-white font-semibold">Teams collaborate in one workspace</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <div className="w-5 h-5 flex-shrink-0 bg-green-100 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center text-xs font-bold">✓</div>
+                    <span className="text-slate-800 dark:text-white font-semibold">Lower costs. Higher productivity. More growth.</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="bg-white dark:bg-[#0A0B1A] p-10 rounded-3xl border border-gray-100 dark:border-slate-800 flex flex-col justify-center items-center text-center shadow-sm">
+                <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mb-6">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">Ready to see the difference?</h3>
+                <p className="text-gray-500 dark:text-gray-400 mb-8 px-4">Thousands of service companies are running their entire business on SynTask.</p>
+                <div className="w-full space-y-3">
+                  <button className="w-full bg-brand-orange text-white font-bold py-4 rounded-xl hover:bg-orange-600 transition-colors">Start Free Trial</button>
+                  <button className="w-full bg-white dark:bg-[#0A0B1A] text-slate-800 dark:text-white border border-gray-200 dark:border-slate-700 font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors">
+                    Book a Demo <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </button>
                 </div>
               </div>
-            </motion.div>
-
-            <motion.div
-              variants={staggerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.15 }}
-              className="grid gap-5 sm:grid-cols-2"
-            >
-              {features.map(({ icon: Icon, title, description }, index) => (
-                <motion.div
-                  key={title}
-                  variants={itemVariants}
-                  whileHover={{ y: -6 }}
-                  className={`group relative overflow-hidden rounded-[1.9rem] border ${themeTheme.border} ${themeTheme.surface} p-6 shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
-                    index === 0 || index === 5 ? 'sm:col-span-2' : ''
-                  }`}
-                >
-                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary-500 via-violet-500 to-sky-500" />
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-700 ring-1 ring-primary-100 transition group-hover:scale-105">
-                      <Icon className="h-7 w-7" />
-                    </div>
-                    <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
-                      0{index + 1}
-                    </div>
-                  </div>
-                  <h3 className="mt-5 text-2xl font-bold tracking-tight text-slate-950">{title}</h3>
-                  <p className={`mt-3 max-w-md text-sm leading-7 ${themeTheme.textSecondary}`}>{description}</p>
-                  <div className="mt-5 flex items-center gap-2 text-sm font-semibold text-primary-700">
-                    Learn more
-                    <ChevronRight className="h-4 w-4" />
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div>
+            </div>
           </div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Case studies"
-              title="Real operational lift for growing agencies"
-              description="The goal is not just visibility. It is helping agencies ship faster, close cleaner, and keep clients happier."
-            />
-          </motion.div>
 
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 grid gap-6 lg:grid-cols-3"
-          >
-            {[
-              {
-                title: 'DigitalFlow',
-                stat: '42% faster delivery',
-                description: 'Used SynTask to reduce handoff friction across creative and media teams.',
-                image: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1200&h=800&fit=crop',
-              },
-              {
-                title: 'CreativeHub',
-                stat: '31% more qualified deals',
-                description: 'Connected CRM and proposal workflows so their sales team never lost momentum.',
-                image: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=1200&h=800&fit=crop',
-              },
-              {
-                title: 'GrowthAgency',
-                stat: '18 hours saved weekly',
-                description: 'Replaced scattered tools with a single operating system for delivery and billing.',
-                image: 'https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1200&h=800&fit=crop',
-              },
-            ].map((item) => (
-              <motion.article
-                key={item.title}
-                variants={itemVariants}
-                whileHover={{ y: -6 }}
-                className={`overflow-hidden rounded-[2rem] border ${themeTheme.border} ${themeTheme.surface} shadow-[0_20px_50px_rgba(15,23,42,0.05)]`}
-              >
-                <img src={item.image} alt={item.title} className="h-56 w-full object-cover" />
-                <div className="p-6">
-                  <div className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{item.title}</div>
-                  <div className="mt-3 text-2xl font-black text-primary-700">{item.stat}</div>
-                  <p className={`mt-3 text-sm leading-7 ${themeTheme.textSecondary}`}>{item.description}</p>
+        <section className="py-24 bg-white dark:bg-[#0A0B1A]">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="text-center mb-16">
+              <div className="inline-block px-4 py-1.5 rounded-full bg-orange-50 dark:bg-orange-950/20 mb-4">
+                <span className="text-xs font-bold uppercase tracking-widest text-brand-orange">TRUSTED BY MODERN BUSINESSES</span>
+              </div>
+              <h2 className="text-4xl font-bold text-slate-900 dark:text-white">Powering Growth Across Industries</h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+
+              <div className="p-6 text-center border border-gray-100 dark:border-slate-800 rounded-2xl hover:shadow-lg transition-shadow bg-white dark:bg-[#0A0B1A]">
+                <div className="text-orange-500 mb-4 flex justify-center">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                 </div>
-              </motion.article>
-            ))}
-          </motion.div>
+                <span className="text-sm font-bold block">Digital Marketing Agencies</span>
+              </div>
+
+              <div className="p-6 text-center border border-gray-100 dark:border-slate-800 rounded-2xl hover:shadow-lg transition-shadow bg-white dark:bg-[#0A0B1A]">
+                <div className="text-purple-500 mb-4 flex justify-center">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <span className="text-sm font-bold block">Creative Agencies</span>
+              </div>
+
+              <div className="p-6 text-center border border-gray-100 dark:border-slate-800 rounded-2xl hover:shadow-lg transition-shadow bg-white dark:bg-[#0A0B1A]">
+                <div className="text-blue-500 mb-4 flex justify-center">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <span className="text-sm font-bold block">IT Services Companies</span>
+              </div>
+
+              <div className="p-6 text-center border border-gray-100 dark:border-slate-800 rounded-2xl hover:shadow-lg transition-shadow bg-white dark:bg-[#0A0B1A]">
+                <div className="text-green-500 mb-4 flex justify-center">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <span className="text-sm font-bold block">Software Development Companies</span>
+              </div>
+
+              <div className="p-6 text-center border border-gray-100 dark:border-slate-800 rounded-2xl hover:shadow-lg transition-shadow bg-white dark:bg-[#0A0B1A]">
+                <div className="text-indigo-500 mb-4 flex justify-center">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <span className="text-sm font-bold block">Product Engineering Companies</span>
+              </div>
+
+              <div className="p-6 text-center border border-gray-100 dark:border-slate-800 rounded-2xl hover:shadow-lg transition-shadow bg-white dark:bg-[#0A0B1A]">
+                <div className="text-teal-500 mb-4 flex justify-center">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <span className="text-sm font-bold block">Consulting &amp; Professional Services</span>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <Industries />
 
-        {/* Testimonials Section */}
-        <TestimonialsSection />
+        <section className="max-w-7xl mx-auto px-4 mb-24 stats-section">
+          <div className="bg-slate-900 text-white rounded-[40px] p-12 relative overflow-hidden">
 
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Why SynTask"
-              title="Stop stitching together tools that were never built for agencies"
-              description="A focused comparison helps teams understand the difference between generic software and an agency-native operating system."
-            />
-          </motion.div>
-
-          <div className="mt-12 grid gap-6 lg:grid-cols-[0.72fr_1.28fr]">
-            <motion.div
-              variants={itemVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.2 }}
-              className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-slate-950 p-8 text-white shadow-[0_24px_70px_rgba(15,23,42,0.18)]`}
-            >
-              <div className="absolute -right-12 top-0 h-40 w-40 rounded-full bg-primary-500/20 blur-3xl" />
-              <div className="absolute -bottom-16 left-0 h-40 w-40 rounded-full bg-violet-500/20 blur-3xl" />
-              <div className="relative">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.28em] text-white/75">
-                  <ShieldCheck className="h-3.5 w-3.5 text-sky-300" />
-                  Decision guide
+            <div className="absolute top-0 right-0 w-64 h-full bg-white/5 skew-x-12"></div>
+            <div className="relative z-10 grid grid-cols-2 lg:grid-cols-5 gap-8 items-center">
+              <div className="text-center">
+                <div className="flex justify-center mb-2">
+                  <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1a1 1 0 112 0v1a1 1 0 11-2 0zM13.536 14.95a1 1 0 010-1.414l.707-.707a1 1 0 011.414 1.414l-.707.707a1 1 0 01-1.414 0zM6.464 14.95a1 1 0 01-1.414 0l-.707-.707a1 1 0 011.414-1.414l.707.707a1 1 0 010 1.414z"></path></svg>
+                  </div>
                 </div>
-                <h3 className="mt-6 max-w-sm font-display text-4xl font-black tracking-tight">
-                  The difference becomes obvious when the work gets real.
-                </h3>
-                <p className="mt-5 max-w-md text-base leading-8 text-slate-300">
-                  Spreadsheets and generic tools can track tasks. SynTask connects the full agency workflow so leaders can operate with confidence.
-                </p>
-
-                <div className="mt-8 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                  {[
-                    ['Ops', 'Cleaner handoffs'],
-                    ['Sales', 'One pipeline'],
-                    ['Finance', 'Connected billing'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">{label}</div>
-                      <div className="mt-2 text-sm font-bold text-white">{value}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/55">Best fit</div>
-                  <div className="mt-2 text-xl font-black tracking-tight">SynTask for agency operators</div>
-                  <p className="mt-3 text-sm leading-7 text-slate-300">
-                    Designed for teams that want fewer tools, stronger visibility, and a more premium client experience.
-                  </p>
-                </div>
+                <div className="text-2xl font-bold" data-target="500" data-suffix="+">500+</div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400">Companies Trust SynTask</div>
               </div>
-            </motion.div>
+              <div className="text-center">
+                <div className="flex justify-center mb-2">
+                  <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" fillRule="evenodd"></path></svg>
+                  </div>
+                </div>
+                <div className="text-2xl font-bold" data-target="25" data-suffix="+">25+</div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400">Countries Worldwide</div>
+              </div>
+              <div className="text-center">
+                <div className="flex justify-center mb-2">
+                  <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" fillRule="evenodd"></path></svg>
+                  </div>
+                </div>
+                <div className="text-2xl font-bold" data-target="10" data-suffix="M+">10M+</div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400">Tasks Automated</div>
+              </div>
+              <div className="text-center">
+                <div className="flex justify-center mb-2">
+                  <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" fillRule="evenodd"></path></svg>
+                  </div>
+                </div>
+                <div className="text-2xl font-bold" data-target="1" data-suffix="M+">1M+</div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400">Users Empowered</div>
+              </div>
+              <div className="text-center">
+                <div className="flex justify-center mb-2">
+                  <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg>
+                  </div>
+                </div>
+                <div className="text-2xl font-bold" data-target="98" data-suffix="%">98%</div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400">Customer Satisfaction</div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-            <motion.div
-              variants={staggerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.15 }}
-              className={`overflow-hidden rounded-[2.25rem] border ${themeTheme.border} ${themeTheme.surface} shadow-[0_20px_50px_rgba(15,23,42,0.05)]`}
-            >
-              <div className="grid grid-cols-4 border-b border-slate-200 bg-slate-50/90 px-6 py-4 text-sm font-semibold text-slate-600">
-                <div>Capability</div>
-                <div className="text-center">Spreadsheets</div>
-                <div className="text-center">Generic PM tools</div>
+
+        <section className="py-24 bg-gray-50/50 dark:bg-[#111224]/50">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="text-center mb-16">
+              <div className="inline-block px-4 py-1.5 rounded-full bg-orange-50 dark:bg-orange-950/20 mb-4">
+                <span className="text-xs font-bold uppercase tracking-widest text-brand-orange">RECOGNIZED &amp; CERTIFIED</span>
+              </div>
+              <h2 className="text-4xl font-bold text-slate-900 dark:text-white">Enterprise-Grade Security &amp; Compliance</h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex flex-col items-center gap-3">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                 <div className="text-center">
-                  <span className="inline-flex items-center gap-2 rounded-full bg-primary-600 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-white">
-                    SynTask
-                    <Sparkles className="h-3 w-3" />
-                  </span>
+                  <div className="text-sm font-bold">ISO 27001</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Certified</div>
                 </div>
               </div>
-
-              {compareRows.map(([label, sheets, generic, syntask], index) => (
-                <div
-                  key={label}
-                  className={`grid grid-cols-4 items-center border-b border-slate-100 px-6 py-5 last:border-b-0 ${
-                    index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-                  }`}
-                >
-                  <div>
-                    <div className="text-base font-semibold text-slate-900">{label}</div>
-                    <div className="mt-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-400">
-                      Agency workflow coverage
-                    </div>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-rose-50 text-rose-500">
-                      {sheets ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-500">
-                      {generic ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <span
-                      className={`inline-flex h-11 w-11 items-center justify-center rounded-full shadow-sm ${
-                        syntask ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-rose-50 text-rose-500'
-                      }`}
-                    >
-                      {syntask ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
-                    </span>
-                  </div>
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex flex-col items-center gap-3">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                <div className="text-center">
+                  <div className="text-sm font-bold">SOC 2</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Compliant</div>
                 </div>
-              ))}
-
-              <div className="grid gap-4 border-t border-slate-200 bg-gradient-to-r from-primary-50 via-white to-violet-50 px-6 py-5 sm:grid-cols-[1fr_auto] sm:items-center">
-                <div>
-                  <div className="text-sm font-bold text-slate-900">Built to replace patchwork with clarity</div>
-                  <div className="mt-1 text-sm text-slate-600">
-                    If you want one place for operations, sales, and billing, SynTask is the direct answer.
-                  </div>
-                </div>
-                <a
-                  href="#pricing"
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  View pricing
-                  <ArrowRight className="h-4 w-4" />
-                </a>
               </div>
-            </motion.div>
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex flex-col items-center gap-3">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                <div className="text-center">
+                  <div className="text-sm font-bold">GDPR</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Ready</div>
+                </div>
+              </div>
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex flex-col items-center gap-3">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                <div className="text-center">
+                  <div className="text-sm font-bold">99.9%</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Uptime SLA</div>
+                </div>
+              </div>
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex flex-col items-center gap-3">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                <div className="text-center">
+                  <div className="text-sm font-bold">256-bit</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Encryption</div>
+                </div>
+              </div>
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex flex-col items-center gap-3">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                <div className="text-center">
+                  <div className="text-sm font-bold">Regular</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Backups</div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section id="pricing" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="Pricing"
-              title="Simple pricing for growing agencies"
-              description="Choose the plan that fits your team size today and scale into a stronger operating model as you grow."
-            />
-          </motion.div>
 
-          <div className="mt-12 grid gap-6">
-            <motion.div
-              variants={itemVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.2 }}
-              whileHover={{ y: -5 }}
-              className={`relative overflow-hidden rounded-[2.25rem] border ${themeTheme.border} bg-slate-950 p-8 text-white shadow-[0_26px_70px_rgba(15,23,42,0.18)]`}
-            >
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.35),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(139,92,246,0.22),transparent_36%)]" />
-              <div className="relative">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.3em] text-white/75">
-                  <Sparkles className="h-3.5 w-3.5 text-sky-300" />
-                  Built for agency growth
+        <section className="max-w-7xl mx-auto px-4 py-24">
+          <div className="bg-slate-900 rounded-[40px] p-12 lg:p-16 flex flex-col lg:flex-row items-center gap-12 relative overflow-hidden">
+            <div className="relative z-10 flex-1">
+              <div className="flex items-start gap-6">
+                <div className="w-16 h-16 bg-white/10 rounded-2xl flex-shrink-0 flex items-center justify-center text-white">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                 </div>
-                <h3 className="mt-6 max-w-md font-display text-4xl font-black tracking-tight sm:text-5xl">
-                  Pricing that scales with real client work.
-                </h3>
-                <p className="mt-5 max-w-md text-base leading-8 text-slate-300">
-                  Start lean, upgrade when operations grow, and keep the whole agency in one operating system instead of stitching tools together.
-                </p>
-
-                <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                  {[
-                    ['500+', 'Agencies'],
-                    ['18h', 'Saved weekly'],
-                    ['94%', 'Renewals'],
-                  ].map(([value, label]) => (
-                    <div key={label} className="rounded-2xl border border-white/10 bg-white/6 p-4">
-                      <div className="text-2xl font-black tracking-tight text-white">{value}</div>
-                      <div className="mt-1 text-xs font-semibold uppercase tracking-[0.22em] text-white/55">{label}</div>
-                    </div>
-                  ))}
+                <div>
+                  <h2 className="text-4xl font-extrabold text-white mb-4">Stay Ahead. Get Smarter.<br />Grow Faster.</h2>
+                  <p className="text-gray-400 text-sm">Get weekly insights, product updates and automation tips straight to your inbox.</p>
                 </div>
+              </div>
+            </div>
+            <div className="relative z-10 w-full lg:w-auto">
+              <form className="flex flex-col gap-4">
+                <div className="flex flex-col md:flex-row gap-0 rounded-2xl overflow-hidden border border-white/10">
+                  <input className="bg-white/5 border-none text-white px-6 py-4 w-full md:w-80 focus:ring-0 placeholder:text-gray-500" placeholder="Enter your work email" type="email" />
+                  <button className="bg-brand-orange text-white font-bold px-8 py-4 hover:bg-orange-600 transition-colors" type="submit">Subscribe</button>
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                  <div className="flex items-center gap-2 text-xs text-gray-400"><div className="w-4 h-4 rounded-full bg-green-500/20 text-green-500 flex items-center justify-center text-[10px]">✓</div> No spam</div>
+                  <div className="flex items-center gap-2 text-xs text-gray-400"><div className="w-4 h-4 rounded-full bg-green-500/20 text-green-500 flex items-center justify-center text-[10px]">✓</div> Unsubscribe anytime</div>
+                  <div className="flex items-center gap-2 text-xs text-gray-400"><div className="w-4 h-4 rounded-full bg-green-500/20 text-green-500 flex items-center justify-center text-[10px]">✓</div> Actionable insights</div>
+                </div>
+              </form>
+            </div>
 
-                <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/50">Best fit</div>
-                      <div className="mt-1 text-lg font-bold">Professional plan</div>
-                    </div>
-                    <div className="rounded-full bg-primary-500 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-white">
-                      Most Popular
-                    </div>
+            <div className="absolute right-0 bottom-0 w-32 h-32 bg-white/5 rounded-full blur-3xl"></div>
+          </div>
+        </section>
+
+
+
+
+
+
+        <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-slate-800 my-4"></div>
+
+
+
+
+
+        <header className="pt-16 pb-20 px-6 overflow-hidden">
+          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12">
+            <div className="lg:w-1/2" data-purpose="hero-text-content">
+              <span className="inline-block px-3 py-1 bg-orange-50 dark:bg-orange-950/20 text-syntaskOrange text-xs font-bold uppercase tracking-wider rounded-full mb-6">Compare SynTask</span>
+              <h1 className="text-5xl lg:text-6xl font-extrabold leading-tight mb-6">
+                SynTask vs The Rest.<br />
+                See the <span className="text-syntaskOrange italic">Clear Difference.</span>
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400 text-lg mb-10 max-w-lg">
+                SynTask brings all your work, teams and clients together in one AI-powered platform. See how we compare with other popular tools.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-purple-50 dark:bg-purple-950/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                   </div>
-                  <div className="mt-4 flex items-end gap-2">
-                    <div className="font-display text-5xl font-black tracking-tight">$79</div>
-                    <div className="pb-1 text-sm text-white/65">/mo</div>
+                  <p className="text-xs font-bold text-gray-800 dark:text-white">One Platform</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-green-50 dark:bg-green-950/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                   </div>
-                  <p className="mt-3 text-sm leading-7 text-slate-300">
-                    Ideal for scaling agencies that need full visibility across delivery, sales, support, and billing.
+                  <p className="text-xs font-bold text-gray-800 dark:text-white">AI-Powered</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-orange-50 dark:bg-orange-950/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <p className="text-xs font-bold text-gray-800 dark:text-white">End-to-End Automation</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-blue-50 dark:bg-blue-950/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <p className="text-xs font-bold text-gray-800 dark:text-white">Lower Cost</p>
+                </div>
+              </div>
+            </div>
+            <div className="lg:w-1/2 relative" data-purpose="hero-dashboard-preview">
+              <img alt="SynTask Dashboard Preview" className="w-full object-contain rounded-2xl shadow-2xl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQRgQDuakZM1U9-pFIzuFNmnxP9_9VkR0wo4AQxk15HS4_T3LRP5hHz1CMR3oNpLGq_8j9xQnGbfYOpePghW749V44G6GTf48EprmBhiJxbBf7BFS38kzcxwIDoWApkcr2QpiFXxUcCC3I7Mm288dkOsSD0BklDpFLDUZ4AkR5AGq7TCNJ3M07bK7PmpA7EVa5EHuFM_6cqoCq0NCYDHxzIrZYl5weO45qA1GF0cismwBVgZ9PBffrC6oOdVT6qwoy70ZOTQcwig" />
+            </div>
+          </div>
+        </header>
+
+
+        <section className="py-12 px-6 bg-white dark:bg-[#0A0B1A]">
+          <div className="max-w-7xl mx-auto">
+
+            <div className="flex flex-wrap justify-center gap-4 mb-12">
+              <button className="flex items-center space-x-2 px-6 py-3 bg-white dark:bg-[#0A0B1A] border-2 border-syntaskOrange rounded-xl shadow-sm">
+                <div className="w-5 h-5 bg-syntaskOrange rounded flex items-center justify-center text-[10px] text-white">S</div>
+                <span className="font-bold text-sm">SynTask</span>
+              </button>
+              <div className="flex items-center text-gray-300">vs</div>
+              <button className="flex items-center space-x-2 px-6 py-3 bg-white dark:bg-[#0A0B1A] border border-gray-200 dark:border-slate-700 rounded-xl hover:border-gray-300">
+                <img alt="ClickUp" className="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-7eEdzd75P9hGB0whvyOGai1NZnUAQlA0nDG1_2VeKZzEt7Q8Xehimtb3W8DyGjIrkXGx--BRBMT0KG4EWCZ4tpsmIUYWbC8xJyurYuolWPBWa3kXw3KDTHoGT1EWktRK7VPeSh2vbsGyrrSzcdMRFH0Z4ssow2GPNMlu1jaICvA5e1_AOxDjt0tNXQ1GTRPuIaS6cPNicIl6ptVIjMFGrLrAKcGU7_FgZR73iy-_WbJNwJXnj2IuEGBjT7NADn3ylKZBJp6Mcw" />
+                <span className="font-bold text-sm text-gray-600 dark:text-gray-300">ClickUp</span>
+              </button>
+              <div className="flex items-center text-gray-300">vs</div>
+              <button className="flex items-center space-x-2 px-6 py-3 bg-white dark:bg-[#0A0B1A] border border-gray-200 dark:border-slate-700 rounded-xl hover:border-gray-300">
+                <img alt="Monday.com" className="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCOjcameg2hBOEk3EL0O9nTH84QWDZHQRF01G9mG-ntG2jnwOSpvebHCkqpQXJ3Sbm_OWEbihB3o-6jZR809yYiZvmvxIkFuSyCZGidpMUScXuR3JREzsvV4_6cBBTbvJ0WoMFz6wFwJMU6yS-F6Bw6FoQxwdUMkZ8I0a2ubHDqCsSzJDL0WyHJCnZ5VRrP89qFcL1mAT7cYbWnBDcKuAf86piKGZ296HMKCeekO3TwTxB6p5QFPh4NIbr_0LljosBh15NUXYADIw" />
+                <span className="font-bold text-sm text-gray-600 dark:text-gray-300">Monday.com</span>
+              </button>
+              <div className="flex items-center text-gray-300">vs</div>
+              <button className="flex items-center space-x-2 px-6 py-3 bg-white dark:bg-[#0A0B1A] border border-gray-200 dark:border-slate-700 rounded-xl hover:border-gray-300">
+                <img alt="HubSpot" className="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA7HcIqm4vNsnz0Lpnc_8nqDqar3v-3EktM3xtVLkf9m-G33tQv8hyhF21crmnABMVfE_Tna_jwXF7vkp3DNmxAiVI25mah5iPOGRKkrqJBQEIT1dI2RNBM5r3W_ImDw_hV3biXCYzAEo5h2_WH7afosY_uE29rN3PnWUtW8zsW5jgfC6AGq8JmeV_ffUOFvVRymX6jE2xjIPGhlEuE3OkN3558H4UL6EN6jrS-EA4lc4txTrJ4lC5ldvbJfSQIikQPMpNDUISW5g" />
+                <span className="font-bold text-sm text-gray-600 dark:text-gray-300">HubSpot</span>
+              </button>
+              <div className="flex items-center text-gray-300">vs</div>
+              <button className="flex items-center space-x-2 px-6 py-3 bg-white dark:bg-[#0A0B1A] border border-gray-200 dark:border-slate-700 rounded-xl hover:border-gray-300">
+                <img alt="Zoho One" className="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCiJD4IsUSiUYF__I3juOI2iX5_ECXGgFzvRC576NN5h7LogwrQcWEwIZhkS_2psOnRa_YKTHXQu7BClVaO3U1QWjgkXD5NO4EZEv4uy_B0dSO46P93Gl4Bue8OHT1mjkeUqkAqlndHxN8BIkwgE45svLZ7B-C7azoa-yTmIkJ23w-l79-ObwsIpZnqe-Xvc4ga1lwgyYDJvg--l17d92LqAVwFY8GNkZwHK82r4LcFEc031QMGvI9FhybweYHEq3BCg2Yw4vAlXg" />
+                <span className="font-bold text-sm text-gray-600 dark:text-gray-300">Zoho One</span>
+              </button>
+              <div className="flex items-center text-gray-300">vs</div>
+              <button className="flex items-center space-x-2 px-6 py-3 bg-white dark:bg-[#0A0B1A] border border-gray-200 dark:border-slate-700 rounded-xl hover:border-gray-300">
+                <img alt="Salesforce" className="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDnM9XhvmrDqaf5XGyYPmiaDtN-LdECKh1ycZ6Zq7-mZa3g9V7pugPFftciC7dps5IbJBIyXMzyDrFp8BF9jKsFPouWMr6e669HcZzTh7axu_9yX_G97wbbUcSEGTKiJ5w1MICuMxg4nD4BHrC3XOyFGUZvm0rtpRw9mjXWyAAYW5BDCMN-879FCJroixWtyrlZspEiY6Z_87MiMHhzBSj6J9L-r0mSIeZVVYvJVhOYSA2T-yatyWXKxg_UMrzsCDbh58o5U-9fIw" />
+                <span className="font-bold text-sm text-gray-600 dark:text-gray-300">Salesforce</span>
+              </button>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-slate-700">
+              <table className="w-full comparison-table border-collapse">
+                <thead>
+                  <tr>
+                    <th className="bg-gray-50 dark:bg-[#111224] text-gray-700 dark:text-gray-200 font-bold w-1/5">Features</th>
+                    <th className="highlight-header w-[15%]">
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-6 h-6 bg-white dark:bg-[#0A0B1A] rounded-md flex items-center justify-center text-syntaskOrange text-[10px]">S</div>
+                        <span>SynTask</span>
+                      </div>
+                    </th>
+                    <th className="bg-gray-50 dark:bg-[#111224] text-gray-700 dark:text-gray-200 w-[13%]">
+                      <div className="flex flex-col items-center">
+                        <span className="text-xs mb-1">ClickUp</span>
+                      </div>
+                    </th>
+                    <th className="bg-gray-50 dark:bg-[#111224] text-gray-700 dark:text-gray-200 w-[13%] text-xs">Monday.com</th>
+                    <th className="bg-gray-50 dark:bg-[#111224] text-gray-700 dark:text-gray-200 w-[13%] text-xs">HubSpot</th>
+                    <th className="bg-gray-50 dark:bg-[#111224] text-gray-700 dark:text-gray-200 w-[13%] text-xs">Zoho One</th>
+                    <th className="bg-gray-50 dark:bg-[#111224] text-gray-700 dark:text-gray-200 w-[13%] text-xs">Salesforce</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  <tr>
+                    <td>AI-Powered Automation</td>
+                    <td className="highlight-column text-green-600 dark:text-green-400 font-bold text-xl">✓</td>
+                    <td className="text-gray-400">Limited</td>
+                    <td className="text-gray-400">Limited</td>
+                    <td className="text-gray-400">Limited</td>
+                    <td className="text-gray-400">Limited</td>
+                    <td className="text-gray-400">Limited</td>
+                  </tr>
+                  <tr>
+                    <td>All-in-One Platform</td>
+                    <td className="highlight-column text-green-600 dark:text-green-400 font-bold text-xl">✓</td>
+                    <td className="text-gray-400">✕</td>
+                    <td className="text-gray-400">✕</td>
+                    <td className="text-gray-400">✕</td>
+                    <td className="text-gray-400">✕</td>
+                    <td className="text-gray-400">✕</td>
+                  </tr>
+                  <tr>
+                    <td>Client Management</td>
+                    <td className="highlight-column text-green-600 dark:text-green-400 font-bold text-xl">✓</td>
+                    <td className="text-gray-400">Limited</td>
+                    <td className="text-gray-400">Limited</td>
+                    <td className="text-gray-400">Limited</td>
+                    <td className="text-gray-400">Limited</td>
+                    <td className="text-green-600 dark:text-green-400 text-xl">✓</td>
+                  </tr>
+                  <tr>
+                    <td>Project Management</td>
+                    <td className="highlight-column text-green-600 dark:text-green-400 font-bold text-xl">✓</td>
+                    <td className="text-green-600 dark:text-green-400 text-xl">✓</td>
+                    <td className="text-green-600 dark:text-green-400 text-xl">✓</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                  </tr>
+                  <tr>
+                    <td>HR &amp; Team Management</td>
+                    <td className="highlight-column text-green-600 dark:text-green-400 font-bold text-xl">✓</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                    <td className="text-green-600 dark:text-green-400 text-xl">✓</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                  </tr>
+                  <tr>
+                    <td>Finance &amp; Invoicing</td>
+                    <td className="highlight-column text-green-600 dark:text-green-400 font-bold text-xl">✓</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                    <td className="text-green-600 dark:text-green-400 text-xl">✓</td>
+                    <td className="text-green-600 dark:text-green-400 text-xl">✓</td>
+                    <td className="text-gray-400 text-xs">Limited</td>
+                  </tr>
+                  <tr>
+                    <td>AI Workforce (Virtual Employees)</td>
+                    <td className="highlight-column text-green-600 dark:text-green-400 font-bold text-xl">✓</td>
+                    <td className="text-gray-400">✕</td>
+                    <td className="text-gray-400">✕</td>
+                    <td className="text-gray-400">✕</td>
+                    <td className="text-gray-400">✕</td>
+                    <td className="text-gray-400">✕</td>
+                  </tr>
+                  <tr>
+                    <td>Ease of Use</td>
+                    <td className="highlight-column text-syntaskOrange">★★★★★</td>
+                    <td>★★★☆☆</td>
+                    <td>★★★☆☆</td>
+                    <td>★★★☆☆</td>
+                    <td>★★☆☆☆</td>
+                    <td>★★☆☆☆</td>
+                  </tr>
+                  <tr>
+                    <td>Integrations</td>
+                    <td className="highlight-column font-bold">500+</td>
+                    <td>1000+</td>
+                    <td>200+</td>
+                    <td>1500+</td>
+                    <td>1000+</td>
+                    <td>3000+</td>
+                  </tr>
+                  <tr>
+                    <td>Starting Price</td>
+                    <td className="highlight-column">
+                      <div className="font-bold">₹149 /user</div>
+                      <div className="text-[10px] text-gray-400">/month</div>
+                    </td>
+                    <td>
+                      <div className="font-bold">$7 /user</div>
+                      <div className="text-[10px] text-gray-400">/month</div>
+                    </td>
+                    <td>
+                      <div className="font-bold">$8 /user</div>
+                      <div className="text-[10px] text-gray-400">/month</div>
+                    </td>
+                    <td>
+                      <div className="font-bold">$20 /user</div>
+                      <div className="text-[10px] text-gray-400">/month</div>
+                    </td>
+                    <td>
+                      <div className="font-bold">$37 /user</div>
+                      <div className="text-[10px] text-gray-400">/month</div>
+                    </td>
+                    <td>
+                      <div className="font-bold">$25 /user</div>
+                      <div className="text-[10px] text-gray-400">/month</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Best For</td>
+                    <td className="highlight-column font-semibold text-xs leading-tight">Service Companies<br />Agencies, IT Teams</td>
+                    <td className="text-gray-600 dark:text-gray-300 text-xs">Teams of all sizes</td>
+                    <td className="text-gray-600 dark:text-gray-300 text-xs">Project-focused teams</td>
+                    <td className="text-gray-600 dark:text-gray-300 text-xs">Marketing &amp; Sales Teams</td>
+                    <td className="text-gray-600 dark:text-gray-300 text-xs">Businesses of all sizes</td>
+                    <td className="text-gray-600 dark:text-gray-300 text-xs">Large Enterprises</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+
+        <section className="py-12 px-6">
+          <div className="max-w-7xl mx-auto bg-gray-50 dark:bg-[#111224] rounded-3xl p-10 flex flex-col md:flex-row items-center gap-10">
+            <div className="flex-1 flex items-center gap-6">
+              <div className="w-16 h-16 bg-white dark:bg-[#0A0B1A] rounded-2xl flex items-center justify-center shadow-sm">
+                <svg className="w-10 h-10 text-purple-600" fill="currentColor" viewBox="0 0 20 20"><path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.242.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"></path><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.514 1.31c.356.412.96.813 1.746 1.051V15a1 1 0 102 0v-.092c.735-.073 1.41-.367 1.901-.762.697-.559 1.099-1.34 1.099-2.146 0-.917-.503-1.611-1.137-2.033-.42-.28-.905-.48-1.413-.594V7.433c.27.09.488.21.637.33a1 1 0 101.264-1.557c-.456-.37-1.127-.677-1.901-.784V5z" fillRule="evenodd"></path></svg>
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold mb-1">Companies save up to 60% on software costs by switching to SynTask.</h3>
+                <p className="text-gray-500 dark:text-gray-400">One platform. More productivity. Lower cost. Higher growth.</p>
+              </div>
+            </div>
+            <div className="flex gap-12 text-center">
+              <div>
+                <div className="text-3xl font-extrabold text-purple-700">60%</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mt-1">Cost Savings</div>
+              </div>
+              <div>
+                <div className="text-3xl font-extrabold text-purple-700">3X</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mt-1">More Productive</div>
+              </div>
+              <div>
+                <div className="text-3xl font-extrabold text-purple-700">100%</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mt-1">Work in One Place</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <section className="py-16 px-6">
+          <div className="max-w-7xl mx-auto">
+            <h2 className="text-3xl font-extrabold mb-12">Real Results from Real Businesses</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+
+              <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-3xl p-8 shadow-sm h-full flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center space-x-3 mb-8">
+                    <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">TN</div>
+                    <div className="font-bold text-xl">TechNovo <span className="text-xs font-normal text-gray-400 block tracking-widest">SOLUTIONS</span></div>
+                  </div>
+                  <p className="text-xl text-gray-700 dark:text-gray-200 font-medium leading-relaxed italic mb-8">
+                    "We replaced 6 different tools with SynTask and saved over ₹18 Lakhs annually. Our team is 3X more productive now."
                   </p>
                 </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              variants={staggerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, amount: 0.15 }}
-              className="grid gap-5 lg:grid-cols-3"
-            >
-              {pricing.map((tier) => {
-                const featured = tier.accent
-                return (
-                  <motion.div
-                    key={tier.name}
-                    variants={itemVariants}
-                    whileHover={{ y: -6 }}
-                    className={`relative overflow-hidden rounded-[2rem] border p-7 shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
-                      featured ? 'border-primary-200 bg-gradient-to-br from-primary-50 to-white' : `${themeTheme.border} ${themeTheme.surface}`
-                    }`}
-                  >
-                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary-500 via-violet-500 to-sky-500" />
-                    {featured && (
-                      <div className="absolute right-6 top-6 rounded-full bg-primary-600 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-white">
-                        Most Popular
-                      </div>
-                    )}
-
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">{tier.name}</div>
-                        <div className="mt-4 flex items-end gap-2">
-                          <div className="font-display text-5xl font-black tracking-tight text-slate-950">{tier.price}</div>
-                          <div className="pb-1 text-sm font-medium text-slate-500">{tier.period}</div>
-                        </div>
-                      </div>
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                        <BadgeDollarSign className="h-6 w-6" />
-                      </div>
-                    </div>
-
-                    <p className={`mt-4 text-sm leading-7 ${themeTheme.textSecondary}`}>{tier.description}</p>
-
-                    <div className="mt-6 space-y-3">
-                      {tier.features.map((feature) => (
-                        <div key={feature} className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm">
-                          <Check className="h-4 w-4 text-emerald-600" />
-                          {feature}
-                        </div>
-                      ))}
-                    </div>
-
-                    <a
-                      href="#contact"
-                      className={`mt-7 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition ${
-                        featured
-                          ? 'bg-primary-600 text-white shadow-lg shadow-primary-200 hover:bg-primary-700'
-                          : 'bg-slate-950 text-white hover:bg-slate-800'
-                      }`}
-                    >
-                      Choose plan
-                      <ArrowRight className="h-4 w-4" />
-                    </a>
-                  </motion.div>
-                )
-              })}
-            </motion.div>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {[
-              'No setup fees',
-              'Cancel anytime',
-              'Dedicated onboarding for higher tiers',
-            ].map((value) => (
-              <div key={value} className={`rounded-[1.5rem] border ${themeTheme.border} ${themeTheme.surface} px-5 py-4 text-sm font-semibold text-slate-700 shadow-sm`}>
-                {value}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section id="faq" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div variants={sectionVariants} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.25 }}>
-            <SectionHeading
-              eyebrow="FAQ"
-              title="Answers to common implementation questions"
-              description="Most teams want to know how quickly they can replace fragmented workflows and move into a cleaner operating rhythm."
-            />
-          </motion.div>
-
-          <motion.div
-            variants={staggerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.15 }}
-            className="mt-10 space-y-4"
-          >
-            {faqs.map((item, index) => {
-              const open = openFaq === index
-              return (
-                <motion.div
-                  key={item.question}
-                  variants={itemVariants}
-                  className={`overflow-hidden rounded-[1.5rem] border ${themeTheme.border} ${themeTheme.surface}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenFaq(open ? -1 : index)}
-                    className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
-                  >
-                    <span className="text-base font-bold text-slate-900">{item.question}</span>
-                    <ChevronDown className={`h-5 w-5 text-slate-500 transition ${open ? 'rotate-180' : ''}`} />
-                  </button>
-                  <AnimatePresence>
-                    {open && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25 }}
-                        className="overflow-hidden"
-                      >
-                        <div className={`px-6 pb-6 text-sm leading-7 ${themeTheme.textSecondary}`}>{item.answer}</div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              )
-            })}
-          </motion.div>
-        </section>
-
-        <section id="contact" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <motion.div
-            variants={sectionVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.2 }}
-            className={`overflow-hidden rounded-[2.5rem] border ${themeTheme.border} bg-white shadow-[0_24px_70px_rgba(15,23,42,0.08)]`}
-          >
-            <div className="grid gap-0 lg:grid-cols-[0.95fr_1.05fr]">
-              <div className="bg-slate-950 p-8 text-white sm:p-12">
-                <div className="inline-flex rounded-full bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.26em] text-white/80">
-                  Let&apos;s talk
-                </div>
-                <h2 className="mt-6 font-display text-4xl font-black tracking-tight sm:text-5xl">
-                  Ready to transform your agency operations?
-                </h2>
-                <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
-                  Join 500+ agencies already running on SynTask and create a more predictable system for delivery, sales, and client success.
-                </p>
-
-                <div className="mt-10 space-y-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
-                      <Mail className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/60">Email</div>
-                      <div className="font-medium">hello@synTask.app</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
-                      <MapPin className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/60">Office</div>
-                      <div className="font-medium">Remote-first, global support</div>
-                    </div>
+                <div className="flex items-center space-x-4">
+                  <img alt="Rahul Mehta" className="w-12 h-12 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBu4xVSl8F76oEFJEZHDkFe3wfd71fHj_4NJxMYc7udXu-HONdNM6PEKVTHgfBcr4lK0QuPi8kdbkeZUDpjBf_o_XhmR2YPJt5laqrLBdM4hz3CMSc8RcwiWYYTV5UB5TsMygFXI3udY61uV-xZCN9rmYgp2mYopS8UfVfCHm1VNWs3V74XGrTfpqn_2L7T4fadHBPomroWQVNdquunW45jzk1xWXp8HGotrM9ZpD8TrKKsn4YTthgVg9EiKV7OzMNRcoDw5Fstyg" />
+                  <div>
+                    <div className="font-bold">Rahul Mehta</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">CEO, TechNovo Solutions</div>
                   </div>
                 </div>
               </div>
 
-              <div className="p-8 sm:p-12">
-                <form className="grid gap-5">
-                  <div className="grid gap-5 md:grid-cols-2">
-                    <label className="grid gap-2">
-                      <span className="text-sm font-semibold text-slate-700">Full name</span>
-                      <input
-                        type="text"
-                        placeholder="Your name"
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-primary-400 focus:bg-white"
-                      />
-                    </label>
-                    <label className="grid gap-2">
-                      <span className="text-sm font-semibold text-slate-700">Work email</span>
-                      <input
-                        type="email"
-                        placeholder="you@agency.com"
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-primary-400 focus:bg-white"
-                      />
-                    </label>
+              <div className="grid grid-cols-2 gap-4 h-full">
+                <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm text-center">
+                  <div className="w-10 h-10 bg-green-50 dark:bg-green-950/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                   </div>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-semibold text-slate-700">Agency size</span>
-                    <input
-                      type="text"
-                      placeholder="15 team members"
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-primary-400 focus:bg-white"
-                    />
-                  </label>
-                  <label className="grid gap-2">
-                    <span className="text-sm font-semibold text-slate-700">What do you need help with?</span>
-                    <textarea
-                      rows={5}
-                      placeholder="Tell us about your workflows, pain points, or what you want to improve."
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-primary-400 focus:bg-white"
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-primary-600 px-6 py-4 text-sm font-semibold text-white shadow-lg shadow-primary-200 transition hover:bg-primary-700"
-                  >
-                    Start Your Free Trial
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                </form>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">₹18L+</div>
+                  <div className="text-[10px] text-gray-400 font-bold uppercase">Annual Savings</div>
+                </div>
+                <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm text-center">
+                  <div className="w-10 h-10 bg-orange-50 dark:bg-orange-950/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">120+</div>
+                  <div className="text-[10px] text-gray-400 font-bold uppercase leading-tight">Hours Saved<br />Every Month</div>
+                </div>
+                <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm text-center">
+                  <div className="w-10 h-10 bg-purple-50 dark:bg-purple-950/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">3X</div>
+                  <div className="text-[10px] text-gray-400 font-bold uppercase leading-tight">Team Productivity<br />Improvement</div>
+                </div>
+                <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm text-center">
+                  <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">98%</div>
+                  <div className="text-[10px] text-gray-400 font-bold uppercase leading-tight">Client Satisfaction<br />Achieved</div>
+                </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         </section>
-      </main>
 
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-          <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr_0.9fr_0.9fr]">
+
+        <section className="py-16 px-6 bg-gray-50 dark:bg-[#111224]">
+          <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16">
+
+            <div data-purpose="faq-container">
+              <h2 className="text-2xl font-extrabold mb-8">Frequently Compared. Clearly Answered.</h2>
+              <div className="space-y-4">
+                <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-5 flex items-center justify-between cursor-pointer">
+                  <span className="font-bold text-gray-800 dark:text-white">Is SynTask really an all-in-one platform?</span>
+                  <span className="text-gray-400">+</span>
+                </div>
+                <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-5 flex items-center justify-between cursor-pointer">
+                  <span className="font-bold text-gray-800 dark:text-white">How is SynTask different from ClickUp or Monday.com?</span>
+                  <span className="text-gray-400">+</span>
+                </div>
+                <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-5 flex items-center justify-between cursor-pointer">
+                  <span className="font-bold text-gray-800 dark:text-white">Does SynTask offer better pricing than other tools?</span>
+                  <span className="text-gray-400">+</span>
+                </div>
+                <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-5 flex items-center justify-between cursor-pointer">
+                  <span className="font-bold text-gray-800 dark:text-white">Can I migrate my data from other platforms?</span>
+                  <span className="text-gray-400">+</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-[#0A0B1A] rounded-3xl p-10 shadow-lg border border-gray-100 dark:border-slate-800 relative overflow-hidden flex flex-col justify-center">
+              <div className="relative z-10">
+                <h2 className="text-3xl font-extrabold mb-4">Still comparing?</h2>
+                <p className="text-gray-500 dark:text-gray-400 mb-8 max-w-sm">Book a personalized demo and see why 500+ businesses switched to SynTask.</p>
+                <div className="flex gap-4">
+                  <button className="bg-syntaskBlue text-white px-8 py-3 rounded-xl font-bold">Book a Demo</button>
+                  <button className="bg-white dark:bg-[#0A0B1A] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-slate-700 px-8 py-3 rounded-xl font-bold hover:bg-gray-50">Talk to Sales</button>
+                </div>
+              </div>
+
+              <img alt="UI Element" className="absolute -bottom-10 -right-10 w-64 opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAhAGinA-IuvW54U2w4KDnZS3WeaKmnWckeDteaJO9ik-AzPahek5VijvLPwUkTpy_mCOz3rwS6sSNd3T7Kn7Zjy7pNqBgYpNjpyMb5Fi-H45wsNI1t7y_KSCjKxP3WHoXao2IFpxTeY-WzNZFjowi_EVspPL-MPW8nZ3Y8WwJ5D7A_Pcu0_KQ1VC3XRMiMHhnRuCL9IdI-xcCdWTIbqrDrxYfhNwlItobQHivCI6pcWC4VrR5rVTDkeVAk9qNmTbxQfhMPO837hg" />
+            </div>
+          </div>
+        </section>
+
+
+        <section className="py-16 px-6">
+          <div className="max-w-7xl mx-auto bg-syntaskBlue rounded-[2.5rem] p-10 md:p-16 flex flex-col items-center text-center text-white relative overflow-hidden">
+            <div className="absolute left-10 top-1/2 -translate-y-1/2 opacity-20 hidden lg:block">
+              <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center">
+                <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </div>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-extrabold mb-6">Stop Switching. Start Scaling.</h2>
+            <p className="text-gray-400 text-lg mb-10 max-w-2xl">Join 500+ service companies using SynTask to automate operations, deliver better and grow faster.</p>
+            <div className="flex flex-wrap justify-center gap-8 mb-10 text-sm font-medium text-gray-300">
+              <div className="flex items-center gap-2"><span className="text-green-500">✓</span> 14 Days Free Trial</div>
+              <div className="flex items-center gap-2"><span className="text-green-500">✓</span> No Credit Card Required</div>
+              <div className="flex items-center gap-2"><span className="text-green-500">✓</span> Cancel Anytime</div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button className="bg-syntaskOrange text-white px-10 py-4 rounded-xl font-bold text-lg hover:bg-opacity-90 transition flex items-center gap-2">Start Free Trial →</button>
+              <button className="bg-transparent border border-white border-opacity-20 px-10 py-4 rounded-xl font-bold text-lg hover:bg-white hover:bg-opacity-10 transition flex items-center gap-2">Book a Live Demo <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></button>
+            </div>
+          </div>
+        </section>
+
+
+
+
+
+
+        <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-slate-800 my-4"></div>
+
+
+
+
+        <main>
+
+          <section className="pt-20 pb-24 overflow-hidden" data-purpose="hero-section">
+            <div className="container mx-auto px-6 flex flex-col lg:flex-row items-center gap-12">
+              <div className="lg:w-5/12">
+                <span className="inline-block px-4 py-1.5 rounded-full bg-orange-50 dark:bg-orange-950/20 text-brand-orange text-xs font-bold uppercase tracking-widest mb-6">AI Workforce</span>
+                <h1 className="text-6xl font-bold leading-tight mb-6">Meet Your AI Workforce. They Work <span className="text-brand-orange">24/7.</span> You <span className="text-brand-orange">Grow.</span></h1>
+                <p className="text-gray-500 dark:text-gray-400 text-lg mb-10 max-w-lg leading-relaxed">SynTask's AI employees handle the work that slows you down, so your team can focus on what truly matters.</p>
+                <ul className="space-y-4 mb-10">
+                  <li className="flex items-center space-x-3 text-gray-700 dark:text-gray-200 font-medium">
+                    <span className="w-5 h-5 bg-brand-orange rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
+                    <span>AI employees for every department</span>
+                  </li>
+                  <li className="flex items-center space-x-3 text-gray-700 dark:text-gray-200 font-medium">
+                    <span className="w-5 h-5 bg-brand-orange rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
+                    <span>Trained on best practices &amp; your data</span>
+                  </li>
+                  <li className="flex items-center space-x-3 text-gray-700 dark:text-gray-200 font-medium">
+                    <span className="w-5 h-5 bg-brand-orange rounded-full flex items-center justify-center text-white text-[10px]">✓</span>
+                    <span>Always-on. Always-learning. Always-delivering.</span>
+                  </li>
+                </ul>
+                <div className="flex items-center space-x-4">
+                  <button className="bg-brand-orange text-white px-8 py-4 rounded-lg font-bold text-lg shadow-lg hover:bg-orange-600 transition-colors">Start Free Trial</button>
+                  <button className="border border-gray-300 px-8 py-4 rounded-lg font-bold text-lg flex items-center hover:bg-gray-50 transition-colors">
+                    Book a Demo <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </button>
+                </div>
+              </div>
+              <div className="lg:w-7/12 relative">
+
+                <div className="relative z-10 rounded-2xl shadow-2xl bg-white dark:bg-[#0A0B1A] p-2 border border-gray-100 dark:border-slate-800 overflow-hidden">
+                  <img alt="Dashboard Interface" className="w-full rounded-xl object-top object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBkecMTbApdKXQET8FI1jeHvmLhzwsf1_As4w6SUchUXoY9HA7oFdLRxBH9qd-mhGhTmljKe72UTmxy28XoWT-_GsADxAmMKxaJE-tT6FrpvArPTzB8Z_VVmF-1M_-P72ZPCW6T_TXgfLHTTGthdmvKni1srdlOAPrW6GXZUz1T0IowgOqsGH52QLaiNTHX3MUAmvkQhYtylWgXGcsKpUTFse_PTutD_ZZa2nFUfOmkkcBZMObNer3VoC3iCJGkPGdsZcUncEQHWA" style={{ height: "600px" }} />
+                </div>
+
+                <div className="absolute -top-12 -right-12 w-64 h-64 bg-brand-orange opacity-5 rounded-full -z-10"></div>
+                <div className="absolute -bottom-8 -left-8 w-40 h-40 bg-gray-200 opacity-20 rounded-full -z-10"></div>
+              </div>
+            </div>
+          </section>
+
+
+          <section className="py-24 bg-gray-50/50 dark:bg-[#111224]/50" data-purpose="employees-directory">
+            <div className="container mx-auto px-6 text-center">
+              <span className="inline-block px-4 py-1.5 rounded-full bg-orange-50 dark:bg-orange-950/20 text-brand-orange text-xs font-bold uppercase tracking-widest mb-4">AI Employees</span>
+              <h2 className="text-4xl font-bold mb-4">An AI Employee for Every Function</h2>
+              <p className="text-gray-500 dark:text-gray-400 mb-16 max-w-2xl mx-auto">Delegate repetitive work, automate complex processes, and achieve more with your AI team.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+
+                <div className="bg-white dark:bg-[#0A0B1A] rounded-2xl p-6 border border-gray-100 dark:border-slate-800 text-left card-shadow hover:-translate-y-1 transition-transform">
+                  <div className="relative mb-6">
+                    <div className="bg-orange-100 rounded-xl aspect-[4/5] overflow-hidden">
+                      <img alt="Sales Manager" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA5pv7DiQ-tgaL8mj4C69zVAOWhTEutxsHR8LyS06zMoJoAzqaTppYhIS5yolly7VlkOyk3SOdSpLcGWRHyBkflhFt0U_2aBP6pXx500tMAX5wonUuh33noVFv5fFqMsP8bkadgafK10fuYUxzjT7-KHITj4MKr8eXGHHezbyFwhdq-nOdeaFZ-dNl-67icUpYy9kX8JK-ZFMRXAcH-FjkjSnPDyvBlU2fLSY__SA6Rksv2Z20FfLOVjbNqVBCK66fS4wT4QDxQMA" />
+                    </div>
+                    <div className="absolute bottom-2 left-2 p-1.5 bg-brand-orange rounded-lg text-white">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                  </div>
+                  <h3 className="font-bold text-lg mb-3">AI Sales Manager</h3>
+                  <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-2 mb-6">
+                    <li>• Lead qualification</li>
+                    <li>• Follow-ups &amp; nurturing</li>
+                    <li>• Proposals &amp; quotations</li>
+                    <li>• Deal tracking &amp; insights</li>
+                  </ul>
+                  <a className="text-brand-orange text-sm font-bold flex items-center" href="#">Explore <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 8l4 4m0 0l-4 4m4-4H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                </div>
+
+                <div className="bg-white dark:bg-[#0A0B1A] rounded-2xl p-6 border border-gray-100 dark:border-slate-800 text-left card-shadow hover:-translate-y-1 transition-transform">
+                  <div className="relative mb-6">
+                    <div className="bg-purple-100 rounded-xl aspect-[4/5] overflow-hidden">
+                      <img alt="HR Manager" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDj4UU-qZ3_svdL_P5vAQs7nsctS36ogg0fuXjUiu4Xfy0PaejUw2G_I8QDtqGLIO1L-Yo95duD9FbQ1DKohal7DqA0aucFGWF_hmH6MomX5TlaEVbRmUHd8hKSeuP6t4M37SS-Uvq1K_tOPSVcoUtveWjdcuQEJ8ArY3enqHJmO1TNAevFWZW8sfMBoI0zq40JvI4gBg4tBq0ZdiSn8KPSgo_Cph9GSPaTr78TMbign3_RSAJ_VgM60-1eZ8xft_pNhPCFRT_jQg" />
+                    </div>
+                    <div className="absolute bottom-2 left-2 p-1.5 bg-purple-600 rounded-lg text-white">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                  </div>
+                  <h3 className="font-bold text-lg mb-3">AI HR Manager</h3>
+                  <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-2 mb-6">
+                    <li>• Resume screening</li>
+                    <li>• Interview scheduling</li>
+                    <li>• JD &amp; offer letters</li>
+                    <li>• Employee support</li>
+                  </ul>
+                  <a className="text-purple-600 text-sm font-bold flex items-center" href="#">Explore <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 8l4 4m0 0l-4 4m4-4H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                </div>
+
+                <div className="bg-white dark:bg-[#0A0B1A] rounded-2xl p-6 border border-gray-100 dark:border-slate-800 text-left card-shadow hover:-translate-y-1 transition-transform">
+                  <div className="relative mb-6">
+                    <div className="bg-blue-100 rounded-xl aspect-[4/5] overflow-hidden">
+                      <img alt="Project Manager" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVt5SLXlV-OsnqpZXoAdssF2Zzlr3rzCWzYXqNC6edMuZjskUyWcBN6iEH7FvhsY7Ib-grXGokkGzV-S25AaTTBs6I7bqHygPR_vy4668T9fLzakdePqQyHAf5oHaIVjBc8UoyxIENu4aXGIg-T2UZDJdWBRGcdjFQkPFZJVosoffD2rKpVJS03Ne1E3uGXPvbrHQNR2LZmOU1j_xirvt8bFECDJuFbsTgnRgtS1Bx73i7VZgGDlQHkJ_BVsQCdGAkBPF57paAIA" />
+                    </div>
+                    <div className="absolute bottom-2 left-2 p-1.5 bg-blue-600 rounded-lg text-white">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                  </div>
+                  <h3 className="font-bold text-lg mb-3">AI Project Manager</h3>
+                  <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-2 mb-6">
+                    <li>• Task planning</li>
+                    <li>• Progress tracking</li>
+                    <li>• Risk &amp; issue detection</li>
+                    <li>• Timeline management</li>
+                  </ul>
+                  <a className="text-blue-600 text-sm font-bold flex items-center" href="#">Explore <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 8l4 4m0 0l-4 4m4-4H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                </div>
+
+                <div className="bg-white dark:bg-[#0A0B1A] rounded-2xl p-6 border border-gray-100 dark:border-slate-800 text-left card-shadow hover:-translate-y-1 transition-transform">
+                  <div className="relative mb-6">
+                    <div className="bg-emerald-100 rounded-xl aspect-[4/5] overflow-hidden">
+                      <img alt="Marketing Assistant" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBvCNkmyRqMurzi2zKzQ33ntOQKT0grN-hBGk0x-jNaOdLFPYeRi-seak-WyFA-3Flf7Fn4oVzNdsg_QpKY8-m67GiSUsLTY1fNimZorsJC3hOjNS8yvPS980-bA7Zo9z7HTqi0kZIB90_q1JX_-rlZf-lfgFHfFQLrrrN5zeJL_4AoqtH1gUqA2EMX8PWRe2XDhx5rQ8PA8x1mJvGfS-CCrfuqfy9my7gpOruCwmdHqJu6mW92E8eBwhprCAMgq4cTk2MIceeN7w" />
+                    </div>
+                    <div className="absolute bottom-2 left-2 p-1.5 bg-emerald-600 rounded-lg text-white">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                  </div>
+                  <h3 className="font-bold text-lg mb-3">AI Marketing Assistant</h3>
+                  <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-2 mb-6">
+                    <li>• Content creation</li>
+                    <li>• Social media posts</li>
+                    <li>• Ad copy &amp; creatives</li>
+                    <li>• Campaign ideas</li>
+                  </ul>
+                  <a className="text-emerald-600 text-sm font-bold flex items-center" href="#">Explore <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 8l4 4m0 0l-4 4m4-4H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                </div>
+
+                <div className="bg-white dark:bg-[#0A0B1A] rounded-2xl p-6 border border-gray-100 dark:border-slate-800 text-left card-shadow hover:-translate-y-1 transition-transform">
+                  <div className="relative mb-6">
+                    <div className="bg-orange-50 dark:bg-orange-950/20 rounded-xl aspect-[4/5] overflow-hidden">
+                      <img alt="Operations Manager" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBlY1xRVYrSj7KKxAXyedRzHplmfUImIxi-r3LwB7cgt8V3Y9gGdfei6x6dEWK8BMardQF0uZ0qFImGzTa9TeQ6F9-Z0L-XYKezUkFzVjYAOADTLDzTn4QNaFHFmU4myYTkdtwkUMP_UOx8uNzC_Lroh39WJrltoox1mfCOyavoOJ50spRcZTvJKXMADoK3wl9TWli-Aq0QUgnIpuBeg8FRJ6om89P7aj-MjGN8fcEeQg6qpTyAj9ZozShXJpv7mbDSsxp5oKqkkw" />
+                    </div>
+                    <div className="absolute bottom-2 left-2 p-1.5 bg-brand-orange rounded-lg text-white">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                  </div>
+                  <h3 className="font-bold text-lg mb-3">AI Operations Manager</h3>
+                  <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-2 mb-6">
+                    <li>• Workflow optimization</li>
+                    <li>• Process automation</li>
+                    <li>• Bottleneck detection</li>
+                    <li>• Performance reports</li>
+                  </ul>
+                  <a className="text-brand-orange text-sm font-bold flex items-center" href="#">Explore <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 8l4 4m0 0l-4 4m4-4H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                </div>
+
+                <div className="bg-white dark:bg-[#0A0B1A] rounded-2xl p-6 border border-gray-100 dark:border-slate-800 text-left card-shadow hover:-translate-y-1 transition-transform">
+                  <div className="relative mb-6">
+                    <div className="bg-blue-50 dark:bg-blue-950/20 rounded-xl aspect-[4/5] overflow-hidden">
+                      <img alt="Business Analyst" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAThp4ZQFyQZE6ZnMIOgo_Ui5mTMpObhS7GmQ0G6TnBHr-9B4SbnoMvZ5a4ieos3BtqLrYGepUXMPYl7qFKmUruHPfLhao8Jok6XfNAENE-_RZNoEvtxtKQMnTzyLF-zEMltE68eTRfhgBXG4AQtOEpMrx2OgSUwFkgnhZsyEM_xQZ1zXB7IIX1ZE8g7jElQU6ROjsizyvdnMFQxVBiwfQ_zdnxjoNxyOv2-XdsBmSKZtgVozD0Wu64Y171WeTwcddW7OApA-9zfA" />
+                    </div>
+                    <div className="absolute bottom-2 left-2 p-1.5 bg-blue-700 rounded-lg text-white">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                  </div>
+                  <h3 className="font-bold text-lg mb-3">AI Business Analyst</h3>
+                  <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-2 mb-6">
+                    <li>• Data analysis</li>
+                    <li>• Business insights</li>
+                    <li>• Reports &amp; dashboards</li>
+                    <li>• Forecasting &amp; trends</li>
+                  </ul>
+                  <a className="text-blue-700 text-sm font-bold flex items-center" href="#">Explore <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 8l4 4m0 0l-4 4m4-4H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                </div>
+              </div>
+            </div>
+          </section>
+
+
+          <section className="py-24" data-purpose="how-it-works">
+            <div className="container mx-auto px-6 text-center">
+              <span className="inline-block px-4 py-1.5 rounded-full bg-orange-50 dark:bg-orange-950/20 text-brand-orange text-xs font-bold uppercase tracking-widest mb-4">How It Works</span>
+              <h2 className="text-4xl font-bold mb-16">Onboard. Train. Delegate. Scale.</h2>
+              <div className="relative max-w-5xl mx-auto">
+
+                <div className="absolute top-1/4 left-0 right-0 h-0.5 border-t-2 border-dashed border-gray-200 dark:border-slate-700 -z-10 hidden md:block"></div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
+
+                  <div className="flex flex-col items-center">
+                    <div className="w-20 h-20 bg-purple-50 dark:bg-purple-950/20 rounded-full flex items-center justify-center mb-6 shadow-sm">
+                      <svg className="w-10 h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                    <h4 className="font-bold text-lg mb-3">1. Choose Your AI Employee</h4>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Pick the AI role you want to add to your team.</p>
+                  </div>
+
+                  <div className="flex flex-col items-center">
+                    <div className="w-20 h-20 bg-blue-50 dark:bg-blue-950/20 rounded-full flex items-center justify-center mb-6 shadow-sm">
+                      <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                    <h4 className="font-bold text-lg mb-3">2. Train with Your Data</h4>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Our AI learns your processes, tools and company knowledge.</p>
+                  </div>
+
+                  <div className="flex flex-col items-center">
+                    <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-6 shadow-sm">
+                      <svg className="w-10 h-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                    <h4 className="font-bold text-lg mb-3">3. Delegate &amp; Automate</h4>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Assign tasks and watch your AI employee get to work.</p>
+                  </div>
+
+                  <div className="flex flex-col items-center">
+                    <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-6 shadow-sm">
+                      <svg className="w-10 h-10 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                    </div>
+                    <h4 className="font-bold text-lg mb-3">4. Track &amp; Improve</h4>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Monitor performance, gain insights and scale your AI team.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+
+          <section className="py-12 px-6" data-purpose="impact-stats">
+            <div className="container mx-auto bg-brand-dark rounded-3xl p-12 text-white relative overflow-hidden dotted-bg">
+              <div className="relative z-10 grid grid-cols-1 md:grid-cols-5 gap-12 items-center">
+                <div className="md:col-span-1">
+                  <h3 className="text-2xl font-bold mb-2">The Power of an AI Workforce</h3>
+                  <p className="text-gray-400 text-sm">Real impact for modern service businesses</p>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="p-3 bg-white/10 rounded-xl">
+                    <svg className="w-6 h-6 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-bold" data-target="10" data-suffix="M+">10M+</p>
+                    <p className="text-gray-400 text-xs uppercase tracking-wider">Tasks Automated</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="p-3 bg-white/10 rounded-xl">
+                    <svg className="w-6 h-6 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-bold" data-target="1" data-suffix="M+">1M+</p>
+                    <p className="text-gray-400 text-xs uppercase tracking-wider">Hours Saved</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="p-3 bg-white/10 rounded-xl">
+                    <svg className="w-6 h-6 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-bold" data-prefix="₹" data-target="200" data-suffix="Cr+">₹200Cr+</p>
+                    <p className="text-gray-400 text-xs uppercase tracking-wider">Revenue Impacted</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="p-3 bg-white/10 rounded-xl">
+                    <svg className="w-6 h-6 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-bold" data-target="500" data-suffix="+">500+</p>
+                    <p className="text-gray-400 text-xs uppercase tracking-wider">Businesses Trust Us</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+
+          <section className="py-24 bg-gray-50/30 dark:bg-[#111224]/30" data-purpose="testimonials">
+            <div className="container mx-auto px-6 text-center">
+              <span className="inline-block px-4 py-1.5 rounded-full bg-orange-50 dark:bg-orange-950/20 text-brand-orange text-xs font-bold uppercase tracking-widest mb-4">Loved by Leaders</span>
+              <h2 className="text-4xl font-bold mb-16">What Leaders Say About Our AI Workforce</h2>
+              <div className="relative flex items-center justify-center">
+
+                <button className="absolute left-0 p-3 bg-white dark:bg-[#0A0B1A] rounded-full shadow-md border border-gray-100 dark:border-slate-800 hover:bg-gray-50 z-10">
+                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </button>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 px-12">
+
+                  <div className="bg-white dark:bg-[#0A0B1A] p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 text-left">
+                    <div className="text-brand-orange text-3xl mb-4">“</div>
+                    <p className="text-gray-600 dark:text-gray-300 mb-8 leading-relaxed italic">Our AI Sales Manager increased our qualified leads by 3X. It never sleeps, never forgets, and never misses a follow-up.</p>
+                    <div className="flex items-center space-x-4">
+                      <img alt="Rohit Sharma" className="w-12 h-12 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbwI1V9NX0CeQSFr2dhprg6Rj3yQ-06sI6adHCC62BwDKp9QlFPZK6dMxp-rzemHxnRKqdA2QTRuU0BJ4DX5-dTdcKjA5JnAnZqZwodgCKQF8Kky1ZwE424g5NRM9ER3WPKwtbLWQAtc2ds8cWyQn0_mmZzS2W7PlpgC05ydMd8bupKEwqn-aR0SjjzbjakKsohjM7B5sqWDmuv6JQwEKcTTv1OpAAW21mWE4NxJ8aZtMZaX1M7ZCQKg9ympEiFx0Yy9DCuwgihA" />
+                      <div>
+                        <h5 className="font-bold text-sm">Rohit Sharma</h5>
+                        <p className="text-gray-400 text-xs">CEO, GrowthHackers Marketing</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white dark:bg-[#0A0B1A] p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 text-left">
+                    <div className="text-brand-orange text-3xl mb-4">“</div>
+                    <p className="text-gray-600 dark:text-gray-300 mb-8 leading-relaxed italic">AI HR Manager reduced our hiring time by 60%. From screening to scheduling, everything is now effortless.</p>
+                    <div className="flex items-center space-x-4">
+                      <img alt="Neha Kapoor" className="w-12 h-12 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAdtK_03oU5nZgAZEWuZbgsswOV8uYdHMvUwiJ92joEUtxUzpu_reMt_wb2lsu58THM-shlllwlD7TvJcpr9jspUlPEnLvOBgcx7whMkH6I4XaE5giHfIDPc_ZUPMTOWckTo0WWC_ft7kEo97GTY9QSywDArqf_0rZ__mJFFOOhaOQoixpza32EbNr7E4UQl3Lyw_LAiNAj6ZJ-VBkby_x1qKeU_5nL61_N9bu6cLocidsx05gzu-MFZ4jhdVbUcub-g9VR8RU46g" />
+                      <div>
+                        <h5 className="font-bold text-sm">Neha Kapoor</h5>
+                        <p className="text-gray-400 text-xs">Head of HR, TechNovate</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white dark:bg-[#0A0B1A] p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 text-left">
+                    <div className="text-brand-orange text-3xl mb-4">“</div>
+                    <p className="text-gray-600 dark:text-gray-300 mb-8 leading-relaxed italic">AI Project Manager keeps our projects on track, risks under control, and clients always happy. It's like having a co-pilot.</p>
+                    <div className="flex items-center space-x-4">
+                      <img alt="Arjun Mehta" className="w-12 h-12 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCajN48LJRetnJiJjtnxa6HYXiKyGzsTRDzotOR1c3-9ZOLNeQipciNr44hC1pWaUQDXH4rKgD9qIDd_3lQdN9xwgeiStq55k84QD5ZbwxWVPwfMQFWuLLbPZLJjFXCf_ZhvB2u6AS9auxLaqFBTkuFrQkA-xfJIgsAotJxB5f2Wj5Zkx5NIBwhWqLMUIENtBJfDz5JjYVpOrl6_WfPD6_XANU_cxAKFQaV5X-dTAdxXdkZEPkS7EG7Ixq126UYdlzE8KUDUxLFzA" />
+                      <div>
+                        <h5 className="font-bold text-sm">Arjun Mehta</h5>
+                        <p className="text-gray-400 text-xs">Delivery Head, PixelCraft</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button className="absolute right-0 p-3 bg-white dark:bg-[#0A0B1A] rounded-full shadow-md border border-gray-100 dark:border-slate-800 hover:bg-gray-50 z-10">
+                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </button>
+              </div>
+
+              <div className="flex justify-center space-x-2 mt-12">
+                <div className="w-2 h-2 rounded-full bg-gray-200"></div>
+                <div className="w-2 h-2 rounded-full bg-brand-orange"></div>
+                <div className="w-2 h-2 rounded-full bg-gray-200"></div>
+                <div className="w-2 h-2 rounded-full bg-gray-200"></div>
+              </div>
+            </div>
+          </section>
+
+
+          <section className="py-24" data-purpose="cta-banner">
+            <div className="container mx-auto px-6">
+              <div className="bg-blue-50 dark:bg-blue-950/20 rounded-3xl p-12 flex flex-col lg:flex-row items-center justify-between">
+                <div className="flex items-center space-x-8 mb-8 lg:mb-0">
+                  <div className="hidden md:block">
+                    <img alt="SynTask Robot" className="w-32" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDtgpgDV4ZKAmTa436bYvoECZfEG3se8hvQh_BToHvNE8p6Q8M5DRAkuOW6lNB5Kfw0LrjNy-Hy3Tpm2NqT7Xo7JC3h_SnlXQ8qKqNeGL0WjVnUeUZwri5SlmVx5NOM3Whcz_I-n5o3lTVtED8QTJOzv2OmdvQoN3p3a3cgKW7ApxHrh9OL5VVqxPGZxFTQe6DDr-EVs9ZnB-aBudQIGhc8fSJdlJBinhYii2R37bu7szdIOdcPhHQuFd2QUcAwy8UykoZkaNVlbA" />
+                  </div>
+                  <div>
+                    <h2 className="text-4xl font-bold mb-4">Build Your AI Workforce Today</h2>
+                    <p className="text-gray-600 dark:text-gray-300 mb-6">Start with one AI employee. Scale to an entire AI-powered organization.</p>
+                    <div className="grid grid-cols-2 gap-4 text-xs font-bold text-gray-700 dark:text-gray-200">
+                      <span className="flex items-center"><span className="w-4 h-4 bg-emerald-500 rounded-full mr-2 text-white flex items-center justify-center text-[10px]">✓</span> 14 Days Free Trial</span>
+                      <span className="flex items-center"><span className="w-4 h-4 bg-emerald-500 rounded-full mr-2 text-white flex items-center justify-center text-[10px]">✓</span> No Credit Card Required</span>
+                      <span className="flex items-center"><span className="w-4 h-4 bg-emerald-500 rounded-full mr-2 text-white flex items-center justify-center text-[10px]">✓</span> Cancel Anytime</span>
+                      <span className="flex items-center"><span className="w-4 h-4 bg-emerald-500 rounded-full mr-2 text-white flex items-center justify-center text-[10px]">✓</span> Full Onboarding Support</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+                  <button className="bg-brand-orange text-white px-8 py-4 rounded-lg font-bold text-lg shadow-lg hover:bg-orange-600 flex items-center justify-center">Start Free Trial <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></button>
+                  <button className="bg-white dark:bg-[#0A0B1A] border border-gray-200 dark:border-slate-700 text-brand-dark px-8 py-4 rounded-lg font-bold text-lg shadow-sm hover:bg-gray-50 flex items-center justify-center">Book a Demo <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </main>
+
+
+
+
+
+        <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-slate-800 my-4"></div>
+
+
+
+
+
+        <section className="hero-gradient pt-16 pb-20 relative overflow-hidden" data-purpose="hero-area">
+          <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <a href="#top" className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-600 text-white">
-                  <Layers3 className="h-6 w-6" />
+              <div className="inline-flex items-center gap-2 bg-orange-50 dark:bg-orange-950/20 text-syn-orange text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full mb-6">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fillRule="evenodd"></path></svg>
+                Resources that help you grow
+              </div>
+              <h1 className="text-5xl md:text-6xl font-extrabold leading-tight mb-6">
+                Learn. Implement. <span className="text-syn-orange">Grow.</span><br />Everything for Service Companies.
+              </h1>
+              <p className="text-lg text-gray-600 dark:text-gray-300 mb-10 max-w-lg leading-relaxed">
+                Guides, templates, playbooks and insights to help you streamline operations, improve productivity and scale your business with SynTask.
+              </p>
+
+              <div className="relative max-w-xl group">
+                <input className="w-full h-14 pl-6 pr-32 rounded-xl border-gray-200 dark:border-slate-700 shadow-sm focus:ring-syn-orange focus:border-syn-orange transition-all" placeholder="What do you want to learn today?" type="text" />
+                <button className="absolute right-2 top-2 h-10 px-6 bg-gray-900 text-white rounded-lg font-medium flex items-center gap-2 hover:bg-black transition">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  Search
+                </button>
+              </div>
+            </div>
+
+            <div className="relative hidden md:block" data-purpose="hero-graphics">
+              <div className="relative z-10 bg-white dark:bg-[#0A0B1A] p-4 rounded-xl shadow-2xl border border-gray-100 dark:border-slate-800 transform -rotate-2">
+                <img alt="Platform Interface" className="rounded-lg w-full h-auto object-cover max-h-[400px]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDIXvU-jbnEpY6VuKDGl2kVkmEnJUUE3pwD5CTMEBFn0jA6RncFGJf1Ycl5peR5hAUDE72RPLYW3MAg421n3XEWoa7ZaR4B3QdNO8EtV7rGLhIBhzo1r4xFOGELXTXSjY0t7ESlAkHkSGn5Q-c2LG5UDReUuGIX8eOVulf4VKlVk8Fwkos5_PiC6YhAEpZtXlr8pWvyYeUa9SnDw4ircFNNht0gUNBcR6CUYQiYKEIK8rgXlIPjqi6h-Rhv1EcVEXvA81_KjXrO2g" />
+              </div>
+
+              <div className="absolute -right-10 top-10 z-20 bg-white dark:bg-[#0A0B1A] p-4 rounded-xl shadow-xl border border-gray-50 flex items-center gap-4 w-48 transform translate-x-4">
+                <div className="w-10 h-10 bg-green-50 dark:bg-green-950/20 rounded-lg flex items-center justify-center text-green-600 dark:text-green-400">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.168.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <span className="font-bold text-xs">Guides</span>
+              </div>
+              <div className="absolute -right-4 top-28 z-20 bg-white dark:bg-[#0A0B1A] p-4 rounded-xl shadow-xl border border-gray-50 flex items-center gap-4 w-48">
+                <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/20 rounded-lg flex items-center justify-center text-blue-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <span className="font-bold text-xs">Playbooks</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <section className="max-w-7xl mx-auto px-4 -mt-12 relative z-30" data-purpose="resource-categories">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+
+            <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-6 shadow-sm hover:shadow-md transition cursor-pointer text-center group">
+              <div className="w-10 h-10 bg-orange-50 dark:bg-orange-950/20 rounded-lg flex items-center justify-center text-syn-orange mx-auto mb-4 group-hover:bg-syn-orange group-hover:text-white transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2v16z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </div>
+              <p className="text-xs font-bold mb-1">All Resources</p>
+              <p className="text-[10px] text-syn-orange font-bold uppercase">120+</p>
+            </div>
+
+            <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-6 shadow-sm hover:shadow-md transition cursor-pointer text-center group">
+              <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/20 rounded-lg flex items-center justify-center text-blue-600 mx-auto mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.168.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </div>
+              <p className="text-xs font-bold mb-1">Guides &amp; Ebooks</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase">24</p>
+            </div>
+
+            <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-6 shadow-sm hover:shadow-md transition cursor-pointer text-center group">
+              <div className="w-10 h-10 bg-green-50 dark:bg-green-950/20 rounded-lg flex items-center justify-center text-green-600 dark:text-green-400 mx-auto mb-4 group-hover:bg-green-600 group-hover:text-white transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </div>
+              <p className="text-xs font-bold mb-1">Templates</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase">18</p>
+            </div>
+
+            <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-6 shadow-sm hover:shadow-md transition cursor-pointer text-center group">
+              <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/20 rounded-lg flex items-center justify-center text-blue-800 mx-auto mb-4 group-hover:bg-blue-800 group-hover:text-white transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </div>
+              <p className="text-xs font-bold mb-1">Playbooks</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase">16</p>
+            </div>
+
+            <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-6 shadow-sm hover:shadow-md transition cursor-pointer text-center group">
+              <div className="w-10 h-10 bg-purple-50 dark:bg-purple-950/20 rounded-lg flex items-center justify-center text-purple-600 mx-auto mb-4 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </div>
+              <p className="text-xs font-bold mb-1">Case Studies</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase">20</p>
+            </div>
+
+            <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-6 shadow-sm hover:shadow-md transition cursor-pointer text-center group">
+              <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center text-red-500 mx-auto mb-4 group-hover:bg-red-500 group-hover:text-white transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </div>
+              <p className="text-xs font-bold mb-1">Webinars</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase">12</p>
+            </div>
+
+            <div className="bg-white dark:bg-[#0A0B1A] border border-gray-100 dark:border-slate-800 rounded-xl p-6 shadow-sm hover:shadow-md transition cursor-pointer text-center group">
+              <div className="w-10 h-10 bg-cyan-50 rounded-lg flex items-center justify-center text-cyan-600 mx-auto mb-4 group-hover:bg-cyan-600 group-hover:text-white transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </div>
+              <p className="text-xs font-bold mb-1">Product Updates</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase">10</p>
+            </div>
+          </div>
+        </section>
+
+
+        <section className="max-w-7xl mx-auto px-4 py-24" data-purpose="featured-articles">
+          <div className="flex items-center justify-between mb-12">
+            <h2 className="text-3xl font-bold">Featured Articles</h2>
+            <a className="text-syn-orange font-bold text-sm flex items-center gap-2 hover:underline" href="#">View all articles <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+          </div>
+          <div className="grid md:grid-cols-3 gap-8">
+
+            <article className="flex flex-col group cursor-pointer">
+              <div className="relative mb-6 overflow-hidden rounded-2xl h-64">
+                <img alt="Article Thumbnail" className="w-full h-full object-cover transform group-hover:scale-105 transition duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCP1uR7z2NJPkJsYKO_ddgNuhuWDj5Gi2ggiGv2HMU3U0aLMfL_9Idrectar3-NjUJ4j_uLbOiCrNz_0_hjb7vX74oV-xuO0ktYhHhMR4mOB_5oa2ougOrF_Txt0OwZNiRFlwiX8EzYYpEBSP8fLispt1OhNYqkcHB-xqTn5X7iQ3JtRVSiwlnJSbC9Djnt1FMBcayWVBiv1gVVI2X2Qyh2yFCNZpSVB2ydjV72RUqML3wKC-YiJ7OkfSxali9wZtq7-cyK1V6R0A" />
+                <span className="absolute top-4 left-4 bg-syn-orange text-white text-[10px] font-bold uppercase px-2 py-1 rounded">Featured</span>
+                <span className="absolute bottom-4 left-4 bg-black/40 backdrop-blur-md text-white text-[10px] font-bold uppercase px-2 py-1 rounded">Operations</span>
+              </div>
+              <h3 className="text-xl font-bold mb-3 group-hover:text-syn-orange transition">How to Run Your Agency Like a Well-Oiled Machine</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-6 line-clamp-2">Discover the exact framework top agencies use to streamline operations and deliver projects on time, every time.</p>
+              <div className="mt-auto flex items-center justify-between border-t border-gray-100 dark:border-slate-800 pt-4">
+                <div className="flex items-center gap-6 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  <span>May 20, 2024</span>
+                  <span>8 min read</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-gray-200 rounded-full"></div>
+                  <span className="text-xs font-bold">By Ankit Sen</span>
+                </div>
+              </div>
+            </article>
+
+            <article className="flex flex-col group cursor-pointer">
+              <div className="relative mb-6 overflow-hidden rounded-2xl h-64">
+                <img alt="Article Thumbnail" className="w-full h-full object-cover transform group-hover:scale-105 transition duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDxAPgvZAvEn1frTQ9Fr3F1AgnnSGw1bxJ--w844f4V3Uv8rVnzrdGWP3Ae1QEVdKpwOxAJ1pkqiHmva741aK6dPbBAt2Ko_IaMixPbiYikdejhL0j0vh-UzeAsFgdMuDbOYPTuXArD-ujK_Wk625q4UN4EW3UEheyAw0olKqXvSS5g09dHqWRwUyTCqsPPsUNqyNBKaQUKG_KGS5mnxXyEMA8K89cL32FPU8cSSwJJBYOiByc4Pox2mCb3UXDPQoXmx-2EeHG8UA" />
+                <span className="absolute top-4 left-4 bg-green-500 text-white text-[10px] font-bold uppercase px-2 py-1 rounded">Guide</span>
+                <span className="absolute bottom-4 left-4 bg-black/40 backdrop-blur-md text-white text-[10px] font-bold uppercase px-2 py-1 rounded">Productivity</span>
+              </div>
+              <h3 className="text-xl font-bold mb-3 group-hover:text-syn-orange transition">10 Ways to Improve Team Productivity with AI</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-6 line-clamp-2">Practical strategies to leverage AI and automation to get more done with less effort.</p>
+              <div className="mt-auto flex items-center justify-between border-t border-gray-100 dark:border-slate-800 pt-4">
+                <div className="flex items-center gap-6 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  <span>May 15, 2024</span>
+                  <span>6 min read</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-gray-200 rounded-full"></div>
+                  <span className="text-xs font-bold">By Neha Kapoor</span>
+                </div>
+              </div>
+            </article>
+
+            <article className="flex flex-col group cursor-pointer">
+              <div className="relative mb-6 overflow-hidden rounded-2xl h-64">
+                <img alt="Article Thumbnail" className="w-full h-full object-cover transform group-hover:scale-105 transition duration-500" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBWrO_vABFarYHJ8h19q6_4S5f8FBoUbfCRQ1EPEv8czeB2WdME8FuNes4Qi5heF9_1nrw18Qn2RNRASSXMGmN8ZJbPuu2i32pomCDZ7RKHq39pHbKe41l2Gj-SzsrCofZNkgbJE2fUqpn89DWId28A9wCaq2MXClfjoHF8n6_QCchu48Cnnf9FaVs12Ub2Vnhs1WLicuTF-vIqvP0kZZ0ym-dKVPZ7dE5JEIBIOLpgRk_O35YElqFb_dRrRkiI1CBElItHkvOUw" />
+                <span className="absolute top-4 left-4 bg-purple-600 text-white text-[10px] font-bold uppercase px-2 py-1 rounded">Case Study</span>
+                <span className="absolute bottom-4 right-4 bg-black/40 backdrop-blur-md text-white text-[10px] font-bold uppercase px-2 py-1 rounded">Growth</span>
+              </div>
+              <h3 className="text-xl font-bold mb-3 group-hover:text-syn-orange transition">How WebClue Increased Productivity by 45% with SynTask</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-6 line-clamp-2">See how a digital marketing agency scaled to 25+ clients without increasing headcount.</p>
+              <div className="mt-auto flex items-center justify-between border-t border-gray-100 dark:border-slate-800 pt-4">
+                <div className="flex items-center gap-6 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  <span>May 10, 2024</span>
+                  <span>5 min read</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-gray-200 rounded-full"></div>
+                  <span className="text-xs font-bold">By Aarav Mehta</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+
+        <section className="bg-gray-50 dark:bg-[#111224] py-24" data-purpose="resource-library">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="mb-12">
+              <h2 className="text-3xl font-bold mb-4">Explore Our Resource Library</h2>
+            </div>
+            <div className="grid md:grid-cols-3 gap-6 mb-12">
+
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex gap-5 group hover:border-syn-orange transition-colors">
+                <div className="w-12 h-12 bg-orange-50 dark:bg-orange-950/20 rounded-xl flex-shrink-0 flex items-center justify-center text-syn-orange">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.168.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <div className="flex-grow">
+                  <h4 className="font-bold text-sm mb-1">Agency Operations Playbook</h4>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">Step-by-step guide to build scalable operations for your agency.</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg> PDF Guide</span>
+                      <span>• 24 Pages</span>
+                    </div>
+                    <a className="text-syn-orange text-[10px] font-extrabold uppercase flex items-center gap-1 hover:gap-2 transition-all" href="#">Download <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex gap-5 group hover:border-green-500 transition-colors">
+                <div className="w-12 h-12 bg-green-50 dark:bg-green-950/20 rounded-xl flex-shrink-0 flex items-center justify-center text-green-600 dark:text-green-400">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <div className="flex-grow">
+                  <h4 className="font-bold text-sm mb-1">Project Management Template</h4>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">Ready-to-use project plan template to manage tasks, timelines and deliverables.</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg> Excel Sheet</span>
+                      <span>• Customizable</span>
+                    </div>
+                    <a className="text-green-600 dark:text-green-400 text-[10px] font-extrabold uppercase flex items-center gap-1 hover:gap-2 transition-all" href="#">Download <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex gap-5 group hover:border-purple-500 transition-colors">
+                <div className="w-12 h-12 bg-purple-50 dark:bg-purple-950/20 rounded-xl flex-shrink-0 flex items-center justify-center text-purple-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <div className="flex-grow">
+                  <h4 className="font-bold text-sm mb-1">Client Onboarding Checklist</h4>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">Complete checklist to onboard clients professionally and efficiently.</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg> Checklist</span>
+                      <span>• 15 Steps</span>
+                    </div>
+                    <a className="text-purple-600 text-[10px] font-extrabold uppercase flex items-center gap-1 hover:gap-2 transition-all" href="#">Download <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex gap-5 group hover:border-blue-600 transition-colors">
+                <div className="w-12 h-12 bg-blue-50 dark:bg-blue-950/20 rounded-xl flex-shrink-0 flex items-center justify-center text-blue-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <div className="flex-grow">
+                  <h4 className="font-bold text-sm mb-1">SOP Template Bundle</h4>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">50+ SOP templates for HR, finance, projects, sales and more.</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg> ZIP File</span>
+                      <span>• 50+ Templates</span>
+                    </div>
+                    <a className="text-blue-600 text-[10px] font-extrabold uppercase flex items-center gap-1 hover:gap-2 transition-all" href="#">Download <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex gap-5 group hover:border-syn-orange transition-colors">
+                <div className="w-12 h-12 bg-orange-50 dark:bg-orange-950/20 rounded-xl flex-shrink-0 flex items-center justify-center text-syn-orange">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <div className="flex-grow">
+                  <h4 className="font-bold text-sm mb-1">KPI Dashboard Template</h4>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">Track the right metrics and grow your business with data.</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg> Google Sheets</span>
+                      <span>• Real-time</span>
+                    </div>
+                    <a className="text-syn-orange text-[10px] font-extrabold uppercase flex items-center gap-1 hover:gap-2 transition-all" href="#">Download <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-[#0A0B1A] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 flex gap-5 group hover:border-green-600 transition-colors">
+                <div className="w-12 h-12 bg-green-50 dark:bg-green-950/20 rounded-xl flex-shrink-0 flex items-center justify-center text-green-600 dark:text-green-400">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                </div>
+                <div className="flex-grow">
+                  <h4 className="font-bold text-sm mb-1">AI Prompts for Agencies</h4>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">100+ ready-to-use AI prompts for marketing, sales, HR and operations.</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10l4 4v10a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg> Document</span>
+                      <span>• 100+ Prompts</span>
+                    </div>
+                    <a className="text-green-600 dark:text-green-400 text-[10px] font-extrabold uppercase flex items-center gap-1 hover:gap-2 transition-all" href="#">Download <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg></a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="text-center">
+              <button className="px-8 py-3 bg-white dark:bg-[#0A0B1A] border border-gray-200 dark:border-slate-700 rounded-xl font-bold text-sm hover:bg-gray-50 transition shadow-sm flex items-center gap-2 mx-auto">
+                View All Resources
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 14l-7 7m0 0l-7-7m7 7V3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+
+        <section className="max-w-7xl mx-auto px-4 py-12" data-purpose="newsletter-signup">
+          <div className="bg-slate-900 rounded-[32px] p-8 md:p-12 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8">
+
+            <div className="absolute top-0 right-0 w-64 h-64 bg-syn-orange/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
+            <div className="flex items-center gap-6 relative z-10">
+              <div className="w-16 h-16 bg-syn-orange/20 rounded-2xl flex items-center justify-center text-syn-orange">
+                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5"></path></svg>
+              </div>
+              <div>
+                <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">Stay Ahead with Actionable Insights</h2>
+                <p className="text-slate-400 max-w-md">Join 5,000+ agency owners and operators who get our best content straight to their inbox.</p>
+              </div>
+            </div>
+            <div className="w-full md:w-auto relative z-10">
+              <form className="flex flex-col gap-4">
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input className="bg-white/10 border-white/20 text-white placeholder-slate-500 rounded-xl px-6 py-4 min-w-[300px] focus:ring-syn-orange" placeholder="Enter your work email" type="email" />
+                  <button className="bg-syn-orange text-white font-bold px-8 py-4 rounded-xl hover:bg-orange-600 transition shadow-lg" type="submit">Subscribe</button>
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg> No spam
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg> Unsubscribe anytime
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg> Weekly insights
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+
+
+
+
+
+        <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-slate-800 my-4"></div>
+
+
+
+
+
+        <header className="pt-16 pb-12 text-center">
+          <div className="inline-flex items-center gap-2 bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider mb-6">
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1a1 1 0 10-2 0v1a1 1 0 102 0zM16.464 14.95a1 1 0 010 1.414l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 0zM14.95 5.05a1 1 0 011.414 0l.707.707a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 010-1.414z"></path></svg>
+            Simple Pricing. Powerful Value.
+          </div>
+          <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-4">
+            Choose the Plan That<br />
+            <span className="text-gradient-orange">Transforms</span> Your Business
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 text-lg max-w-2xl mx-auto mb-10">
+            All plans include access to core modules. Upgrade or downgrade at any time.
+          </p>
+
+          <div className="flex items-center justify-center space-x-4">
+            <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">Billed Monthly</span>
+            <div className="relative inline-block w-12 h-6 align-middle select-none transition duration-200 ease-in">
+              <input checked="" className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white dark:bg-[#0A0B1A] border-4 border-gray-300 appearance-none cursor-pointer outline-none transition-all duration-300" id="billing-toggle" name="toggle" type="checkbox" />
+              <label className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer" for="billing-toggle"></label>
+            </div>
+            <span className="text-sm font-semibold text-blue-600">Billed Yearly</span>
+            <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-md uppercase">Save up to 20%</span>
+          </div>
+        </header>
+
+
+        <main className="max-w-7xl mx-auto px-4 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+
+            <div className="bg-white dark:bg-[#0A0B1A] rounded-3xl border border-gray-100 dark:border-slate-800 p-8 flex flex-col shadow-sm hover:shadow-xl transition-shadow">
+              <h3 className="text-2xl font-bold text-green-600 dark:text-green-400 mb-2">Starter</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">Perfect for small teams getting started.</p>
+              <div className="mb-6">
+                <span className="text-3xl font-extrabold">₹1,999</span>
+                <span className="text-gray-400 text-sm font-medium">/month</span>
+                <p className="text-[10px] text-gray-400 mt-1 uppercase font-semibold">Billed monthly</p>
+              </div>
+              <button className="w-full py-2.5 rounded-lg border border-green-500 text-green-600 dark:text-green-400 font-bold text-sm mb-8 hover:bg-green-50 transition-colors">Start Free Trial</button>
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-wide">Includes:</p>
+                <ul className="space-y-2.5 text-xs font-medium text-gray-600 dark:text-gray-300">
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Up to 5 Users</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Sales OS</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Project OS</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> People OS</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Basic Reports</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Email Support</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="relative bg-white dark:bg-[#0A0B1A] rounded-3xl border-2 border-blue-600 p-8 flex flex-col shadow-xl">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-900 text-white text-[10px] font-bold px-4 py-1 rounded-full uppercase tracking-widest">Most Popular</div>
+              <h3 className="text-2xl font-bold text-blue-700 mb-2">Growth</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">Ideal for growing agencies &amp; IT companies.</p>
+              <div className="mb-6">
+                <span className="text-3xl font-extrabold">₹4,999</span>
+                <span className="text-gray-400 text-sm font-medium">/month</span>
+                <p className="text-[10px] text-gray-400 mt-1 uppercase font-semibold">Billed monthly</p>
+              </div>
+              <button className="w-full py-2.5 rounded-lg bg-blue-600 text-white font-bold text-sm mb-8 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">Start Free Trial</button>
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-wide">Everything in Starter, plus:</p>
+                <ul className="space-y-2.5 text-xs font-medium text-gray-600 dark:text-gray-300">
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Up to 20 Users</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Recruitment OS</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Finance OS</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Automation (50 Workflows)</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Client Portal</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Priority Support</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-[#0A0B1A] rounded-3xl border border-gray-100 dark:border-slate-800 p-8 flex flex-col shadow-sm hover:shadow-xl transition-shadow">
+              <h3 className="text-2xl font-bold text-purple-600 mb-2">Business</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">Advanced features for scaling businesses.</p>
+              <div className="mb-6">
+                <span className="text-3xl font-extrabold">₹9,999</span>
+                <span className="text-gray-400 text-sm font-medium">/month</span>
+                <p className="text-[10px] text-gray-400 mt-1 uppercase font-semibold">Billed monthly</p>
+              </div>
+              <button className="w-full py-2.5 rounded-lg border border-purple-500 text-purple-600 font-bold text-sm mb-8 hover:bg-purple-50 transition-colors">Start Free Trial</button>
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-wide">Everything in Growth, plus:</p>
+                <ul className="space-y-2.5 text-xs font-medium text-gray-600 dark:text-gray-300">
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Up to 50 Users</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> AI Workforce (Basic)</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Advanced Reports &amp; Analytics</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Automation (Unlimited)</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Custom Roles &amp; Permissions</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Phone Support</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-[#0A0B1A] rounded-3xl border border-gray-100 dark:border-slate-800 p-8 flex flex-col shadow-sm hover:shadow-xl transition-shadow">
+              <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400 mb-2">Enterprise</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">For large teams with custom needs &amp; security.</p>
+              <div className="mb-6">
+                <span className="text-3xl font-extrabold">Custom</span>
+                <p className="text-[10px] text-gray-400 mt-1 uppercase font-semibold">Billed yearly</p>
+              </div>
+              <button className="w-full py-2.5 rounded-lg border border-orange-500 text-orange-600 dark:text-orange-400 font-bold text-sm mb-8 hover:bg-orange-50 transition-colors">Contact Sales</button>
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-wide">Everything in Business, plus:</p>
+                <ul className="space-y-2.5 text-xs font-medium text-gray-600 dark:text-gray-300">
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Unlimited Users</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> AI Workforce (Advanced)</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Custom Integrations</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> Dedicated Account Manager</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> SLA &amp; Uptime Guarantee</li>
+                  <li className="flex items-center gap-2"><svg className="w-4 h-4 text-orange-600 dark:text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg> On-premise / Private Cloud</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-12 flex flex-wrap justify-center items-center gap-x-12 gap-y-4 text-gray-400 text-sm font-semibold">
+            <span className="flex items-center gap-1"><svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"></path></svg> 14 Days Free Trial</span>
+            <span className="flex items-center gap-1"><svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"></path></svg> No Credit Card Required</span>
+            <span className="flex items-center gap-1"><svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"></path></svg> Cancel Anytime</span>
+          </div>
+        </main>
+
+
+        <section className="max-w-7xl mx-auto px-4 py-20">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+
+            <div className="lg:col-span-2">
+              <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-8">Compare Plans</h2>
+              <div className="overflow-hidden rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm bg-white dark:bg-[#0A0B1A]">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-[#111224] border-b border-gray-100 dark:border-slate-800">
+                      <th className="p-4 font-bold text-gray-500 dark:text-gray-400">Features</th>
+                      <th className="p-4 font-bold text-green-600 dark:text-green-400 bg-green-50/30 text-center">Starter</th>
+                      <th className="p-4 font-bold text-blue-600 bg-blue-50/30 text-center relative">
+                        Growth
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-900 text-white text-[8px] px-2 py-0.5 rounded-full">MOST POPULAR</div>
+                      </th>
+                      <th className="p-4 font-bold text-purple-600 bg-purple-50/30 text-center">Business</th>
+                      <th className="p-4 font-bold text-orange-600 dark:text-orange-400 bg-orange-50/30 text-center">Enterprise</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+
+                    <tr>
+                      <td className="p-4 text-gray-600 dark:text-gray-300 font-medium flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                        Users
+                      </td>
+                      <td className="p-4 text-center text-gray-600 dark:text-gray-300">Up to 5</td>
+                      <td className="p-4 text-center text-gray-600 dark:text-gray-300">Up to 20</td>
+                      <td className="p-4 text-center text-gray-600 dark:text-gray-300">Up to 50</td>
+                      <td className="p-4 text-center text-gray-600 dark:text-gray-300">Unlimited</td>
+                    </tr>
+
+                    <tr>
+                      <td className="p-4 text-gray-600 dark:text-gray-300 font-medium flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                        All Core Modules
+                      </td>
+                      <td className="p-4 text-center"><svg className="w-4 h-4 text-green-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></td>
+                      <td className="p-4 text-center"><svg className="w-4 h-4 text-blue-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></td>
+                      <td className="p-4 text-center"><svg className="w-4 h-4 text-purple-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></td>
+                      <td className="p-4 text-center"><svg className="w-4 h-4 text-orange-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></td>
+                    </tr>
+
+                    <tr>
+                      <td className="p-4 text-gray-600 dark:text-gray-300 font-medium flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                        AI Assistant
+                      </td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">Basic</td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">Basic</td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">Advanced</td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">Advanced</td>
+                    </tr>
+
+                    <tr>
+                      <td className="p-4 text-gray-600 dark:text-gray-300 font-medium flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 011-1h1a2 2 0 100-4H7a1 1 0 01-1-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                        Automation
+                      </td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">10 Workflows</td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">50 Workflows</td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">Unlimited</td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">Unlimited</td>
+                    </tr>
+
+                    <tr>
+                      <td className="p-4 text-gray-600 dark:text-gray-300 font-medium flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                        Storage
+                      </td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">10 GB</td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">50 GB</td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">200 GB</td>
+                      <td className="p-4 text-center text-gray-500 dark:text-gray-400">Custom</td>
+                    </tr>
+
+                    <tr>
+                      <td className="p-4 text-gray-600 dark:text-gray-300 font-medium flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                        Client Portal
+                      </td>
+                      <td className="p-4 text-center"><svg className="w-4 h-4 text-green-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></td>
+                      <td className="p-4 text-center"><svg className="w-4 h-4 text-blue-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></td>
+                      <td className="p-4 text-center"><svg className="w-4 h-4 text-purple-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></td>
+                      <td className="p-4 text-center"><svg className="w-4 h-4 text-orange-500 mx-auto" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></td>
+                    </tr>
+
+                    <tr>
+                      <td className="p-4 text-gray-600 dark:text-gray-300 font-medium flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04M12 21a11.955 11.955 0 01-8.618-3.04m17.236 0A11.955 11.955 0 0112 21" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                        SLA Uptime
+                      </td>
+                      <td className="p-4 text-center text-gray-300">—</td>
+                      <td className="p-4 text-center text-gray-600 dark:text-gray-300">99%</td>
+                      <td className="p-4 text-center text-gray-600 dark:text-gray-300">99.9%</td>
+                      <td className="p-4 text-center text-gray-600 dark:text-gray-300">99.99%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="lg:col-span-1">
+              <div className="bg-white dark:bg-[#0A0B1A] rounded-3xl border border-gray-100 dark:border-slate-800 p-8 shadow-sm">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-orange-50 dark:bg-orange-950/20 rounded-xl flex items-center justify-center text-orange-600 dark:text-orange-400">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                  </div>
+                  <h3 className="text-xl font-bold">Calculate Your ROI</h3>
+                </div>
+                <div className="space-y-8">
+
+                  <div>
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">How many employees do you have?</label>
+                      <span className="text-lg font-bold text-orange-600 dark:text-orange-400" id="employee-count">25</span>
+                    </div>
+                    <input className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-orange-600" id="employee-slider" max="1000" min="1" type="range" value="25" />
+                    <div className="flex justify-between text-[10px] font-bold text-gray-400 mt-2">
+                      <span>1</span>
+                      <span>1000+</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">How many tools are you using today?</label>
+                      <span className="text-lg font-bold text-orange-600 dark:text-orange-400" id="tool-count">8</span>
+                    </div>
+                    <input className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-orange-600" id="tool-slider" max="20" min="1" type="range" value="8" />
+                    <div className="flex justify-between text-[10px] font-bold text-gray-400 mt-2">
+                      <span>1</span>
+                      <span>20+</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-green-50/50 dark:bg-green-950/20 rounded-2xl p-6 relative overflow-hidden border border-green-100">
+                    <p className="text-xs font-bold text-gray-600 dark:text-gray-300 mb-1">You can save up to</p>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-extrabold text-green-600 dark:text-green-400" id="roi-savings">₹2,45,000</span>
+                      <span className="text-gray-500 dark:text-gray-400 font-bold text-sm">/year</span>
+                    </div>
+                    <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase">with SynTask</p>
+
+                    <div className="absolute bottom-4 right-4 w-20 h-10">
+                      <svg className="w-full h-full" viewBox="0 0 100 40">
+                        <path d="M0 35 Q 10 30 20 32 T 40 10 T 60 25 T 80 5 T 100 15" fill="none" stroke="#22C55E" strokeLinecap="round" strokeWidth="2"></path>
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-6 border-t border-gray-100 dark:border-slate-800">
+                    <h4 className="text-sm font-bold text-gray-800 dark:text-white">Frequently Asked Questions</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-slate-800 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        Can I change my plan later?
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-slate-800 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        Is my data secure with SynTask?
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <section className="max-w-7xl mx-auto px-4 py-16">
+          <div className="bg-slate-950 rounded-[40px] p-8 md:p-16 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-12">
+
+            <div className="absolute top-0 right-0 w-64 h-64 bg-orange-600/10 blur-[100px]"></div>
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-600/10 blur-[100px]"></div>
+            <div className="relative z-10">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10">
+                  <span className="text-4xl">🚀</span>
                 </div>
                 <div>
-                  <div className="font-display text-lg font-extrabold">SynTask</div>
-                  <div className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">One platform to run your agency</div>
+                  <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-2">Ready to Transform Your Business?</h2>
+                  <p className="text-gray-400 text-lg">Join hundreds of agencies &amp; IT companies already growing with SynTask.</p>
                 </div>
-              </a>
-              <p className="mt-5 max-w-md text-sm leading-7 text-slate-600">
-                Task management, CRM, support, and billing built for agencies that want a cleaner, more reliable operating system.
-              </p>
-              <div className="mt-6 flex items-center gap-3">
-                {[ShieldCheck, Globe, MessageSquare].map((Icon, index) => (
-                  <div key={index} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600">
-                    <Icon className="h-4 w-4" />
-                  </div>
-                ))}
+              </div>
+              <div className="flex flex-wrap gap-6 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mt-8">
+                <span className="flex items-center gap-2"><svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg> 14 Days Free Trial</span>
+                <span className="flex items-center gap-2"><svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg> No Credit Card</span>
+                <span className="flex items-center gap-2"><svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg> Cancel Anytime</span>
               </div>
             </div>
-
-            {[
-              { title: 'Product', links: ['Features', 'Solutions', 'Pricing', 'FAQ'] },
-              { title: 'Company', links: ['About', 'Careers', 'Contact', 'Press'] },
-              { title: 'Resources', links: ['Blog', 'Help center', 'Guides', 'Templates'] },
-            ].map((group) => (
-              <div key={group.title}>
-                <div className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">{group.title}</div>
-                <div className="mt-5 space-y-4">
-                  {group.links.map((link) => (
-                    <a key={link} href="#top" className="block text-sm font-medium text-slate-600 transition hover:text-slate-950">
-                      {link}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            ))}
+            <div className="relative z-10 flex flex-col gap-4 w-full max-w-xs">
+              <button className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 rounded-2xl text-lg flex items-center justify-center gap-2 transition-all shadow-xl shadow-orange-900/20">
+                Start Free Trial <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </button>
+              <button className="bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold py-4 rounded-2xl text-lg flex items-center justify-center gap-2 transition-all">
+                Book a Live Demo <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </button>
+            </div>
           </div>
+        </section>
 
-          <div className="mt-12 flex flex-col gap-4 border-t border-slate-200 pt-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-            <div>© 2026  SynTask. All rights reserved.</div>
-            <div className="flex items-center gap-5">
-              <a href="#top" className="transition hover:text-slate-900">
-                Privacy
-              </a>
-              <a href="#top" className="transition hover:text-slate-900">
-                Terms
-              </a>
-              <a href="#top" className="transition hover:text-slate-900">
-                Security
-              </a>
+
+
+
+
+
+
+
+      </div>
+
+      <footer className="bg-white dark:bg-[#0A0B1A] border-t border-gray-100 dark:border-slate-800 pt-20 pb-10" data-purpose="site-footer">
+        <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-6 gap-12 mb-20">
+          <div className="md:col-span-2">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-8 h-8 bg-syn-orange rounded-lg flex items-center justify-center">
+                <div className="w-4 h-4 bg-white dark:bg-[#0A0B1A] rounded-sm rotate-45"></div>
+              </div>
+              <span className="text-xl font-bold tracking-tight">SynTask <span className="text-xs block text-gray-500 dark:text-gray-400 -mt-1 uppercase tracking-widest">Agency OS</span></span>
             </div>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-8 leading-relaxed max-w-xs">
+              The AI Business Operating System built exclusively for agencies &amp; IT companies.
+            </p>
+            <div className="flex items-center gap-4">
+              <a className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-syn-orange hover:text-white transition" href="#"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"></path></svg></a>
+              <a className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-syn-orange hover:text-white transition" href="#"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z"></path></svg></a>
+              <a className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-syn-orange hover:text-white transition" href="#"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"></path></svg></a>
+              <a className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-syn-orange hover:text-white transition" href="#"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z"></path></svg></a>
+              <a className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-syn-orange hover:text-white transition" href="#"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"></path></svg></a>
+            </div>
+          </div>
+          <div>
+            <h4 className="font-bold text-sm mb-6">Product</h4>
+            <ul className="space-y-4 text-gray-500 dark:text-gray-400 text-sm">
+              <li><a className="hover:text-syn-orange" href="#">Features</a></li>
+              <li><a className="hover:text-syn-orange" href="#">AI Workforce</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Integrations</a></li>
+              <li><a className="hover:text-syn-orange" href="#">What's New</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Roadmap</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-bold text-sm mb-6">Solutions</h4>
+            <ul className="space-y-4 text-gray-500 dark:text-gray-400 text-sm">
+              <li><a className="hover:text-syn-orange" href="#">Digital Marketing Agencies</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Creative Agencies</a></li>
+              <li><a className="hover:text-syn-orange" href="#">IT Services Companies</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Software Development Companies</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Product Engineering Companies</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-bold text-sm mb-6">Resources</h4>
+            <ul className="space-y-4 text-gray-500 dark:text-gray-400 text-sm">
+              <li><a className="hover:text-syn-orange" href="#">Blog</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Guides &amp; Ebooks</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Templates</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Case Studies</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Help Center</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-bold text-sm mb-6">Company</h4>
+            <ul className="space-y-4 text-gray-500 dark:text-gray-400 text-sm">
+              <li><a className="hover:text-syn-orange" href="#">About Us</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Careers</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Partners</a></li>
+              <li><a className="hover:text-syn-orange" href="#">Contact Us</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-bold text-sm mb-6">Stay Updated</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Get tips, updates &amp; offers straight to your inbox.</p>
+            <div className="relative flex items-center">
+              <input className="w-full bg-gray-50 dark:bg-[#111224] border-gray-100 dark:border-slate-800 rounded-lg py-2 px-4 text-sm focus:ring-syn-orange focus:border-syn-orange" placeholder="Enter your email" type="email" />
+              <button className="absolute right-1 top-1 bg-syn-orange text-white p-1.5 rounded-md hover:bg-orange-600 transition">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 pt-10 border-t border-gray-100 dark:border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6">
+          <p className="text-xs text-gray-400">© 2024 SynTask. All rights reserved.</p>
+          <div className="flex items-center gap-8 text-xs text-gray-400">
+            <a className="hover:text-syn-orange" href="#">Privacy Policy</a>
+            <a className="hover:text-syn-orange" href="#">Terms of Service</a>
+            <a className="hover:text-syn-orange" href="#">Security</a>
+            <a className="hover:text-syn-orange" href="#">Sitemap</a>
           </div>
         </div>
       </footer>
-    </div>
-  )
-}
 
-export default NewLanding
+
+
+
+    </>
+  );
+}

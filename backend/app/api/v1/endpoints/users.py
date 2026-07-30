@@ -191,6 +191,15 @@ async def list_users(
     elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
         subordinates = await current_user.get_all_subordinates()
         visible_ids = {str(current_user.id), *[str(user.id) for user in subordinates]}
+        # Also include users from the same department
+        department_id = getattr(current_user, "department_id", None)
+        if department_id:
+            dept_users = await User.find({
+                "company_id": current_user.company_id,
+                "department_id": department_id,
+            }).to_list()
+            for dept_user in dept_users:
+                visible_ids.add(str(dept_user.id))
         all_users = await User.find({"company_id": current_user.company_id}).to_list()
         filtered_users = [user for user in all_users if str(user.id) in visible_ids]
         if role:
@@ -261,18 +270,14 @@ async def get_assignable_users(
     """Get users that can be assigned work. Project lead is assignment-level, not a user role."""
     users: list[User] = []
 
-    if current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN]:
-        managers = await Manager.find({"company_id": current_user.company_id, "status": UserStatus.ACTIVE}).to_list()
-        employees = await Employee.find({"company_id": current_user.company_id, "status": UserStatus.ACTIVE}).to_list()
-        users = managers + employees
-    elif current_user.role == UserRole.MANAGER:
-        employees = await Employee.find({"company_id": current_user.company_id, "status": UserStatus.ACTIVE}).to_list()
-        users = [current_user] + employees
-    elif current_user.role == UserRole.LEAD:
-        employees = await Employee.find({"company_id": current_user.company_id, "status": UserStatus.ACTIVE, "lead_id": str(current_user.id)}).to_list()
-        users = employees if not for_tickets else [current_user] + employees
-    elif current_user.role == UserRole.EMPLOYEE:
-        users = []
+    if current_user.company_id:
+        users = await User.find(
+            {
+                "company_id": current_user.company_id,
+                "status": UserStatus.ACTIVE,
+                "role": {"$in": [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE]},
+            }
+        ).to_list()
 
     if project_id:
         project = await Project.get(project_id)
@@ -558,7 +563,9 @@ async def create_employee(
         department_id=department_id if department_doc else None,
         designation=designation,
         phone=phone,
-        status=UserStatus.ACTIVE
+        status=UserStatus.ACTIVE,
+        modules=["task", "attendance_leaves"],
+        active_module="task"
     )
     await UserService.update_hierarchy_ancestors(employee)
     await employee.insert()
