@@ -1,6 +1,7 @@
 """
 Task Management Endpoints
 """
+import inspect
 from fastapi import APIRouter, HTTPException, status, Depends, Form, BackgroundTasks
 from typing import Optional
 from datetime import datetime
@@ -608,9 +609,13 @@ async def get_production_dashboard(
             "task_type": "quantitative",
             "target_quantity": {"$ne": None, "$gt": 0},
         }},
+        # Convert assigned_to (string) to ObjectId so $lookup matches users._id (ObjectId)
+        {"$addFields": {
+            "assigned_to_oid": {"$convert": {"input": "$assigned_to", "to": "objectId", "onError": None, "onNull": None}},
+        }},
         {"$lookup": {
             "from": "users",
-            "localField": "assigned_to",
+            "localField": "assigned_to_oid",
             "foreignField": "_id",
             "as": "assignee",
         }},
@@ -619,7 +624,7 @@ async def get_production_dashboard(
             "_id": 0,
             "task_id": {"$toString": "$_id"},
             "task_title": "$title",
-            "employee_id": {"$toString": "$assigned_to"},
+            "employee_id": {"$ifNull": [{"$toString": "$assigned_to"}, "unassigned"]},
             "employee_name": {
                 "$cond": {
                     "if": {"$and": [{"$ne": ["$assignee", None]}, {"$ne": ["$assignee.first_name", None]}]},
@@ -638,18 +643,35 @@ async def get_production_dashboard(
             },
             "target_quantity": "$target_quantity",
             "target_unit": "$target_unit",
-            "completed_quantity": "$completed_quantity",
-            "remaining_quantity": {"$subtract": ["$target_quantity", "$completed_quantity"]},
+            "completed_quantity": {"$ifNull": ["$completed_quantity", 0]},
+            "remaining_quantity": {"$subtract": ["$target_quantity", {"$ifNull": ["$completed_quantity", 0]}]},
             "completion_percentage": {
-                "$round": [{"$multiply": [{"$divide": ["$completed_quantity", "$target_quantity"]}, 100]}, 1]
+                "$round": [{"$multiply": [{"$divide": [{"$ifNull": ["$completed_quantity", 0]}, "$target_quantity"]}, 100]}, 1]
             },
         }},
         {"$sort": {"employee_name": 1}},
     ]
 
-    results = await Task.aggregate(pipeline).to_list(length=1000)
+    try:
+        # Use raw pymongo collection to avoid Beanie async cursor compatibility issues
+        cursor = Task.get_pymongo_collection().aggregate(pipeline)
+        if inspect.isawaitable(cursor):
+            cursor = await cursor
+        if hasattr(cursor, "to_list"):
+            result = cursor.to_list(length=1000)
+            if inspect.isawaitable(result):
+                results = await result
+            else:
+                results = list(result)
+        else:
+            results = [item async for item in cursor]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Aggregation pipeline failed: {str(e)}")
 
-    employees = [ProductionEmployeeMetric(**r) for r in results]
+    try:
+        employees = [ProductionEmployeeMetric(**r) for r in results]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Model validation failed: {str(e)}")
 
     team_target = sum(e.target_quantity for e in employees)
     team_completed = sum(e.completed_quantity for e in employees)

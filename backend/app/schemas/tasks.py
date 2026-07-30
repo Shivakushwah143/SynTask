@@ -76,9 +76,9 @@ class ProductionEmployeeMetric(BaseModel):
     measurement_label: Optional[str] = None
     target_quantity: int
     target_unit: Optional[str] = None
-    completed_quantity: int
-    remaining_quantity: int
-    completion_percentage: float
+    completed_quantity: int = 0
+    remaining_quantity: int = 0
+    completion_percentage: float = 0.0
 
 
 class ProductionDashboardResponse(BaseModel):
