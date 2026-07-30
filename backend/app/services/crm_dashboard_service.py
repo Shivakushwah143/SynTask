@@ -410,7 +410,7 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
 
 
 def build_crm_workspace_config(current_user: User) -> Dict[str, Any]:
-    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN]
     return {
         "key": "crm",
         "label": "CRM",

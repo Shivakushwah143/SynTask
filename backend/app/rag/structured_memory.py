@@ -155,19 +155,19 @@ class StructuredMemoryService:
             return await can_view_owned_record(current_user, record, ownership_fields=("assigned_to", "created_by"))
         if record_type == StructuredRecordType.MEETING:
             ids = {str(getattr(record, "created_by", "")), str(getattr(record, "host_id", "")), *[str(uid) for uid in getattr(record, "participant_ids", [])]}
-            return current_user.role in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD} or str(current_user.id) in ids
+            return current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD} or str(current_user.id) in ids
         if record_type == StructuredRecordType.USER:
             return await can_view_owned_record(current_user, record, ownership_fields=("id", "reports_to", "created_by"))
         return True
 
     def _can_view_project(self, current_user: User, project: Project) -> bool:
-        if current_user.role == UserRole.ADMIN:
+        if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
             return True
         user_id = str(current_user.id)
         return user_id in {str(project.lead_id or ""), str(project.assigned_to or ""), str(project.created_by or "")} or user_id in [str(uid) for uid in project.team_member_ids + project.assigned_user_ids]
 
     def _has_module(self, current_user: User, module: str) -> bool:
-        return current_user.role in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE} and module in (getattr(current_user, "modules", []) or [])
+        return current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE} and module in (getattr(current_user, "modules", []) or [])
 
     def _result(
         self,

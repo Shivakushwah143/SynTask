@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { format, formatDistanceToNow } from 'date-fns'
 import {
   Clock3, Plus, Receipt, Search, UserPlus,
   FolderKanban, LayoutGrid, BarChart3,
@@ -988,6 +989,28 @@ function ProjectCard({ project, onOpen, canAssign, onAssign, canManage, onEdit, 
           </span>
         )}
       </div>
+
+      {/* Creation Time */}
+      {(() => {
+        if (!project.created_at) return null
+        try {
+          const createdDate = new Date(project.created_at)
+          const now = new Date()
+          const diffMs = now - createdDate
+          const diffDays = diffMs / (1000 * 60 * 60 * 24)
+          const label = diffDays < 2
+            ? formatDistanceToNow(createdDate, { addSuffix: true })
+            : format(createdDate, 'MMM d, yyyy')
+          return (
+            <div className="mt-2 flex items-center text-xs text-gray-400 dark:text-gray-500">
+              <Clock className="h-3 w-3 mr-1" />
+              {label}
+            </div>
+          )
+        } catch {
+          return null
+        }
+      })()}
 
       {/* Actions */}
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">

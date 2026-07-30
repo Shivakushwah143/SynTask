@@ -304,7 +304,7 @@ const Dashboard = () => {
       const [statsData, tasksData, meetingsData, projectsData, metricsData] = primaryResults.map((r) => (r.status === 'fulfilled' ? r.value : null))
 
       const dashboardRole = normalizeRole(statsData?.role || user?.role)
-      const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
+      const shouldLoadCrmDashboard = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(dashboardRole)
 
       // Conditional and additional parallel calls
       const crmDashboardPromise = shouldLoadCrmDashboard
@@ -323,7 +323,7 @@ const Dashboard = () => {
         dashboardRole === ROLE.EMPLOYEE ? attendanceAPI.getTodayAttendance().catch(() => null) : attendanceAPI.getDashboardStats().catch(() => null)
       const eodPromise = dashboardRole === ROLE.EMPLOYEE ? eodAPI.today().catch(() => null) : Promise.resolve(null)
       const productionDashboardPromise =
-        [ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(dashboardRole)
+        [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(dashboardRole)
           ? tasksAPI.getProductionDashboard().catch(() => null)
           : Promise.resolve(null)
 
@@ -538,7 +538,7 @@ const Dashboard = () => {
   }
 
   const role = normalizeRole(stats?.role || user?.role)
-  const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
+  const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
   const taskSource = recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
   const salesSummary = crmDashboard?.sales || {}
@@ -659,7 +659,7 @@ const Dashboard = () => {
     { id: 'ai-briefing', name: 'AI Briefing Center' },
     { id: 'work-meetings', name: 'Work & Meetings' },
     { id: 'project-health', name: 'Project Health' },
-    { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && Boolean(productionDashboard) },
+    { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && Boolean(productionDashboard) },
     { id: 'recent-activity', name: 'Recent Activity' },
     { id: 'calendar-overview', name: 'Calendar Overview' },
   ].filter((section) => section.available !== false)

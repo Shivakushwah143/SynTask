@@ -10,9 +10,9 @@ import { timeService } from '@/services/timeService'
 
 const todayIso = () => timeService.toUtcISOString(timeService.now()).slice(0, 10)
 
-export const canReviewEODReports = (role) => [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(normalizeRole(role))
+export const canReviewEODReports = (role) => [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(normalizeRole(role))
 
-export const canSubmitOwnEODReport = (role) => ![ROLE.SUPER_ADMIN, ROLE.ADMIN].includes(normalizeRole(role))
+export const canSubmitOwnEODReport = (role) => ![ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN].includes(normalizeRole(role))
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {

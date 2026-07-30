@@ -468,8 +468,12 @@ async def list_tasks(
                 "department_id": getattr(task, "department_id", None),
                 "department": getattr(task, "department", None),
                 "due_date": task.due_date,
+                "start_date": task.start_date,
                 "health_status": getattr(task.health_status, "value", task.health_status),
                 "extension_count": getattr(task, "extension_count", 0),
+                "estimated_hours": getattr(task, "estimated_hours", None),
+                "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+                "tags": task.tags,
                 "created_at": task.created_at,
             }
             for task in tasks
@@ -764,15 +768,51 @@ async def get_task(
         "created_by": task.created_by,
         "created_by_name": f"{created_by_user.first_name} {created_by_user.last_name}" if created_by_user else None,
         "project_id": str(task.project_id) if task.project_id else None,
+        "project_object_id": str(task.project_object_id) if task.project_object_id else None,
         "department_id": getattr(task, "department_id", None),
         "department": getattr(task, "department", None),
         "due_date": task.due_date,
+        "start_date": task.start_date,
+        "completed_at": task.completed_at,
         "health_status": getattr(task.health_status, "value", task.health_status),
         "extension_count": getattr(task, "extension_count", 0),
         "tags": task.tags,
         "attachments": task.attachments if hasattr(task, 'attachments') and task.attachments else [],
         "created_at": task.created_at,
         "updated_at": task.updated_at,
+        # Task type
+        "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+        # Quantitative fields
+        "measurement_type": getattr(task, "measurement_type", None),
+        "custom_measurement_label": getattr(task, "custom_measurement_label", None),
+        "target_quantity": getattr(task, "target_quantity", None),
+        "target_unit": getattr(task, "target_unit", None),
+        "completed_quantity": getattr(task, "completed_quantity", 0),
+        "expected_completion_time": getattr(task, "expected_completion_time", None),
+        # Estimates & progress
+        "estimated_hours": getattr(task, "estimated_hours", None),
+        "actual_hours": getattr(task, "actual_hours", None),
+        "progress_percentage": getattr(task, "progress_percentage", 0.0),
+        # Parent & hierarchy
+        "parent_task_id": getattr(task, "parent_task_id", None),
+        "epic_id": getattr(task, "epic_id", None),
+        "sprint_id": getattr(task, "sprint_id", None),
+        # Agile
+        "story_points": getattr(task, "story_points", None),
+        # Workflow
+        "workflow_id": getattr(task, "workflow_id", None),
+        "issue_type_id": getattr(task, "issue_type_id", None),
+        "component_id": getattr(task, "component_id", None),
+        "fix_version_id": getattr(task, "fix_version_id", None),
+        "affects_version_ids": getattr(task, "affects_version_ids", []),
+        # Resolution
+        "resolution": getattr(task, "resolution", None),
+        "resolved_at": getattr(task, "resolved_at", None),
+        "resolved_by": getattr(task, "resolved_by", None),
+        # Tracking
+        "time_logs": getattr(task, "time_logs", []),
+        "checklist": getattr(task, "checklist", []),
+        "dependencies": getattr(task, "dependencies", []),
     }
 
 
@@ -1342,9 +1382,19 @@ async def update_task(
         "assigned_to": task.assigned_to,
         "assigned_to_name": f"{assigned_user.first_name} {assigned_user.last_name}" if assigned_user else None,
         "due_date": task.due_date,
+        "start_date": task.start_date,
+        "completed_at": task.completed_at,
         "health_status": getattr(task.health_status, "value", task.health_status),
         "extension_count": getattr(task, "extension_count", 0),
         "tags": task.tags,
+        "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+        "measurement_type": getattr(task, "measurement_type", None),
+        "custom_measurement_label": getattr(task, "custom_measurement_label", None),
+        "target_quantity": getattr(task, "target_quantity", None),
+        "target_unit": getattr(task, "target_unit", None),
+        "completed_quantity": getattr(task, "completed_quantity", 0),
+        "estimated_hours": getattr(task, "estimated_hours", None),
+        "story_points": getattr(task, "story_points", None),
         "updated_at": task.updated_at,
         "message": "Task updated successfully"
     }

@@ -10,7 +10,7 @@ import re
 from pydantic import BaseModel
 
 from app.api.deps import Pagination50, PaginationParams
-from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_capability, require_module
+from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_module
 from app.core.rbac_visibility import build_visibility_query, require_owned_record_access
 from app.models.user import User, UserRole, UserStatus
 from app.models.department import Department
@@ -635,7 +635,7 @@ async def merge_prospects(payload: BulkLeadMergeRequest | LeadMergeRequest, curr
     return await bulk_merge_prospects(merge_payload, current_user)
 
 
-@router.post("/bulk-upload", dependencies=[Depends(require_capability("import_leads")), Depends(require_module("sales"))])
+@router.post("/bulk-upload", dependencies=[Depends(require_module("sales"))])
 async def bulk_upload_prospects(
     strategy: str = Form(...),
     file: UploadFile = File(...),
@@ -653,7 +653,7 @@ async def bulk_upload_prospects(
     )
 
 
-@router.post("/bulk-upload/preview", dependencies=[Depends(require_capability("import_leads")), Depends(require_module("sales"))])
+@router.post("/bulk-upload/preview", dependencies=[Depends(require_module("sales"))])
 async def preview_bulk_upload_prospects(
     strategy: str = Form(...),
     file: UploadFile = File(...),

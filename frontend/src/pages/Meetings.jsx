@@ -74,7 +74,7 @@ export default function Meetings() {
   )
   const canManageSelected = selected && (
     String(selected.host?.id || selected.host_id || '') === String(user?.id || user?._id || '') ||
-    [ROLE.ADMIN, ROLE.SUPER_ADMIN].includes(normalizeRole(user?.role))
+    [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.SUPER_ADMIN].includes(normalizeRole(user?.role))
   )
 
   const columns = useMemo(() => [

@@ -18,11 +18,11 @@ router = APIRouter()
 
 
 def _is_company_admin(user: User) -> bool:
-    return user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    return user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN]
 
 
 def _can_read_departments(user: User) -> bool:
-    return user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]
+    return user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]
 
 
 async def _require_department_read_access(current_user: User = Depends(get_current_user)) -> User:

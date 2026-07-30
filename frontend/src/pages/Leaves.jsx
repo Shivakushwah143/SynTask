@@ -38,7 +38,7 @@ const defaultActionState = {
 
 export const canSubmitLeaveRequest = (role) => {
   const normalized = normalizeRole(role)
-  return ![ROLE.SUPER_ADMIN, ROLE.ADMIN].includes(normalized)
+  return ![ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN].includes(normalized)
 }
 
 export const canReviewLeaveRequest = (leave, user) => {
@@ -49,7 +49,7 @@ export const canReviewLeaveRequest = (leave, user) => {
   // Managers can review any employee or lead leave request (backend enforces report hierarchy)
   if (userRole === ROLE.MANAGER) return [ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole)
   // Admins can review manager leaves or forwarded leaves
-  if (userRole === ROLE.ADMIN) return employeeRole === ROLE.MANAGER || Boolean(leave.forwarded_by)
+  if (userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN) return employeeRole === ROLE.MANAGER || Boolean(leave.forwarded_by)
   // Other roles must be in pending_with_user_ids
   if (!(leave.pending_with_user_ids || []).map(String).includes(userId)) return false
   return false
@@ -115,7 +115,7 @@ export default function Leaves() {
     return forwardTargetUsers.filter((item) => {
       const role = normalizeRole(item.role)
       const id = String(item.id)
-      return role === ROLE.ADMIN && id !== currentUserId && id !== requesterId
+      return (role === ROLE.ADMIN || role === ROLE.SUB_ADMIN) && id !== currentUserId && id !== requesterId
     })
   }, [actionState.leave?.employee_id, forwardTargetUsers, user?.id])
 
@@ -223,7 +223,7 @@ export default function Leaves() {
 
   const openAction = (type, leave) => {
     const defaultForwardTargetId = type === 'forward'
-      ? forwardTargetUsers.find((item) => normalizeRole(item.role) === ROLE.ADMIN && String(item.id) !== String(user?.id || '') && String(item.id) !== String(leave?.employee_id || ''))?.id || ''
+      ? forwardTargetUsers.find((item) => (normalizeRole(item.role) === ROLE.ADMIN || normalizeRole(item.role) === ROLE.SUB_ADMIN) && String(item.id) !== String(user?.id || '') && String(item.id) !== String(leave?.employee_id || ''))?.id || ''
       : ''
     setActionState({
       open: true,

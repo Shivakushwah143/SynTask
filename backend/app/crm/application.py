@@ -38,7 +38,7 @@ async def build_crm_dashboard(current_user: User) -> Dict[str, Any]:
 
 
 def get_crm_capabilities(current_user: User) -> Dict[str, bool]:
-    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    is_admin = current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN]
     return {
         "can_manage_settings": is_admin,
         "can_use_future_modules": is_admin,

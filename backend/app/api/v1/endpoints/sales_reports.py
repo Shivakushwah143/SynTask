@@ -28,7 +28,7 @@ async def _get_user_accessible_prospects(user: User, query: dict):
     
     query["company_id"] = user.company_id
     
-    if user.role == UserRole.ADMIN:
+    if user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         return query
     
     if user.role in [UserRole.MANAGER, UserRole.LEAD]:

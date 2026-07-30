@@ -156,7 +156,7 @@ class TaskService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User must belong to a company"
             )
-        if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+        if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to create tasks",
@@ -324,8 +324,19 @@ class TaskService:
             "department_id": task.department_id,
             "department": task.department,
             "due_date": task.due_date,
+            "start_date": task.start_date,
+            "completed_at": task.completed_at,
             "health_status": getattr(task.health_status, "value", task.health_status),
             "extension_count": getattr(task, "extension_count", 0),
+            "tags": task.tags,
+            "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
+            "measurement_type": getattr(task, "measurement_type", None),
+            "custom_measurement_label": getattr(task, "custom_measurement_label", None),
+            "target_quantity": getattr(task, "target_quantity", None),
+            "target_unit": getattr(task, "target_unit", None),
+            "completed_quantity": getattr(task, "completed_quantity", 0),
+            "estimated_hours": getattr(task, "estimated_hours", None),
+            "story_points": getattr(task, "story_points", None),
             "created_at": task.created_at,
             "message": "Task created successfully",
             "task_id": str(task.id)

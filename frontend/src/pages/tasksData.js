@@ -60,7 +60,13 @@ export function buildTaskGraphRows(tasks, usersOrLimit = [], maybeLimit = 8) {
   const users = Array.isArray(usersOrLimit) ? usersOrLimit : []
   const limit = Array.isArray(usersOrLimit) ? maybeLimit : usersOrLimit
   const userNameById = buildUserNameLookup(users)
-  return tasks.slice(0, limit).map((task) => {
+  // Sort by created_at descending (newest first) so the most recent tasks appear at the top
+  const sorted = [...tasks].sort((a, b) => {
+    const aTime = new Date(a.created_at || 0).getTime()
+    const bTime = new Date(b.created_at || 0).getTime()
+    return bTime - aTime
+  })
+  return sorted.slice(0, limit).map((task) => {
     const statusKey = normalizeStatus(task.status)
     const priorityKey = normalizePriority(task.priority)
     return {
@@ -74,6 +80,7 @@ export function buildTaskGraphRows(tasks, usersOrLimit = [], maybeLimit = 8) {
       priorityLabel: priorityKey.replace(/\b\w/g, (letter) => letter.toUpperCase()),
       priorityColor: TASK_GRAPH_PRIORITY_COLORS[priorityKey],
       dueDate: task.due_date,
+      created_at: task.created_at,
       projectId: task.project_id,
     }
   })

@@ -603,7 +603,7 @@ class AIService:
                 return []
             query = {"company_id": current_user.company_id, "status": {"$in": active_statuses}}
 
-        if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
+        if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}:
             if current_user.role == UserRole.LEAD:
                 user_id = str(current_user.id)
                 query["$or"] = [
