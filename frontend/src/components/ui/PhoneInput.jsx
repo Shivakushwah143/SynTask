@@ -190,7 +190,7 @@ export function PhoneInput({
           type="tel"
           inputMode="numeric"
           autoComplete="tel"
-          maxLength={30}
+          maxLength={10}
           minLength={required ? 10 : undefined}
           title="Enter phone number."
           required={required}

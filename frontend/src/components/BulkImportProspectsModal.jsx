@@ -1,11 +1,42 @@
 import { useEffect, useState } from 'react'
-import { Upload, AlertCircle, CheckCircle, AlertTriangle, ArrowRight } from 'lucide-react'
+import { Upload, AlertCircle, CheckCircle, AlertTriangle, ArrowRight, Lightbulb } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { salesApi } from '../api/sales'
 import { useQueryClient } from 'react-query'
 import { Button, Modal } from './ui'
 
 const getId = (item) => item?.id || item?._id
+
+const KNOWN_FIELD_LABELS = {
+  first_name: 'First Name',
+  last_name: 'Last Name',
+  name: 'Full Name',
+  country_code: 'Country Code',
+  phone: 'Phone',
+  email: 'Email',
+  company: 'Company',
+  company_name: 'Company Name',
+  category_id: 'Category',
+  product_ids: 'Products',
+  interest_level: 'Interest Level',
+  estimated_close_date: 'Estimated Close Date',
+  status: 'Status',
+  stage: 'Stage',
+  current_stage: 'Current Stage',
+  remark: 'Remark',
+  relationship_type: 'Relationship Type',
+  channel: 'Channel',
+  designation: 'Designation',
+  nationality: 'Nationality',
+  language: 'Language',
+  owner_name: 'Owner Name',
+  owner_contact_no: 'Owner Contact',
+  tag: 'Tags',
+  crm_company_id: 'CRM Company',
+  contact_id: 'Contact',
+  due_date: 'Due Date',
+  due_time: 'Due Time',
+}
 
 export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stages, users }) {
   const queryClient = useQueryClient()
@@ -20,17 +51,13 @@ export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stage
   const [importHistory, setImportHistory] = useState([])
   const [importSummary, setImportSummary] = useState(null)
   const [step, setStep] = useState('upload') // 'upload' | 'preview' | 'importing'
+  const [detectedColumns, setDetectedColumns] = useState([])
+  const [fieldRecommendations, setFieldRecommendations] = useState([])
   const employeeOptions = Array.isArray(users) ? users : []
 
   const handleFileSelect = (event) => {
     const selectedFile = event.target.files?.[0]
     if (!selectedFile) return
-
-    if (!/\.(csv|xlsx)$/i.test(selectedFile.name)) {
-      toast.error('Please select a CSV or XLSX file')
-      event.target.value = ''
-      return
-    }
 
     setFile(selectedFile)
     setStep('upload')
@@ -46,29 +73,28 @@ export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stage
       return
     }
 
-    if (/\.(csv|xlsx)$/i.test(file.name)) {
-      setProcessing(true)
-      salesApi.previewBulkUploadLeads({
-        file,
-        strategy,
-        target_user_id: targetUserId,
-        target_department_id: departmentId,
+    setProcessing(true)
+    salesApi.previewBulkUploadLeads({
+      file,
+      strategy,
+      target_user_id: targetUserId,
+      target_department_id: departmentId,
+    })
+      .then((response) => {
+        const payload = response?.data || response || {}
+        setData(payload.preview_rows || [])
+        setErrors((payload.failed_rows || []).map((item) => `Row ${item.row}: ${item.error}`))
+        setDetectedColumns(payload.detected_columns || [])
+        setFieldRecommendations(payload.field_recommendations || [])
+        setStep('preview')
       })
-        .then((response) => {
-          const payload = response?.data || response || {}
-          setData(payload.preview_rows || [])
-          setErrors((payload.failed_rows || []).map((item) => `Row ${item.row}: ${item.error}`))
-          setStep('preview')
-        })
-        .catch(() => {
-          toast.error('Could not preview the selected file')
-        })
-        .finally(() => {
-          setProcessing(false)
-        })
-    } else {
-      toast.error('Please select a CSV or XLSX file')
-    }
+      .catch((err) => {
+        const msg = err?.response?.data?.detail || 'Could not preview the selected file'
+        toast.error(msg)
+      })
+      .finally(() => {
+        setProcessing(false)
+      })
   }
 
   const handleImport = async () => {
@@ -146,6 +172,8 @@ export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stage
     setTargetUserId('')
     setDepartmentId('')
     setImportSummary(null)
+    setDetectedColumns([])
+    setFieldRecommendations([])
     setStep('upload')
     onClose()
   }
@@ -215,17 +243,44 @@ export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stage
         <form className="space-y-4" onSubmit={handleProcessFile}>
           <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center">
             <Upload className="mx-auto h-12 w-12 text-gray-400" />
-            <p className="mt-2 text-sm font-medium text-gray-900">Upload CSV file</p>
+            <p className="mt-2 text-sm font-medium text-gray-900">Upload file</p>
             <p className="mt-1 text-xs text-gray-500">
-              CSV format with columns: First Name, Last Name, Country Code, Phone, Email, Company, Category, Stage, Owner, Interest Level, Estimated Close Date, Remark, Products
+              Upload a CSV, XLSX, or any text file with comma-separated values. Columns are auto-detected.
             </p>
             <input
               type="file"
-              accept=".csv"
+              accept="*"
               onChange={handleFileSelect}
               className="mt-4"
             />
           </div>
+
+          {/* Field Recommendation Div */}
+          {file && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Lightbulb className="h-5 w-5 text-blue-600" />
+                <p className="text-sm font-semibold text-blue-900">Field Mapping Recommendations</p>
+              </div>
+              <p className="text-xs text-blue-700 mb-3">
+                The file will be parsed and columns will be mapped to lead fields. Unknown columns are stored as custom fields.
+              </p>
+              <div className="grid gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+                  <span className="text-green-800">Known fields (phone, name, email, etc.) are mapped automatically</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Lightbulb className="h-3.5 w-3.5 text-amber-600" />
+                  <span className="text-amber-800">Unknown columns are stored as custom fields on the lead</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-3.5 w-3.5 text-gray-500" />
+                  <span className="text-gray-600">Missing fields are filled as null</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {errors.length > 0 && (
             <div className="rounded-lg bg-red-50 p-3" role="alert">
@@ -287,6 +342,33 @@ export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stage
 
       {step === 'preview' && (
         <div className="space-y-4">
+          {/* Field Mapping Recommendation */}
+          {fieldRecommendations.length > 0 && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Lightbulb className="h-5 w-5 text-blue-600" />
+                <p className="text-sm font-semibold text-blue-900">Detected Columns ({fieldRecommendations.length})</p>
+              </div>
+              <div className="grid gap-1.5 max-h-40 overflow-y-auto">
+                {fieldRecommendations.map((rec, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs">
+                    {rec.status === 'mapped' ? (
+                      <CheckCircle className="h-3.5 w-3.5 shrink-0 text-green-600" />
+                    ) : (
+                      <Lightbulb className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    )}
+                    <span className="font-medium text-gray-700">{rec.column}</span>
+                    {rec.maps_to ? (
+                      <span className="text-gray-500">→ {rec.maps_to}</span>
+                    ) : (
+                      <span className="text-amber-700">→ stored as custom field</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {errors.length > 0 && (
             <div className="rounded-lg bg-red-50 p-3">
               <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-red-900">

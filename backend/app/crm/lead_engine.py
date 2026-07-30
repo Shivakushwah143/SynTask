@@ -5,7 +5,7 @@ import io
 import re
 import zipfile
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from xml.etree import ElementTree as ET
@@ -193,7 +193,17 @@ def _parse_tabular_upload(file_name: str, file_bytes: bytes) -> tuple[list[str],
         return headers, rows
     if lowered.endswith(".xlsx"):
         return _load_xlsx_rows(file_bytes)
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV and XLSX files are supported")
+    # For any other file type, attempt to parse as CSV
+    try:
+        text = file_bytes.decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+        headers = reader.fieldnames or []
+        rows = [{str(key): (value or "") for key, value in row.items() if key is not None} for row in reader]
+        if headers:
+            return headers, rows
+    except Exception:
+        pass
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not parse file. Supported formats: CSV, XLSX, or any text file with comma-separated values.")
 
 
 def _parse_stage_lookup(stage_documents: list[SalesStage]) -> dict[str, str]:
@@ -226,6 +236,7 @@ class LeadImportResult:
     skipped_rows: int
     assigned_breakdown: Dict[str, int]
     warnings: list[dict[str, Any]]
+    detected_columns: list[str] = field(default_factory=list)
 
 
 class LeadNormalizer:
@@ -277,6 +288,25 @@ class LeadNormalizer:
             parts = name.split()
             first_name = parts[0]
             last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+        # Detect known fields to separate unknown columns into custom_fields
+        KNOWN_KEYS = {
+            "first_name", "last_name", "prospect_name", "name",
+            "country_code", "phone", "email",
+            "company", "company_name",
+            "category_id", "product_ids",
+            "interest_level", "estimated_close_date",
+            "status", "source",
+            "stage", "current_stage",
+            "remark", "relationship_type", "channel",
+            "designation", "nationality", "language",
+            "owner_name", "owner_contact_no",
+            "tag", "crm_company_id", "contact_id",
+            "due_date", "due_time",
+        }
+        custom_fields = {}
+        for key, value in row_norm.items():
+            if key not in KNOWN_KEYS and value:
+                custom_fields[key] = value
         return LeadNormalizer.normalize_form_payload(
             {
                 "first_name": first_name,
@@ -304,6 +334,7 @@ class LeadNormalizer:
                 "tag": row_norm.get("tag"),
                 "crm_company_id": row_norm.get("crm_company_id"),
                 "contact_id": row_norm.get("contact_id"),
+                "custom_fields": custom_fields,
             },
             source=source,
         )
@@ -712,20 +743,24 @@ class LeadEngine:
             if target_assignee:
                 department_id = getattr(prospect, "department_id", None) or getattr(current_user, "department_id", None)
                 assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
-                if str(target_assignee) in {str(user.id) for user in assignable_users}:
-                    previous_assignee = prospect.assigned_to
-                    prospect.assigned_to = str(target_assignee)
-                    if previous_assignee != prospect.assigned_to:
-                        await OwnershipTransfer(
-                            company_id=str(prospect.company_id),
-                            entity_type="lead",
-                            entity_id=str(prospect.id),
-                            from_user_id=str(previous_assignee) if previous_assignee else None,
-                            to_user_id=str(prospect.assigned_to),
-                            reason="manual_reassignment",
-                            transferred_by=str(current_user.id),
-                            notes="Manual reassignment from lead update",
-                        ).insert()
+                if str(target_assignee) not in {str(user.id) for user in assignable_users}:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Target user is not a valid assignee. They must be an active Lead or Employee in your company."
+                    )
+                previous_assignee = prospect.assigned_to
+                prospect.assigned_to = str(target_assignee)
+                if previous_assignee != prospect.assigned_to:
+                    await OwnershipTransfer(
+                        company_id=str(prospect.company_id),
+                        entity_type="lead",
+                        entity_id=str(prospect.id),
+                        from_user_id=str(previous_assignee) if previous_assignee else None,
+                        to_user_id=str(prospect.assigned_to),
+                        reason="manual_reassignment",
+                        transferred_by=str(current_user.id),
+                        notes="Manual reassignment from lead update",
+                    ).insert()
         if "due_date" in payload:
             prospect.due_date = _parse_datetime(payload.get("due_date"), payload.get("due_time"))
         if "due_time" in payload:
@@ -907,6 +942,7 @@ class LeadEngine:
                 deleted=False,
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
+                custom_fields=dict(row.get("custom_fields") or {}),
             )
             for row in valid_rows
         ]
@@ -921,6 +957,7 @@ class LeadEngine:
             skipped_rows=len(skipped_rows),
             assigned_breakdown=dict(assignment_counts),
             warnings=skipped_rows[:50],
+            detected_columns=normalized_headers,
         ).__dict__
 
     @staticmethod
@@ -935,18 +972,41 @@ class LeadEngine:
         if not current_user.company_id and current_user.role != UserRole.SUPER_ADMIN:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
         file_name = file.filename or "upload.csv"
-        if not file_name.lower().endswith((".csv", ".xlsx")) and file.content_type not in {
-            "text/csv",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        }:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV and XLSX files are supported")
-
         content = await file.read()
         if not content:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded")
 
         headers, rows = _parse_tabular_upload(file_name, content)
         normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
+        # Build field mapping recommendations
+        KNOWN_FIELD_NAMES = {
+            "first_name": "First Name", "last_name": "Last Name", "name": "Full Name",
+            "country_code": "Country Code", "phone": "Phone", "email": "Email",
+            "company": "Company", "company_name": "Company Name",
+            "category_id": "Category", "product_ids": "Products",
+            "interest_level": "Interest Level", "estimated_close_date": "Estimated Close Date",
+            "status": "Status", "stage": "Stage", "current_stage": "Current Stage",
+            "remark": "Remark", "relationship_type": "Relationship Type",
+            "channel": "Channel", "designation": "Designation",
+            "nationality": "Nationality", "language": "Language",
+            "owner_name": "Owner Name", "owner_contact_no": "Owner Contact",
+            "tag": "Tags", "crm_company_id": "CRM Company",
+            "contact_id": "Contact", "due_date": "Due Date", "due_time": "Due Time",
+        }
+        field_recommendations = []
+        for header in normalized_headers:
+            if header in KNOWN_FIELD_NAMES:
+                field_recommendations.append({
+                    "column": header,
+                    "maps_to": KNOWN_FIELD_NAMES[header],
+                    "status": "mapped",
+                })
+            else:
+                field_recommendations.append({
+                    "column": header,
+                    "maps_to": None,
+                    "status": "unknown",
+                })
         preview_rows = []
         failed_rows = []
         for idx, row in enumerate(rows, start=2):
@@ -991,6 +1051,8 @@ class LeadEngine:
             "total_rows": len(rows),
             "preview_rows": preview_rows[:100],
             "failed_rows": failed_rows[:100],
+            "detected_columns": normalized_headers,
+            "field_recommendations": field_recommendations,
         }
 
     @staticmethod

@@ -88,6 +88,8 @@ export default function CRMLeadsPage() {
   const [mergeGroup, setMergeGroup] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [assignEmployeeId, setAssignEmployeeId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
   const [createProductOpen, setCreateProductOpen] = useState(false)
@@ -157,9 +159,16 @@ export default function CRMLeadsPage() {
   // Primary leads list — prefer direct /crm/leads response (most complete), fall back to pipeline board
   const allLeads = useMemo(() => {
     const direct = leadsQuery.data?.prospects || leadsQuery.data?.items || leadsQuery.data?.data?.prospects || leadsQuery.data?.data?.items
-    if (Array.isArray(direct) && direct.length > 0) return direct
-    return stages.flatMap((stage) => stage.leads || [])
-  }, [leadsQuery.data, stages])
+    const raw = Array.isArray(direct) && direct.length > 0 ? direct : stages.flatMap((stage) => stage.leads || [])
+    // Employees see only leads assigned to them; managers/admins see all
+    if (isEmployee && currentUserId) {
+      return raw.filter((lead) => {
+        const assignedTo = String(lead.assigned_to || lead.assignedTo || '').trim()
+        return assignedTo === currentUserId
+      })
+    }
+    return raw
+  }, [leadsQuery.data, stages, isEmployee, currentUserId])
 
   const allAccountLeads = allLeads
   const leadCount = allLeads.length
@@ -381,6 +390,27 @@ export default function CRMLeadsPage() {
       toast.error(error?.response?.data?.detail || 'Bulk update failed')
     },
   })
+
+  const assignMutation = useMutation(
+    async ({ leadIds, assignedTo }) => {
+      const updates = leadIds.map((leadId) => salesApi.updateLeadForm(leadId, { assigned_to: assignedTo }))
+      return Promise.all(updates)
+    },
+    {
+      onSuccess: () => {
+        toast.success('Leads assigned successfully')
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('crm-all-leads')
+        queryClient.invalidateQueries('crm-pipeline-board')
+        setAssignOpen(false)
+        setAssignEmployeeId('')
+        setSelectedIds([])
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Unable to assign leads')
+      },
+    }
+  )
 
   const employeeStatusMutation = useMutation(
     ({ leadId, customFields }) => salesApi.updateLeadForm(leadId, { custom_fields: JSON.stringify(customFields) }),
@@ -624,6 +654,12 @@ export default function CRMLeadsPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge label={`${filteredLeads.length} visible`} colorKey="draft" />
               <Badge label={`${selectedIds.length} selected`} colorKey="scheduled" />
+              {(userRole === 'admin' || userRole === 'manager' || userRole === 'super_admin') && selectedIds.length > 0 ? (
+                <Button variant="secondary" size="sm" onClick={() => { setAssignEmployeeId(''); setAssignOpen(true) }}>
+                  <Users className="h-4 w-4" />
+                  Assign ({selectedIds.length})
+                </Button>
+              ) : null}
             </div>
           )}
         >
@@ -764,12 +800,14 @@ export default function CRMLeadsPage() {
             <CRMEmptyState
               icon={Users}
               title="No leads found"
-              description={allLeads.length ? 'Clear filters to see all leads.' : 'No leads yet. Add your first lead to get started.'}
+              description={isEmployee ? 'No leads assigned to you yet.' : allLeads.length ? 'Clear filters to see all leads.' : 'No leads yet. Add your first lead to get started.'}
               action={allLeads.length ? <Button variant="secondary" onClick={() => { setLeadSearch(''); setStageFilter(''); setPriorityFilter('') }}>Clear filters</Button> : <Button variant="secondary" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" />Add Lead</Button>}
             />
           )}
         </CRMSection>
 
+      {!isEmployee ? (
+        <>
       {/* Duplicates Section */}
       <CRMSection
         title="Duplicate Management"
@@ -831,11 +869,13 @@ export default function CRMLeadsPage() {
           <CRMEmptyState icon={Merge} title="No duplicates found" description="All leads appear to be unique." />
         )}
       </CRMSection>
+      </>
+      ) : null}
 
       {/* All Account Leads */}
       <CRMSection
-        title="All Leads"
-        description="Complete list of all leads in the account"
+        title={isEmployee ? 'My Leads' : 'All Leads'}
+        description={isEmployee ? 'Leads assigned to you.' : 'Complete list of all leads in the account.'}
         actions={(
           <div className="flex items-center gap-2">
             <Badge label={`${allAccountLeads.length} leads`} colorKey="draft" />
@@ -896,12 +936,56 @@ export default function CRMLeadsPage() {
         ) : (
           <CRMEmptyState
             icon={Users}
-            title="No leads yet"
-            description="No leads found. Add your first lead using the button above."
+            title={isEmployee ? 'No leads assigned' : 'No leads yet'}
+            description={isEmployee ? 'You have no leads assigned to you yet.' : 'No leads found. Add your first lead using the button above.'}
             action={<Button variant="secondary" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" />Add Lead</Button>}
           />
         )}
       </CRMSection>
+
+      {/* Assign Lead Modal */}
+      <Modal
+        isOpen={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        title="Assign Leads"
+        description={`Assign ${selectedIds.length} selected lead(s) to an employee.`}
+        size="md"
+        footer={(
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setAssignOpen(false)}>Cancel</Button>
+            <Button
+              type="button"
+              loading={assignMutation.isLoading}
+              disabled={!assignEmployeeId}
+              onClick={() => {
+                if (!assignEmployeeId) {
+                  toast.error('Please select an employee')
+                  return
+                }
+                assignMutation.mutate({ leadIds: selectedIds, assignedTo: assignEmployeeId })
+              }}
+            >
+              Assign
+            </Button>
+          </div>
+        )}
+      >
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-text-muted">Assign to employee</span>
+          <select
+            className={inputClassName}
+            value={assignEmployeeId}
+            onChange={(e) => setAssignEmployeeId(e.target.value)}
+          >
+            <option value="">Select employee...</option>
+            {leadOwnerOptions.map((userOption) => (
+              <option key={getUserId(userOption)} value={getUserId(userOption)}>
+                {userOption.first_name} {userOption.last_name} ({userOption.email || userOption.role || 'employee'})
+              </option>
+            ))}
+          </select>
+        </label>
+      </Modal>
 
       {/* All Modals remain the same */}
       <MergeModal
