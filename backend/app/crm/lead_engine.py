@@ -783,8 +783,13 @@ class LeadEngine:
             prospect.estimated_close_date = _parse_datetime(payload.get("estimated_close_date"))
         if "assigned_to" in payload:
             target_assignee = payload.get("assigned_to") or prospect.assigned_to
-            if target_assignee:
-                department_id = getattr(prospect, "department_id", None) or getattr(current_user, "department_id", None)
+            # Only re-validate/reassign when the owner is actually changing.
+            # Do not fail updates that keep the existing owner, even when that
+            # owner belongs to a different department than the current user.
+            if target_assignee and str(target_assignee) != str(prospect.assigned_to or ""):
+                # Ownership stays scoped to the lead's own department, never the
+                # editor's department (which may legitimately differ).
+                department_id = getattr(prospect, "department_id", None)
                 await AssignmentEngine.validate_target_user(
                     current_user,
                     str(target_assignee),

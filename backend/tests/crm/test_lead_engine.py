@@ -150,6 +150,62 @@ async def test_create_lead_uses_manual_assignment_when_target_is_provided(monkey
 
 
 @pytest.mark.asyncio
+async def test_update_lead_keeps_owner_when_unchanged_even_if_actor_in_other_department(monkeypatch):
+    """Updating a lead must not fail when the existing owner belongs to a
+    different department than the current user and the owner is not being changed.
+    Regression for: PUT /api/v1/sales/prospects/<id> ->
+    'Target user must be an active user in your company'"""
+    lead = FakeProspect(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        source="manual",
+        assigned_to="user-1",
+        assigned_by="user-9",
+        department_id=None,
+    )
+    lead.saved = False
+
+    validation_calls = []
+
+    async def fake_get(lead_id):
+        assert lead_id == "lead-1"
+        return lead
+
+    async def fake_require_owned_record_access(*args, **kwargs):
+        return None
+
+    async def fake_validate_target_user(*args, **kwargs):
+        validation_calls.append(kwargs)
+        raise AssertionError("validate_target_user should not be called when owner is unchanged")
+
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.validate_target_user", fake_validate_target_user)
+    monkeypatch.setattr("app.crm.lead_engine.require_owned_record_access", fake_require_owned_record_access)
+
+    # Actor belongs to a different department (dept-other) than the lead owner (user-1 in dept-1)
+    current_user = SimpleNamespace(
+        id="manager-1", company_id="company-1", role=UserRole.MANAGER, department_id="dept-other"
+    )
+    result = await LeadEngine.update_lead(
+        current_user,
+        "lead-1",
+        {
+            "prospect_name": "Alpha Co Renamed",
+            # Frontend echoes back the existing owner even when it is not changed
+            "assigned_to": "user-1",
+        },
+    )
+
+    assert result["message"] == "Prospect updated successfully"
+    assert lead.prospect_name == "Alpha Co Renamed"
+    assert lead.assigned_to == "user-1"
+    assert lead.saved is True
+    assert validation_calls == []
+
+
+@pytest.mark.asyncio
 async def test_update_lead_reassigns_owner_and_records_transfer(monkeypatch):
     lead = FakeProspect(
         id="lead-1",
