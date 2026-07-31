@@ -31,7 +31,9 @@ import { timeService } from '@/services/timeService'
 const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
 const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
 const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
-const isValidLeadOwner = (item) => isAssignableActiveUser(item) && ['admin', 'sub_admin', 'manager', 'lead', 'employee'].includes(normalizeRole(item?.role))
+// Lead owners are sales staff (manager/lead/employee). Company admins (admin/sub_admin) are
+// excluded from lead owner/assignment lists so admin names never appear as assignable owners.
+export const isValidLeadOwner = (item) => isAssignableActiveUser(item) && ['manager', 'lead', 'employee'].includes(normalizeRole(item?.role))
 const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || '').trim())
 export const hasSalesCrmModule = (modules = []) => modules.includes('sales_crm') || modules.includes('sales')
 const PRODUCT_LOCATION_OPTIONS = [
@@ -249,7 +251,7 @@ export default function CRMLeadsPage() {
   }, [createOpen, defaultCategoryId, defaultOwnerId, defaultProductIds, defaultStageId])
 
   // All mutations remain the same
-  const mergeMutation = useMutation((payload) => crmApi.mergeProspects(payload), {
+  const mergeMutation = useMutation((payload) => salesApi.mergeProspects(payload), {
     onSuccess: () => {
       toast.success('Leads merged')
       queryClient.invalidateQueries('crm-leads-entry')
@@ -981,7 +983,7 @@ export default function CRMLeadsPage() {
             <option value="">Select employee...</option>
             {leadOwnerOptions.map((userOption) => (
               <option key={getUserId(userOption)} value={getUserId(userOption)}>
-                {userOption.first_name} {userOption.last_name} ({userOption.email || userOption.role || 'employee'})
+                {userOption.first_name} {userOption.last_name} ({userOption.role || 'employee'})
               </option>
             ))}
           </select>
@@ -1304,7 +1306,7 @@ function BulkUpdateModal({ isOpen, onClose, leadCount, onSubmit, loading, stages
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Stage"><select className={inputClassName} value={fields.current_stage} onChange={(e) => setFields((s) => ({ ...s, current_stage: e.target.value }))}><option value="">No change</option>{stages.map((s) => <option key={s.id || s.key || s.name} value={s.key || s.id || s.name}>{s.name}</option>)}</select></Field>
         <Field label="Status"><select className={inputClassName} value={fields.status} onChange={(e) => setFields((s) => ({ ...s, status: e.target.value }))}><option value="">No change</option><option value="active">Active</option><option value="won">Won</option><option value="lost">Lost</option><option value="closed">Closed</option></select></Field>
-        <Field label="Owner"><select className={inputClassName} value={fields.assigned_to} onChange={(e) => setFields((s) => ({ ...s, assigned_to: e.target.value }))}><option value="">No change</option>{users.map((u) => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}</select></Field>
+        <Field label="Owner"><select className={inputClassName} value={fields.assigned_to} onChange={(e) => setFields((s) => ({ ...s, assigned_to: e.target.value }))}><option value="">No change</option>{users.filter(isValidLeadOwner).map((u) => <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>)}</select></Field>
         <Field label="Priority"><select className={inputClassName} value={fields.interest_level} onChange={(e) => setFields((s) => ({ ...s, interest_level: e.target.value }))}><option value="">No change</option><option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option></select></Field>
         <Field label="Source"><input className={inputClassName} value={fields.channel} onChange={(e) => setFields((s) => ({ ...s, channel: e.target.value }))} placeholder="Leave blank for no change" /></Field>
         <Field label="Tags"><input className={inputClassName} value={fields.tag} onChange={(e) => setFields((s) => ({ ...s, tag: e.target.value }))} placeholder="Pipe-separated tags" /></Field>

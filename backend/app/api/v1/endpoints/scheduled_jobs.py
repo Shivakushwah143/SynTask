@@ -45,9 +45,9 @@ def _ensure_future_run_at(run_at: datetime) -> datetime:
 
 def _ensure_can_schedule_action(current_user: User, action_type: ScheduledJobActionType) -> None:
     if action_type == ScheduledJobActionType.CREATE_PROJECT:
-        allowed_roles = {UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
+        allowed_roles = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
     else:
-        allowed_roles = {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
+        allowed_roles = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
 
     if current_user.role not in allowed_roles:
         raise HTTPException(
@@ -57,7 +57,7 @@ def _ensure_can_schedule_action(current_user: User, action_type: ScheduledJobAct
 
 
 def _ensure_can_manage_scheduled_jobs(current_user: User) -> None:
-    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+    if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to manage scheduled jobs"

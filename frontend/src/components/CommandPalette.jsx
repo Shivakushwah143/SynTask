@@ -193,34 +193,54 @@ export function CommandPalette({ isOpen, onClose }) {
   // Get all commands
   const allCommands = COMMANDS
 
-  // Reset and focus when opened
+  // Reset state and focus when opened (runs only on open/close, not on results change)
   useEffect(() => {
     if (!isOpen) return undefined
     setQuery('')
     setResults(allCommands)
     setSelectedIndex(-1)
     const timer = setTimeout(() => inputRef.current?.focus(), 50)
+    return () => clearTimeout(timer)
+  }, [isOpen])
+
+  // Global keydown listener for keyboard navigation (stable reference — no results/selectedIndex deps)
+  useEffect(() => {
+    if (!isOpen) return undefined
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         onClose()
-      } else if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        setSelectedIndex(prev => Math.min(prev + 1, results.length - 1))
-      } else if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        setSelectedIndex(prev => Math.max(prev - 1, -1))
-      } else if (event.key === 'Enter' && selectedIndex >= 0) {
+        return
+      }
+      // Read latest state via refs to avoid re-attaching on every results change
+      setSelectedIndex(prev => {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault()
+          return Math.min(prev + 1, results.length - 1)
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault()
+          return Math.max(prev - 1, -1)
+        }
+        return prev
+      })
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose, results.length])
+
+  // Handle Enter key via a separate effect that can safely depend on results + selectedIndex
+  useEffect(() => {
+    if (!isOpen) return undefined
+    const handleEnter = (event) => {
+      if (event.key === 'Enter' && selectedIndex >= 0) {
         event.preventDefault()
         const selected = results[selectedIndex]
         if (selected) selectCommand(selected)
       }
     }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      clearTimeout(timer)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [isOpen, onClose, results, selectedIndex])
+    document.addEventListener('keydown', handleEnter)
+    return () => document.removeEventListener('keydown', handleEnter)
+  }, [isOpen, results, selectedIndex])
 
   // Scroll selected item into view
   useEffect(() => {

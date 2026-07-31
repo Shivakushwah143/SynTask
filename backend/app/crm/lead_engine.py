@@ -12,6 +12,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from xml.etree import ElementTree as ET
 
 from fastapi import HTTPException, UploadFile, status
+from pydantic import ValidationError
+from pymongo.errors import DuplicateKeyError
 
 from app.timeline.publisher import publish_crm_timeline_event
 from app.models.crm_company import CRMCompany
@@ -783,8 +785,13 @@ class LeadEngine:
             prospect.estimated_close_date = _parse_datetime(payload.get("estimated_close_date"))
         if "assigned_to" in payload:
             target_assignee = payload.get("assigned_to") or prospect.assigned_to
-            if target_assignee:
-                department_id = getattr(prospect, "department_id", None) or getattr(current_user, "department_id", None)
+            # Only re-validate/reassign when the owner is actually changing.
+            # Do not fail updates that keep the existing owner, even when that
+            # owner belongs to a different department than the current user.
+            if target_assignee and str(target_assignee) != str(prospect.assigned_to or ""):
+                # Ownership stays scoped to the lead's own department, never the
+                # editor's department (which may legitimately differ).
+                department_id = getattr(prospect, "department_id", None)
                 await AssignmentEngine.validate_target_user(
                     current_user,
                     str(target_assignee),
@@ -850,6 +857,7 @@ class LeadEngine:
         strategy: str,
         target_user_id: Optional[str] = None,
         target_department_id: Optional[str] = None,
+        allow_duplicates: bool = False,
     ) -> Dict[str, Any]:
         if not current_user.company_id and current_user.role != UserRole.SUPER_ADMIN:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Company context required")
@@ -878,6 +886,7 @@ class LeadEngine:
             )
 
         seen_phones: set[str] = set()
+        seen_emails: set[str] = set()
         parsed_rows: list[dict[str, Any]] = []
         skipped_rows: list[dict[str, Any]] = []
         total_input_rows = 0
@@ -891,15 +900,23 @@ class LeadEngine:
             if not phone:
                 skipped_rows.append({"row": idx, "reason": "Missing phone number"})
                 continue
-            if full_phone in seen_phones:
+            if not allow_duplicates and full_phone in seen_phones:
                 skipped_rows.append({"row": idx, "reason": "Duplicate phone number in file"})
                 continue
             seen_phones.add(full_phone)
+            # Emails are unique per company (unique index company_id_1_email_1), so
+            # in-file duplicate emails are skipped even with allow_duplicates.
+            email = (row_norm.get("email") or "").strip().lower()
+            if email and email in seen_emails:
+                skipped_rows.append({"row": idx, "reason": "Duplicate email in file"})
+                continue
+            if email:
+                seen_emails.add(email)
             parsed_rows.append({"row": idx, "row_norm": row_norm})
 
         # Check for existing phone numbers in the database (phone is the unique identifier for partial leads)
         seen_phones_for_dup = set()
-        if parsed_rows:
+        if parsed_rows and not allow_duplicates:
             phone_numbers = []
             for item in parsed_rows:
                 row_norm = item["row_norm"]
@@ -917,7 +934,25 @@ class LeadEngine:
                 }).to_list()
                 seen_phones_for_dup = {f"{lead.country_code}:{lead.phone}" for lead in existing_leads}
 
+        # Emails are unique per company (unique index), so rows whose email already
+        # exists must be skipped - otherwise insert_many raises DuplicateKeyError (500).
+        seen_emails_for_dup: set[str] = set()
+        if parsed_rows:
+            emails = []
+            for item in parsed_rows:
+                email = (item["row_norm"].get("email") or "").strip().lower()
+                if email:
+                    emails.append(email)
+            if emails:
+                existing_emails = await SalesProspect.find({
+                    "company_id": current_user.company_id,
+                    "deleted": False,
+                    "email": {"$in": emails},
+                }).to_list()
+                seen_emails_for_dup = {str(getattr(lead, "email", "") or "").strip().lower() for lead in existing_emails}
+
         valid_rows: list[dict[str, Any]] = []
+        valid_row_numbers: list[int] = []
         assignment_counts = defaultdict(int)
         for index, item in enumerate(parsed_rows):
             row_number = item["row"]
@@ -928,10 +963,15 @@ class LeadEngine:
             normalized["assigned_by"] = str(current_user.id)
             normalized["updated_at"] = _now()
             normalized["created_at"] = normalized["updated_at"]
-            # Check for duplicate phone in database
+            # Check for duplicate phone in database (unless duplicates are allowed)
             full_phone = f"{normalized.get('country_code', '+91')}:{normalized.get('phone', '')}"
-            if full_phone in seen_phones_for_dup:
+            if not allow_duplicates and full_phone in seen_phones_for_dup:
                 skipped_rows.append({"row": row_number, "reason": "Lead with this phone number already exists"})
+                continue
+            # Skip rows whose email already exists in the company (unique index)
+            normalized_email = (normalized.get("email") or "").strip().lower()
+            if normalized_email and normalized_email in seen_emails_for_dup:
+                skipped_rows.append({"row": row_number, "reason": "Lead with this email already exists"})
                 continue
             try:
                 LeadValidator.validate_lead_payload(normalized)
@@ -946,53 +986,97 @@ class LeadEngine:
             normalized["assigned_to"] = target_assignee
             assignment_counts[target_assignee] += 1
             valid_rows.append(normalized)
+            valid_row_numbers.append(row_number)
 
         if not valid_rows:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid leads found after validation")
 
-        prospects = [
-            SalesProspect(
-                first_name=row["first_name"],
-                last_name=row["last_name"],
-                prospect_name=row["prospect_name"],
-                country_code=row["country_code"],
-                phone=row["phone"],
-                email=row.get("email"),
-                contact_id=row.get("contact_id"),
-                category_id=row.get("category_id"),
-                product_ids=list(row.get("product_ids") or []),
-                interest_level=_parse_interest_level(row.get("interest_level")),
-                estimated_close_date=_parse_datetime(row.get("estimated_close_date")),
-                assigned_to=str(row.get("assigned_to")),
-                assigned_by=str(row.get("assigned_by")),
-                current_stage=row.get("current_stage") or "new",
-                due_date=_parse_datetime(row.get("due_date"), row.get("due_time")),
-                due_time=row.get("due_time"),
-                remark=row.get("remark"),
-                company_name=row.get("company_name"),
-                crm_company_id=row.get("crm_company_id"),
-                relationship_type=row.get("relationship_type"),
-                channel=row.get("channel"),
-                source=row.get("source") or source_label,
-                designation=row.get("designation"),
-                nationality=list(row.get("nationality") or []),
-                language=list(row.get("language") or []),
-                owner_name=row.get("owner_name"),
-                owner_contact_no=row.get("owner_contact_no"),
-                tag=list(row.get("tag") or []),
-                greeting_preference=row.get("greeting_preference"),
-                status=ProspectStatus(row.get("status") or ProspectStatus.ACTIVE.value),
-                company_id=current_user.company_id,
-                created_by=str(current_user.id),
-                deleted=False,
-                created_at=row["created_at"],
-                updated_at=row["updated_at"],
-                custom_fields=dict(row.get("custom_fields") or {}),
-            )
-            for row in valid_rows
-        ]
+        # Build documents row-by-row so a malformed row (e.g. invalid email format)
+        # is skipped as a warning instead of raising ValidationError -> 500.
+        prospects: list[SalesProspect] = []
+        prospect_rows: list[int] = []
+        for row, row_number in zip(valid_rows, valid_row_numbers):
+            try:
+                prospect = SalesProspect(
+                    first_name=row["first_name"],
+                    last_name=row["last_name"],
+                    prospect_name=row["prospect_name"],
+                    country_code=row["country_code"],
+                    phone=row["phone"],
+                    email=row.get("email"),
+                    contact_id=row.get("contact_id"),
+                    category_id=row.get("category_id"),
+                    product_ids=list(row.get("product_ids") or []),
+                    interest_level=_parse_interest_level(row.get("interest_level")),
+                    estimated_close_date=_parse_datetime(row.get("estimated_close_date")),
+                    assigned_to=str(row.get("assigned_to")),
+                    assigned_by=str(row.get("assigned_by")),
+                    current_stage=row.get("current_stage") or "new",
+                    due_date=_parse_datetime(row.get("due_date"), row.get("due_time")),
+                    due_time=row.get("due_time"),
+                    remark=row.get("remark"),
+                    company_name=row.get("company_name"),
+                    crm_company_id=row.get("crm_company_id"),
+                    relationship_type=row.get("relationship_type"),
+                    channel=row.get("channel"),
+                    source=row.get("source") or source_label,
+                    designation=row.get("designation"),
+                    nationality=list(row.get("nationality") or []),
+                    language=list(row.get("language") or []),
+                    owner_name=row.get("owner_name"),
+                    owner_contact_no=row.get("owner_contact_no"),
+                    tag=list(row.get("tag") or []),
+                    greeting_preference=row.get("greeting_preference"),
+                    status=ProspectStatus(row.get("status") or ProspectStatus.ACTIVE.value),
+                    company_id=current_user.company_id,
+                    created_by=str(current_user.id),
+                    deleted=False,
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                    custom_fields=dict(row.get("custom_fields") or {}),
+                )
+            except (ValidationError, ValueError) as exc:
+                if isinstance(exc, ValidationError) and exc.errors():
+                    detail = exc.errors()[0].get("msg", "validation failed")
+                else:
+                    detail = str(exc).splitlines()[0] if str(exc) else "validation failed"
+                skipped_rows.append({"row": row_number, "reason": f"Invalid row data: {detail}"})
+                continue
+            prospects.append(prospect)
+            prospect_rows.append(row_number)
 
-        await SalesProspect.insert_many(prospects)
+        try:
+            await SalesProspect.insert_many(prospects)
+        except DuplicateKeyError:
+            # A unique-index collision (e.g. company_id+email) that slipped past the
+            # pre-checks (e.g. created concurrently between check and insert). Insert
+            # one-by-one, skipping only the conflicting rows, instead of failing the
+            # whole upload with a 500.
+            # Note: pymongo insert_many is ordered=True by default, so a mid-batch
+            # collision inserts earlier docs and rejects later ones. Docs already
+            # persisted by the partial batch are detected by find_one and counted
+            # as uploaded (not re-inserted, not reported as skipped).
+            inserted: list[SalesProspect] = []
+            for row_number, prospect in zip(prospect_rows, prospects):
+                existing = await SalesProspect.find_one({
+                    "company_id": prospect.company_id,
+                    "country_code": prospect.country_code,
+                    "phone": prospect.phone,
+                    "deleted": False,
+                })
+                if existing:
+                    inserted.append(prospect)
+                    continue
+                try:
+                    await prospect.insert()
+                    inserted.append(prospect)
+                except DuplicateKeyError:
+                    skipped_rows.append({"row": row_number, "reason": "Lead already exists (duplicate email or phone)"})
+            prospects = inserted
+
+        if not prospects:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid leads found after validation")
+
         for prospect in prospects:
             await LeadEventPublisher.lead_created(prospect, current_user, source=source_label)
 

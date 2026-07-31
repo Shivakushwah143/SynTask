@@ -125,7 +125,7 @@ async def test_forward_preserves_manager_scope_and_rejects_invalid_targets():
     with pytest.raises(HTTPException) as exc_info:
         await leave_service.assert_forward_target(manager, request, employee, other_manager)
     assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "Forward target must be Admin"
+    assert exc_info.value.detail == "Forward target must be Admin or Sub Admin"
 
 
 @pytest.mark.asyncio
@@ -178,3 +178,88 @@ async def test_manager_lists_subordinate_employee_and_lead_leave_but_lead_has_no
         "company_id": "company-1",
         "employee_id": {"$ne": "manager-1"},
     }
+
+
+@pytest.mark.asyncio
+async def test_sub_admin_sees_all_company_leaves_like_admin():
+    sub_admin = user("subadmin-1", UserRole.SUB_ADMIN)
+
+    assert await leave_endpoints._base_query(sub_admin, None) == {
+        "company_id": "company-1",
+        "employee_id": {"$ne": "subadmin-1"},
+    }
+    assert leave_service.leave_visibility_query(sub_admin) == {
+        "company_id": "company-1",
+        "employee_id": {"$ne": "subadmin-1"},
+    }
+
+
+def test_sub_admin_approval_mirrors_admin():
+    sub_admin = user("subadmin-1", UserRole.SUB_ADMIN)
+    manager = user("manager-1", UserRole.MANAGER, reports_to="admin-1", ancestors=["admin-1"])
+    employee = user("employee-1", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
+
+    # Sub Admin can approve manager leaves (same as Admin)
+    assert leave_service.can_approve_leave(sub_admin, manager, leave("manager-1", pending_with=["subadmin-1"])) is True
+    # Sub Admin cannot approve unforwarded employee leaves (same as Admin)
+    assert leave_service.can_approve_leave(sub_admin, employee, leave("employee-1", pending_with=["subadmin-1"])) is False
+    # Sub Admin can approve forwarded employee leaves (same as Admin)
+    assert leave_service.can_approve_leave(sub_admin, employee, leave("employee-1", pending_with=["subadmin-1"], forwarded_by="manager-1")) is True
+
+
+@pytest.mark.asyncio
+async def test_manager_can_forward_to_sub_admin():
+    manager = user("manager-1", UserRole.MANAGER)
+    sub_admin = user("subadmin-1", UserRole.SUB_ADMIN)
+    employee = user("employee-1", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
+    request = leave("employee-1", pending_with=["manager-1"])
+
+    await leave_service.assert_forward_target(manager, request, employee, sub_admin)
+
+
+@pytest.mark.asyncio
+async def test_forward_targets_include_admins_and_sub_admins(monkeypatch):
+    admin = SimpleNamespace(
+        id="admin-1", email="admin@test.com", first_name="Admin", last_name="One",
+        role=UserRole.ADMIN, company_id="company-1",
+    )
+    sub_admin = SimpleNamespace(
+        id="subadmin-1", email="subadmin@test.com", first_name="Sub", last_name="Admin",
+        role=UserRole.SUB_ADMIN, company_id="company-1",
+    )
+    manager = user("manager-1", UserRole.MANAGER)
+
+    class FakeQuery:
+        def __init__(self, users):
+            self.users = users
+
+        async def to_list(self):
+            return self.users
+
+    def fake_find(query):
+        return FakeQuery([admin, sub_admin])
+
+    monkeypatch.setattr(leave_endpoints.User, "find", staticmethod(fake_find))
+    result = await leave_endpoints.get_leave_forward_targets(manager)
+    assert {item["role"] for item in result["users"]} == {UserRole.ADMIN.value, UserRole.SUB_ADMIN.value}
+
+
+@pytest.mark.asyncio
+async def test_company_admin_ids_include_sub_admins(monkeypatch):
+    admin = SimpleNamespace(id="admin-1", role=UserRole.ADMIN, company_id="company-1")
+    sub_admin = SimpleNamespace(id="subadmin-1", role=UserRole.SUB_ADMIN, company_id="company-1")
+
+    class FakeQuery:
+        def __init__(self, users):
+            self.users = users
+
+        async def to_list(self):
+            return self.users
+
+    def fake_find(query):
+        roles = query.get("role", {}).get("$in", [])
+        return FakeQuery([u for u in [admin, sub_admin] if u.role.value in roles])
+
+    monkeypatch.setattr(leave_service.User, "find", staticmethod(fake_find))
+    result = await leave_service.company_admin_ids("company-1")
+    assert set(result) == {"admin-1", "subadmin-1"}

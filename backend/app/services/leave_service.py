@@ -101,10 +101,14 @@ async def nearest_manager(employee: User) -> Optional[User]:
 
 
 async def company_admin_ids(company_id: Optional[str]) -> list[str]:
+    """Return IDs of company-level approvers (admins and sub-admins)."""
     if not company_id:
         return []
-    admins = await User.find({"company_id": company_id, "role": UserRole.ADMIN.value}).to_list()
-    return [str(admin.id) for admin in admins]
+    approvers = await User.find({
+        "company_id": company_id,
+        "role": {"$in": [UserRole.ADMIN.value, UserRole.SUB_ADMIN.value]},
+    }).to_list()
+    return [str(approver.id) for approver in approvers]
 
 
 async def initial_pending_reviewers(employee: User) -> list[str]:
@@ -154,8 +158,8 @@ async def assert_forward_target(current_user: User, leave: LeaveRequest, employe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot forward leave to requester")
     if target_user.company_id != leave.company_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forward target outside company")
-    if target_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Forward target must be Admin")
+    if target_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Forward target must be Admin or Sub Admin")
 
 
 def parse_leave_date(value: str, *, end_of_day: bool = False) -> datetime:
@@ -276,9 +280,12 @@ async def notify_user(user_id: str, company_id: Optional[str], notification_type
 async def notify_admins(company_id: Optional[str], notification_type: NotificationType, title: str, message: str, leave_id: str) -> None:
     if not company_id:
         return
-    admins = await User.find({"company_id": company_id, "role": UserRole.ADMIN.value}).to_list()
-    for admin in admins:
-        await notify_user(str(admin.id), company_id, notification_type, title, message, leave_id)
+    approvers = await User.find({
+        "company_id": company_id,
+        "role": {"$in": [UserRole.ADMIN.value, UserRole.SUB_ADMIN.value]},
+    }).to_list()
+    for approver in approvers:
+        await notify_user(str(approver.id), company_id, notification_type, title, message, leave_id)
 
 
 def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dict[str, Any]:

@@ -34,7 +34,8 @@ async def list_projects(
             )
         query = {"company_id": current_user.company_id}
     
-    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
+    # For all roles except SUPER_ADMIN, include assigned projects
+    if current_user.role != UserRole.SUPER_ADMIN:
         if current_user.role == UserRole.LEAD:
             query["$or"] = [
                 {"assigned_to": str(current_user.id)},
@@ -50,6 +51,12 @@ async def list_projects(
                 current_user,
                 [task.project_id for task in assigned_tasks if getattr(task, "project_id", None)],
             ))
+        else:  # ADMIN, SUB_ADMIN, MANAGER
+            query["$or"] = [
+                {"assigned_to": str(current_user.id)},
+                {"assigned_user_ids": str(current_user.id)},
+                {"team_member_ids": str(current_user.id)},
+            ]
     
     if status_filter:
         try:

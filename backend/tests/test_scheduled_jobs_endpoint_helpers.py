@@ -38,6 +38,19 @@ def test_lead_can_schedule_task_creation_but_not_project_creation():
     assert exc.value.status_code == 403
 
 
+def test_sub_admin_can_schedule_project_and_task_creation():
+    sub_admin = SimpleNamespace(role=UserRole.SUB_ADMIN)
+
+    _ensure_can_schedule_action(sub_admin, ScheduledJobActionType.CREATE_PROJECT)
+    _ensure_can_schedule_action(sub_admin, ScheduledJobActionType.CREATE_TASK)
+
+
+def test_sub_admin_can_manage_scheduled_jobs():
+    sub_admin = SimpleNamespace(role=UserRole.SUB_ADMIN)
+
+    _ensure_can_manage_scheduled_jobs(sub_admin)
+
+
 def test_employee_cannot_manage_scheduled_jobs():
     employee = SimpleNamespace(role=UserRole.EMPLOYEE)
 

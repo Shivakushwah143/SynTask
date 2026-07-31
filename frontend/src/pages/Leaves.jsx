@@ -564,14 +564,14 @@ export default function Leaves() {
             : actionState.type === 'reject'
               ? 'Reject Leave'
               : actionState.type === 'forward'
-                ? 'Forward to Admin'
+                ? 'Forward to Admin/Sub Admin'
                 : 'Cancel Leave'
         }
         description={
           actionState.type === 'reject'
             ? 'Rejection reason is required and will be shown to the requester.'
             : actionState.type === 'forward'
-              ? 'Forward this request so an admin can approve or reject it.'
+              ? 'Forward this request so an Admin or Sub Admin can approve or reject it.'
               : actionState.type === 'cancel'
                 ? 'Confirm that you want to cancel this leave request.'
                 : 'Confirm approval for this leave request.'
@@ -581,20 +581,20 @@ export default function Leaves() {
           {actionState.type === 'reject' || actionState.type === 'forward' || actionState.type === 'approve' ? (
             <>
               {actionState.type === 'forward' ? (
-                <FormField label="Admin reviewer" required>
+                <FormField label="Reviewer" required>
                   <select
                     className={inputClassName}
                     required
                     value={actionState.target_user_id}
                     onChange={(event) => setActionState((current) => ({ ...current, target_user_id: event.target.value }))}
                   >
-                    <option value="">Select admin</option>
+                    <option value="">Select reviewer</option>
                     {forwardTargets.map((item) => (
                       <option key={item.id} value={item.id}>
                         {`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}
                       </option>
                     ))}
-                    {!forwardTargets.length ? <option value="" disabled>No admin available</option> : null}
+                    {!forwardTargets.length ? <option value="" disabled>No reviewer available</option> : null}
                   </select>
                 </FormField>
               ) : null}
@@ -665,7 +665,7 @@ function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onFo
           {leave.forwarded_to_admin ? (
             <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
               <Forward className="h-3.5 w-3.5" />
-              Forwarded to admin
+              Forwarded to Admin/Sub Admin
             </p>
           ) : null}
           {leave.attachment_url ? (

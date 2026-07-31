@@ -6,6 +6,7 @@ import {
   getProductStates,
   getSalesCollection,
   hasSalesCrmModule,
+  isValidLeadOwner,
   mergeSalesCollectionItem,
   normalizeCreatedProduct,
   normalizeCreatedSalesOption,
@@ -16,6 +17,23 @@ describe('CRM leads page helpers', () => {
     expect(hasSalesCrmModule(['sales_crm'])).toBe(true)
     expect(hasSalesCrmModule(['sales'])).toBe(true)
     expect(hasSalesCrmModule(['task'])).toBe(false)
+  })
+
+  it('excludes company admins from lead owner options', () => {
+    const base = { id: 'u1', first_name: 'Ada', last_name: 'Admin', status: 'active' }
+
+    // Admin and Sub Admin are company admins and must not appear as lead owners
+    expect(isValidLeadOwner({ ...base, role: 'admin' })).toBe(false)
+    expect(isValidLeadOwner({ ...base, role: 'sub_admin' })).toBe(false)
+    expect(isValidLeadOwner({ ...base, role: 'super_admin' })).toBe(false)
+
+    // Sales staff remain valid lead owners
+    expect(isValidLeadOwner({ ...base, role: 'manager' })).toBe(true)
+    expect(isValidLeadOwner({ ...base, role: 'lead' })).toBe(true)
+    expect(isValidLeadOwner({ ...base, role: 'employee' })).toBe(true)
+
+    // Inactive users are never assignable
+    expect(isValidLeadOwner({ ...base, role: 'employee', status: 'inactive' })).toBe(false)
   })
 
   it('reads sales collections from backend items response', () => {

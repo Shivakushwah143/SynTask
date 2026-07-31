@@ -48,6 +48,7 @@ export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stage
   const [strategy, setStrategy] = useState('round-robin')
   const [targetUserId, setTargetUserId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
+  const [allowDuplicates, setAllowDuplicates] = useState(false)
   const [importHistory, setImportHistory] = useState([])
   const [importSummary, setImportSummary] = useState(null)
   const [step, setStep] = useState('upload') // 'upload' | 'preview' | 'importing'
@@ -116,6 +117,9 @@ export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stage
       if (departmentId) {
         formData.append('target_department_id', departmentId)
       }
+      if (allowDuplicates) {
+        formData.append('allow_duplicates', 'true')
+      }
       const result = await salesApi.bulkUploadLeads(formData)
       const payload = result?.data || result || {}
       const successCount = payload.total_uploaded || payload.success_count || 0
@@ -171,6 +175,7 @@ export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stage
     setStrategy('round-robin')
     setTargetUserId('')
     setDepartmentId('')
+    setAllowDuplicates(false)
     setImportSummary(null)
     setDetectedColumns([])
     setFieldRecommendations([])
@@ -326,6 +331,20 @@ export default function BulkImportLeadsModal({ isOpen, onClose, onSuccess, stage
                 </select>
               </label>
             ) : null}
+            <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <input
+                type="checkbox"
+                checked={allowDuplicates}
+                onChange={(event) => setAllowDuplicates(event.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-amber-900">
+                <span className="font-semibold">Allow duplicates</span>
+                <span className="block text-xs text-amber-700">
+                  Import rows even when the same phone already exists in this company or repeats in the file.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="flex justify-end gap-2">

@@ -657,15 +657,21 @@ async def bulk_upload_prospects(
     file: UploadFile = File(...),
     target_user_id: Optional[str] = Form(None),
     target_department_id: Optional[str] = Form(None),
+    allow_duplicates: bool = Form(False),
     current_user: User = Depends(get_current_company_admin_or_lead)
 ):
-    """Bulk upload prospects from CSV with assignment strategies."""
+    """Bulk upload prospects from CSV with assignment strategies.
+
+    allow_duplicates=True imports every valid row even when the same phone
+    already exists in the company (or repeats within the file).
+    """
     return await LeadEngine.import_leads(
         current_user,
         file,
         strategy=strategy,
         target_user_id=target_user_id,
         target_department_id=target_department_id,
+        allow_duplicates=allow_duplicates,
     )
 
 
