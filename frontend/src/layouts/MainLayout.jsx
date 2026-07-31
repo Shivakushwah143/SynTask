@@ -8,40 +8,7 @@ import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
 import { SynzinHelpPrompt } from '../components/ai/SynzinHelpPrompt'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
 import ReminderToastListener from '../components/ReminderToastListener'
-
-const BREADCRUMB_LABELS = {
-  dashboard: 'Main Dashboard',
-  tasks: 'Tasks',
-  tickets: 'Service Requests',
-  chat: 'Chat',
-  projects: 'Projects',
-  calendar: 'Workspace Calendar',
-  meetings: 'Meetings',
-  notifications: 'Notifications',
-  'crm': 'CRM',
-  hr: 'HR',
-  recruitment: 'Recruitment',
-  jobs: 'Jobs',
-  inbox: 'Inbox',
-  candidates: 'Candidates',
-  'resume-pool': 'Resume Pool',
-  interviews: 'Interviews',
-  reports: 'Workspace Reports',
-  settings: 'System Settings',
-  eod: 'EOD',
-}
-
-const CRM_BREADCRUMB_LABELS = {
-  pipeline: 'CRM Pipeline',
-  dashboard: 'CRM Dashboard',
-  leads: 'Leads',
-  companies: 'CRM Companies',
-  contacts: 'CRM Contacts',
-  // activities: 'CRM Activities',
-  calendar: 'CRM Calendar',
-  reports: 'CRM Reports',
-  settings: 'CRM Configuration',
-}
+import { buildBreadcrumbTrail } from '../utils/breadcrumbs'
 
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -57,30 +24,9 @@ const MainLayout = () => {
   const closeCommand = useCallback(() => setCommandOpen(false), [])
   // const openSearch = () => setSearchOpen(true)
   const pathSegments = location.pathname.split('/').filter(Boolean)
-  const isCrmPath = pathSegments[0] === 'crm'
-  const isHrPath = pathSegments[0] === 'hr'
-  const breadcrumbSegments = pathSegments.map((segment, index) => {
-      if (isCrmPath && index > 0) return CRM_BREADCRUMB_LABELS[segment] || BREADCRUMB_LABELS[segment] || segment
-      if (isHrPath && segment === 'reports') return 'Recruitment Reports'
-      return BREADCRUMB_LABELS[segment] || segment
-    })
-  // For CRM detail/workspace pages with an ID segment, show a readable title instead of the raw ID
-  const isLeadWorkspace = pathSegments.length === 3 && pathSegments[0] === 'crm' && pathSegments[1] === 'leads'
-  const isCompanyWorkspace = pathSegments.length === 3 && pathSegments[0] === 'crm' && pathSegments[1] === 'companies'
-  // For task detail routes, show 'Task Detail' instead of the raw MongoDB ID
-  const isTaskDetail = pathSegments.length === 4 && pathSegments[0] === 'projects' && pathSegments[2] === 'tasks'
-  const isDirectTaskDetail = pathSegments.length === 2 && pathSegments[0] === 'tasks'
-  const displaySegments = isLeadWorkspace
-    ? [breadcrumbSegments[0], breadcrumbSegments[1], 'Lead']
-    : isCompanyWorkspace
-      ? [breadcrumbSegments[0], breadcrumbSegments[1], 'Company']
-      : isTaskDetail
-        ? ['Projects', breadcrumbSegments[1], 'Tasks', 'Task Detail']
-        : isDirectTaskDetail
-          ? ['Tasks', 'Task Detail']
-          : breadcrumbSegments
-  const breadcrumb = displaySegments.join(' / ')
-  const pageTitle = displaySegments[displaySegments.length - 1] || 'Main Dashboard'
+  const trail = buildBreadcrumbTrail(location.pathname, location.search)
+  const breadcrumb = trail.join(' / ')
+  const pageTitle = trail[trail.length - 1] || 'Home'
   const pageSubtitle = pathSegments.length ? 'Workspace' : 'Overview'
 
   useKeyboardShortcut('k', openCommand, { ctrlKey: true })
