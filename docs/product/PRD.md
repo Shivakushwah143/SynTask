@@ -180,7 +180,7 @@ Out of scope: autonomous email sending from AI generation alone, cross-tenant or
 - Task details show the project Lead as read-only context and expose Employee assignment for permitted task reassignment.
 - Task details show a color-coded status indicator and status selector so task state is scannable without relying on text alone.
 - Workspace calendars show tasks only for the assigned employee in `my_calendar`, scheduled by task due date with creation date fallback. Task calendar entries resolve project names from logical project keys such as `PROJ-101` or MongoDB `_id` without exposing raw database IDs as the primary project reference.
-- Admin/Manager users can schedule project creation; Admin/Manager/Lead users can schedule task creation. Scheduled jobs are company-scoped, execute every minute, move through pending/running/completed/failed/cancelled states, and notify the scheduling user after completion, cancellation, or terminal failure.
+- Admin/Sub Admin/Manager users can schedule project creation; Admin/Sub Admin/Manager/Lead users can schedule task creation. Scheduled jobs are company-scoped, execute every minute, move through pending/running/completed/failed/cancelled states, and notify the scheduling user after completion, cancellation, or terminal failure.
 - Workflow transitions are validated and recorded in history.
 - Assignment candidates are restricted by company, hierarchy, project membership and policy.
 - Comments, files, watchers, links, components, versions and time records remain tenant/resource bound.

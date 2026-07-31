@@ -163,7 +163,7 @@ async def close_monitoring_sessions(attendance: Attendance, now_utc: datetime) -
 async def user_can_monitor(monitor: User, employee: User) -> bool:
     if monitor.role == UserRole.SUPER_ADMIN:
         return employee.role != UserRole.SUPER_ADMIN
-    if monitor.role == UserRole.ADMIN:
+    if monitor.role in [UserRole.ADMIN, UserRole.SUB_ADMIN]:
         return employee.company_id == monitor.company_id and employee.role != UserRole.ADMIN
     if employee.company_id != monitor.company_id:
         return False
@@ -184,7 +184,7 @@ async def get_monitorable_users(current_user: User) -> List[User]:
     company_id = current_user.company_id
     if current_user.role == UserRole.SUPER_ADMIN:
         return await User.find(User.role != UserRole.SUPER_ADMIN).to_list()
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN]:
         return await User.find(User.company_id == company_id, User.role != UserRole.ADMIN).to_list()
     if current_user.role not in [UserRole.MANAGER, UserRole.LEAD]:
         return []
@@ -860,7 +860,7 @@ async def get_live_monitoring(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="User does not belong to any company")
 
     users = await get_monitorable_users(current_user)
-    if not users and current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.LEAD]:
+    if not users and current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD]:
         raise HTTPException(status_code=403, detail="Only Managers/Admins can access live monitoring dashboard")
 
     today_str = utc_now().strftime("%Y-%m-%d")
