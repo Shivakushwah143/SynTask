@@ -92,6 +92,85 @@ async def record(company_id: str, event: str, actor_id: str | None, *, candidate
 
 class RecruitmentService:
     @staticmethod
+    async def create_candidate_manual(company_id: str, actor_id: str, data: dict) -> Candidate:
+        """Create a candidate record manually (e.g. from the Candidate Interview Screen).
+
+        ``data`` uses the frontend FormData field names: name, email, phone, source,
+        referralBy, currentCompany, experience, skills.
+        """
+        email = str(data.get("email") or "").strip().lower()
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+        existing = await CandidateRepository.find_by_email_or_phone(company_id, email, data.get("phone"))
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Candidate with this email or phone already exists")
+        skills = []
+        raw_skills = data.get("skills")
+        if raw_skills:
+            skills = [s.strip() for s in str(raw_skills).split(",") if s.strip()]
+        try:
+            experience = float(data.get("experience") or 0)
+        except (TypeError, ValueError):
+            experience = 0.0
+        candidate = Candidate(
+            company_id=company_id,
+            source=str(data.get("source") or "Manual Entry"),
+            full_name=str(data.get("name") or "").strip(),
+            email=email,
+            phone=data.get("phone") or None,
+            current_company=data.get("currentCompany") or None,
+            experience_years=experience,
+            skills=skills,
+            status=CandidateStatus.NEW,
+        )
+        await candidate.insert()
+        await record(company_id, "RecruitmentCandidateCreated", actor_id, candidate_id=str(candidate.id), payload={"source": candidate.source})
+        return candidate
+
+    @staticmethod
+    async def assign_job_to_candidate(company_id: str, actor_id: str, candidate_id: str, job_id: str, source: str = "manual") -> dict:
+        """Quickly link an existing candidate to a job by creating an Application.
+
+        Used by the Candidate Interview Screen's "Assign Job" action so a recruiter
+        can attach a candidate to a role in a few clicks.
+        """
+        candidate = await CandidateWorkspaceService.get_candidate(company_id, candidate_id)
+        job = await JobService.get_job(job_id, company_id)
+
+        existing = await ApplicationRepository.find_existing(company_id, candidate_id, job_id)
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Candidate is already assigned to this job")
+
+        tracking_code = await TrackingCodeService.generate_tracking_code(company_id)
+        application = Application(
+            company_id=company_id,
+            candidate_id=candidate_id,
+            job_id=job_id,
+            source=source or "manual",
+            status=CandidateStatus.NEW,
+            tracking_code=tracking_code,
+        )
+        await application.insert()
+        await JobRepository.update_counters(job_id, "total_applications", 1)
+        await record(
+            company_id,
+            "JobAssignedToCandidate",
+            actor_id,
+            candidate_id=candidate_id,
+            job_id=job_id,
+            payload={"application_id": str(application.id), "tracking_code": tracking_code, "source": source or "manual"},
+        )
+        return {
+            "application_id": str(application.id),
+            "tracking_code": tracking_code,
+            "candidate_id": candidate_id,
+            "candidate_name": candidate.full_name,
+            "job_id": job_id,
+            "job_title": job.title,
+            "message": f"{candidate.full_name} assigned to {job.title}",
+        }
+
+    @staticmethod
     async def create_job(company_id: str, actor_id: str, data: JobCreate) -> RecruitmentJob:
         department = await Department.get(data.department_id)
         if not department or department.company_id != company_id or department.deleted_at is not None:

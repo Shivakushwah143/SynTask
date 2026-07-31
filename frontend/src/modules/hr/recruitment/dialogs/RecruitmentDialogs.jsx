@@ -1,8 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, FormField, Modal, inputClassName } from "../../../../components/ui";
+import { usersAPI } from "../../../../api/users";
 import { INTERVIEW_DECISIONS } from "../constants";
 import { JobForm } from "../forms/JobForm";
 import { InterviewForm } from "../forms/InterviewForm";
+
+const userLabel = (user) =>
+  user?.full_name ||
+  user?.fullName ||
+  user?.name ||
+  [user?.first_name || user?.firstName, user?.last_name || user?.lastName].filter(Boolean).join(" ") ||
+  user?.email ||
+  `User ${user?.id || user?._id || ""}`;
 
 export function JobDialog({ open, job, onClose, onSubmit, loading, departments }) {
   return (
@@ -35,16 +44,55 @@ export function ConfirmActionDialog({ open, title, description, confirmLabel = "
 
 export function AssignRecruiterDialog({ open, onClose, onSubmit, loading }) {
   const [recruiterId, setRecruiterId] = useState("");
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setUsersLoading(true);
+    setRecruiterId("");
+    usersAPI
+      .getAssignableUsers()
+      .then((data) => {
+        if (!cancelled) setUsers(Array.isArray(data?.users) ? data.users : []);
+      })
+      .catch(() => {
+        if (!cancelled) setUsers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setUsersLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  const idOf = (user) => user?.id || user?._id;
+
   return (
     <Modal isOpen={open} onClose={onClose} title="Assign recruiter" footer={
       <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button type="button" loading={loading} onClick={() => onSubmit({ recruiter_id: recruiterId })}>Assign</Button>
+        <Button type="button" loading={loading} disabled={!recruiterId} onClick={() => onSubmit({ recruiter_id: recruiterId })}>Assign</Button>
       </div>
     }>
-      <FormField label="Recruiter ID" required>
-        <input className={inputClassName} value={recruiterId} onChange={(e) => setRecruiterId(e.target.value)} />
+      <FormField label="Recruiter" required>
+        <select
+          className={inputClassName}
+          value={recruiterId}
+          onChange={(e) => setRecruiterId(e.target.value)}
+        >
+          <option value="">{usersLoading ? "Loading users..." : "Select a recruiter"}</option>
+          {users.map((user) => (
+            <option key={idOf(user)} value={idOf(user)}>
+              {userLabel(user)}
+              {user?.role ? ` (${user.role})` : ""}
+            </option>
+          ))}
+        </select>
       </FormField>
+      {users.length === 0 && !usersLoading && (
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">No assignable users found for your company.</p>
+      )}
     </Modal>
   );
 }

@@ -486,6 +486,22 @@ class CandidateAssignRequest(BaseModel):
     recruiter_id: str
 
 
+class CandidateAssignJobRequest(BaseModel):
+    """Quick-assign a job to a candidate (creates an application link)."""
+    job_id: str
+    source: str = "manual"
+
+
+class CandidateAssignJobResponse(BaseModel):
+    application_id: str
+    tracking_code: str
+    candidate_id: str
+    candidate_name: str
+    job_id: str
+    job_title: str
+    message: str
+
+
 class CandidateNoteCreate(BaseModel):
     body: str = Field(min_length=1, max_length=5000)
     application_id: Optional[str] = None

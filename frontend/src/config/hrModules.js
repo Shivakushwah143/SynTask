@@ -66,6 +66,11 @@ export const HR_MODULES = [
         href: "/hr/recruitment/reports",
         icon: FileBarChart2,
       },
+      {
+        name: "Candidate Interview Screen",
+        href: "/hr/recruitment/interview-screen",
+        icon: UserRoundSearch,
+      },
     ],
   },
 ];

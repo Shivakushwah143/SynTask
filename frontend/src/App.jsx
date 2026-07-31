@@ -94,6 +94,7 @@ const CRMMetaIntegrationPage = lazy(() => import('./pages/crm/settings/meta'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
 const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
+const CandidateInterviewScreen = lazy(() => import('./pages/hr/recruitment/CandidateInterviewScreen'))
 const RecruitmentJobsPage = lazy(() => import('./modules/hr/recruitment/pages/JobsPage'))
 const RecruitmentInboxPage = lazy(() => import('./modules/hr/recruitment/pages/InboxPage'))
 const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pages/CandidatesPage'))
@@ -313,6 +314,7 @@ function App() {
               <Route path="resume-pool" element={withBoundary(<RecruitmentResumePoolPage />)} />
               <Route path="interviews" element={withBoundary(<RecruitmentInterviewsPage />)} />
               <Route path="reports" element={withBoundary(<RecruitmentReportsPage />)} />
+              <Route path="interview-screen" element={withBoundary(<CandidateInterviewScreen />)} />
             </Route>
           </Route>
           <Route path="crm" element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
