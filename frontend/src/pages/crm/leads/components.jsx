@@ -8,7 +8,7 @@ import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
-import { Badge, Button, EmptyState, inputClassName } from '../../../components/ui'
+import { Badge, Button, EmptyState, LoadingSpinner, inputClassName } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getCanonicalPipelineStageKey, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
 import { LeadFilesTab } from './files'
 
@@ -120,6 +120,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   onRefresh,
   onSendEmail,
   onSaveLead,
+  isSaving = false,
   users = [],
   body,
   sidebar,
@@ -151,7 +152,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
         )}
       />
 
-      <LeadHeader lead={lead} breadcrumbs={breadcrumbs} onSave={onSaveLead} users={users} />
+      <LeadHeader lead={lead} breadcrumbs={breadcrumbs} onSave={onSaveLead} isSaving={isSaving} users={users} />
 
       <section className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -184,7 +185,7 @@ export const LeadWorkspaceLayout = memo(function LeadWorkspaceLayout({ body, sid
   )
 })
 
-export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onSave, users = [] }) {
+export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onSave, isSaving = false, users = [] }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({})
 
@@ -237,7 +238,8 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return
     const payload = {}
     if (form.company_name !== (lead?.company_name || '')) payload.company_name = form.company_name
     if (form.prospect_name !== (lead?.prospect_name || '')) payload.prospect_name = form.prospect_name
@@ -251,8 +253,12 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
       return
     }
 
-    onSave?.(payload)
-    setEditing(false)
+    try {
+      await onSave?.(payload)
+      setEditing(false)
+    } catch {
+      // Keep the form open with the entered values so the user can retry.
+    }
   }
 
   const handleCancel = () => {
@@ -278,7 +284,8 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
               <button
                 type="button"
                 onClick={handleCancel}
-                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-semibold text-gray-500 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-700"
+                disabled={isSaving}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-[11px] font-semibold text-gray-500 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <X className="h-3 w-3" />
                 Cancel
@@ -286,17 +293,20 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
               <button
                 type="button"
                 onClick={handleSave}
-                className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+                disabled={isSaving}
+                aria-busy={isSaving || undefined}
+                className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Save className="h-3 w-3" />
-                Save
+                {isSaving ? <LoadingSpinner size="sm" label="" /> : <Save className="h-3 w-3" />}
+                {isSaving ? 'Saving...' : 'Save'}
               </button>
             </>
           ) : (
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-gray-500 shadow-sm transition-all hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700"
+              disabled={isSaving}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-gray-500 shadow-sm transition-all hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
               title="Edit header fields"
             >
               <Pencil className="h-3 w-3" />

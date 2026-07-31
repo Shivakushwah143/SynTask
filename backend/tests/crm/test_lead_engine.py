@@ -149,6 +149,173 @@ async def test_create_lead_uses_manual_assignment_when_target_is_provided(monkey
     assert result["lead"]["assigned_to"] == "user-2"
 
 
+class FakeImportFile:
+    """Minimal UploadFile-like object for import_leads tests."""
+    filename = "leads.csv"
+
+    async def read(self):
+        return b"phone\n9999999999\n"
+
+
+def _build_import_file():
+    return FakeImportFile()
+
+
+@pytest.mark.asyncio
+async def test_import_leads_rejects_all_duplicates_by_default(monkeypatch):
+    """With allow_duplicates=False (default), a file whose phones already exist
+    in the company raises 'No valid leads found after validation'."""
+    def fake_parse(file_name, content):
+        return ["phone"], [{"phone": "9999999999"}]
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1")]
+
+    class FakeQuery:
+        async def to_list(self):
+            return [SimpleNamespace(country_code="+91", phone="9999999999")]
+
+    class FakeSalesProspect:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        @staticmethod
+        def find(query):
+            return FakeQuery()
+
+        @staticmethod
+        async def insert_many(prospects):
+            return None
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine._parse_tabular_upload", fake_parse)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeSalesProspect)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+
+    current_user = SimpleNamespace(id="admin-1", company_id="company-1", role=UserRole.ADMIN)
+    with pytest.raises(HTTPException) as exc_info:
+        await LeadEngine.import_leads(
+            current_user,
+            _build_import_file(),
+            strategy="round-robin",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "No valid leads found after validation"
+
+
+@pytest.mark.asyncio
+async def test_import_leads_allows_duplicates_when_enabled(monkeypatch):
+    """With allow_duplicates=True, rows whose phone already exists in the company
+    OR repeats within the file are imported instead of skipped."""
+    def fake_parse(file_name, content):
+        # Second row repeats the same phone as the first -> in-file duplicate
+        return ["phone"], [{"phone": "9999999999"}, {"phone": "9999999999"}]
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1")]
+
+    class FakeQuery:
+        async def to_list(self):
+            return [SimpleNamespace(country_code="+91", phone="9999999999")]
+
+    class FakeSalesProspect:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        @staticmethod
+        def find(query):
+            return FakeQuery()
+
+        @staticmethod
+        async def insert_many(prospects):
+            FakeSalesProspect.inserted = prospects
+            return None
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine._parse_tabular_upload", fake_parse)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeSalesProspect)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+
+    current_user = SimpleNamespace(id="admin-1", company_id="company-1", role=UserRole.ADMIN)
+    result = await LeadEngine.import_leads(
+        current_user,
+        _build_import_file(),
+        strategy="round-robin",
+        allow_duplicates=True,
+    )
+
+    assert result["total_uploaded"] == 2
+    assert result["skipped_rows"] == 0
+    assert len(FakeSalesProspect.inserted) == 2
+
+
+@pytest.mark.asyncio
+async def test_import_leads_skips_duplicate_email_rows(monkeypatch):
+    """Regression for the 500 on bulk-upload: rows whose email already exists in the
+    company (unique index company_id_1_email_1) must be skipped as warnings instead of
+    raising DuplicateKeyError -> 500 Internal Server Error."""
+    def fake_parse(file_name, content):
+        return ["phone", "email"], [
+            {"phone": "9999999999", "email": "exists@example.com"},
+            {"phone": "8888888888", "email": "fresh@example.com"},
+        ]
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1")]
+
+    class FakeQuery:
+        def __init__(self, leads):
+            self.leads = leads
+
+        async def to_list(self):
+            return self.leads
+
+    class FakeSalesProspect:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        @staticmethod
+        def find(query):
+            # Phone pre-check query has $or; email pre-check query has email/$in.
+            # Only the email collides here - no existing phones in the company.
+            if "email" in query:
+                return FakeQuery([SimpleNamespace(country_code="+91", phone="7777777777", email="exists@example.com")])
+            return FakeQuery([])
+
+        @staticmethod
+        async def insert_many(prospects):
+            FakeSalesProspect.inserted = prospects
+            return None
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine._parse_tabular_upload", fake_parse)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeSalesProspect)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+
+    current_user = SimpleNamespace(id="admin-1", company_id="company-1", role=UserRole.ADMIN)
+    result = await LeadEngine.import_leads(
+        current_user,
+        _build_import_file(),
+        strategy="round-robin",
+    )
+
+    # The row with the existing email is skipped (no 500); the fresh row is imported.
+    assert result["total_uploaded"] == 1
+    assert result["skipped_rows"] == 1
+    assert len(FakeSalesProspect.inserted) == 1
+    assert any("email already exists" in str(w.get("reason", "")) for w in result["warnings"])
+
+
 @pytest.mark.asyncio
 async def test_update_lead_keeps_owner_when_unchanged_even_if_actor_in_other_department(monkeypatch):
     """Updating a lead must not fail when the existing owner belongs to a

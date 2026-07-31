@@ -138,10 +138,12 @@ export default function CRMLeadWorkspacePage() {
   const leadUpdateMutation = useMutation(
     (payload) => salesApi.updateLeadForm(leadId, payload),
     {
-      onSuccess: async () => {
+      onSuccess: () => {
         toast.success('Lead updated')
         setPendingLeadUpdate(null)
-        await leadQuery.refetch()
+        // Guard the refetch so a network blip isn't misread as a failed save
+        // (mutateAsync would otherwise reject and keep the edit form open).
+        leadQuery.refetch().catch(() => {})
         queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'timeline'], { exact: true })
         queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'history'], { exact: true })
       },
@@ -202,7 +204,9 @@ export default function CRMLeadWorkspacePage() {
   }, [])
 
   const handleHeaderSave = useCallback((payload) => {
-    leadUpdateMutation.mutate(payload)
+    // Return the mutation promise so the LeadHeader can keep its edit state open
+    // (with disabled buttons + spinner) until the request actually completes.
+    return leadUpdateMutation.mutateAsync(payload)
   }, [leadUpdateMutation])
 
   const handleConfirmLeadUpdate = useCallback(() => {
@@ -328,6 +332,7 @@ export default function CRMLeadWorkspacePage() {
         onRefresh={handleRefresh}
         onSendEmail={openComposer}
         onSaveLead={handleHeaderSave}
+        isSaving={leadUpdateMutation.isLoading}
         users={users}
         body={body}
         sidebar={<LeadSidebar lead={lead} onSendEmail={openComposer} />}

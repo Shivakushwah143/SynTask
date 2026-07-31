@@ -89,6 +89,7 @@ export default function BulkLeads() {
   const [strategy, setStrategy] = useState('round-robin')
   const [departmentId, setDepartmentId] = useState('')
   const [targetUserId, setTargetUserId] = useState('')
+  const [allowDuplicates, setAllowDuplicates] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [resultOpen, setResultOpen] = useState(false)
   const [importResult, setImportResult] = useState(null)
@@ -183,6 +184,7 @@ export default function BulkLeads() {
       formData.append('strategy', departmentId ? 'evenly' : strategy)
       if (departmentId) formData.append('target_department_id', departmentId)
       if (strategy === 'manual') formData.append('target_user_id', targetUserId)
+      if (allowDuplicates) formData.append('allow_duplicates', 'true')
 
       const result = await salesApi.bulkUploadLeads(formData)
       const uploaded = result?.total_uploaded ?? result?.data?.total_uploaded ?? 0
@@ -195,6 +197,7 @@ export default function BulkLeads() {
       setPreviewRows([])
       setDepartmentId('')
       setTargetUserId('')
+      setAllowDuplicates(false)
       setImportResult({
         total_rows: payload.total_rows ?? 0,
         total_uploaded: payload.total_uploaded ?? 0,
@@ -411,6 +414,17 @@ export default function BulkLeads() {
                         <div className="flex h-10 items-center rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400">
                           {departmentId ? 'Department routing' : strategy === 'manual' ? 'Manual assignment' : 'Auto assignment'}
                         </div>
+                      </FormField>
+                      <FormField label="Duplicate records">
+                        <label className="flex h-10 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-300">
+                          <input
+                            type="checkbox"
+                            checked={allowDuplicates}
+                            onChange={(event) => setAllowDuplicates(event.target.checked)}
+                            className="h-4 w-4"
+                          />
+                          Allow duplicates
+                        </label>
                       </FormField>
                     </div>
                   </div>

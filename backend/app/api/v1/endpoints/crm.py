@@ -57,6 +57,7 @@ async def crm_leads(
             {
                 "id": str(p.id),
                 "prospect_name": p.prospect_name,
+                "company_name": p.company_name,
                 "phone": p.phone,
                 "country_code": p.country_code,
                 "email": p.email,
@@ -69,9 +70,13 @@ async def crm_leads(
                 "status": p.status.value,
                 "interest_level": p.interest_level.value,
                 "estimated_close_date": p.estimated_close_date.isoformat() if p.estimated_close_date else None,
+                "due_date": p.due_date.isoformat() if p.due_date else None,
+                "won_amount": p.won_amount,
+                "reason_for_lost": p.reason_for_lost,
                 "tag": p.tag or [],
                 "remark": p.remark,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
+                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
                 "custom_fields": getattr(p, "custom_fields", {}) or {},
                 "owner_name": p.owner_name,
             }

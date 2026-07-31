@@ -251,7 +251,7 @@ export default function CRMLeadsPage() {
   }, [createOpen, defaultCategoryId, defaultOwnerId, defaultProductIds, defaultStageId])
 
   // All mutations remain the same
-  const mergeMutation = useMutation((payload) => crmApi.mergeProspects(payload), {
+  const mergeMutation = useMutation((payload) => salesApi.mergeProspects(payload), {
     onSuccess: () => {
       toast.success('Leads merged')
       queryClient.invalidateQueries('crm-leads-entry')

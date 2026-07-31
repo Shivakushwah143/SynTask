@@ -67,6 +67,7 @@ export const salesApi = {
     if (payload?.strategy) formData.append('strategy', payload.strategy)
     if (payload?.target_user_id) formData.append('target_user_id', payload.target_user_id)
     if (payload?.target_department_id) formData.append('target_department_id', payload.target_department_id)
+    if (payload?.allow_duplicates) formData.append('allow_duplicates', 'true')
     return api.post('/sales/prospects/bulk-upload', formData)
   },
   previewBulkUploadProspects: (payload) => {
@@ -75,6 +76,7 @@ export const salesApi = {
     if (payload?.strategy) formData.append('strategy', payload.strategy)
     if (payload?.target_user_id) formData.append('target_user_id', payload.target_user_id)
     if (payload?.target_department_id) formData.append('target_department_id', payload.target_department_id)
+    if (payload?.allow_duplicates) formData.append('allow_duplicates', 'true')
     return api.post('/sales/prospects/bulk-upload/preview', formData)
   },
   getImportHistory: () => api.get('/sales/prospects/imports'),

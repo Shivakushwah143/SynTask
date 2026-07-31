@@ -486,7 +486,7 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 |---|---|---|---|
 | GET | `/api/v1/sales/prospects/` | `list_prospects` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/sales/prospects/` | `create_prospect` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/sales/prospects/bulk-upload` | `bulk_upload_prospects` | Accepts any file type (CSV, XLSX, or text). Unknown columns stored as `custom_fields`. Missing fields filled as null. |
+| POST | `/api/v1/sales/prospects/bulk-upload` | `bulk_upload_prospects` | Accepts any file type (CSV, XLSX, or text). Unknown columns stored as `custom_fields`. Missing fields filled as null. Form fields: `file`, `strategy` (`round-robin`\|`evenly`\|`least-loaded`\|`manual`), optional `target_user_id`, `target_department_id`, and `allow_duplicates` (`true` imports rows even when the same phone already exists in the company or repeats within the file; default `false` skips them). |
 | POST | `/api/v1/sales/prospects/bulk-upload/preview` | `preview_bulk_upload_prospects` | Returns preview rows, failed rows, detected columns, and field mapping recommendations. |
 | GET | `/api/v1/sales/prospects/search/contact` | `search_contact_for_prospect` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/sales/prospects/{prospect_id}` | `get_prospect` | Uses router/endpoint dependencies where configured. |
