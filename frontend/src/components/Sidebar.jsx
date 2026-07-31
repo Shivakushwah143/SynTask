@@ -3,60 +3,46 @@ import { useDefaultAvatar } from "../utils/avatar";
 import { getAvatarUrl } from "../utils/avatarUrl";
 import { Link, useLocation } from "react-router-dom";
 import {
-  AlarmClockCheck,
-  BellRing,
-  Bot,
-  Briefcase,
-  CalendarCheck2,
-  CalendarDays,
-  CalendarClock,
-  CalendarRange,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ClipboardList,
-  ClipboardCheck,
-  CheckSquare,
-  Contact,
-  CreditCard,
-  DollarSign,
-  Factory,
-  FileBarChart2,
-  FolderKanban,
-  Gauge,
-  GitBranch,
-  Headphones,
-  HeartHandshake,
-  Landmark,
-  LayoutDashboard,
-  LineChart,
-  Megaphone,
-  MessageSquareText,
-  MonitorCheck,
   Network,
-  Palette,
-  Receipt,
-  Settings,
-  ShieldCheck,
   Star,
-  TimerReset,
-  TrendingUp,
-  UserCheck,
-  UserCog,
-  UserRoundSearch,
-  Globe,
   X,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { DEPARTMENTS_CHANGED_EVENT, departmentsAPI } from "../api/departments";
 import { ROLE, getRoleLabel, hasCompanyAdminAccess, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
-import { HR_MODULES, HR_ROLES } from "../config/hrModules";
+import { HR_MODULES } from "../config/hrModules";
+import { useInboxUnreadCounts } from "../hooks/useInboxUnreadCounts";
+import {
+  crmNavigation,
+  HR_ITEM_RENAMES,
+  HR_ITEM_SKIP,
+  ITEM_COLORS,
+  metaNavigation,
+  NAV_GROUPS_OPEN_KEY,
+  navigation,
+  SECTION_COLORS,
+  SECTION_DOT_COLORS,
+  SECTION_ICONS,
+  SECTIONS,
+  STANDARD_ROLES,
+} from "../config/navigation";
 
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
 const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
-const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open";
 const WIDTH_KEY = "syntask-sidebar-width";
 const WIDTH_OPTIONS = [240, 280, 320];
+
+// Phase 6: Inbox item name → unread-count key from useInboxUnreadCounts().
+const INBOX_COUNT_KEYS = {
+  WhatsApp: "whatsapp",
+  Instagram: "instagram",
+  Messenger: "messenger",
+  "Meta Messages": "metaTotal",
+  Notifications: "notifications",
+};
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
@@ -122,6 +108,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     }
   });
   const [orgDepartments, setOrgDepartments] = useState([]);
+
+  // ── Phase 6: Inbox unread badges (spec §10.3) ──────────────────────────────
+  const inboxCounts = useInboxUnreadCounts();
 
   useEffect(() => {
     try {
@@ -198,268 +187,21 @@ const Sidebar = ({ isOpen, onClose }) => {
     }
   }, [canSeeDepartments, userRole])
 
-  const navigation = [
-    // ── Always visible (no module gate) ──────────────────────────────────────
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: LayoutDashboard,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    },
-    {
-      name: "Settings",
-      href: "/settings",
-      icon: Settings,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    },
-    {
-      name: "Notifications",
-      href: "/notifications",
-      icon: BellRing,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    },
-    {
-      name: "Google Workspace",
-      href: "/google-workspace",
-      icon: Globe,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    },
-
-    // ── Tasks & Projects module ───────────────────────────────────────────────
-    {
-      name: "Projects",
-      href: "/projects",
-      icon: FolderKanban,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "tasks_projects",
-    },
-    {
-      name: "Tasks",
-      href: "/tasks",
-      icon: CheckSquare,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "tasks_projects",
-    },
-    {
-      name: "Workspace Calendar",
-      href: "/calendar",
-      icon: CalendarDays,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "tasks_projects",
-    },
-    {
-      name: "Timesheet",
-      href: "/timesheet",
-      icon: TimerReset,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "tasks_projects",
-    },
-    {
-      name: "Timeline",
-      href: "/timeline",
-      icon: CalendarClock,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "tasks_projects",
-    },
-    {
-      name: "Daily EOD",
-      href: "/eod",
-      icon: ClipboardCheck,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    },
-    {
-      name: "Scheduled Jobs",
-      href: "/scheduled-jobs",
-      icon: CalendarClock,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.MANAGER],
-      module: "tasks_projects",
-    },
-
-    // ── Tickets module ─────────────────────────────────────────────────────────
-    {
-      name: "Service Requests",
-      href: "/tickets",
-      icon: ClipboardList,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "tickets",
-    },
-
-    // ── Attendance & Leaves module ─────────────────────────────────────────────
-    {
-      name: "Attendance",
-      href: "/attendance",
-      icon: UserCheck,
-      roles: [ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    },
-    {
-      name: "Live Attendance",
-      href: "/live-monitor",
-      icon: MonitorCheck,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.MANAGER],
-    },
-    {
-      name: "Attendance Reports",
-      href: "/attendance-reports",
-      icon: FileBarChart2,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    },
-    {
-      name: "Leaves",
-      href: "/leaves",
-      icon: CalendarCheck2,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    },
-
-    // ── Sales & CRM module ─────────────────────────────────────────────────────
-    {
-      name: "CRM",
-      href: "/crm/pipeline",
-      match: "/crm",
-      icon: TrendingUp,
-      roles: [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "sales_crm",
-    },
-    {
-      name: "Bulk Lead Import",
-      href: "/bulk-leads",
-      icon: Megaphone,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.SUPER_ADMIN],
-      module: "sales_crm",
-    },
-
-    // ── Reports module ─────────────────────────────────────────────────────────
-    {
-      name: "Workspace Reports",
-      href: "/reports",
-      icon: LineChart,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "reports",
-    },
-
-    // ── Invoicing & Ledger module ──────────────────────────────────────────────
-    {
-      name: "Clients",
-      href: "/clients",
-      icon: Briefcase,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN],
-      module: "invoicing_ledger",
-    },
-    {
-      name: "Invoices",
-      href: "/invoices",
-      icon: Receipt,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN],
-      module: "invoicing_ledger",
-    },
-    {
-      name: "Ledger",
-      href: "/ledger",
-      icon: DollarSign,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN],
-      module: "invoicing_ledger",
-    },
-
-    // ── AI & Agents module ─────────────────────────────────────────────────────
-    {
-      name: "AI Command Center",
-      href: "/ai-hub",
-      icon: Bot,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "ai_agents",
-    },
-    {
-      name: "Creative Studio",
-      href: "/creative-director",
-      icon: Palette,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      module: "ai_agents",
-    },
-    {
-      name: "Marketing Assistant",
-      href: "/marketing-support",
-      icon: Headphones,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
-      module: "ai_agents",
-    },
-    {
-      name: "Content Calendar",
-      href: "/content-calendar",
-      icon: CalendarCheck2,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER, ROLE.SUPER_ADMIN],
-      module: "ai_agents",
-    },
-
-    // ── Admin-only (no module gate needed) ────────────────────────────────────
-    {
-      name: "HR",
-      href: "/hr",
-      match: "/hr",
-      icon: UserCog,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-      department: "hr",
-    },
-    {
-      name: "Users",
-      href: "/users",
-      icon: UserCog,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN],
-    },
-    {
-      name: "Workflows",
-      href: "/workflows",
-      icon: GitBranch,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN],
-    },
-    {
-      name: "Departments",
-      href: "/departments",
-      icon: Network,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN],
-    },
-    {
-      name: "Admin Permissions",
-      href: "/admin-permissions",
-      icon: ShieldCheck,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN],
-    },
-    {
-      name: "My Team",
-      href: "/my-team",
-      icon: HeartHandshake,
-      roles: [ROLE.LEAD],
-    },
-    {
-      name: "Company Directory",
-      href: "/companies",
-      icon: Landmark,
-      roles: [ROLE.SUPER_ADMIN],
-    },
-    {
-      name: "Subscriptions",
-      href: "/subscriptions",
-      icon: CreditCard,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN],
-    },
-    {
-      name: "Audit Log",
-      href: "/activity",
-      icon: AlarmClockCheck,
-      roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.LEAD],
-    },
-  ];
-
-  const filteredNavigation = navigation.filter((item) => {
-    const roleAllowed = item.roles.includes(userRole) || (userRole === ROLE.SUB_ADMIN && item.roles.includes(ROLE.ADMIN))
+  // ── Gate: every item passes the SAME role/module/capability/department rules as before ────────
+  const gateItem = (item) => {
+    const roleAllowed = !item.roles ||
+      item.roles.includes(userRole) ||
+      (userRole === ROLE.SUB_ADMIN && item.roles.includes(ROLE.ADMIN))
     if (!roleAllowed) return false
     if (!hasModule(item.module)) return false
     if (!hasCapability(item.capability)) return false
-    // Special case: HR — managers/admin always see, super admin never sees, others gated by department
-    if (item.name === "HR") {
-      return !isSuperAdminRole(userRole) &&
-        (isManagerRole(userRole) || userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN || hasDepartment(item.department))
-    }
     return hasDepartment(item.department)
-  });
+  };
+
+  const filteredNavigation = navigation.filter(gateItem);
+  const filteredCrmNavigation = crmNavigation.filter(gateItem);
+  const filteredMetaNavigation = metaNavigation.filter(gateItem);
+
   const departmentItems = useMemo(() => orgDepartments.map((department) => ({
     name: department.name,
     href: `/admin-permissions?department=${encodeURIComponent(department.id)}`,
@@ -470,315 +212,71 @@ const Sidebar = ({ isOpen, onClose }) => {
       current.includes(href) ? current.filter((item) => item !== href) : [...current, href]
     ))
   };
-  const favoriteItems = filteredNavigation.filter((item) => favorites.includes(item.href));
+  const favoriteItems = [...filteredNavigation, ...filteredCrmNavigation, ...filteredMetaNavigation].filter((item) => favorites.includes(item.href));
   const widthIndex = WIDTH_OPTIONS.indexOf(sidebarWidth);
   const prevWidth = WIDTH_OPTIONS[Math.max(0, widthIndex - 1)];
   const nextWidth = WIDTH_OPTIONS[Math.min(WIDTH_OPTIONS.length - 1, widthIndex + 1)];
 
-  const crmNavigation = [
-    {
-      name: "CRM Pipeline",
-      href: "/crm/pipeline",
-      icon: GitBranch,
-    },
-    {
-      name: "Leads",
-      href: "/crm/leads",
-      icon: UserRoundSearch,
-    },
-    {
-      name: "CRM Companies",
-      href: "/crm/companies",
-      icon: Factory,
-    },
-    {
-      name: "CRM Contacts",
-      href: "/crm/contacts",
-      icon: UserCheck,
-    },
-    {
-      name: "Meta Inbox",
-      href: "/crm/inbox",
-      icon: MessageSquareText,
-    },
-    // {
-    //   name: "CRM Activities",
-    //   href: "/crm/activities",
-    //   icon: CalendarClock,
-    // },
-    {
-      name: "CRM Calendar",
-      href: "/crm/calendar",
-      icon: CalendarRange,
-    },
-    {
-      name: "CRM Reports",
-      href: "/crm/reports",
-      icon: LineChart,
-    },
-    {
-      name: "CRM Configuration",
-      href: "/crm/settings",
-      icon: Settings,
-    },
-  ];
-
-  const metaOmnichannelNavigation = [
-    {
-      name: "Meta Command Center",
-      href: "/crm/settings?meta=command-center",
-      icon: Gauge,
-    },
-    {
-      name: "WhatsApp Inbox",
-      href: "/crm/settings?meta=whatsapp",
-      icon: Headphones,
-    },
-    {
-      name: "Instagram DMs",
-      href: "/crm/settings?meta=instagram",
-      icon: Megaphone,
-    },
-    {
-      name: "Messenger Inbox",
-      href: "/crm/settings?meta=messenger",
-      icon: BellRing,
-    },
-    {
-      name: "AI Reply Drafts",
-      href: "/crm/settings?meta=ai-drafts",
-      icon: Bot,
-    },
-    {
-      name: "Human Approval Queue",
-      href: "/crm/settings?meta=approval-queue",
-      icon: ShieldCheck,
-      badge: "Soon",
-    },
-    {
-      name: "Identity Linking",
-      href: "/crm/settings?meta=identity",
-      icon: Network,
-    },
-    {
-      name: "Omnichannel Analytics",
-      href: "/crm/settings?meta=analytics",
-      icon: LineChart,
-      badge: "Soon",
-    },
-    {
-      name: "Partner Readiness",
-      href: "/crm/settings?meta=readiness",
-      icon: ClipboardCheck,
-      badge: "Soon",
-    },
-    {
-      name: "Customer Meta Connect",
-      href: "/crm/settings?meta=connect",
-      icon: Settings,
-      badge: "Soon",
-    },
-  ];
-
-  const filteredCrmNavigation = crmNavigation
-    .filter((item) => item && !['/crm/pipeline', '/crm/leads'].includes(item.href) && (item.roles ? item.roles.includes(userRole) : true) && hasCapability(item.capability) && hasDepartment(item.department));
+  // ── HR items: same role/module/department gate as the old HR group, renamed for People ────────
+  const canSeeHrItems = isManagerRole(userRole) || userDepartment === 'hr' || userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN;
 
   const hrNavigation = HR_MODULES
-    .filter((module) => module.roles.includes(userRole) && (hasModule(module.module) || module.key === "recruitment") && hasCapability(module.capability) && hasDepartment(module.department))
-    .flatMap((module) => module.navigation.map((item) => ({ ...item, match: item.href === module.basePath ? module.basePath : undefined })));
+    .filter((module) => canSeeHrItems && module.roles.includes(userRole) && (hasModule(module.module) || module.key === "recruitment") && hasCapability(module.capability) && hasDepartment(module.department))
+    .flatMap((module) => module.navigation
+      .filter((item) => !HR_ITEM_SKIP.has(item.name))
+      .map((item) => ({
+        ...item,
+        name: HR_ITEM_RENAMES[item.name] || item.name,
+        match: item.href === module.basePath ? module.basePath : undefined,
+      })));
 
-  const itemByName = filteredNavigation.reduce((acc, item) => {
+  const itemByName = [...filteredNavigation, ...filteredCrmNavigation, ...filteredMetaNavigation].reduce((acc, item) => {
     acc[item.name] = item;
     return acc;
   }, {});
 
-  const dashboardNavigation = filteredNavigation.filter((item) => item.name === "Dashboard");
-
-  const navigationGroups = [
-    {
-      key: "operations",
-      label: "Core Operations",
-      items: ["Service Requests", "Workspace Calendar", "Scheduled Jobs", "Timesheet"]
-        .map((name) => itemByName[name])
-        .filter(Boolean),
-    },
-    {
-      key: "delivery",
-      label: "Project Delivery",
-      items: ["Projects", "Tasks"]
-        .map((name) => itemByName[name])
-        .filter(Boolean),
-    },
-    {
-      key: "client-management",
-      label: "Client Management",
-      items: ["Clients"]
-        .map((name) => itemByName[name])
-        .filter(Boolean),
-    },
-    {
-      key: "people",
-      label: "People & Activity",
-      items: ["My Team", "Users", "Departments", "Attendance", "Live Attendance", "Attendance Reports"]
-        .map((name) => itemByName[name])
-        .filter(Boolean),
-    },
-    {
-      key: "communication",
-      label: "Communication",
-      items: ["Notifications", "Timeline", "Leaves", "Daily EOD", "Google Workspace"]
-        .map((name) => itemByName[name])
-        .filter(Boolean),
-    },
-    {
-      key: "crm",
-      label: "CRM Tools",
-      items: filteredCrmNavigation,
-    },
-    {
-      key: "meta-omnichannel",
-      label: "Meta Omnichannel",
-      items: metaOmnichannelNavigation,
-    },
-    {
-      key: "hr",
-      label: "HR Department",
-      items: hrNavigation,
-    },
-    {
-      key: "ai-marketing",
-      label: "AI & Marketing",
-      items: ["AI Command Center", "Creative Studio", "Marketing Assistant", "Marketing Calendar"]
-        .map((name) => itemByName[name])
-        .filter(Boolean),
-    },
-    {
-      key: "finance",
-      label: "Finance Tools",
-      items: ["Subscriptions"]
-        .map((name) => itemByName[name])
-        .filter(Boolean),
-    },
-    {
-      key: "administration",
-      label: "Administration",
-      items: ["Users", "Departments", "Admin Permissions", "Workflows", "Company Directory", "Bulk Lead Import", "Audit Log", "Settings", "Subscriptions", "Ledger", "Invoices"]
-        .map((name) => itemByName[name])
-        .filter(Boolean),
-    },
-    {
-      key: "your-departments",
-      label: "Your Departments",
-      items: departmentItems,
-    },
-  ]
-    .filter((group) => group.items.length);
-
-  // Enhanced color mapping for icons with more vibrant colors
-  const getIconColor = (itemName) => {
-    const colorMap = {
-      // Dashboard - Cyan/Blue
-      'Dashboard': 'text-cyan-400',
-
-      // Project Management - Indigo/Purple
-      'Projects': 'text-indigo-400',
-      'Tasks': 'text-violet-400',
-      'Service Requests': 'text-purple-400',
-      'Workspace Calendar': 'text-fuchsia-400',
-
-      // Time & Attendance - Orange/Yellow
-      'Timesheet': 'text-amber-400',
-      'Attendance': 'text-orange-400',
-      'Live Attendance': 'text-amber-400',
-      'Attendance Reports': 'text-yellow-400',
-
-      // Communications - Pink/Rose
-      'Notifications': 'text-rose-400',
-      'Timeline': 'text-pink-400',
-      'Leaves': 'text-emerald-400',
-      'Daily EOD': 'text-teal-400',
-
-      // Reports - Lime/Green
-      'Workspace Reports': 'text-lime-400',
-
-      // CRM - Blue/Cyan
-      'Leads': 'text-sky-400',
-      'CRM': 'text-cyan-400',
-      'CRM Pipeline': 'text-cyan-300',
-      'CRM Companies': 'text-blue-400',
-      'CRM Contacts': 'text-indigo-400',
-      'CRM Calendar': 'text-fuchsia-400',
-      'CRM Reports': 'text-lime-400',
-      'CRM Configuration': 'text-gray-400',
-      'Meta Command Center': 'text-blue-400',
-      'WhatsApp Inbox': 'text-emerald-400',
-      'Instagram DMs': 'text-pink-400',
-      'Messenger Inbox': 'text-sky-400',
-      'AI Reply Drafts': 'text-purple-400',
-      'Human Approval Queue': 'text-amber-400',
-      'Identity Linking': 'text-cyan-400',
-      'Omnichannel Analytics': 'text-lime-400',
-      'Partner Readiness': 'text-orange-400',
-      'Customer Meta Connect': 'text-indigo-400',
-
-      // AI & Marketing - Purple/Pink
-      'AI Command Center': 'text-purple-400',
-      'Creative Studio': 'text-pink-400',
-      'Marketing Assistant': 'text-rose-400',
-      'Content Calendar': 'text-indigo-300',
-
-      // HR - Emerald/Green
-      'HR': 'text-emerald-400',
-      'Recruitment Dashboard': 'text-green-400',
-      'Jobs': 'text-emerald-300',
-      'Inbox': 'text-blue-300',
-      'Candidates': 'text-purple-300',
-      'Resume Pool': 'text-amber-300',
-      'Interviews': 'text-pink-300',
-      'Recruitment Reports': 'text-lime-300',
-
-      // Finance - Gold/Green
-      'Bulk Lead Import': 'text-orange-400',
-      'Clients': 'text-blue-400',
-      'Invoices': 'text-emerald-400',
-      'Ledger': 'text-yellow-400',
-      'Subscriptions': 'text-teal-400',
-
-      // Administration - Red/Gray
-      'Users': 'text-gray-400',
-      'Workflows': 'text-purple-400',
-      'Departments': 'text-indigo-400',
-      'Admin Permissions': 'text-red-400',
-      'My Team': 'text-pink-400',
-      'Company Directory': 'text-blue-400',
-      'Audit Log': 'text-orange-400',
-      'Settings': 'text-gray-400',
-      'Google Workspace': 'text-blue-400',
-
-      // Default
-      'default': 'text-gray-400'
-    };
-    return colorMap[itemName] || colorMap['default'];
+  // ── Phase 4: section-level role gate (spec §9) on top of item-level gating. ──
+  // Standard roles are restricted by each section's `roles` list. Non-standard roles (hr_manager,
+  // recruiter, ...) are not listed in SECTIONS.roles, so they fall through to the item-level gates
+  // (which already restrict by module/capability/department). A section renders only if BOTH the
+  // section gate AND at least one item pass — so this can restrict but never broaden access.
+  const sectionVisible = (section) => {
+    if (!section.roles) return true;
+    if (!STANDARD_ROLES.includes(userRole)) return true; // non-standard role: item gates decide
+    return section.roles.includes(userRole) || (userRole === ROLE.SUB_ADMIN && section.roles.includes(ROLE.ADMIN));
   };
 
-  // Group color mapping for section headers
-  const getGroupColor = (groupKey) => {
-    const groupColors = {
-      'operations': 'text-cyan-400',
-      'delivery': 'text-indigo-400',
-      'client-management': 'text-blue-400',
-      'people': 'text-orange-400',
-      'communication': 'text-pink-400',
-      'crm': 'text-blue-400',
-      'meta-omnichannel': 'text-sky-400',
-      'hr': 'text-emerald-400',
-      'ai-marketing': 'text-purple-400',
-      'finance': 'text-yellow-400',
-      'administration': 'text-red-400',
-      'your-departments': 'text-teal-400',
-    };
-    return groupColors[groupKey] || 'text-gray-400';
-  };
+  // ── Build the 12 sections from config. People gets HR items + dynamic departments appended. ──
+  const navigationGroups = SECTIONS
+    .map((section) => {
+      const items = section.items.map((name) => itemByName[name]).filter(Boolean);
+      if (section.key === "people") {
+        const deptIndex = items.findIndex((item) => item.name === "Departments");
+        if (deptIndex !== -1) items.splice(deptIndex + 1, 0, ...departmentItems);
+        items.push(...hrNavigation);
+      }
+      const group = { ...section, icon: SECTION_ICONS[section.key], items };
+      // Phase 6: attach per-channel unread counts to Inbox items + header total.
+      if (section.key === "inbox") {
+        group.headerCount = inboxCounts.total;
+        group.items = group.items.map((item) => {
+          const countKey = INBOX_COUNT_KEYS[item.name];
+          return countKey ? { ...item, unreadCount: inboxCounts[countKey] || 0 } : item;
+        });
+      }
+      return group;
+    })
+    .filter((group) => sectionVisible(group) && group.items.length);
+
+  const getIconColor = (itemName) => ITEM_COLORS[itemName] || ITEM_COLORS.default;
+  const getGroupColor = (groupKey) => SECTION_COLORS[groupKey] || SECTION_COLORS.default;
+
+  // Default collapsed: only the section containing the current page (and Home) starts expanded.
+  // NOTE: Home renders as a collapsible group (Home + Calendar sub-items). The spec's §8 "opens
+  // directly, no sub-menu" conflicts with §4 (Workspace Calendar -> Home); the plan resolves it by
+  // keeping Calendar reachable under Home. Do not "simplify" this back into a bare link.
+  const isGroupActive = (group) => group.items.some((item) => isNavItemActive(item, location));
+  const defaultGroupOpen = (group) => group.key === "home" || isGroupActive(group);
 
   return (
     <>
@@ -902,39 +400,23 @@ const Sidebar = ({ isOpen, onClose }) => {
               </div>
             ) : null}
 
-            {dashboardNavigation.map((item) => (
-              <SidebarNavItem
-                key={item.name}
-                item={item}
+            {navigationGroups.map((group) => (
+              <SidebarNavGroup
+                key={group.key}
+                group={group}
                 location={location}
                 collapsed={collapsed}
                 onClose={onClose}
                 favorites={favorites}
                 onToggleFavorite={toggleFavorite}
-                showFavorite
-                iconColor={getIconColor(item.name)}
-                groupKey="dashboard"
+                isOpen={openGroups[group.key] ?? defaultGroupOpen(group)}
+                onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? defaultGroupOpen(group)) }))}
+                getIconColor={getIconColor}
+                groupColor={getGroupColor(group.key)}
+                groupKey={group.key}
+                headerCount={group.headerCount}
               />
             ))}
-
-            {navigationGroups
-              .filter((group) => group.key !== 'hr' || isManagerRole(userRole) || userDepartment === 'hr' || userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN)
-              .map((group) => (
-                <SidebarNavGroup
-                  key={group.key}
-                  group={group}
-                  location={location}
-                  collapsed={collapsed}
-                  onClose={onClose}
-                  favorites={favorites}
-                  onToggleFavorite={toggleFavorite}
-                  isOpen={openGroups[group.key] ?? true}
-                  onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? true) }))}
-                  getIconColor={getIconColor}
-                  groupColor={getGroupColor(group.key)}
-                  groupKey={group.key}
-                />
-              ))}
           </nav>
 
           {/* User Info with colored accent */}
@@ -1002,27 +484,10 @@ function SidebarNavGroup({
   getIconColor,
   groupColor = 'text-gray-400',
   groupKey,
+  headerCount,
 }) {
   const isGroupActive = group.items.some((item) => isNavItemActive(item, location))
-
-  // Get group-specific dot color
-  const getGroupDotColor = (key) => {
-    const dotColors = {
-      'operations': 'bg-cyan-400',
-      'delivery': 'bg-indigo-400',
-      'client-management': 'bg-blue-400',
-      'people': 'bg-orange-400',
-      'communication': 'bg-pink-400',
-      'crm': 'bg-blue-400',
-      'meta-omnichannel': 'bg-sky-400',
-      'hr': 'bg-emerald-400',
-      'ai-marketing': 'bg-purple-400',
-      'finance': 'bg-yellow-400',
-      'administration': 'bg-red-400',
-      'your-departments': 'bg-teal-400',
-    };
-    return dotColors[key] || 'bg-gray-400';
-  };
+  const GroupIcon = group.icon
 
   return (
     <div className="mb-1">
@@ -1033,13 +498,21 @@ function SidebarNavGroup({
         className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.08em] transition-colors hover:bg-white/5 hover:text-white ${collapsed ? "lg:hidden" : ""} ${isGroupActive ? "text-white" : groupColor}`}
       >
         <span className="flex items-center gap-2">
-          <span className={`w-1.5 h-1.5 rounded-full ${getGroupDotColor(groupKey)}`}></span>
+          {GroupIcon ? <GroupIcon className={`h-3.5 w-3.5 ${groupColor}`} /> : <span className={`w-1.5 h-1.5 rounded-full ${getGroupDotColor(groupKey)}`} />}
           {group.label}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className={`rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] ${groupColor}`}>
-            {group.items.length}
-          </span>
+          {typeof headerCount === 'number' ? (
+            headerCount > 0 ? (
+              <span className="rounded-full bg-rose-500/20 px-1.5 py-0.5 text-[9px] font-bold text-rose-300">
+                {headerCount > 99 ? '99+' : headerCount}
+              </span>
+            ) : null
+          ) : (
+            <span className={`rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] ${groupColor}`}>
+              {group.items.length}
+            </span>
+          )}
           <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
         </span>
       </button>
@@ -1053,15 +526,20 @@ function SidebarNavGroup({
             onClose={onClose}
             favorites={favorites}
             onToggleFavorite={onToggleFavorite}
-            showFavorite={!["crm", "meta-omnichannel"].includes(group.key)}
+            showFavorite
             nested={!collapsed}
             iconColor={getIconColor ? getIconColor(item.name) : 'text-gray-400'}
-            groupKey={group.key}
           />
         ))}
       </div>
     </div>
   )
+}
+
+// Fallback only used if a future section is added without an icon in SECTION_ICONS.
+// All 12 current sections have icons, so this is effectively a safety net.
+function getGroupDotColor(groupKey) {
+  return SECTION_DOT_COLORS[groupKey] || SECTION_DOT_COLORS.default;
 }
 
 // Updated SidebarNavItem with colored icons and hover effects
@@ -1075,7 +553,6 @@ function SidebarNavItem({
   showFavorite = false,
   nested = false,
   iconColor = 'text-gray-400',
-  groupKey,
 }) {
   const isActive = isNavItemActive(item, location)
 
@@ -1097,6 +574,11 @@ function SidebarNavItem({
         {item.badge && !collapsed ? (
           <span className="ml-2 shrink-0 whitespace-nowrap rounded-full border border-sky-400/30 bg-sky-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.04em] text-sky-300">
             {item.badge}
+          </span>
+        ) : null}
+        {item.unreadCount > 0 && !collapsed ? (
+          <span className="ml-2 shrink-0 whitespace-nowrap rounded-full border border-rose-400/30 bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-bold text-rose-300">
+            {item.unreadCount > 99 ? '99+' : item.unreadCount}
           </span>
         ) : null}
         {isActive && !collapsed ? (
