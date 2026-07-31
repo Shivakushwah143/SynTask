@@ -32,6 +32,11 @@ from app.core.clock import utc_now
 logger = logging.getLogger(__name__)
 
 CSV_EMAIL_ALIASES = {"email_address", "email_id", "e_mail"}
+CSV_PHONE_ALIASES = {
+    "mobile", "mobile_number", "cell", "cell_phone", "cellphone",
+    "contact", "contact_no", "contact_number", "phone_number", "phone_no",
+    "whatsapp", "whatsapp_number", "number",
+}
 DEFAULT_ASSIGNMENT_STRATEGIES = {"round-robin", "evenly", "least-loaded", "manual"}
 DEFAULT_SOURCE_LABELS = {
     "manual": "manual",
@@ -93,6 +98,8 @@ def _normalize_lead_csv_header(header: str) -> str:
         normalized = normalized.replace("__", "_")
     if normalized in CSV_EMAIL_ALIASES:
         return "email"
+    if normalized in CSV_PHONE_ALIASES:
+        return "phone"
     return normalized
 
 
@@ -105,7 +112,31 @@ def _parse_multi_value(value: Optional[str]) -> List[str]:
 def _parse_interest_level(value: Optional[str]) -> InterestLevel:
     normalized = _normalize_text(value).lower()
     legacy_values = {"high": "hot", "medium": "warm", "low": "cold"}
-    return InterestLevel(legacy_values.get(normalized, normalized or InterestLevel.WARM.value))
+    candidate = legacy_values.get(normalized, normalized or InterestLevel.WARM.value)
+    try:
+        return InterestLevel(candidate)
+    except ValueError:
+        return InterestLevel.WARM
+
+
+def _parse_status(value: Optional[str]) -> ProspectStatus:
+    """Lenient status parse: unknown values fall back to ACTIVE instead of blocking."""
+    normalized = _normalize_text(value).lower()
+    valid = {item.value for item in ProspectStatus}
+    return ProspectStatus(normalized) if normalized in valid else ProspectStatus.ACTIVE
+
+
+def _sanitize_email(value: Optional[str]) -> Optional[str]:
+    """Return a valid normalized email or None so a malformed value never blocks an import row."""
+    normalized = _normalize_text(value).strip().lower() if value else ""
+    if not normalized:
+        return None
+    try:
+        from email_validator import validate_email
+        result = validate_email(normalized, check_deliverability=False)
+        return result.normalized
+    except Exception:
+        return None
 
 
 def _parse_datetime(date_str: Optional[str], time_str: Optional[str] = None) -> Optional[datetime]:
@@ -872,7 +903,9 @@ class LeadEngine:
 
         headers, rows = _parse_tabular_upload(file_name, content)
         normalized_headers = [_normalize_lead_csv_header(header) for header in headers]
-        # For import, we only require phone - email and name are optional for partial lead creation
+        # No validation on import: every row is imported regardless of phone, email,
+        # or name presence. `allow_duplicates` is accepted for backward compatibility
+        # but no longer gates anything (duplicates are always imported).
 
         source_label = DEFAULT_SOURCE_LABELS.get("xlsx" if file_name.lower().endswith(".xlsx") else "csv", "csv_import")
         assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=target_department_id)
@@ -885,7 +918,6 @@ class LeadEngine:
                 department_id=target_department_id,
             )
 
-        seen_phones: set[str] = set()
         seen_emails: set[str] = set()
         parsed_rows: list[dict[str, Any]] = []
         skipped_rows: list[dict[str, Any]] = []
@@ -893,49 +925,20 @@ class LeadEngine:
         for idx, row in enumerate(rows, start=2):
             total_input_rows += 1
             row_norm = { _normalize_lead_csv_header(key): (value or "").strip() for key, value in row.items() if key is not None }
-            # Only phone is required - email and name are optional
-            phone = (row_norm.get("phone") or "").strip()
-            country_code = row_norm.get("country_code") or "+91"
-            full_phone = f"{country_code}:{phone}" if phone else ""
-            if not phone:
-                skipped_rows.append({"row": idx, "reason": "Missing phone number"})
-                continue
-            if not allow_duplicates and full_phone in seen_phones:
-                skipped_rows.append({"row": idx, "reason": "Duplicate phone number in file"})
-                continue
-            seen_phones.add(full_phone)
+            # No validation on import: every row is imported regardless of whether
+            # a mobile number is present (phone is optional for bulk upload).
             # Emails are unique per company (unique index company_id_1_email_1), so
-            # in-file duplicate emails are skipped even with allow_duplicates.
+            # a repeated email within the file is dropped (the row still imports).
             email = (row_norm.get("email") or "").strip().lower()
             if email and email in seen_emails:
-                skipped_rows.append({"row": idx, "reason": "Duplicate email in file"})
-                continue
+                row_norm["email"] = ""
             if email:
                 seen_emails.add(email)
             parsed_rows.append({"row": idx, "row_norm": row_norm})
 
-        # Check for existing phone numbers in the database (phone is the unique identifier for partial leads)
-        seen_phones_for_dup = set()
-        if parsed_rows and not allow_duplicates:
-            phone_numbers = []
-            for item in parsed_rows:
-                row_norm = item["row_norm"]
-                phone = (row_norm.get("phone") or "").strip()
-                country_code = row_norm.get("country_code") or "+91"
-                if phone:
-                    phone_numbers.append({"country_code": country_code, "phone": phone})
-            if phone_numbers:
-                existing_leads = await SalesProspect.find({
-                    "company_id": current_user.company_id,
-                    "deleted": False,
-                    "$or": [
-                        {"country_code": p["country_code"], "phone": p["phone"]} for p in phone_numbers
-                    ]
-                }).to_list()
-                seen_phones_for_dup = {f"{lead.country_code}:{lead.phone}" for lead in existing_leads}
-
         # Emails are unique per company (unique index), so rows whose email already
-        # exists must be skipped - otherwise insert_many raises DuplicateKeyError (500).
+        # exists drop the email (the row still imports) instead of being skipped -
+        # otherwise insert_many raises DuplicateKeyError (500).
         seen_emails_for_dup: set[str] = set()
         if parsed_rows:
             emails = []
@@ -963,21 +966,11 @@ class LeadEngine:
             normalized["assigned_by"] = str(current_user.id)
             normalized["updated_at"] = _now()
             normalized["created_at"] = normalized["updated_at"]
-            # Check for duplicate phone in database (unless duplicates are allowed)
-            full_phone = f"{normalized.get('country_code', '+91')}:{normalized.get('phone', '')}"
-            if not allow_duplicates and full_phone in seen_phones_for_dup:
-                skipped_rows.append({"row": row_number, "reason": "Lead with this phone number already exists"})
-                continue
-            # Skip rows whose email already exists in the company (unique index)
+            # Rows whose email already exists in the company drop the email so the
+            # row still imports (the unique index would otherwise reject it).
             normalized_email = (normalized.get("email") or "").strip().lower()
             if normalized_email and normalized_email in seen_emails_for_dup:
-                skipped_rows.append({"row": row_number, "reason": "Lead with this email already exists"})
-                continue
-            try:
-                LeadValidator.validate_lead_payload(normalized)
-            except HTTPException as exc:
-                skipped_rows.append({"row": row_number, "reason": exc.detail})
-                continue
+                normalized["email"] = None
             try:
                 target_assignee = target_user_id if strategy == "manual" else AssignmentEngine.choose_assignee(strategy, assignable_users, index=index, assignment_counts=assignment_counts)
             except HTTPException as exc:
@@ -1002,8 +995,8 @@ class LeadEngine:
                     last_name=row["last_name"],
                     prospect_name=row["prospect_name"],
                     country_code=row["country_code"],
-                    phone=row["phone"],
-                    email=row.get("email"),
+                    phone=row.get("phone") or None,
+                    email=_sanitize_email(row.get("email")),
                     contact_id=row.get("contact_id"),
                     category_id=row.get("category_id"),
                     product_ids=list(row.get("product_ids") or []),
@@ -1027,7 +1020,7 @@ class LeadEngine:
                     owner_contact_no=row.get("owner_contact_no"),
                     tag=list(row.get("tag") or []),
                     greeting_preference=row.get("greeting_preference"),
-                    status=ProspectStatus(row.get("status") or ProspectStatus.ACTIVE.value),
+                    status=_parse_status(row.get("status")),
                     company_id=current_user.company_id,
                     created_by=str(current_user.id),
                     deleted=False,
@@ -1140,18 +1133,14 @@ class LeadEngine:
         failed_rows = []
         for idx, row in enumerate(rows, start=2):
             row_norm = {_normalize_lead_csv_header(key): (value or "").strip() for key, value in row.items() if key is not None}
-            # Only phone is required - email and name are optional for partial lead creation
-            phone = (row_norm.get("phone") or "").strip()
-            if not phone:
-                failed_rows.append({"row": idx, "error": "Missing phone number"})
-                continue
+            # No validation on import - every row is previewed, even without a phone.
             preview_rows.append(
                 {
                     "row": idx,
                     "first_name": row_norm.get("first_name") or row_norm.get("name") or "",
                     "last_name": row_norm.get("last_name") or "",
                     "email": row_norm.get("email") or "",
-                    "phone": phone,
+                    "phone": (row_norm.get("phone") or "").strip(),
                     "country_code": row_norm.get("country_code") or "+91",
                     "company_name": row_norm.get("company") or row_norm.get("company_name") or "",
                     "current_stage": row_norm.get("stage") or row_norm.get("current_stage") or "new",

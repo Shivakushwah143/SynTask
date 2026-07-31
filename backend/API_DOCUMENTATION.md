@@ -462,7 +462,7 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | POST | `/api/v1/sales/masters/reasons-for-lost` | `create_reason` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/sales/masters/reasons-for-lost/{reason_id}` | `delete_reason` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/sales/masters/reasons-for-lost/{reason_id}` | `update_reason` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/sales/masters/stages` | `list_stages` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/masters/stages` | `list_stages` | Returns `{ total, items }`. When a company has no configured `SalesStage` rows, falls back to the fixed CRM pipeline catalog (`New, Contacted, Qualified, Discovery, Proposal, Negotiation, Won, Lost`) with `source: "fixed"` and `id: null` so stage selectors are never empty. |
 | POST | `/api/v1/sales/masters/stages` | `create_stage` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/sales/masters/stages/{stage_id}` | `delete_stage` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/sales/masters/stages/{stage_id}` | `update_stage` | Uses router/endpoint dependencies where configured. |
@@ -486,7 +486,7 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 |---|---|---|---|
 | GET | `/api/v1/sales/prospects/` | `list_prospects` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/sales/prospects/` | `create_prospect` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/sales/prospects/bulk-upload` | `bulk_upload_prospects` | Accepts any file type (CSV, XLSX, or text). Unknown columns stored as `custom_fields`. Missing fields filled as null. Form fields: `file`, `strategy` (`round-robin`\|`evenly`\|`least-loaded`\|`manual`), optional `target_user_id`, `target_department_id`, and `allow_duplicates` (`true` imports rows even when the same phone already exists in the company or repeats within the file; default `false` skips them). |
+| POST | `/api/v1/sales/prospects/bulk-upload` | `bulk_upload_prospects` | Accepts any file type (CSV, XLSX, or text). Unknown columns stored as `custom_fields`. **No validation is applied** — every row imports even when a mobile number is missing (phone is optional). Rows whose email already exists in the company still import; the colliding email is dropped (email has a unique per-company index). `allow_duplicates` is accepted for backward compatibility but no longer gates anything. Form fields: `file`, `strategy` (`round-robin`\|`evenly`\|`least-loaded`\|`manual`), optional `target_user_id`, `target_department_id`. |
 | POST | `/api/v1/sales/prospects/bulk-upload/preview` | `preview_bulk_upload_prospects` | Returns preview rows, failed rows, detected columns, and field mapping recommendations. |
 | GET | `/api/v1/sales/prospects/search/contact` | `search_contact_for_prospect` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/sales/prospects/{prospect_id}` | `get_prospect` | Uses router/endpoint dependencies where configured. |

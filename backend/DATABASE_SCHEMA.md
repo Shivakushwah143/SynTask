@@ -933,7 +933,7 @@ Indexes: includes a partial unique `('company_id', 'meta_lead_id')` index for Me
 | `last_name` | `str` | Yes | No | Model field |
 | `prospect_name` | `str` | Yes | No | Model field |
 | `country_code` | `str` | Yes | Yes | Model field |
-| `phone` | `Indexed` | Yes | Yes | Model field |
+| `phone` | `Optional[Indexed[str]]` | No | Yes | Model field. Optional so bulk file import can create rows without a mobile number (no unique index — duplicates allowed). |
 | `email` | `Optional[EmailStr]` | No | No | Model field |
 | `contact_id` | `Optional[str]` | No | Yes | Model field |
 | `category_id` | `Optional[str]` | No | Yes | Model field |

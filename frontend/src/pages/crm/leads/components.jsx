@@ -10,6 +10,7 @@ import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, EmptyState, LoadingSpinner, inputClassName } from '../../../components/ui'
 import { formatCurrency, formatShortDate, getCanonicalPipelineStageKey, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
+import { asArray } from '../../phase4Utils'
 import { LeadFilesTab } from './files'
 
 export const LEAD_TABS = [
@@ -653,7 +654,8 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const activityPath = lead?.id ? `/crm/activities?entity_type=lead&entity_id=${lead.id}` : '/crm/activities'
   const { data: stagesData } = useQuery('crm-lead-edit-stages', salesApi.getStages)
   const { data: usersData } = useQuery('crm-lead-edit-users', () => usersAPI.getAssignableUsersWithJuniors())
-  const stages = Array.isArray(stagesData?.stages) ? stagesData.stages : []
+  // Master list endpoints return { total, items }, so read the items (with .stages fallback).
+  const stages = asArray(stagesData, ['stages'])
   const users = Array.isArray(usersData?.users) ? usersData.users : []
   const [form, setForm] = useState({ current_stage: '', status: '', assigned_to: '', interest_level: '', channel: '', tag: '' })
   const [customFields, setCustomFields] = useState('{}')

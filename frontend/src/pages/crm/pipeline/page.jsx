@@ -93,6 +93,8 @@ const getResponseItems = (data, key) => {
   if (Array.isArray(direct)) return direct
   if (Array.isArray(nested)) return nested
   if (Array.isArray(data)) return data
+  // Master list endpoints (e.g. /sales/masters/stages) return { total, items }.
+  if (Array.isArray(data?.items)) return data.items
   return []
 }
 

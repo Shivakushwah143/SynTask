@@ -53,6 +53,30 @@ async def list_stages(
     
     total = await SalesStage.find(query).count()
     stages = await SalesStage.find(query).sort(SalesStage.order).skip(skip).limit(limit).to_list()
+
+    if total == 0:
+        # No company-configured stages yet. Fall back to the fixed CRM pipeline
+        # catalog so stage selectors (lead sidebar, bulk update, pipeline create,
+        # settings) show the real pipeline stages (New, Contacted, ...) instead of
+        # an empty list. Fixed stages are not persisted, so they carry id=None and
+        # source="fixed" to keep them read-only in management UIs.
+        fallback = [
+            {
+                "id": None,
+                "name": meta["name"],
+                "order": meta["order"],
+                "is_default": meta["order"] == 0,
+                "key": meta["key"],
+                "description": meta["description"],
+                "category": meta["category"],
+                "is_terminal": meta["is_terminal"],
+                "source": "fixed",
+            }
+            for meta in APPROVED_STAGE_METADATA.values()
+            if not search or search.lower() in meta["name"].lower()
+        ]
+        return {"total": len(fallback), "items": fallback[skip : skip + limit]}
+
     return {
         "total": total,
         "items": [
@@ -65,6 +89,7 @@ async def list_stages(
                 "description": getattr(s, "description", None),
                 "category": getattr(s, "category", None),
                 "is_terminal": bool(getattr(s, "is_terminal", False)),
+                "source": "custom",
             }
             for s in stages
         ]
