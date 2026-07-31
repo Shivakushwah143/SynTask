@@ -202,18 +202,21 @@ async def get_leave_forward_targets(current_user: User = Depends(get_current_use
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only managers can forward leave requests")
     if not current_user.company_id:
         return {"users": []}
-    admins = await User.find({"company_id": current_user.company_id, "role": UserRole.ADMIN.value}).to_list()
+    approvers = await User.find({
+        "company_id": current_user.company_id,
+        "role": {"$in": [UserRole.ADMIN.value, UserRole.SUB_ADMIN.value]},
+    }).to_list()
     return {
         "users": [
             {
-                "id": str(admin.id),
-                "email": admin.email,
-                "first_name": admin.first_name,
-                "last_name": admin.last_name,
-                "role": admin.role.value,
+                "id": str(target.id),
+                "email": target.email,
+                "first_name": target.first_name,
+                "last_name": target.last_name,
+                "role": target.role.value,
             }
-            for admin in admins
-            if str(admin.id) != str(current_user.id)
+            for target in approvers
+            if str(target.id) != str(current_user.id)
         ]
     }
 
@@ -382,8 +385,8 @@ async def _base_query(current_user: User, employee_id: Optional[str]) -> dict:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
         await assert_leave_view_access(current_user, employee)
         return {"employee_id": str(employee.id), "company_id": employee.company_id}
-    # Admins and super-admins see all company leaves except their own (managed via admin view)
-    if current_user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+    # Admins, sub-admins and super-admins see all company leaves except their own (managed via admin view)
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         query = leave_visibility_query(current_user, employee_id)
         return query
     # Managers see all company leaves (except their own, shown under "My Requests" tab)

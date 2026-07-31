@@ -4,6 +4,7 @@ import { canForwardLeaveRequest, canReviewLeaveRequest, canSubmitLeaveRequest } 
 describe('Leaves role gates', () => {
   test('hides leave request form for company admins', () => {
     expect(canSubmitLeaveRequest('admin')).toBe(false)
+    expect(canSubmitLeaveRequest('sub_admin')).toBe(false)
     expect(canSubmitLeaveRequest('super_admin')).toBe(false)
   })
 
@@ -62,6 +63,46 @@ describe('Leaves role gates', () => {
 
     expect(canForwardLeaveRequest({
       employee_id: 'manager-2',
+      employee_role: 'manager',
+      status: 'pending',
+      pending_with_user_ids: ['manager-1'],
+    }, manager)).toBe(false)
+  })
+
+  test('sub admin review mirrors admin for manager and forwarded leaves', () => {
+    const subAdmin = { id: 'subadmin-1', role: 'sub_admin' }
+
+    // Sub Admin can review manager leaves
+    expect(canReviewLeaveRequest({
+      employee_id: 'manager-1',
+      employee_role: 'manager',
+      status: 'pending',
+      pending_with_user_ids: ['subadmin-1'],
+    }, subAdmin)).toBe(true)
+
+    // Sub Admin can review forwarded employee leaves
+    expect(canReviewLeaveRequest({
+      employee_id: 'employee-1',
+      employee_role: 'employee',
+      status: 'pending',
+      pending_with_user_ids: ['subadmin-1'],
+      forwarded_by: 'manager-1',
+    }, subAdmin)).toBe(true)
+
+    // Sub Admin cannot review unforwarded employee leaves (same as Admin)
+    expect(canReviewLeaveRequest({
+      employee_id: 'employee-1',
+      employee_role: 'employee',
+      status: 'pending',
+      pending_with_user_ids: ['subadmin-1'],
+    }, subAdmin)).toBe(false)
+  })
+
+  test('manager cannot forward to self or to an employee', () => {
+    const manager = { id: 'manager-1', role: 'manager' }
+
+    expect(canForwardLeaveRequest({
+      employee_id: 'manager-1',
       employee_role: 'manager',
       status: 'pending',
       pending_with_user_ids: ['manager-1'],

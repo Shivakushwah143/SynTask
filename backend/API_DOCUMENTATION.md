@@ -298,6 +298,21 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | POST | `/api/v1/ledger/{invoice_id}/payment` | `add_payment` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/ledger/{invoice_id}/tds` | `update_tds` | Uses router/endpoint dependencies where configured. |
 
+### Leave Management
+
+| Method | Path | Handler | Notes |
+|---|---|---|---|
+| POST | `/api/v1/leaves/` | `create_leave_request` | Any authenticated company member (Employee/Manager/Lead) submits leave. Admin/Sub Admin/Super Admin do not submit. Reviewers are auto-assigned via the nearest manager, falling back to company admins (Admin + Sub Admin). Requires company membership and no overlapping leave. |
+| GET | `/api/v1/leaves/` | `list_leave_requests` | Admin, Sub Admin, and Super Admin see all company leaves except their own; Manager sees all company leaves except own; Lead sees all company leaves except own; Employee sees only own leaves. Supports `status`, `leave_type`, `employee_id`, `start_date`, `end_date`, `skip`, `limit`. |
+| GET | `/api/v1/leaves/availability` | `get_availability` | Returns leave-type balance/availability for the authenticated user. |
+| GET | `/api/v1/leaves/calendar` | `get_leave_calendar` | Calendar view with the same role-based visibility as the list endpoint. |
+| GET | `/api/v1/leaves/my` | `get_my_leave_requests` | Returns only the authenticated user's own leave requests. |
+| GET | `/api/v1/leaves/forward-targets` | `get_leave_forward_targets` | Manager only (403 otherwise). Returns the same-company Admins and Sub Admins that a Manager may forward a leave request to. |
+| POST | `/api/v1/leaves/{leave_id}/approve` | `approve_leave_request` | Manager (own reports), Admin, or Sub Admin may approve. Admin/Sub Admin may approve manager leaves and forwarded employee leaves but not unforwarded employee leaves. Super Admin is audit-only. Only pending/forwarded requests can be approved. |
+| POST | `/api/v1/leaves/{leave_id}/reject` | `reject_leave_request` | Same approval scope as approve; rejection reason is required. |
+| POST | `/api/v1/leaves/{leave_id}/forward` | `forward_leave_request` | Manager forwards a pending subordinate leave to an Admin or Sub Admin target (`target_user_id` + reason). The target becomes the sole pending reviewer and receives a notification. |
+| POST | `/api/v1/leaves/{leave_id}/cancel` | `cancel_leave_request` | Only the requester can cancel their own pending/forwarded leave. |
+
 ### MSA
 
 | Method | Path | Handler | Notes |
@@ -693,3 +708,8 @@ List endpoints commonly use `skip` and `limit`; default page size is configured 
 
 ## Role and Module Access
 Route groups for task-management features are protected with `require_module("task")`; chat also allows `task` or `tasks_projects` workspace access so global communication works for task workspace users. Sales routes rely on endpoint-level role checks. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.
+
+Role conventions:
+- `SUB_ADMIN` is treated as a company admin for module access: it has the same leave-management visibility and approval power as `ADMIN` (full company leave list/dashboard/calendar, approval of manager and forwarded employee leaves, and eligibility as a leave forward target).
+- Leave forward targets are `ADMIN` and `SUB_ADMIN` users in the same company only.
+- `SUPER_ADMIN` keeps audit-only leave access; it never weakens tenant/company isolation.
