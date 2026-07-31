@@ -128,11 +128,16 @@ class RecruitmentService:
         return candidate
 
     @staticmethod
-    async def assign_job_to_candidate(company_id: str, actor_id: str, candidate_id: str, job_id: str, source: str = "manual") -> dict:
+    async def assign_job_to_candidate(company_id: str, actor_id: str, candidate_id: str, job_id: str, source: str = "manual", hire: bool = False) -> dict:
         """Quickly link an existing candidate to a job by creating an Application.
 
         Used by the Candidate Interview Screen's "Assign Job" action so a recruiter
         can attach a candidate to a role in a few clicks.
+
+        When ``hire`` is True the candidate is also converted into an employee:
+        a User record is created (role=employee), the candidate status becomes
+        ``employee`` and ``employee_id`` is linked. The candidate then moves out
+        of the candidates list and shows up on the Recruitment > Employees page.
         """
         candidate = await CandidateWorkspaceService.get_candidate(company_id, candidate_id)
         job = await JobService.get_job(job_id, company_id)
@@ -158,8 +163,23 @@ class RecruitmentService:
             actor_id,
             candidate_id=candidate_id,
             job_id=job_id,
-            payload={"application_id": str(application.id), "tracking_code": tracking_code, "source": source or "manual"},
+            payload={"application_id": str(application.id), "tracking_code": tracking_code, "source": source or "manual", "hire": hire},
         )
+
+        hired = False
+        employee_id = None
+        designation = None
+        department_id = None
+        if hire:
+            employee, designation, department_id = await RecruitmentService.hire_candidate(
+                company_id, actor_id, candidate, job
+            )
+            hired = True
+            employee_id = str(employee.id) if employee else None
+
+        message = f"{candidate.full_name} assigned to {job.title}"
+        if hired:
+            message = f"{candidate.full_name} hired as {designation or job.title} — moved to Employees"
         return {
             "application_id": str(application.id),
             "tracking_code": tracking_code,
@@ -167,8 +187,160 @@ class RecruitmentService:
             "candidate_name": candidate.full_name,
             "job_id": job_id,
             "job_title": job.title,
-            "message": f"{candidate.full_name} assigned to {job.title}",
+            "message": message,
+            "hired": hired,
+            "employee_id": employee_id,
+            "designation": designation,
+            "department_id": department_id,
         }
+
+    @staticmethod
+    async def hire_candidate(company_id: str, actor_id: str, candidate: Candidate, job: RecruitmentJob) -> tuple[Optional[User], Optional[str], Optional[str]]:
+        """Convert a candidate into an employee record.
+
+        Creates a User with role=EMPLOYEE using the job's department and title as
+        designation (no prior offer/joined state required). If a User with the
+        candidate's email already exists we link it instead of failing.
+        Returns (employee_user, designation, department_id).
+        """
+        designation = job.title or None
+        department_id = job.department_id or None
+
+        existing_user = await User.find_one({"email": candidate.email})
+        if existing_user:
+            employee = existing_user
+            if employee.department_id is None:
+                employee.department_id = department_id
+                employee.updated_at = utc_now()
+                await employee.save()
+        else:
+            names = candidate.full_name.strip().split(maxsplit=1)
+            employee = User(
+                email=candidate.email,
+                password_hash=get_password_hash(secrets.token_urlsafe(24)),
+                first_name=names[0],
+                last_name=names[1] if len(names) > 1 else "",
+                role=UserRole.EMPLOYEE,
+                status=UserStatus.PENDING,
+                modules=["task"],
+                company_id=company_id,
+                department_id=department_id,
+                reports_to=job.hiring_manager_id,
+                created_by=actor_id,
+            )
+            await employee.insert()
+
+        candidate.status = CandidateStatus.EMPLOYEE
+        candidate.employee_id = str(employee.id)
+        candidate.job_id = str(job.id)
+        candidate.updated_at = utc_now()
+        await candidate.save()
+
+        await record(
+            company_id,
+            "CandidateConverted",
+            actor_id,
+            candidate_id=str(candidate.id),
+            job_id=str(job.id),
+            payload={"employee_id": str(employee.id), "designation": designation, "department_id": department_id},
+        )
+        return employee, designation, department_id
+
+    @staticmethod
+    async def list_employees(company_id: str, search: Optional[str] = None, page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
+        """List current employees in the company.
+
+        Combines two sources so the feed shows ALL present employees as live data:
+        1. Converted candidates (candidates with status=employee, created via the
+           "Assign Job & Hire" flow) enriched with job + department + linked User.
+        2. Existing employee Users (role=employee) that were created directly in
+           the system and are not already linked to a converted candidate.
+        """
+        # --- Source 1: converted candidates ----------------------------------
+        candidate_query: dict = {"company_id": company_id, "deleted_at": None, "status": CandidateStatus.EMPLOYEE}
+        candidates = await Candidate.find(candidate_query).sort("-updated_at").to_list()
+
+        job_ids = {c.job_id for c in candidates if c.job_id}
+        jobs = {str(j.id): j for j in await RecruitmentJob.find({"company_id": company_id, "_id": {"$in": [ObjectId(j) for j in job_ids if ObjectId.is_valid(j)]}}).to_list()} if job_ids else {}
+        dept_ids = {j.department_id for j in jobs.values() if j.department_id}
+        departments = {str(d.id): d for d in await Department.find({"company_id": company_id, "_id": {"$in": [ObjectId(d) for d in dept_ids if ObjectId.is_valid(d)]}}).to_list()} if dept_ids else {}
+        user_ids = {c.employee_id for c in candidates if c.employee_id}
+        users_by_id = {str(u.id): u for u in await User.find({"_id": {"$in": [ObjectId(u) for u in user_ids if ObjectId.is_valid(u)]}}).to_list()} if user_ids else {}
+
+        items: list[dict] = []
+        for c in candidates:
+            job = jobs.get(c.job_id) if c.job_id else None
+            dept = departments.get(job.department_id) if job and job.department_id else None
+            user = users_by_id.get(c.employee_id) if c.employee_id else None
+            data = CandidateWorkspaceService.candidate_payload(c)
+            data.update({
+                "employee_user_id": c.employee_id,
+                "designation": job.title if job else None,
+                "department_id": job.department_id if job else None,
+                "department_name": dept.name if dept else None,
+                "job_title": job.title if job else None,
+                "job_id": c.job_id,
+                "employee_status": user.status.value if user else None,
+                "employee_email": user.email if user else c.email,
+                "employee_role": user.role.value if user else UserRole.EMPLOYEE.value,
+                "hired_at": c.updated_at,
+                "created_at": c.created_at,
+                "source": "recruitment",
+                "id": str(c.id),
+            })
+            items.append(data)
+
+        # --- Source 2: existing employee Users not linked to a converted candidate ---
+        linked_user_ids = {c.employee_id for c in candidates if c.employee_id}
+        existing_employee_query: dict = {
+            "company_id": company_id,
+            "role": UserRole.EMPLOYEE,
+        }
+        if linked_user_ids:
+            existing_employee_query["_id"] = {"$nin": [ObjectId(uid) for uid in linked_user_ids if ObjectId.is_valid(uid)]}
+        employee_users = await User.find(existing_employee_query).sort("-created_at").to_list()
+
+        if employee_users:
+            dept_ids2 = {u.department_id for u in employee_users if u.department_id}
+            departments2 = {str(d.id): d for d in await Department.find({"company_id": company_id, "_id": {"$in": [ObjectId(d) for d in dept_ids2 if ObjectId.is_valid(d)]}}).to_list()} if dept_ids2 else {}
+            for u in employee_users:
+                dept = departments2.get(u.department_id) if u.department_id else None
+                items.append({
+                    "id": str(u.id),
+                    "full_name": f"{u.first_name} {u.last_name}".strip(),
+                    "email": u.email,
+                    "phone": getattr(u, "phone", None),
+                    "location": None,
+                    "skills": [],
+                    "experience_years": 0,
+                    "employee_user_id": str(u.id),
+                    "designation": None,
+                    "department_id": u.department_id,
+                    "department_name": dept.name if dept else None,
+                    "job_title": None,
+                    "job_id": None,
+                    "employee_status": u.status.value,
+                    "employee_email": u.email,
+                    "employee_role": u.role.value,
+                    "hired_at": u.created_at,
+                    "created_at": u.created_at,
+                    "source": "users",
+                })
+
+        # --- Search + sort + paginate across the combined feed ---------------
+        if search:
+            q = search.lower()
+            items = [
+                item for item in items
+                if q in (item.get("full_name") or "").lower()
+                or q in (item.get("email") or "").lower()
+                or q in (item.get("phone") or "").lower()
+            ]
+
+        items.sort(key=lambda item: item.get("hired_at") or item.get("created_at") or datetime.min, reverse=True)
+        total = len(items)
+        start = (page - 1) * page_size
+        return items[start:start + page_size], total
 
     @staticmethod
     async def create_job(company_id: str, actor_id: str, data: JobCreate) -> RecruitmentJob:
@@ -1234,6 +1406,10 @@ class CandidateSearchService:
         filters: dict = {"deleted_at": None}
         if status_value:
             filters["status"] = status_value
+        else:
+            # Converted employees are shown on the Recruitment > Employees page,
+            # not in the candidates list. Override with an explicit status filter.
+            filters["status"] = {"$ne": CandidateStatus.EMPLOYEE}
         if recruiter_id:
             filters["assigned_recruiter_id"] = recruiter_id
         if experience_min is not None or experience_max is not None:

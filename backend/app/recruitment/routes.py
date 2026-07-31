@@ -29,6 +29,7 @@ from app.recruitment.schemas import (ApplicationApplyResponse, ApplicationStatus
                                      CandidateAssignJobResponse, CandidateNoteCreate,
                                      CandidateUpdate, CandidateWorkspaceResponse,
                                      CandidateListResponse, ConversionRequest,
+                                     EmployeeListResponse,
                                      InboxImportRequest, InboxItemResponse,
                                      InboxListResponse, InboxMergeRequest,
                                      InterviewCreate, InterviewFeedback,
@@ -646,8 +647,24 @@ async def create_candidate_manual(
 
 @router.post("/candidates/{candidate_id}/assign-job", status_code=201, response_model=CandidateAssignJobResponse)
 async def assign_job_to_candidate(candidate_id: str, payload: CandidateAssignJobRequest, user: User = Depends(require_candidate_manage)):
-    """Quickly assign a job to a candidate (few clicks from the Interview Screen)."""
-    return await RecruitmentService.assign_job_to_candidate(company(user), str(user.id), candidate_id, payload.job_id, payload.source)
+    """Quickly assign a job to a candidate (few clicks from the Interview Screen).
+
+    When ``payload.hire`` is True the candidate is also converted into an
+    employee so they move out of the candidates list.
+    """
+    return await RecruitmentService.assign_job_to_candidate(company(user), str(user.id), candidate_id, payload.job_id, payload.source, payload.hire)
+
+
+@router.get("/employees", response_model=EmployeeListResponse)
+async def list_employees(
+    search: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+    user: User = Depends(require_candidate_view),
+):
+    """List converted employees (candidates whose job was assigned with hire=True)."""
+    items, total = await RecruitmentService.list_employees(company(user), search=search, page=page, page_size=page_size)
+    return EmployeeListResponse(items=items, total=total, page=page, page_size=page_size, has_next=(page * page_size) < total)
 
 
 @router.get("/candidates/{candidate_id}", response_model=CandidateWorkspaceResponse)

@@ -40,7 +40,7 @@ import { recruitmentApi } from "../../../../api/recruitment";
 import { usersAPI } from "../../../../api/users";
 import { Button, EmptyState, FormField, PageHeader, inputClassName } from "../../../../components/ui";
 import { CANDIDATE_STATUSES } from "../constants";
-import { AssignRecruiterDialog } from "../dialogs/RecruitmentDialogs";
+import { AssignJobDialog, AssignRecruiterDialog } from "../dialogs/RecruitmentDialogs";
 import { RecruitmentDrawer } from "../components/RecruitmentDrawer";
 import { RecruitmentFilters } from "../components/RecruitmentFilters";
 import { RecruitmentTable } from "../components/RecruitmentTable";
@@ -385,7 +385,7 @@ const AttachmentsTabContent = ({ attachments }) => {
 // ============================================================
 // ASSIGNMENT TAB CONTENT
 // ============================================================
-const AssignmentTabContent = ({ candidate, onAssign }) => {
+const AssignmentTabContent = ({ candidate, onAssign, onAssignJob }) => {
   const recruiterId = candidate?.assigned_recruiter_id;
   return (
     <div className="mt-4 space-y-4">
@@ -402,6 +402,13 @@ const AssignmentTabContent = ({ candidate, onAssign }) => {
           </div>
         </div>
       </div>
+      <button
+        onClick={onAssignJob}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700"
+      >
+        <Briefcase className="h-4 w-4" />
+        Assign Job & Hire
+      </button>
       <button
         onClick={onAssign}
         className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
@@ -424,6 +431,7 @@ export default function CandidatesPage() {
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [assignOpen, setAssignOpen] = useState(false);
+  const [assignJobOpen, setAssignJobOpen] = useState(false);
   const [note, setNote] = useState("");
   
   const params = compactParams({ page, page_size: 20, search, ...filters });
@@ -451,6 +459,28 @@ export default function CandidatesPage() {
         toast.error(error?.response?.data?.detail || "Failed to assign recruiter");
       }
     } 
+  );
+
+  const assignJob = useMutation(
+    (payload) => recruitmentApi.assignJobToCandidate(idOf(selected), payload),
+    {
+      onSuccess: (response) => {
+        const data = response?.data;
+        if (data?.hired) {
+          toast.success(`${candidate?.full_name || candidate?.fullName || "Candidate"} hired as ${data.designation || data.job_title} — moved to Employees 🎉`);
+          setSelected(null);
+        } else {
+          toast.success(`${candidate?.full_name || candidate?.fullName || "Candidate"} assigned to ${data?.job_title || "job"} 🎯`);
+        }
+        setAssignJobOpen(false);
+        invalidate();
+        qc.invalidateQueries(["recruitment", "employees"]);
+        qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || "Failed to assign job");
+      },
+    }
   );
   
   const archive = useMutation(
@@ -633,6 +663,13 @@ export default function CandidatesPage() {
                 <RefreshCw className="h-4 w-4" />
                 Refresh
               </button>
+              <a 
+                href="/hr/recruitment/employees"
+                className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow transition hover:bg-indigo-50"
+              >
+                <UserCheck className="h-4 w-4" />
+                View Employees
+              </a>
             </div>
           </div>
         </div>
@@ -861,7 +898,13 @@ export default function CandidatesPage() {
             {activeTab === "attachments" && <AttachmentsTabContent attachments={detail.data?.attachments} />}
 
             {/* Assignment Tab */}
-            {activeTab === "assignment" && <AssignmentTabContent candidate={candidate} onAssign={() => setAssignOpen(true)} />}
+            {activeTab === "assignment" && (
+              <AssignmentTabContent
+                candidate={candidate}
+                onAssign={() => setAssignOpen(true)}
+                onAssignJob={() => setAssignJobOpen(true)}
+              />
+            )}
           </div>
 
           {/* Sidebar */}
@@ -869,6 +912,11 @@ export default function CandidatesPage() {
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Quick Actions</h3>
               <div className="mt-3 space-y-2">
+                <QuickActionButton 
+                  icon={Briefcase} 
+                  label="Assign Job & Hire" 
+                  onClick={() => setAssignJobOpen(true)} 
+                />
                 <QuickActionButton 
                   icon={UserPlus} 
                   label="Assign Recruiter" 
@@ -915,6 +963,17 @@ export default function CandidatesPage() {
         onClose={() => setAssignOpen(false)} 
         onSubmit={(payload) => assign.mutate(payload)} 
         loading={assign.isLoading} 
+      />
+
+      {/* ============================================================ */}
+      {/* ASSIGN JOB & HIRE DIALOG */}
+      {/* ============================================================ */}
+      <AssignJobDialog 
+        open={assignJobOpen} 
+        onClose={() => setAssignJobOpen(false)} 
+        onSubmit={(payload) => assignJob.mutate(payload)} 
+        loading={assignJob.isLoading} 
+        candidate={candidate} 
       />
 
       {/* Hidden file input for attachments */}

@@ -487,9 +487,15 @@ class CandidateAssignRequest(BaseModel):
 
 
 class CandidateAssignJobRequest(BaseModel):
-    """Quick-assign a job to a candidate (creates an application link)."""
+    """Quick-assign a job to a candidate (creates an application link).
+
+    When ``hire`` is True the candidate is also converted to an employee
+    (status -> employee, a User record is created) so they move out of the
+    candidates list and appear on the Recruitment > Employees page.
+    """
     job_id: str
     source: str = "manual"
+    hire: bool = False
 
 
 class CandidateAssignJobResponse(BaseModel):
@@ -500,6 +506,10 @@ class CandidateAssignJobResponse(BaseModel):
     job_id: str
     job_title: str
     message: str
+    hired: bool = False
+    employee_id: Optional[str] = None
+    designation: Optional[str] = None
+    department_id: Optional[str] = None
 
 
 class CandidateNoteCreate(BaseModel):
@@ -534,6 +544,14 @@ class CandidateWorkspaceResponse(BaseModel):
 
 
 class CandidateListResponse(BaseModel):
+    items: list[dict]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+
+
+class EmployeeListResponse(BaseModel):
     items: list[dict]
     total: int
     page: int

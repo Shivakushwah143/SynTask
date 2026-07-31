@@ -256,6 +256,7 @@ const AssignJobPopup = ({ isOpen, onClose, candidate, onAssigned }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mode, setMode] = useState("select"); // "select" | "create"
   const [jobSearch, setJobSearch] = useState("");
+  const [hire, setHire] = useState(true);
   const queryClient = useQueryClient();
 
   // Fetch ALL non-archived jobs so existing drafts/pending jobs are visible
@@ -283,10 +284,15 @@ const AssignJobPopup = ({ isOpen, onClose, candidate, onAssigned }) => {
     if (!selectedJobId) return;
     setIsSubmitting(true);
     try {
-      const response = await recruitmentApi.assignJobToCandidate(candidate.id, { job_id: selectedJobId });
-      const jobTitle = response?.data?.job_title || allJobs.find((j) => j.id === selectedJobId)?.title || "the job";
-      toast.success(`${candidate.full_name || candidate.name} assigned to ${jobTitle}`);
-      onAssigned?.(response?.data);
+      const response = await recruitmentApi.assignJobToCandidate(candidate.id, { job_id: selectedJobId, hire });
+      const data = response?.data;
+      const jobTitle = data?.job_title || allJobs.find((j) => j.id === selectedJobId)?.title || "the job";
+      if (data?.hired) {
+        toast.success(`${candidate.full_name || candidate.name} hired as ${data.designation || jobTitle} — moved to Employees`);
+      } else {
+        toast.success(`${candidate.full_name || candidate.name} assigned to ${jobTitle}`);
+      }
+      onAssigned?.(data);
       onClose();
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || "Failed to assign job";
@@ -302,6 +308,7 @@ const AssignJobPopup = ({ isOpen, onClose, candidate, onAssigned }) => {
       setSelectedJobId("");
       setJobSearch("");
       setMode("select");
+      setHire(true);
     }
   }, [isOpen]);
 
@@ -402,6 +409,24 @@ const AssignJobPopup = ({ isOpen, onClose, candidate, onAssigned }) => {
                 )}
               </div>
             )}
+          </div>
+
+          <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/30">
+            <input
+              type="checkbox"
+              checked={hire}
+              onChange={(e) => setHire(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-900 dark:text-white">
+                Move to Employees (Hire)
+              </label>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                When enabled, {candidate?.full_name || candidate?.name} will be hired into this
+                job, moved out of the candidates list, and shown on the Employees page.
+              </p>
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
@@ -620,6 +645,7 @@ export default function CandidateInterviewScreen() {
     queryClient.invalidateQueries(["recruitment", "candidates"]);
     queryClient.invalidateQueries(["recruitment", "jobs"]);
     queryClient.invalidateQueries(["recruitment", "dashboard"]);
+    queryClient.invalidateQueries(["recruitment", "employees"]);
   };
 
   const candidates = candidatesData?.data?.items || candidatesData?.data || [];

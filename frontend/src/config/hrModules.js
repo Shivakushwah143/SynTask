@@ -5,6 +5,7 @@ import {
   FileBarChart2,
   Gauge,
   Inbox,
+  UserCheck,
   UserRoundSearch,
 } from "lucide-react";
 
@@ -50,6 +51,11 @@ export const HR_MODULES = [
         name: "Candidates",
         href: "/hr/recruitment/candidates",
         icon: UserRoundSearch,
+      },
+      {
+        name: "Employees",
+        href: "/hr/recruitment/employees",
+        icon: UserCheck,
       },
       {
         name: "Resume Pool",

@@ -266,7 +266,8 @@ describe('CandidateInterviewScreen', () => {
     fireEvent.click(modalSubmit);
 
     await waitFor(() => {
-      expect(recruitmentApi.assignJobToCandidate).toHaveBeenCalledWith('1', { job_id: 'job-1' });
+      // "Move to Employees (Hire)" is enabled by default, so hire: true is sent
+      expect(recruitmentApi.assignJobToCandidate).toHaveBeenCalledWith('1', { job_id: 'job-1', hire: true });
     });
   });
 

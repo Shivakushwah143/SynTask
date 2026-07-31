@@ -274,26 +274,92 @@ applied_at, updated_at, deleted_at
 
 | Check | Result |
 |---|---|
-| `npm run build` (frontend) | ✅ Passed (~4s, all chunks emitted) |
-| `npx vitest run src/pages/hr/recruitment/CandidateInterviewScreen.test.jsx` | ✅ 8/8 tests passed |
+| `npm run build` (frontend) | ✅ Passed (~3.5s, all chunks emitted) |
+| `npx vitest run src/pages/hr/recruitment/CandidateInterviewScreen.test.jsx` | ✅ 9/9 tests passed |
 | Backend module import (`from app.recruitment.routes import router`) | ✅ No errors, routes registered |
 | `POST /recruitment/candidates` registered | ✅ Confirmed present |
 | `POST /recruitment/candidates/{id}/assign-job` registered | ✅ Confirmed present |
+| `GET /recruitment/candidates/{id}` workspace endpoint | ✅ Returns `{candidate, applications, resumes, timeline, notes, attachments}` |
+| `GET /recruitment/interviews?candidate_id=` | ✅ Supports candidate filter |
+| `GET /recruitment/employees` (new) | ✅ Registered on recruitment router |
 | Browser navigation to `/hr/recruitment/interview-screen` | ✅ Resolves to protected route (no 404) |
 
 ---
 
-## 9. How to Use
+## 9. Candidates Workspace — All Tabs on Live Data (new)
+
+The main Candidates page (`/hr/recruitment/candidates`) was previously showing placeholder "data will render here" for most tabs. It is now fully wired to the backend **workspace** endpoint (`GET /recruitment/candidates/{id}`), which returns `{candidate, applications, resumes, timeline, notes, attachments}`.
+
+### 9.1 What was fixed / enabled
+
+- **Corrected candidate extraction** — the workspace payload is `{ candidate: {...}, ... }`, but the page read it as the candidate itself. Now `const candidate = detail.data?.candidate || selected`, so Overview/header details render correctly.
+- **Resume tab** — lists `resumes` (filename, mime type, size, upload date, parsed text) with an **Open** link to the stored file.
+- **Applications tab** — lists `applications` (job, source, tracking code, applied date, status badge).
+- **Interviews tab** — new query `getInterviews({ candidate_id })` shows scheduled interviews (round, type, mode, time, status, **Join** meeting link).
+- **Notes tab** — now renders existing notes from `notes` (body + author + timestamp) below the add-note form.
+- **Attachments tab** — lists `attachments` (filename, mime, size, date) with an **Open** link.
+- **Assignment tab** — shows the assigned recruiter ID + an **Assign Recruiter** button.
+- **Quick Actions**
+  - **Add Attachment** — now opens a real file picker and uploads via `POST /candidates/{id}/attachment` (FormData), then invalidates the candidate cache.
+  - **Share Profile** — copies a formatted candidate profile (name, email, phone, location, skills, link) to the clipboard.
+- **Assign Recruiter dialog** — upgraded from a raw recruiter-ID text box to a dropdown populated from `GET /users/assignable` (shows name + role, falls back gracefully when empty).
+
+### 9.2 Files changed
+
+- `frontend/src/modules/hr/recruitment/pages/CandidatesPage.jsx` — live tab renderers, attachment upload, share action, interviews query, candidate extraction fix.
+- `frontend/src/modules/hr/recruitment/dialogs/RecruitmentDialogs.jsx` — `AssignRecruiterDialog` now loads assignable users into a select.
+
+---
+
+## 12. Assign Job → Convert to Employee + Employees Page (new)
+
+When a job is assigned to a candidate, they are now **moved out of the candidates list** and shown on a new **Recruitment → Employees** page. This makes "assign a job" a full hire workflow in just a few clicks.
+
+### 12.1 How it works
+
+- The assign-job request (`POST /recruitment/candidates/{id}/assign-job`) now accepts a `hire` flag.
+- When `hire: true`, the backend additionally:
+  1. Creates a **User** record (role `employee`, status `pending`, department + designation taken from the job).
+  2. Sets the candidate status to `employee` and links `candidate.employee_id` to the new user.
+  3. Records a `CandidateConverted` timeline event.
+- The candidates list **excludes** `employee` status by default, so converted candidates disappear from **Recruitment → Candidates**.
+- A new endpoint `GET /recruitment/employees` lists converted employees (candidate + job title + department + linked user status).
+
+### 12.2 UI wiring
+
+- **Interview Screen "Assign Job" modal** — new "Move to Employees (Hire)" checkbox (enabled by default). On success the toast says the person was hired and moved to Employees.
+- **Candidates drawer** — the **Assignment** tab now has an **Assign Job & Hire** button, and the sidebar has an **Assign Job & Hire** quick action that opens the new `AssignJobDialog`.
+- **New Employees page** (`/hr/recruitment/employees`) — stat cards (total/active/pending), search by name/email/phone, employee cards with initials avatar, designation, department, job, email, status badge, skills, hire date, and pagination.
+- **Navigation** — "Employees" added to the Recruitment module sidebar (`hrModules.js`) and a **View Employees** button on the Candidates hero.
+
+### 12.3 Files changed
+
+- `backend/app/recruitment/schemas.py` — `CandidateAssignJobRequest.hire`, `CandidateAssignJobResponse` (hired/employee_id/designation/department_id), `EmployeeListResponse`.
+- `backend/app/recruitment/services.py` — `assign_job_to_candidate(..., hire)`, new `hire_candidate()`, new `list_employees()`; candidates filter now excludes `employee` status.
+- `backend/app/recruitment/routes.py` — pass `hire`, new `GET /recruitment/employees`.
+- `frontend/src/api/recruitment.js` — `getEmployees`, `convertCandidate` helpers.
+- `frontend/src/modules/hr/recruitment/pages/EmployeesPage.jsx` — new page.
+- `frontend/src/modules/hr/recruitment/dialogs/RecruitmentDialogs.jsx` — new `AssignJobDialog`.
+- `frontend/src/modules/hr/recruitment/pages/CandidatesPage.jsx` — Assign Job & Hire actions, employees cache invalidation, View Employees button.
+- `frontend/src/pages/hr/recruitment/CandidateInterviewScreen.jsx` — hire checkbox + employees cache invalidation.
+- `frontend/src/App.jsx`, `frontend/src/config/hrModules.js` — route + nav item.
+
+---
+
+## 10. How to Use
 
 1. Start the backend: `cd SynTask/backend && python run.py` (restart if it was already running to load the new route).
 2. Start the frontend: `cd SynTask/frontend && npm run dev` (port 3000).
 3. Log in as an HR / recruiter / admin user.
-4. Go to **HR → Recruitment → Candidate Interview Screen** (or `http://localhost:3000/hr/recruitment/interview-screen`).
-5. Either **search & click an existing candidate** or **Add New Candidate**, fill the form, and save — the new candidate appears in the list instantly.
+4. Go to **HR → Recruitment → Candidates** (or `http://localhost:3000/hr/recruitment/candidates`).
+5. Click a candidate name to open the workspace drawer — every tab shows live data from the workspace endpoint.
+6. Use **Assign Recruiter** (dropdown), **Add Attachment** (file picker), **Share Profile** (clipboard), and **Archive** from the sidebar or table actions.
+7. To hire a candidate: open the candidate drawer → **Assignment** tab (or sidebar) → **Assign Job & Hire** → pick a job → submit. The candidate leaves the candidates list.
+8. See all hired people under **HR → Recruitment → Employees** (or `http://localhost:3000/hr/recruitment/employees`).
 
 ---
 
-## 10. Suggested Next Steps (optional future work)
+## 11. Suggested Next Steps (optional future work)
 
 - Wire candidate selection to open the **interview scheduling form** (create interview against the selected candidate).
 - Store uploaded resumes via the existing attachment/resume upload path.
