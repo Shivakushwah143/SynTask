@@ -31,7 +31,7 @@ class SalesProspect(Document):
     last_name: Optional[str] = None
     prospect_name: Optional[str] = None  # Auto-generated: First + Last, or set manually
     country_code: Optional[str] = None  # Defaults to +91 if not provided
-    phone: Indexed(str)
+    phone: Optional[Indexed(str)] = None  # Optional for bulk file import
     email: Optional[EmailStr] = None
     contact_id: Optional[str] = None  # If converted from existing contact
 
@@ -130,7 +130,7 @@ class SalesProspect(Document):
 
     def unique_key(self) -> str:
         """Unique identifier: country_code + phone"""
-        return f"{self.country_code}:{self.phone}"
+        return f"{self.country_code}:{self.phone or ''}"
 
 
 # Compatibility aliases: old names remain until persisted and API contracts

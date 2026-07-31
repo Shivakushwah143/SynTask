@@ -60,9 +60,17 @@ def can_approve_leave(current_user: User, employee: User, leave: LeaveRequest) -
         return False
     if current_user.company_id != employee.company_id:
         return False
-    # Managers can approve any employee or lead leave in the company
+    # Managers review employee/lead requests. Once the manager forwards a request
+    # to admins, only the selected reviewers can act on it; otherwise the manager
+    # reviews their reports' requests (including legacy requests that predate the
+    # pending_with_user_ids field, so it may be empty).
     if current_user.role == UserRole.MANAGER:
-        return employee.role in {UserRole.EMPLOYEE, UserRole.LEAD}
+        if employee.role not in {UserRole.EMPLOYEE, UserRole.LEAD}:
+            return False
+        if getattr(leave, "forwarded_by", None):
+            pending_with = {str(item) for item in getattr(leave, "pending_with_user_ids", []) or []}
+            return current_user_id in pending_with
+        return True
     # Admins must be in pending_with_user_ids (set via forwarding)
     if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
         pending_with = {str(item) for item in getattr(leave, "pending_with_user_ids", []) or []}
@@ -141,10 +149,11 @@ def leave_visibility_query(current_user: User, employee_id: Optional[str] = None
     if current_user.role == UserRole.SUPER_ADMIN:
         return {}
     query: Dict[str, Any] = {"company_id": current_user.company_id, "employee_id": {"$ne": current_user_id}}
-    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN}:
-        return query
-    if current_user.role == UserRole.MANAGER:
-        query["pending_with_user_ids"] = current_user_id
+    # Admins, sub-admins and managers see every company leave except their own.
+    # Seeing a request is not the same as acting on it: approve/reject remains
+    # restricted to the pending reviewers (the members the manager selected when
+    # forwarding), enforced separately by can_approve_leave.
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER}:
         return query
     query["employee_id"] = "__none__"
     return query
@@ -153,6 +162,10 @@ def leave_visibility_query(current_user: User, employee_id: Optional[str] = None
 async def assert_forward_target(current_user: User, leave: LeaveRequest, employee: User, target_user: User) -> None:
     if current_user.role != UserRole.MANAGER:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only managers can forward leave requests")
+    if not str(target_user.id).strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Forward target is required")
+    if str(target_user.id) == str(current_user.id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot forward leave to yourself")
     await assert_leave_manage_access(current_user, employee, leave)
     if str(target_user.id) == leave.employee_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot forward leave to requester")
@@ -311,6 +324,7 @@ def serialize_leave(leave: LeaveRequest, employee: Optional[User] = None) -> Dic
         "pending_with_user_ids": [str(item) for item in (getattr(leave, "pending_with_user_ids", []) or [])],
         "forwarded_by": leave.forwarded_by,
         "forwarded_to_user_id": getattr(leave, "forwarded_to_user_id", None),
+        "forwarded_to_user_ids": [str(item) for item in (getattr(leave, "forwarded_to_user_ids", []) or [])],
         "forwarded_at": leave.forwarded_at,
         "forwarded_to_admin": leave.forwarded_to_admin,
         "approval_history": getattr(leave, "approval_history", []) or [],

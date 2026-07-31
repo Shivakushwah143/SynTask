@@ -162,9 +162,9 @@ def _build_import_file():
 
 
 @pytest.mark.asyncio
-async def test_import_leads_rejects_all_duplicates_by_default(monkeypatch):
-    """With allow_duplicates=False (default), a file whose phones already exist
-    in the company raises 'No valid leads found after validation'."""
+async def test_import_leads_imports_rows_whose_phone_already_exists(monkeypatch):
+    """Bulk import applies no validation: a row whose phone already exists in the
+    company is imported anyway (phone has no unique DB index), nothing is skipped."""
     def fake_parse(file_name, content):
         return ["phone"], [{"phone": "9999999999"}]
 
@@ -185,6 +185,7 @@ async def test_import_leads_rejects_all_duplicates_by_default(monkeypatch):
 
         @staticmethod
         async def insert_many(prospects):
+            FakeSalesProspect.inserted = prospects
             return None
 
     async def fake_publish(*args, **kwargs):
@@ -196,21 +197,22 @@ async def test_import_leads_rejects_all_duplicates_by_default(monkeypatch):
     monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
 
     current_user = SimpleNamespace(id="admin-1", company_id="company-1", role=UserRole.ADMIN)
-    with pytest.raises(HTTPException) as exc_info:
-        await LeadEngine.import_leads(
-            current_user,
-            _build_import_file(),
-            strategy="round-robin",
-        )
+    result = await LeadEngine.import_leads(
+        current_user,
+        _build_import_file(),
+        strategy="round-robin",
+    )
 
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "No valid leads found after validation"
+    assert result["total_uploaded"] == 1
+    assert result["skipped_rows"] == 0
+    assert len(FakeSalesProspect.inserted) == 1
 
 
 @pytest.mark.asyncio
 async def test_import_leads_allows_duplicates_when_enabled(monkeypatch):
-    """With allow_duplicates=True, rows whose phone already exists in the company
-    OR repeats within the file are imported instead of skipped."""
+    """Rows whose phone repeats within the file are all imported (in-file
+    duplicates are no longer skipped). allow_duplicates remains accepted for
+    backward compatibility."""
     def fake_parse(file_name, content):
         # Second row repeats the same phone as the first -> in-file duplicate
         return ["phone"], [{"phone": "9999999999"}, {"phone": "9999999999"}]
@@ -257,10 +259,10 @@ async def test_import_leads_allows_duplicates_when_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_import_leads_skips_duplicate_email_rows(monkeypatch):
-    """Regression for the 500 on bulk-upload: rows whose email already exists in the
-    company (unique index company_id_1_email_1) must be skipped as warnings instead of
-    raising DuplicateKeyError -> 500 Internal Server Error."""
+async def test_import_leads_imports_duplicate_email_rows_with_email_dropped(monkeypatch):
+    """Rows whose email already exists in the company (unique index
+    company_id_1_email_1) now import anyway - the colliding email is dropped so
+    the row still imports (no 500, no validation)."""
     def fake_parse(file_name, content):
         return ["phone", "email"], [
             {"phone": "9999999999", "email": "exists@example.com"},
@@ -283,8 +285,6 @@ async def test_import_leads_skips_duplicate_email_rows(monkeypatch):
 
         @staticmethod
         def find(query):
-            # Phone pre-check query has $or; email pre-check query has email/$in.
-            # Only the email collides here - no existing phones in the company.
             if "email" in query:
                 return FakeQuery([SimpleNamespace(country_code="+91", phone="7777777777", email="exists@example.com")])
             return FakeQuery([])
@@ -309,11 +309,64 @@ async def test_import_leads_skips_duplicate_email_rows(monkeypatch):
         strategy="round-robin",
     )
 
-    # The row with the existing email is skipped (no 500); the fresh row is imported.
-    assert result["total_uploaded"] == 1
-    assert result["skipped_rows"] == 1
-    assert len(FakeSalesProspect.inserted) == 1
-    assert any("email already exists" in str(w.get("reason", "")) for w in result["warnings"])
+    # Both rows import; the row with the existing email keeps the row but loses the email.
+    assert result["total_uploaded"] == 2
+    assert result["skipped_rows"] == 0
+    assert len(FakeSalesProspect.inserted) == 2
+    inserted_emails = [getattr(p, "email", None) for p in FakeSalesProspect.inserted]
+    assert "exists@example.com" not in inserted_emails
+    assert "fresh@example.com" in inserted_emails
+
+
+@pytest.mark.asyncio
+async def test_import_leads_imports_rows_without_phone(monkeypatch):
+    """A row with no mobile number now imports - bulk import applies no
+    validation and phone is optional on the lead document."""
+    def fake_parse(file_name, content):
+        return ["first_name", "email"], [
+            {"first_name": "Ada", "email": "ada@example.com"},
+            {"first_name": "Bob", "email": "bob@example.com"},
+        ]
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1")]
+
+    class FakeQuery:
+        async def to_list(self):
+            return []
+
+    class FakeSalesProspect:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        @staticmethod
+        def find(query):
+            return FakeQuery()
+
+        @staticmethod
+        async def insert_many(prospects):
+            FakeSalesProspect.inserted = prospects
+            return None
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine._parse_tabular_upload", fake_parse)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeSalesProspect)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+
+    current_user = SimpleNamespace(id="admin-1", company_id="company-1", role=UserRole.ADMIN)
+    result = await LeadEngine.import_leads(
+        current_user,
+        _build_import_file(),
+        strategy="round-robin",
+    )
+
+    assert result["total_uploaded"] == 2
+    assert result["skipped_rows"] == 0
+    assert len(FakeSalesProspect.inserted) == 2
+    assert all(getattr(p, "phone", None) is None for p in FakeSalesProspect.inserted)
 
 
 @pytest.mark.asyncio

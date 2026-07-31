@@ -303,14 +303,14 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | POST | `/api/v1/leaves/` | `create_leave_request` | Any authenticated company member (Employee/Manager/Lead) submits leave. Admin/Sub Admin/Super Admin do not submit. Reviewers are auto-assigned via the nearest manager, falling back to company admins (Admin + Sub Admin). Requires company membership and no overlapping leave. |
-| GET | `/api/v1/leaves/` | `list_leave_requests` | Admin, Sub Admin, and Super Admin see all company leaves except their own; Manager sees all company leaves except own; Lead sees all company leaves except own; Employee sees only own leaves. Supports `status`, `leave_type`, `employee_id`, `start_date`, `end_date`, `skip`, `limit`. |
+| GET | `/api/v1/leaves/` | `list_leave_requests` | Super Admin sees all company leaves except own; Admin, Sub Admin and Manager see all company leaves except their own (including forwarded leaves); Lead sees all company leaves except own; Employee sees only own leaves. Seeing a request is not the same as acting on it: approve/reject actions are limited to the assigned reviewers (see approve/reject rows) — managers review employee/lead requests, and forwarded leaves are decided only by the reviewers the manager selected. Supports `status`, `leave_type`, `employee_id`, `start_date`, `end_date`, `skip`, `limit`. |
 | GET | `/api/v1/leaves/availability` | `get_availability` | Returns leave-type balance/availability for the authenticated user. |
 | GET | `/api/v1/leaves/calendar` | `get_leave_calendar` | Calendar view with the same role-based visibility as the list endpoint. |
 | GET | `/api/v1/leaves/my` | `get_my_leave_requests` | Returns only the authenticated user's own leave requests. |
 | GET | `/api/v1/leaves/forward-targets` | `get_leave_forward_targets` | Manager only (403 otherwise). Returns the same-company Admins and Sub Admins that a Manager may forward a leave request to. |
-| POST | `/api/v1/leaves/{leave_id}/approve` | `approve_leave_request` | Manager (own reports), Admin, or Sub Admin may approve. Admin/Sub Admin may approve manager leaves and forwarded employee leaves but not unforwarded employee leaves. Super Admin is audit-only. Only pending/forwarded requests can be approved. |
-| POST | `/api/v1/leaves/{leave_id}/reject` | `reject_leave_request` | Same approval scope as approve; rejection reason is required. |
-| POST | `/api/v1/leaves/{leave_id}/forward` | `forward_leave_request` | Manager forwards a pending subordinate leave to an Admin or Sub Admin target (`target_user_id` + reason). The target becomes the sole pending reviewer and receives a notification. |
+| POST | `/api/v1/leaves/{leave_id}/approve` | `approve_leave_request` | Managers approve employee/lead requests (forwarding a request replaces the manager with the reviewers they selected, who then decide); Admin/Sub Admin approve only leaves assigned to them via `pending_with_user_ids` (manager leaves and forwarded employee leaves, not unforwarded employee leaves). Super Admin is audit-only. Only pending/forwarded requests can be approved. |
+| POST | `/api/v1/leaves/{leave_id}/reject` | `reject_leave_request` | Same approval scope as approve (managers on employee/lead requests, forwarded requests only by the reviewers the manager selected); rejection reason is required. |
+| POST | `/api/v1/leaves/{leave_id}/forward` | `forward_leave_request` | Manager forwards a pending subordinate leave to one or more Admin/Sub Admin reviewers (`target_user_ids` list + reason). The selected reviewers replace the manager as the pending reviewers (`pending_with_user_ids`); only they receive approve/reject actions on the forwarded leave (everyone else can still view it). Each selected reviewer receives a notification. |
 | POST | `/api/v1/leaves/{leave_id}/cancel` | `cancel_leave_request` | Only the requester can cancel their own pending/forwarded leave. |
 
 ### MSA
@@ -462,7 +462,7 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | POST | `/api/v1/sales/masters/reasons-for-lost` | `create_reason` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/sales/masters/reasons-for-lost/{reason_id}` | `delete_reason` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/sales/masters/reasons-for-lost/{reason_id}` | `update_reason` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/sales/masters/stages` | `list_stages` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/sales/masters/stages` | `list_stages` | Returns `{ total, items }`. When a company has no configured `SalesStage` rows, falls back to the fixed CRM pipeline catalog (`New, Contacted, Qualified, Discovery, Proposal, Negotiation, Won, Lost`) with `source: "fixed"` and `id: null` so stage selectors are never empty. |
 | POST | `/api/v1/sales/masters/stages` | `create_stage` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/sales/masters/stages/{stage_id}` | `delete_stage` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/sales/masters/stages/{stage_id}` | `update_stage` | Uses router/endpoint dependencies where configured. |
@@ -486,7 +486,7 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 |---|---|---|---|
 | GET | `/api/v1/sales/prospects/` | `list_prospects` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/sales/prospects/` | `create_prospect` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/sales/prospects/bulk-upload` | `bulk_upload_prospects` | Accepts any file type (CSV, XLSX, or text). Unknown columns stored as `custom_fields`. Missing fields filled as null. Form fields: `file`, `strategy` (`round-robin`\|`evenly`\|`least-loaded`\|`manual`), optional `target_user_id`, `target_department_id`, and `allow_duplicates` (`true` imports rows even when the same phone already exists in the company or repeats within the file; default `false` skips them). |
+| POST | `/api/v1/sales/prospects/bulk-upload` | `bulk_upload_prospects` | Accepts any file type (CSV, XLSX, or text). Unknown columns stored as `custom_fields`. **No validation is applied** — every row imports even when a mobile number is missing (phone is optional). Rows whose email already exists in the company still import; the colliding email is dropped (email has a unique per-company index). `allow_duplicates` is accepted for backward compatibility but no longer gates anything. Form fields: `file`, `strategy` (`round-robin`\|`evenly`\|`least-loaded`\|`manual`), optional `target_user_id`, `target_department_id`. |
 | POST | `/api/v1/sales/prospects/bulk-upload/preview` | `preview_bulk_upload_prospects` | Returns preview rows, failed rows, detected columns, and field mapping recommendations. |
 | GET | `/api/v1/sales/prospects/search/contact` | `search_contact_for_prospect` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/sales/prospects/{prospect_id}` | `get_prospect` | Uses router/endpoint dependencies where configured. |
@@ -710,6 +710,6 @@ List endpoints commonly use `skip` and `limit`; default page size is configured 
 Route groups for task-management features are protected with `require_module("task")`; chat also allows `task` or `tasks_projects` workspace access so global communication works for task workspace users. Sales routes rely on endpoint-level role checks. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.
 
 Role conventions:
-- `SUB_ADMIN` is treated as a company admin for module access: it has the same leave-management visibility and approval power as `ADMIN` (full company leave list/dashboard/calendar, approval of manager and forwarded employee leaves, and eligibility as a leave forward target).
+- `SUB_ADMIN` is treated as a company admin for module access: it sees the full company leave list/dashboard/calendar like `ADMIN` (all company leaves except its own, including forwarded leaves); approve/reject is limited to leaves assigned to it via `pending_with_user_ids` (manager leaves and forwarded employee leaves); and it is eligible as a leave forward target.
 - Leave forward targets are `ADMIN` and `SUB_ADMIN` users in the same company only.
 - `SUPER_ADMIN` keeps audit-only leave access; it never weakens tenant/company isolation.

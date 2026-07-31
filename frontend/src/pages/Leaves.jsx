@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { leavesAPI } from '../api/leaves'
 import { usersAPI } from '../api/users'
-import { PageHeader, Button, Badge, FormField, Modal, inputClassName } from '../components/ui'
+import { PageHeader, Button, Badge, FormField, Modal, LoadingSpinner, inputClassName } from '../components/ui'
 import { useAuthStore } from '../store/authStore'
 import { ROLE, hasCompanyAdminAccess, isManagerRole, isLeadRole, normalizeRole } from '../utils/roles'
 import { timeService } from '@/services/timeService'
@@ -33,7 +33,7 @@ const defaultActionState = {
   type: null,
   leave: null,
   comment: '',
-  target_user_id: '',
+  target_user_ids: [],
 }
 
 export const canSubmitLeaveRequest = (role) => {
@@ -46,12 +46,25 @@ export const canReviewLeaveRequest = (leave, user) => {
   const userRole = normalizeRole(user?.role)
   const employeeRole = normalizeRole(leave?.employee_role)
   if (!leave || !['pending', 'forwarded'].includes(leave.status) || !userId || String(leave.employee_id) === userId) return false
-  // Managers can review any employee or lead leave request (backend enforces report hierarchy)
-  if (userRole === ROLE.MANAGER) return [ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole)
-  // Admins can review manager leaves or forwarded leaves
-  if (userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN) return employeeRole === ROLE.MANAGER || Boolean(leave.forwarded_by)
-  // Other roles must be in pending_with_user_ids
-  if (!(leave.pending_with_user_ids || []).map(String).includes(userId)) return false
+  // Managers review employee/lead requests. Once the manager forwards a request
+  // to admins, only the selected reviewers decide; otherwise the manager reviews
+  // their reports' requests (including legacy requests that predate the
+  // pending_with_user_ids field, so it may be empty).
+  if (userRole === ROLE.MANAGER) {
+    if (![ROLE.EMPLOYEE, ROLE.LEAD].includes(employeeRole)) return false
+    if (leave.forwarded_by) {
+      const pendingIds = (leave.pending_with_user_ids || []).map(String)
+      return pendingIds.includes(userId)
+    }
+    return true
+  }
+  // Admins/sub-admins review only the leaves assigned to them (pending reviewers).
+  if (userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN) {
+    const pendingIds = (leave.pending_with_user_ids || []).map(String)
+    if (!pendingIds.includes(userId)) return false
+    return employeeRole === ROLE.MANAGER || Boolean(leave.forwarded_by)
+  }
+  // Other roles may view requests but never receive approve/reject actions.
   return false
 }
 
@@ -101,6 +114,8 @@ export default function Leaves() {
   const [filters, setFilters] = useState({ status: '', leave_type: '', employee_id: '', start_date: '', end_date: '' })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [actionPending, setActionPending] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [actionState, setActionState] = useState(defaultActionState)
   const [myLeavesTab, setMyLeavesTab] = useState(false)
 
@@ -222,15 +237,12 @@ export default function Leaves() {
   }
 
   const openAction = (type, leave) => {
-    const defaultForwardTargetId = type === 'forward'
-      ? forwardTargetUsers.find((item) => (normalizeRole(item.role) === ROLE.ADMIN || normalizeRole(item.role) === ROLE.SUB_ADMIN) && String(item.id) !== String(user?.id || '') && String(item.id) !== String(leave?.employee_id || ''))?.id || ''
-      : ''
     setActionState({
       open: true,
       type,
       leave,
       comment: type === 'reject' ? leave?.review_comment || '' : '',
-      target_user_id: defaultForwardTargetId,
+      target_user_ids: [],
     })
   }
 
@@ -238,9 +250,10 @@ export default function Leaves() {
 
   const submitAction = async (event) => {
     event.preventDefault()
-    const { type, leave, comment, target_user_id } = actionState
+    const { type, leave, comment, target_user_ids } = actionState
     if (!leave || !type) return
     try {
+      setActionPending(true)
       if (type === 'approve') {
         await leavesAPI.approve(leave.id, comment)
         toast.success('Leave approved')
@@ -252,15 +265,15 @@ export default function Leaves() {
         await leavesAPI.reject(leave.id, comment)
         toast.success('Leave rejected')
       } else if (type === 'forward') {
-        if (!target_user_id) {
-          toast.error('Select who should review this leave request')
+        if (!(target_user_ids || []).length) {
+          toast.error('Select at least one reviewer')
           return
         }
         if (!comment.trim()) {
           toast.error('Forwarding reason is required')
           return
         }
-        await leavesAPI.forward(leave.id, { target_user_id, comment })
+        await leavesAPI.forward(leave.id, { target_user_ids, comment })
         toast.success('Leave forwarded')
       } else if (type === 'cancel') {
         await leavesAPI.cancel(leave.id)
@@ -270,8 +283,26 @@ export default function Leaves() {
       await loadData()
     } catch (error) {
       toast.error(error.response?.data?.detail || `Unable to ${type} leave`)
+    } finally {
+      setActionPending(false)
     }
   }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await loadData()
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  // Only mark a row's action button as busy while the API request is actually in
+  // flight (not just because its modal is open), so the loading icon appears at
+  // the moment the action is submitted.
+  const busyAction = actionPending && actionState.open && actionState.leave
+    ? { type: actionState.type, leaveId: String(actionState.leave.id || '') }
+    : null
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -293,10 +324,11 @@ export default function Leaves() {
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
             <button
-              onClick={loadData}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              <RefreshCw className="h-4 w-4" />
+              {refreshing ? <LoadingSpinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
               Refresh
             </button>
           </div>
@@ -514,6 +546,7 @@ export default function Leaves() {
                       currentUserId={user?.id}
                       currentUser={user}
                       currentRole={user?.role}
+                      busyAction={busyAction}
                       onApprove={() => openAction('approve', leave)}
                       onReject={() => openAction('reject', leave)}
                       onForward={() => openAction('forward', leave)}
@@ -581,21 +614,37 @@ export default function Leaves() {
           {actionState.type === 'reject' || actionState.type === 'forward' || actionState.type === 'approve' ? (
             <>
               {actionState.type === 'forward' ? (
-                <FormField label="Reviewer" required>
-                  <select
-                    className={inputClassName}
-                    required
-                    value={actionState.target_user_id}
-                    onChange={(event) => setActionState((current) => ({ ...current, target_user_id: event.target.value }))}
-                  >
-                    <option value="">Select reviewer</option>
-                    {forwardTargets.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}
-                      </option>
-                    ))}
-                    {!forwardTargets.length ? <option value="" disabled>No reviewer available</option> : null}
-                  </select>
+                <FormField label="Reviewers" required>
+                  <div className="max-h-52 space-y-1 overflow-y-auto rounded-xl border border-gray-200 p-2 dark:border-gray-700">
+                    {forwardTargets.length ? forwardTargets.map((item) => {
+                      const reviewerId = String(item.id)
+                      const checked = (actionState.target_user_ids || []).map(String).includes(reviewerId)
+                      return (
+                        <label
+                          key={reviewerId}
+                          className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            checked={checked}
+                            onChange={() => setActionState((current) => ({
+                              ...current,
+                              target_user_ids: checked
+                                ? (current.target_user_ids || []).filter((targetId) => String(targetId) !== reviewerId)
+                                : [...(current.target_user_ids || []), reviewerId],
+                            }))}
+                          />
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {`${item.first_name || ''} ${item.last_name || ''}`.trim() || item.email}
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            ({normalizeRole(item.role).replace(/_/g, ' ')})
+                          </span>
+                        </label>
+                      )
+                    }) : <p className="px-2 py-2 text-sm text-gray-500 dark:text-gray-400">No reviewer available</p>}
+                  </div>
                 </FormField>
               ) : null}
               <FormField label={actionState.type === 'reject' ? 'Rejection reason' : actionState.type === 'forward' ? 'Forwarding reason' : 'Note to reviewer'} required={actionState.type === 'reject' || actionState.type === 'forward'}>
@@ -622,10 +671,8 @@ export default function Leaves() {
             </div>
           ) : null}
           <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={closeAction}>Close</Button>
-            <Button type="submit">
-              Confirm
-            </Button>
+            <Button type="button" variant="secondary" onClick={closeAction} disabled={actionPending}>Close</Button>
+            <Button type="submit" loading={actionPending} loadingText={actionState.type === 'forward' ? 'Forwarding' : actionState.type === 'approve' ? 'Approving' : actionState.type === 'reject' ? 'Rejecting' : 'Cancelling'}>Confirm</Button>
           </div>
         </form>
       </Modal>
@@ -636,10 +683,12 @@ export default function Leaves() {
 // Missing import for RefreshCw
 import { RefreshCw } from 'lucide-react'
 
-function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onForward, onCancel }) {
+function LeaveRow({ leave, currentUserId, currentUser, busyAction, onApprove, onReject, onForward, onCancel }) {
   const canCancel = leave.status === 'pending' && String(leave.employee_id) === String(currentUserId)
   const canReview = canReviewLeaveRequest(leave, currentUser)
   const canForward = canForwardLeaveRequest(leave, currentUser)
+  const leaveId = String(leave.id || '')
+  const isBusy = (type) => busyAction?.type === type && busyAction.leaveId === leaveId
   
   const statusColors = {
     pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
@@ -678,21 +727,21 @@ function LeaveRow({ leave, currentUserId, currentUser, onApprove, onReject, onFo
         <div className="flex flex-wrap gap-2">
           {canReview ? (
             <>
-              <Button size="sm" onClick={onApprove} className="gap-1.5">
+              <Button size="sm" onClick={onApprove} loading={isBusy('approve')} className="gap-1.5">
                 <Check className="h-4 w-4" /> Approve
               </Button>
-              <Button size="sm" variant="danger" onClick={onReject} className="gap-1.5">
+              <Button size="sm" variant="danger" onClick={onReject} loading={isBusy('reject')} className="gap-1.5">
                 <X className="h-4 w-4" /> Reject
               </Button>
             </>
           ) : null}
           {canForward ? (
-            <Button size="sm" variant="secondary" onClick={onForward} className="gap-1.5">
+            <Button size="sm" variant="secondary" onClick={onForward} loading={isBusy('forward')} className="gap-1.5">
               <Send className="h-4 w-4" /> Forward
             </Button>
           ) : null}
           {canCancel ? (
-            <Button size="sm" variant="secondary" onClick={onCancel} className="gap-1.5">
+            <Button size="sm" variant="secondary" onClick={onCancel} loading={isBusy('cancel')} className="gap-1.5">
               Cancel
             </Button>
           ) : null}

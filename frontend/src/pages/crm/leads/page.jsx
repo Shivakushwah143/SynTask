@@ -26,6 +26,7 @@ import { isEmployeeRole, normalizeRole } from '../../../utils/roles'
 import { isAssignableActiveUser } from '../../../utils/userFilters'
 import { buildPipelineBoard, formatCurrency, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, normalizeText } from '../pipeline/utils'
 import { timeService } from '@/services/timeService'
+import { asArray } from '../../phase4Utils'
 
 // Helper functions (keeping existing ones)
 const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
@@ -1009,7 +1010,7 @@ export default function CRMLeadsPage() {
           queryClient.invalidateQueries('crm-pipeline-board')
         }}
         categories={categories}
-        stages={stagesQuery.data?.stages || []}
+        stages={asArray(stagesQuery.data, ['stages'])}
         users={assignableUsers}
         products={products}
       />
@@ -1020,7 +1021,7 @@ export default function CRMLeadsPage() {
         leadCount={selectedLeads.length}
         onSubmit={(fields) => bulkMutation.mutate({ lead_ids: selectedIds, fields })}
         loading={bulkMutation.isLoading}
-        stages={stagesQuery.data?.stages || []}
+        stages={asArray(stagesQuery.data, ['stages'])}
         users={assignableUsers}
       />
 

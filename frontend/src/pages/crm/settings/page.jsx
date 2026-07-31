@@ -533,18 +533,24 @@ function PipelineMastersSection() {
               </div>
               {activeResource.key === 'stages' && !isLoading && (
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => moveStage(index, -1)} disabled={index === 0} className="gap-1">
-                    <ArrowUp className="h-3.5 w-3.5" />
-                    Up
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => moveStage(index, 1)} disabled={index === rows.length - 1} className="gap-1">
-                    <ArrowDown className="h-3.5 w-3.5" />
-                    Down
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => deleteStage(row)} className="gap-1 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300">
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete
-                  </Button>
+                  {row.source === 'fixed' ? (
+                    <Badge label="Fixed pipeline stage" colorKey="draft" />
+                  ) : (
+                    <>
+                      <Button variant="secondary" size="sm" onClick={() => moveStage(index, -1)} disabled={index === 0} className="gap-1">
+                        <ArrowUp className="h-3.5 w-3.5" />
+                        Up
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => moveStage(index, 1)} disabled={index === rows.length - 1} className="gap-1">
+                        <ArrowDown className="h-3.5 w-3.5" />
+                        Down
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => deleteStage(row)} className="gap-1 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300">
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </div>

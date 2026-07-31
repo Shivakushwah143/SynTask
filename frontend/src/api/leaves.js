@@ -3,7 +3,15 @@ import api from './axios'
 const toFormData = (data) => {
   const formData = new FormData()
   Object.entries(data).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') formData.append(key, value)
+    if (value === undefined || value === null || value === '') return
+    if (Array.isArray(value)) {
+      // Append each array item under the same key so the backend receives a list.
+      value.forEach((entry) => {
+        if (entry !== undefined && entry !== null && entry !== '') formData.append(key, entry)
+      })
+    } else {
+      formData.append(key, value)
+    }
   })
   return formData
 }

@@ -89,7 +89,6 @@ export default function BulkLeads() {
   const [strategy, setStrategy] = useState('round-robin')
   const [departmentId, setDepartmentId] = useState('')
   const [targetUserId, setTargetUserId] = useState('')
-  const [allowDuplicates, setAllowDuplicates] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [resultOpen, setResultOpen] = useState(false)
   const [importResult, setImportResult] = useState(null)
@@ -184,7 +183,6 @@ export default function BulkLeads() {
       formData.append('strategy', departmentId ? 'evenly' : strategy)
       if (departmentId) formData.append('target_department_id', departmentId)
       if (strategy === 'manual') formData.append('target_user_id', targetUserId)
-      if (allowDuplicates) formData.append('allow_duplicates', 'true')
 
       const result = await salesApi.bulkUploadLeads(formData)
       const uploaded = result?.total_uploaded ?? result?.data?.total_uploaded ?? 0
@@ -197,7 +195,6 @@ export default function BulkLeads() {
       setPreviewRows([])
       setDepartmentId('')
       setTargetUserId('')
-      setAllowDuplicates(false)
       setImportResult({
         total_rows: payload.total_rows ?? 0,
         total_uploaded: payload.total_uploaded ?? 0,
@@ -415,17 +412,6 @@ export default function BulkLeads() {
                           {departmentId ? 'Department routing' : strategy === 'manual' ? 'Manual assignment' : 'Auto assignment'}
                         </div>
                       </FormField>
-                      <FormField label="Duplicate records">
-                        <label className="flex h-10 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-sm text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-300">
-                          <input
-                            type="checkbox"
-                            checked={allowDuplicates}
-                            onChange={(event) => setAllowDuplicates(event.target.checked)}
-                            className="h-4 w-4"
-                          />
-                          Allow duplicates
-                        </label>
-                      </FormField>
                     </div>
                   </div>
                 </div>
@@ -440,15 +426,15 @@ export default function BulkLeads() {
                     <ul className="mt-3 space-y-2 text-sm text-gray-500 dark:text-gray-400">
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
-                        Required fields are checked before preview.
+                        Every row is imported as-is — no validation is applied.
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
-                        Duplicate emails are flagged during import.
+                        Rows without a mobile number still import.
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
-                        Valid rows continue even when some rows fail.
+                        Repeated emails are imported (email dropped on duplicates).
                       </li>
                       <li className="flex items-start gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
