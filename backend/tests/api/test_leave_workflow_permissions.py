@@ -54,6 +54,30 @@ def test_manager_can_only_approve_pending_reports_assigned_to_them():
     assert leave_service.can_approve_leave(manager, employee, request) is True
 
 
+def test_manager_loses_approval_after_forwarding_to_admins():
+    manager = user("manager-1", UserRole.MANAGER)
+    employee = user("employee-1", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
+    admin = user("admin-1", UserRole.ADMIN)
+
+    # Before forwarding, the manager is the assigned pending reviewer.
+    assert leave_service.can_approve_leave(manager, employee, leave("employee-1", pending_with=["manager-1"])) is True
+    # After forwarding to an admin, only the selected reviewer can approve/reject.
+    assert leave_service.can_approve_leave(manager, employee, leave("employee-1", pending_with=["admin-1"], forwarded_by="manager-1")) is False
+    assert leave_service.can_approve_leave(admin, employee, leave("employee-1", pending_with=["admin-1"], forwarded_by="manager-1")) is True
+
+
+def test_manager_reviews_legacy_employee_leave_without_pending_with_field():
+    manager = user("manager-1", UserRole.MANAGER)
+    employee = user("employee-1", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
+    admin = user("admin-1", UserRole.ADMIN)
+
+    # Requests created before pending_with_user_ids existed have an empty list;
+    # the manager must still be able to approve/reject/forward them.
+    assert leave_service.can_approve_leave(manager, employee, leave("employee-1")) is True
+    # Once such a request is forwarded to admins, only the selected reviewer decides.
+    assert leave_service.can_approve_leave(manager, employee, leave("employee-1", pending_with=["admin-1"], forwarded_by="manager-1")) is False
+
+
 def test_self_approval_and_manager_leave_in_manager_inbox_are_impossible():
     manager = user("manager-1", UserRole.MANAGER)
     manager_request = leave("manager-1", pending_with=["manager-1"])
@@ -63,17 +87,25 @@ def test_self_approval_and_manager_leave_in_manager_inbox_are_impossible():
     assert query == {
         "company_id": "company-1",
         "employee_id": {"$ne": "manager-1"},
-        "pending_with_user_ids": "manager-1",
     }
 
 
-def test_admin_can_view_but_cannot_approve_unforwarded_employee_leave():
+def test_admin_sees_all_company_leaves_but_can_only_approve_assigned_ones():
     admin = user("admin-1", UserRole.ADMIN)
     employee = user("employee-1", UserRole.EMPLOYEE, reports_to="lead-1", ancestors=["manager-1", "lead-1"])
 
-    assert leave_service.leave_visibility_query(admin) == {"company_id": "company-1", "employee_id": {"$ne": "admin-1"}}
+    # Admins (and sub-admins) can VIEW every company leave except their own,
+    # including forwarded leaves.
+    assert leave_service.leave_visibility_query(admin) == {
+        "company_id": "company-1",
+        "employee_id": {"$ne": "admin-1"},
+    }
+    # Approve/reject is still limited to the pending reviewers (the members the
+    # manager selected when forwarding).
     assert leave_service.can_approve_leave(admin, employee, leave("employee-1", pending_with=["admin-1"])) is False
     assert leave_service.can_approve_leave(admin, employee, leave("employee-1", pending_with=["admin-1"], forwarded_by="manager-1")) is True
+    # A leave forwarded to a different reviewer cannot be approved by this admin.
+    assert leave_service.can_approve_leave(admin, employee, leave("employee-1", pending_with=["subadmin-1"], forwarded_by="manager-1")) is False
 
 
 def test_admin_can_approve_forwarded_employee_leave_when_pending_with_admin():
@@ -181,17 +213,15 @@ async def test_manager_lists_subordinate_employee_and_lead_leave_but_lead_has_no
 
 
 @pytest.mark.asyncio
-async def test_sub_admin_sees_all_company_leaves_like_admin():
+async def test_sub_admin_sees_all_company_leaves_but_can_only_approve_assigned_ones():
     sub_admin = user("subadmin-1", UserRole.SUB_ADMIN)
+    expected = {
+        "company_id": "company-1",
+        "employee_id": {"$ne": "subadmin-1"},
+    }
 
-    assert await leave_endpoints._base_query(sub_admin, None) == {
-        "company_id": "company-1",
-        "employee_id": {"$ne": "subadmin-1"},
-    }
-    assert leave_service.leave_visibility_query(sub_admin) == {
-        "company_id": "company-1",
-        "employee_id": {"$ne": "subadmin-1"},
-    }
+    assert await leave_endpoints._base_query(sub_admin, None) == expected
+    assert leave_service.leave_visibility_query(sub_admin) == expected
 
 
 def test_sub_admin_approval_mirrors_admin():
@@ -215,6 +245,88 @@ async def test_manager_can_forward_to_sub_admin():
     request = leave("employee-1", pending_with=["manager-1"])
 
     await leave_service.assert_forward_target(manager, request, employee, sub_admin)
+
+
+@pytest.mark.asyncio
+async def test_forward_leave_request_supports_multiple_targets(monkeypatch):
+    manager = user("manager-1", UserRole.MANAGER)
+    admin = user("admin-1", UserRole.ADMIN)
+    sub_admin = user("subadmin-1", UserRole.SUB_ADMIN)
+    employee = user("employee-1", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
+    request = leave("employee-1", pending_with=["manager-1"])
+
+    async def fake_load(leave_id, current_user):
+        return request, employee
+
+    async def fake_get(uid):
+        return {"admin-1": admin, "subadmin-1": sub_admin}.get(uid)
+
+    async def fake_forward_target(current_user, leave, employee, target):
+        return None
+
+    async def fake_timeline(**kwargs):
+        return None
+
+    async def fake_notify(*args, **kwargs):
+        return None
+
+    async def fake_save():
+        return None
+
+    employee.full_name = lambda: "Employee One"
+    request.save = fake_save
+    request.forwarded_to_user_ids = []
+
+    monkeypatch.setattr(leave_endpoints, "_load_manageable_leave", fake_load)
+    monkeypatch.setattr(leave_endpoints.User, "get", staticmethod(fake_get))
+    monkeypatch.setattr(leave_endpoints, "assert_forward_target", fake_forward_target)
+    monkeypatch.setattr(leave_endpoints, "create_timeline_event", fake_timeline)
+    monkeypatch.setattr(leave_endpoints, "notify_user", fake_notify)
+    monkeypatch.setattr(leave_endpoints, "serialize_leave", lambda l, e=None: {"id": str(l.id)})
+
+    result = await leave_endpoints.forward_leave_request(
+        leave_id="leave-1",
+        target_user_ids=["admin-1", "subadmin-1"],
+        comment="Please review",
+        current_user=manager,
+    )
+    assert result["message"] == "Leave forwarded"
+    assert request.pending_with_user_ids == ["admin-1", "subadmin-1"]
+    assert request.forwarded_to_user_ids == ["admin-1", "subadmin-1"]
+    assert request.forwarded_to_user_id == "admin-1"
+    assert request.forwarded_by == "manager-1"
+    assert request.forwarded_to_admin is True
+
+
+@pytest.mark.asyncio
+async def test_forward_leave_request_requires_at_least_one_reviewer(monkeypatch):
+    manager = user("manager-1", UserRole.MANAGER)
+    employee = user("employee-1", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
+    request = leave("employee-1", pending_with=["manager-1"])
+
+    async def fake_load(leave_id, current_user):
+        return request, employee
+
+    async def fake_timeline(**kwargs):
+        return None
+
+    async def fake_save():
+        return None
+
+    request.save = fake_save
+
+    monkeypatch.setattr(leave_endpoints, "_load_manageable_leave", fake_load)
+    monkeypatch.setattr(leave_endpoints, "create_timeline_event", fake_timeline)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await leave_endpoints.forward_leave_request(
+            leave_id="leave-1",
+            target_user_ids=[],
+            comment="Please review",
+            current_user=manager,
+        )
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Select at least one reviewer"
 
 
 @pytest.mark.asyncio
@@ -263,3 +375,83 @@ async def test_company_admin_ids_include_sub_admins(monkeypatch):
     monkeypatch.setattr(leave_service.User, "find", staticmethod(fake_find))
     result = await leave_service.company_admin_ids("company-1")
     assert set(result) == {"admin-1", "subadmin-1"}
+
+
+@pytest.mark.asyncio
+async def test_forward_to_multiple_targets_assigns_all_selected_reviewers(monkeypatch):
+    manager = user("manager-1", UserRole.MANAGER)
+    employee = user("employee-1", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
+    employee.full_name = lambda: "Employee One"
+    request = leave("employee-1", pending_with=["manager-1"])
+
+    async def fake_save():
+        return None
+
+    request.save = fake_save
+    admin = user("admin-1", UserRole.ADMIN)
+    sub_admin = user("subadmin-1", UserRole.SUB_ADMIN)
+    targets = {"admin-1": admin, "subadmin-1": sub_admin}
+
+    async def fake_load(leave_id, current_user):
+        return request, employee
+
+    async def fake_user_get(user_id):
+        return targets.get(user_id)
+
+    async def fake_timeline(**kwargs):
+        return None
+
+    async def fake_notify(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(leave_endpoints, "_load_manageable_leave", fake_load)
+    monkeypatch.setattr(leave_endpoints.User, "get", staticmethod(fake_user_get))
+    monkeypatch.setattr(leave_endpoints, "create_timeline_event", fake_timeline)
+    monkeypatch.setattr(leave_endpoints, "notify_user", fake_notify)
+
+    result = await leave_endpoints.forward_leave_request(
+        "leave-1",
+        ["admin-1", "subadmin-1"],
+        "Needs admin review",
+        manager,
+    )
+
+    # Every selected reviewer is assigned and only those reviewers are assigned.
+    assert set(request.pending_with_user_ids) == {"admin-1", "subadmin-1"}
+    assert request.forwarded_to_user_id == "admin-1"
+    assert request.forwarded_to_admin is True
+    assert request.approval_history[-1]["action"] == "forwarded"
+    assert request.approval_history[-1]["target_user_id"] == "admin-1,subadmin-1"
+    assert result["message"] == "Leave forwarded"
+    assert result["leave"]["pending_with_user_ids"] == ["admin-1", "subadmin-1"]
+
+
+@pytest.mark.asyncio
+async def test_forward_with_no_reviewers_is_rejected(monkeypatch):
+    manager = user("manager-1", UserRole.MANAGER)
+    employee = user("employee-1", UserRole.EMPLOYEE, reports_to="manager-1", ancestors=["manager-1"])
+    employee.full_name = lambda: "Employee One"
+    request = leave("employee-1", pending_with=["manager-1"])
+
+    async def fake_load(leave_id, current_user):
+        return request, employee
+
+    async def fake_user_get(user_id):
+        return None
+
+    async def fake_timeline(**kwargs):
+        return None
+
+    async def fake_notify(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(leave_endpoints, "_load_manageable_leave", fake_load)
+    monkeypatch.setattr(leave_endpoints.User, "get", staticmethod(fake_user_get))
+    monkeypatch.setattr(leave_endpoints, "create_timeline_event", fake_timeline)
+    monkeypatch.setattr(leave_endpoints, "notify_user", fake_notify)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await leave_endpoints.forward_leave_request("leave-1", [], "Needs admin review", manager)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Select at least one reviewer"

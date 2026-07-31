@@ -44,6 +44,7 @@ class LeaveRequest(Document):
     review_comment: Optional[str] = None
     pending_with_user_ids: List[str] = Field(default_factory=list)
     forwarded_to_user_id: Optional[str] = None
+    forwarded_to_user_ids: List[str] = Field(default_factory=list)
     forwarded_by: Optional[str] = None
     forwarded_at: Optional[datetime] = None
     forwarded_to_admin: bool = False

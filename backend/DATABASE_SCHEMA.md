@@ -23,6 +23,7 @@ This document is generated from Beanie `Document` models under `backend/app/mode
 | `invoices` | Invoice | Client invoice records, payments, tax, and PDF generation data. |
 | `issue_links` | IssueLink | IssueLink persistence collection. |
 | `issue_types` | IssueType | IssueType persistence collection. |
+| `leave_requests` | LeaveRequest | Leave requests, reviewer assignment, and forwarding audit trail. |
 | `meetings` | Meeting | Meeting scheduling and Zoom metadata. |
 | `meta_integration_settings` | MetaIntegrationSettings | Tenant-scoped Meta connection state and encrypted tokens. |
 | `meta_marketing_insights` | MetaMarketingInsight | Read-only tenant campaign performance snapshots. |
@@ -506,6 +507,42 @@ Indexes: `['company_id', 'project_id', 'is_active']`
 | `created_at` | `datetime.datetime` | No | No | Creation timestamp |
 | `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 | `created_by` | `str` | Yes | No | Model field |
+
+### `leave_requests`
+
+#### Model: `LeaveRequest`
+
+Indexes: `['employee_id', 'company_id', 'employee_role', 'status', 'leave_type', 'start_date', 'end_date', 'pending_with_user_ids']`
+
+| Field | Type | Required | Indexed | Description |
+|---|---|---|---|---|
+| `id` | `Optional[ObjectId]` | No | Yes | Primary key |
+| `revision_id` | `Optional[uuid.UUID]` | No | No | Model field |
+| `employee_id` | `Indexed` | Yes | Yes | Requester user id |
+| `employee_role` | `Optional[str]` | No | Yes | Requester role at submission time |
+| `company_id` | `Indexed` | Yes | Yes | Tenant scope key |
+| `leave_type` | `<enum 'LeaveType` | Yes | No | Leave/WFH type |
+| `start_date` | `datetime.datetime` | Yes | Yes | Leave start |
+| `end_date` | `datetime.datetime` | Yes | Yes | Leave end |
+| `reason` | `str` | Yes | No | Requester reason |
+| `attachment_url` | `Optional[str]` | No | No | Attachment link |
+| `attachment_public_id` | `Optional[str]` | No | No | Attachment cloud id |
+| `status` | `<enum 'LeaveStatus` | No | Yes | pending/forwarded/approved/rejected/cancelled |
+| `requested_by` | `str` | Yes | No | Requester user id |
+| `reviewed_by` | `Optional[str]` | No | No | Approver/rejector user id |
+| `reviewed_at` | `Optional[datetime.datetime]` | No | No | Approval/rejection timestamp |
+| `review_comment` | `Optional[str]` | No | No | Approval/rejection note |
+| `pending_with_user_ids` | `List[str]` | No | Yes | Current pending reviewer ids. Everyone with list visibility can view the request, but only these reviewers receive approve/reject actions. For forwarded leaves this is the set of reviewers the manager selected; for unforwarded employee/lead requests the assigned manager reviews them even when this field is empty (legacy data). |
+| `forwarded_to_user_id` | `Optional[str]` | No | No | First selected forward reviewer (legacy single target) |
+| `forwarded_to_user_ids` | `List[str]` | No | No | All reviewer ids selected by the manager when forwarding |
+| `forwarded_by` | `Optional[str]` | No | No | Manager who forwarded the request |
+| `forwarded_at` | `Optional[datetime.datetime]` | No | No | Forward timestamp |
+| `forwarded_to_admin` | `bool` | No | No | Whether the request was forwarded to Admin/Sub Admin |
+| `approval_history` | `List[Dict[str, Any]]` | No | No | Submitted/forwarded/approved/rejected/cancelled audit trail |
+| `forward_comment` | `Optional[str]` | No | No | Reason provided when forwarding |
+| `cancelled_at` | `Optional[datetime.datetime]` | No | No | Cancellation timestamp |
+| `created_at` | `datetime.datetime` | No | No | Creation timestamp |
+| `updated_at` | `datetime.datetime` | No | No | Update timestamp |
 
 ### `meetings`
 
