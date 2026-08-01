@@ -12,7 +12,14 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { DEPARTMENTS_CHANGED_EVENT, departmentsAPI } from "../api/departments";
-import { ROLE, getRoleLabel, hasCompanyAdminAccess, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
+import { ROLE, getRoleLabel, isManagerRole, normalizeRole } from "../utils/roles";
+import {
+  filterNavItems,
+  hasAnyRole,
+  hasCapability,
+  hasDepartment,
+  hasModuleAccess,
+} from "../utils/rbac";
 import { HR_MODULES } from "../config/hrModules";
 import { useInboxUnreadCounts } from "../hooks/useInboxUnreadCounts";
 import {
@@ -27,7 +34,6 @@ import {
   SECTION_DOT_COLORS,
   SECTION_ICONS,
   SECTIONS,
-  STANDARD_ROLES,
 } from "../config/navigation";
 
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
@@ -48,28 +54,10 @@ const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { user } = useAuthStore();
   const userRole = normalizeRole(user?.role);
-  const hasModule = (module) => {
-    if (!module) return true;
-    // Super admins and company admins always see everything
-    if (isSuperAdminRole(userRole)) return true;
-    if (userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN || userRole === ROLE.MANAGER || userRole === ROLE.LEAD || userRole === ROLE.EMPLOYEE) return true;
-    const userModules = user?.modules || [];
-
-    if (module === "sales_crm") {
-      return userModules.includes("sales_crm") || userModules.includes("sales");
-    }
-    if (module === "sales") {
-      return userModules.includes("sales") || userModules.includes("sales_crm");
-    }
-    return userModules.includes(module);
-  };
-  const canSeeDepartments = (hasCompanyAdminAccess(user?.role) && hasModule("tasks_projects")) || isSuperAdminRole(userRole);
-  const userCapabilities = new Set(user?.capabilities || user?.permissions || []);
   const userDepartment = String(user?.department || user?.department_key || '').toLowerCase();
-  const hasCapability = (capability) =>
-    !capability || userCapabilities.has(capability) || isSuperAdminRole(userRole);
-  const hasDepartment = (department) =>
-    !department || !userDepartment || String(department).toLowerCase() === userDepartment || isSuperAdminRole(userRole);
+  // Department dropdown: the backend lets admin/sub_admin/manager/lead/super_admin
+  // read departments (get_current_company_admin_or_lead). Mirror that here.
+  const canSeeDepartments = hasAnyRole(user, [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD]);
   const [favorites, setFavorites] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('syntask-sidebar-favorites') || '[]')
@@ -187,20 +175,11 @@ const Sidebar = ({ isOpen, onClose }) => {
     }
   }, [canSeeDepartments, userRole])
 
-  // ── Gate: every item passes the SAME role/module/capability/department rules as before ────────
-  const gateItem = (item) => {
-    const roleAllowed = !item.roles ||
-      item.roles.includes(userRole) ||
-      (userRole === ROLE.SUB_ADMIN && item.roles.includes(ROLE.ADMIN))
-    if (!roleAllowed) return false
-    if (!hasModule(item.module)) return false
-    if (!hasCapability(item.capability)) return false
-    return hasDepartment(item.department)
-  };
-
-  const filteredNavigation = navigation.filter(gateItem);
-  const filteredCrmNavigation = crmNavigation.filter(gateItem);
-  const filteredMetaNavigation = metaNavigation.filter(gateItem);
+  // ── Gate: every item passes the shared RBAC gates (utils/rbac.js) — the SAME permission
+  // system the backend uses for routes/APIs (require_module, role guards, capabilities). ────────
+  const filteredNavigation = filterNavItems(navigation, user);
+  const filteredCrmNavigation = filterNavItems(crmNavigation, user);
+  const filteredMetaNavigation = filterNavItems(metaNavigation, user);
 
   const departmentItems = useMemo(() => orgDepartments.map((department) => ({
     name: department.name,
@@ -221,7 +200,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const canSeeHrItems = isManagerRole(userRole) || userDepartment === 'hr' || userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN;
 
   const hrNavigation = HR_MODULES
-    .filter((module) => canSeeHrItems && module.roles.includes(userRole) && (hasModule(module.module) || module.key === "recruitment") && hasCapability(module.capability) && hasDepartment(module.department))
+    .filter((module) => canSeeHrItems && module.roles.includes(userRole) && (hasModuleAccess(userRole, user?.modules, module.module) || module.key === "recruitment") && hasCapability(user, module.capability) && hasDepartment(user, module.department))
     .flatMap((module) => module.navigation
       .filter((item) => !HR_ITEM_SKIP.has(item.name))
       .map((item) => ({
@@ -235,16 +214,11 @@ const Sidebar = ({ isOpen, onClose }) => {
     return acc;
   }, {});
 
-  // ── Phase 4: section-level role gate (spec §9) on top of item-level gating. ──
-  // Standard roles are restricted by each section's `roles` list. Non-standard roles (hr_manager,
-  // recruiter, ...) are not listed in SECTIONS.roles, so they fall through to the item-level gates
-  // (which already restrict by module/capability/department). A section renders only if BOTH the
-  // section gate AND at least one item pass — so this can restrict but never broaden access.
-  const sectionVisible = (section) => {
-    if (!section.roles) return true;
-    if (!STANDARD_ROLES.includes(userRole)) return true; // non-standard role: item gates decide
-    return section.roles.includes(userRole) || (userRole === ROLE.SUB_ADMIN && section.roles.includes(ROLE.ADMIN));
-  };
+  // ── Sections are pure groupings now (no role gate). A section renders iff at least one of
+  // its items passed the shared RBAC gates — so it can never hide a feature the user is
+  // authorized for, and never show one they aren't. (Section-level gating used to hide
+  // Attendance/Leave/AI/Insights from employees even though the items allowed them.)
+  // Non-standard roles (hr_manager, recruiter, ...) pass through item-level gates only.
 
   // ── Build the 12 sections from config. People gets HR items + dynamic departments appended. ──
   const navigationGroups = SECTIONS
@@ -266,7 +240,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       }
       return group;
     })
-    .filter((group) => sectionVisible(group) && group.items.length);
+    .filter((group) => group.items.length);
 
   const getIconColor = (itemName) => ITEM_COLORS[itemName] || ITEM_COLORS.default;
   const getGroupColor = (groupKey) => SECTION_COLORS[groupKey] || SECTION_COLORS.default;

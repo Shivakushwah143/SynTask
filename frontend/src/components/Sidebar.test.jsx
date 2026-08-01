@@ -150,34 +150,52 @@ describe('Sidebar v3 navigation', () => {
 })
 
 describe('Sidebar v3 role-based visibility (spec §9)', () => {
-  it('shows only Home, Work and Inbox for an Employee role', () => {
+  it('shows every section an Employee is authorized for (backend-driven)', () => {
     mockUser.role = 'employee'
     renderSidebar()
 
-    for (const label of ['Home', 'Work', 'Inbox']) {
+    // Backend require_module auto-grants sales_crm/tickets to employees, and the
+    // /attendance, /leaves, /attendance-reports, /reports, /settings and
+    // /google-workspace routers have no module gate — so the sidebar now exposes
+    // exactly what the employee can actually use (Attendance, Leave, Requests, ...).
+    for (const label of ['Home', 'Sales', 'Work', 'Content', 'Inbox', 'People', 'Insights', 'Settings']) {
       expect(screen.getByRole('button', { name: new RegExp(`^${label}`, 'i') })).toBeTruthy()
     }
-    const hidden = ['Sales', 'Clients', 'Content', 'Publishing', 'AI Workspace', 'People', 'Finance', 'Insights', 'Settings']
+    // Team/admin-only surfaces stay hidden: CRM clients, publishing, AI workspace
+    // (requires the ai_agents module) and finance (invoicing_ledger + admin role).
+    const hidden = ['Clients', 'Publishing', 'AI Workspace', 'Finance']
     for (const label of hidden) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${label}`, 'i') })).toBeNull()
     }
   })
 
-  it('hides Settings for a Manager', () => {
+  it('shows the Sales section for an Employee (backend auto-grants sales_crm)', () => {
+    mockUser.role = 'employee'
+    renderSidebar()
+
+    // require_module("sales_crm") auto-grants Manager/Lead/Employee on the backend.
+    expect(screen.getByRole('button', { name: /^sales/i })).toBeTruthy()
+    expandSection('Sales')
+    expect(screen.getByRole('link', { name: /^leads$/i })).toBeTruthy()
+  })
+
+  it('shows Settings for a Manager (profile page + Google Workspace are backend-open)', () => {
     mockUser.role = 'manager'
     renderSidebar()
 
-    expect(screen.queryByRole('button', { name: /^settings/i })).toBeNull()
+    // /settings is the user's own profile page (auth-only) and /google-workspace has
+    // no backend gate; Client Settings is guarded by CRMSettingsGuard (admin+manager).
+    expect(screen.getByRole('button', { name: /^settings/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /^sales/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /^people/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /^work/i })).toBeTruthy()
   })
 
-  it('hides Settings for a Team Lead', () => {
+  it('shows Settings for a Team Lead (profile page is backend-open)', () => {
     mockUser.role = 'lead'
     renderSidebar()
 
-    expect(screen.queryByRole('button', { name: /^settings/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /^settings/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /^sales/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /^inbox/i })).toBeTruthy()
   })
@@ -189,12 +207,15 @@ describe('Sidebar v3 role-based visibility (spec §9)', () => {
     expect(screen.getByRole('button', { name: /^settings/i })).toBeTruthy()
   })
 
-  it('does not show the Sales section for a non-sales employee', () => {
+  it('shows the Sales section for an employee only when the backend grants it', () => {
+    // require_module("sales_crm") auto-grants every employee on the backend, so the
+    // section is visible (mirrors API authorization). Non-sales access is enforced
+    // server-side by data scoping, not by hiding the section.
     mockUser.role = 'employee'
     renderSidebar()
 
-    expect(screen.queryByRole('button', { name: /^sales/i })).toBeNull()
-    expect(screen.queryByRole('link', { name: /^leads$/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /^sales/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /^leads$/i })).toBeTruthy()
   })
 
   it('renders no empty Finance header for a Manager (all Finance items are admin-gated)', () => {
