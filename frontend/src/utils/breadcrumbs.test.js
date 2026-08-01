@@ -69,4 +69,14 @@ describe('buildBreadcrumbTrail (Phase 5, spec §10.5)', () => {
     expect(buildBreadcrumbTrail('/chat')).toEqual(['Home', 'Chat'])
     expect(buildBreadcrumbTrail('/meetings')).toEqual(['Home', 'Meetings'])
   })
+
+  it('maps section landing pages to Home → Section (tab sub-nav D1)', () => {
+    expect(buildBreadcrumbTrail('/sections/clients')).toEqual(['Home', 'Clients'])
+    expect(buildBreadcrumbTrail('/sections/work')).toEqual(['Home', 'Work'])
+    expect(buildBreadcrumbTrail('/sections/settings')).toEqual(['Home', 'Settings'])
+  })
+
+  it('shows just Home for the Home section landing page', () => {
+    expect(buildBreadcrumbTrail('/sections/home')).toEqual(['Home'])
+  })
 })

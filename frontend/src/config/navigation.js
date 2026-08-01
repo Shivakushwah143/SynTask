@@ -1,5 +1,7 @@
-// SynTask v3.0 — Sidebar navigation configuration
-// Phase 0-3 deliverable of the navigation redesign (see sidebar-phase-implementation-plan.md).
+// SynTask v3.0 — Navigation configuration (sidebar + in-page SectionTabs).
+// Phase 0-3 deliverable of the navigation redesign (see sidebar-phase-implementation-plan.md);
+// extended by the tab sub-navigation plan (tab-subnav-implementation-plan.md) with the shared
+// gating helpers used by BOTH the sidebar and the SectionTabs bar.
 // Ground rules: routes are corrected to the REAL app routes (App.jsx). Permissions are unchanged.
 // Only labels, grouping, order, and icons change. No page/route/permission logic is touched.
 
@@ -44,10 +46,11 @@ import {
   Users,
   Globe,
 } from "lucide-react";
-import { ROLE } from "../utils/roles";
+import { ROLE, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
+import { HR_MODULES } from "./hrModules";
 
-// Versioned key: bumping this resets stale collapsed/expanded state from the OLD sidebar on deploy.
-export const NAV_GROUPS_OPEN_KEY = "syntask-sidebar-groups-open-v2";
+// NOTE: NAV_GROUPS_OPEN_KEY (collapsible-group expand state) was removed in the tab sub-nav plan
+// (Phase D). The sidebar no longer has collapsible groups, so stale localStorage keys are ignored.
 
 // ── Icon mapping for the 12 top-level sections (spec §10.4, mapped to the project's icon set) ──
 export const SECTION_ICONS = {
@@ -302,22 +305,8 @@ export const SECTION_COLORS = {
   default: "text-gray-400",
 };
 
-// ── Section header dot colours (background swatch) ────────────────────────────────────────────
-export const SECTION_DOT_COLORS = {
-  home: "bg-cyan-400",
-  sales: "bg-sky-400",
-  clients: "bg-blue-400",
-  work: "bg-indigo-400",
-  content: "bg-pink-400",
-  publishing: "bg-amber-400",
-  inbox: "bg-sky-400",
-  ai: "bg-purple-400",
-  people: "bg-orange-400",
-  finance: "bg-yellow-400",
-  insights: "bg-lime-400",
-  settings: "bg-gray-400",
-  default: "bg-gray-400",
-};
+// NOTE: SECTION_DOT_COLORS (the old group-header dot swatches) was removed with the tab sub-nav
+// plan — the sidebar now renders section links without sub-item groups.
 
 // ── Route → section/item resolution (Phase 5 breadcrumbs, spec §10.5) ────────
 // Lets the header breadcrumb reuse the SAME section labels + item names as the
@@ -342,13 +331,132 @@ export const getNavContextForPath = (pathname, search = "") => {
       const expected = new URLSearchParams(itemSearch);
       const actual = new URLSearchParams(search);
       if (pathname === itemPath && [...expected].every(([key, value]) => actual.get(key) === value)) {
-        return { sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: true };
+        return { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: true };
       }
     } else if (pathname === itemPath) {
-      return { sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: true };
+      return { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: true };
     } else if (pathname.startsWith(`${itemPath}/`)) {
-      return { sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: false };
+      return { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: false };
     }
   }
   return null;
+};
+
+// ── Shared gating helpers (Phase A of the tab sub-nav plan) ──────────────────
+// One source of truth for "which items does section X show for user U", used by BOTH the
+// Sidebar (section visibility + favorites pool) and the SectionTabs bar, so the two can never
+// drift apart. The rules below reproduce exactly what Sidebar.jsx computed inline before Phase A.
+
+// Same module logic as the old Sidebar.hasModule closure.
+export const hasModuleAccess = (user, module) => {
+  if (!module) return true;
+  const role = normalizeRole(user?.role);
+  if (isSuperAdminRole(role)) return true;
+  if ([ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE].includes(role)) return true;
+  const userModules = user?.modules || [];
+  if (module === "sales_crm") return userModules.includes("sales_crm") || userModules.includes("sales");
+  if (module === "sales") return userModules.includes("sales") || userModules.includes("sales_crm");
+  return userModules.includes(module);
+};
+
+export const hasCapabilityAccess = (user, capability) => {
+  if (!capability) return true;
+  const role = normalizeRole(user?.role);
+  if (isSuperAdminRole(role)) return true;
+  const capabilities = new Set(user?.capabilities || user?.permissions || []);
+  return capabilities.has(capability);
+};
+
+export const hasDepartmentAccess = (user, department) => {
+  if (!department) return true;
+  const role = normalizeRole(user?.role);
+  if (isSuperAdminRole(role)) return true;
+  const userDepartment = String(user?.department || user?.department_key || "").toLowerCase();
+  if (!userDepartment) return true;
+  return String(department).toLowerCase() === userDepartment;
+};
+
+// Role + module + capability + department gate for a single nav item.
+export const gateNavItem = (user, item) => {
+  const role = normalizeRole(user?.role);
+  const roleAllowed =
+    !item.roles ||
+    item.roles.includes(role) ||
+    (role === ROLE.SUB_ADMIN && item.roles.includes(ROLE.ADMIN));
+  if (!roleAllowed) return false;
+  if (!hasModuleAccess(user, item.module)) return false;
+  if (!hasCapabilityAccess(user, item.capability)) return false;
+  return hasDepartmentAccess(user, item.department);
+};
+
+// Phase 4 section-level gate (spec §9). Non-standard roles fall through to item gates.
+export const isSectionVisible = (section, user) => {
+  if (!section.roles) return true;
+  const role = normalizeRole(user?.role);
+  if (!STANDARD_ROLES.includes(role)) return true;
+  return section.roles.includes(role) || (role === ROLE.SUB_ADMIN && section.roles.includes(ROLE.ADMIN));
+};
+
+// HR items (renamed for People, merged/hidden items skipped) — same rules as the old Sidebar.
+const getHrNavItems = (user) => {
+  const role = normalizeRole(user?.role);
+  const userDepartment = String(user?.department || user?.department_key || "").toLowerCase();
+  const canSeeHr =
+    isManagerRole(role) || userDepartment === "hr" || role === ROLE.ADMIN || role === ROLE.SUB_ADMIN;
+  if (!canSeeHr) return [];
+  return HR_MODULES.filter(
+    (module) =>
+      module.roles.includes(role) &&
+      (hasModuleAccess(user, module.module) || module.key === "recruitment") &&
+      hasCapabilityAccess(user, module.capability) &&
+      hasDepartmentAccess(user, module.department)
+  ).flatMap((module) =>
+    module.navigation
+      .filter((item) => !HR_ITEM_SKIP.has(item.name))
+      .map((item) => ({
+        ...item,
+        name: HR_ITEM_RENAMES[item.name] || item.name,
+        match: item.href === module.basePath ? module.basePath : undefined,
+      }))
+  );
+};
+
+// Final, gated, ordered items for a section — the single source both the sidebar and the
+// SectionTabs bar render from. People appends dynamic "Your Departments" tabs + HR items.
+export const getSectionItems = (sectionKey, user, orgDepartments = []) => {
+  const section = SECTIONS.find((s) => s.key === sectionKey);
+  if (!section || !isSectionVisible(section, user)) return [];
+  const items = section.items
+    .map((name) => NAV_ITEM_BY_NAME[name])
+    .filter((item) => item && gateNavItem(user, item));
+  if (sectionKey === "people") {
+    const deptIndex = items.findIndex((item) => item.name === "Departments");
+    const departmentItems = orgDepartments.map((department) => ({
+      name: department.name,
+      href: `/admin-permissions?department=${encodeURIComponent(department.id)}`,
+      icon: Network,
+    }));
+    if (deptIndex !== -1) items.splice(deptIndex + 1, 0, ...departmentItems);
+    items.push(...getHrNavItems(user));
+  }
+  return items;
+};
+
+// Active-state check for a single item against the current location (shared by sidebar + tabs).
+export const isNavItemActive = (item, location) => {
+  const [itemPath, itemSearch = ""] = (item.href || "").split("?");
+  if (itemSearch) {
+    const expected = new URLSearchParams(itemSearch);
+    const actual = new URLSearchParams(location.search);
+    return (
+      location.pathname === itemPath &&
+      [...expected].every(([key, value]) => actual.get(key) === value)
+    );
+  }
+  if (item.key === "qualification" && new URLSearchParams(location.search).has("stage")) return false;
+  return (
+    location.pathname === itemPath ||
+    (item.match && location.pathname.startsWith(item.match)) ||
+    location.pathname.startsWith(`${itemPath}/`)
+  );
 };

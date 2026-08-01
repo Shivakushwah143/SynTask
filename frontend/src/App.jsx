@@ -1,4 +1,3 @@
-import NavBar from './components/NavBar';
 import DemoLayout from './layouts/DemoLayout';
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
@@ -11,7 +10,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import ConfirmDialog from './components/ConfirmDialog';
 import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isManagerRole } from './utils/roles';
+import { hasCompanyAdminAccess, isManagerRole, isSuperAdminRole } from './utils/roles';
 import { hasModuleAccess } from './utils/rbac';
 import { applySeoMeta, getSeoMeta } from './utils/seo';
 import DemoHome from './pages/DemoHome';
@@ -73,6 +72,7 @@ const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
 const GoogleWorkspace = lazy(() => import('./pages/GoogleWorkspace'))
+const SectionLanding = lazy(() => import('./pages/SectionLanding'))
 
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
@@ -309,6 +309,7 @@ function App() {
         <Route path="eod" element={withBoundary(<EODReports />)} />
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
+        <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
           <Route path="hr">
             <Route index element={withBoundary(<HRDepartment />)} />
             <Route path="recruitment">
