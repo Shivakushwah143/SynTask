@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from time import monotonic
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from enum import Enum
@@ -16,6 +17,12 @@ from app.core.clock import utc_now
 logger = logging.getLogger(__name__)
 
 REMINDER_SCHEDULER_INTERVAL_SECONDS = 60 * 60
+# The /reminder-toasts endpoint is polled frequently by the frontend. Its
+# "login catch-up" triggers a full reminder scan, which is expensive and floods
+# logs with duplicate-skip lines. This cooldown ensures the scan runs at most
+# once per window; the hourly background scheduler still provides the canonical
+# generation path.
+REMINDER_CATCHUP_COOLDOWN_SECONDS = 15 * 60
 
 
 class ReminderPriority(str, Enum):
@@ -101,6 +108,8 @@ class ReminderService:
         self.notification_repository = notification_repository
         self.notification_factory = notification_factory or (Notification if notification_repository is Notification else self._plain_notification)
         self.now = now
+        self._last_catchup_at = 0.0
+        self._catchup_lock = asyncio.Lock()
 
     @staticmethod
     def _plain_notification(**data):
@@ -190,7 +199,7 @@ class ReminderService:
         today_key = now.date().isoformat()
         reminder_key = f"task:{task.id}:{task.assigned_to}:{reminder_name}:{today_key}"
         if await self.has_reminder_already_generated(reminder_key, task.company_id, task.assigned_to):
-            logger.info("Skipped duplicate reminder %s", reminder_key)
+            logger.debug("Skipped duplicate reminder %s", reminder_key)
             return None
         return await self.create_notification(
             company_id=task.company_id,
@@ -221,7 +230,7 @@ class ReminderService:
         today_key = now.date().isoformat()
         reminder_key = f"content:{item.id}:{assignee_id}:{reminder_name}:{today_key}"
         if await self.has_reminder_already_generated(reminder_key, item.company_id, assignee_id):
-            logger.info("Skipped duplicate reminder %s", reminder_key)
+            logger.debug("Skipped duplicate reminder %s", reminder_key)
             return None
         return await self.create_notification(
             company_id=item.company_id,
@@ -285,12 +294,34 @@ class ReminderService:
         return created
 
     async def check_all_reminders(self) -> dict[str, int]:
-        logger.info("Reminder scheduler run started")
         task_count = await self.check_task_reminders()
         content_count = await self.check_content_reminders()
-        result = {"task_notifications": task_count, "content_notifications": content_count, "total": task_count + content_count}
-        logger.info("Reminder scheduler run completed: %s", result)
-        return result
+        return {"task_notifications": task_count, "content_notifications": content_count, "total": task_count + content_count}
+
+    async def run_catchup_if_due(self, *, cooldown_seconds: int = REMINDER_CATCHUP_COOLDOWN_SECONDS) -> bool:
+        """Run the reminder generation catch-up at most once per cooldown window.
+
+        Called from the frequently-polled /reminder-toasts endpoint. Without this
+        guard every poll triggered a full scan over all tasks/content and flooded
+        logs with duplicate-skip lines. The timestamp is updated before the scan
+        so a transient failure cannot cause a re-flood on the next poll; the
+        hourly background scheduler remains the canonical generation path.
+
+        Note: the throttle is per-process. With multiple uvicorn workers each
+        process runs the scan at most once per cooldown window — still a massive
+        improvement over the previous per-poll behavior, and a safe fallback when
+        Redis (which could hold a distributed lock) is unavailable.
+        """
+        if monotonic() - self._last_catchup_at < cooldown_seconds:
+            return False
+        async with self._catchup_lock:
+            # Re-check with a fresh timestamp inside the lock in case a
+            # concurrent request ran the scan while we were waiting.
+            if monotonic() - self._last_catchup_at < cooldown_seconds:
+                return False
+            self._last_catchup_at = monotonic()
+            await self.check_all_reminders()
+            return True
 
     async def _active_user_ids(self) -> list[str]:
         users = await User.find({"status": UserStatus.ACTIVE.value}).to_list()
@@ -367,7 +398,10 @@ async def run_reminder_scheduler() -> None:
         try:
             active_users = await User.find({"status": UserStatus.ACTIVE.value}).count()
             logger.info("Reminder scheduler tick; active users=%s", active_users)
-            await reminder_service.check_all_reminders()
+            # Single summary line per hourly run preserves observability without
+            # the per-item log flood.
+            result = await reminder_service.check_all_reminders()
+            logger.info("Reminder scheduler run completed: %s", result)
             await asyncio.sleep(REMINDER_SCHEDULER_INTERVAL_SECONDS)
         except Exception as exc:
             logger.exception("Reminder scheduler failed and will retry: %s", exc)
