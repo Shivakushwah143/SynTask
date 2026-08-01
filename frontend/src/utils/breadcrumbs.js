@@ -3,7 +3,7 @@
 // sidebar section labels + item names from config/navigation.js so the header
 // breadcrumb always matches what the user sees in the sidebar.
 
-import { getNavContextForPath } from '../config/navigation'
+import { getNavContextForPath, SECTIONS } from '../config/navigation'
 
 export const BREADCRUMB_LABELS = {
   dashboard: 'Home',
@@ -50,6 +50,14 @@ export const CRM_BREADCRUMB_LABELS = {
 // ['Home', 'Inbox', 'WhatsApp'], ['Home', 'Sales', 'Leads', 'Lead'].
 export const buildBreadcrumbTrail = (pathname, search = '') => {
   const segments = pathname.split('/').filter(Boolean)
+
+  // Section landing pages (tab sub-nav plan, D1): /sections/:key → Home → Section.
+  const sectionMatch = pathname.match(/^\/sections\/([^/]+)/)
+  if (sectionMatch) {
+    const section = SECTIONS.find((s) => s.key === sectionMatch[1])
+    if (section) return section.label === 'Home' ? ['Home'] : ['Home', section.label]
+  }
+
   const context = getNavContextForPath(pathname, search)
 
   // Routes that live in the sidebar: Home → Section → Page (sidebar labels).

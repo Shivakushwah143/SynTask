@@ -8,6 +8,7 @@ import { AIAssistantDialog } from '../components/ai/AIAssistantDialog'
 import { SynzinHelpPrompt } from '../components/ai/SynzinHelpPrompt'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
 import ReminderToastListener from '../components/ReminderToastListener'
+import SectionTabs from '../components/layout/SectionTabs'
 import { buildBreadcrumbTrail } from '../utils/breadcrumbs'
 
 const MainLayout = () => {
@@ -265,6 +266,8 @@ const MainLayout = () => {
 
           {/* Content Wrapper */}
           <div className="main-content-wrapper flex-1">
+            {/* In-page section tabs (tab sub-nav plan): renders only on section pages */}
+            <SectionTabs />
             <div className="content-card glow-on-load page-enter">
               <div className={`content-inner ${isChatPage ? 'chat-page' : ''}`}>
                 <Outlet />

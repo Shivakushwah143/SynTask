@@ -1,33 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDefaultAvatar } from "../utils/avatar";
 import { getAvatarUrl } from "../utils/avatarUrl";
 import { Link, useLocation } from "react-router-dom";
-import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Network,
-  Star,
-  X,
-} from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Star, X } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
-import { DEPARTMENTS_CHANGED_EVENT, departmentsAPI } from "../api/departments";
-import { ROLE, getRoleLabel, hasCompanyAdminAccess, isManagerRole, isSuperAdminRole, normalizeRole } from "../utils/roles";
-import { HR_MODULES } from "../config/hrModules";
-import { useInboxUnreadCounts } from "../hooks/useInboxUnreadCounts";
+import { getRoleLabel } from "../utils/roles";
+import { useOrgDepartments } from "../hooks/useOrgDepartments";
+import { useFavorites } from "../hooks/useFavorites";
 import {
-  crmNavigation,
-  HR_ITEM_RENAMES,
-  HR_ITEM_SKIP,
   ITEM_COLORS,
-  metaNavigation,
-  NAV_GROUPS_OPEN_KEY,
-  navigation,
   SECTION_COLORS,
-  SECTION_DOT_COLORS,
   SECTION_ICONS,
   SECTIONS,
-  STANDARD_ROLES,
+  getSectionItems,
+  isNavItemActive,
 } from "../config/navigation";
 
 const COLLAPSE_KEY = "syntask-sidebar-collapsed";
@@ -35,55 +21,15 @@ const FAVORITES_OPEN_KEY = "syntask-sidebar-favorites-open";
 const WIDTH_KEY = "syntask-sidebar-width";
 const WIDTH_OPTIONS = [240, 280, 320];
 
-// Phase 6: Inbox item name → unread-count key from useInboxUnreadCounts().
-const INBOX_COUNT_KEYS = {
-  WhatsApp: "whatsapp",
-  Instagram: "instagram",
-  Messenger: "messenger",
-  "Meta Messages": "metaTotal",
-  Notifications: "notifications",
-};
+// Tab sub-nav plan (D1): clicking a section opens its landing page at /sections/:key.
+const SECTION_LANDING_PREFIX = "/sections/";
 
 const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const { user } = useAuthStore();
-  const userRole = normalizeRole(user?.role);
-  const hasModule = (module) => {
-    if (!module) return true;
-    // Super admins and company admins always see everything
-    if (isSuperAdminRole(userRole)) return true;
-    if (userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN || userRole === ROLE.MANAGER || userRole === ROLE.LEAD || userRole === ROLE.EMPLOYEE) return true;
-    const userModules = user?.modules || [];
+  const orgDepartments = useOrgDepartments();
+  const { favorites } = useFavorites();
 
-    if (module === "sales_crm") {
-      return userModules.includes("sales_crm") || userModules.includes("sales");
-    }
-    if (module === "sales") {
-      return userModules.includes("sales") || userModules.includes("sales_crm");
-    }
-    return userModules.includes(module);
-  };
-  const canSeeDepartments = (hasCompanyAdminAccess(user?.role) && hasModule("tasks_projects")) || isSuperAdminRole(userRole);
-  const userCapabilities = new Set(user?.capabilities || user?.permissions || []);
-  const userDepartment = String(user?.department || user?.department_key || '').toLowerCase();
-  const hasCapability = (capability) =>
-    !capability || userCapabilities.has(capability) || isSuperAdminRole(userRole);
-  const hasDepartment = (department) =>
-    !department || !userDepartment || String(department).toLowerCase() === userDepartment || isSuperAdminRole(userRole);
-  const [favorites, setFavorites] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('syntask-sidebar-favorites') || '[]')
-    } catch {
-      return []
-    }
-  });
-  const [openGroups, setOpenGroups] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(NAV_GROUPS_OPEN_KEY) || "{}");
-    } catch {
-      return {};
-    }
-  });
   const [favoritesOpen, setFavoritesOpen] = useState(() => {
     try {
       return localStorage.getItem(FAVORITES_OPEN_KEY) !== "false";
@@ -91,7 +37,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       return true;
     }
   });
-
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === "true";
@@ -107,10 +52,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       return WIDTH_OPTIONS[1];
     }
   });
-  const [orgDepartments, setOrgDepartments] = useState([]);
-
-  // ── Phase 6: Inbox unread badges (spec §10.3) ──────────────────────────────
-  const inboxCounts = useInboxUnreadCounts();
 
   useEffect(() => {
     try {
@@ -122,27 +63,11 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   useEffect(() => {
     try {
-      localStorage.setItem('syntask-sidebar-favorites', JSON.stringify(favorites));
-    } catch {
-      // ignore
-    }
-  }, [favorites]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(FAVORITES_OPEN_KEY, String(favoritesOpen));
     } catch {
       // ignore
     }
   }, [favoritesOpen]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(NAV_GROUPS_OPEN_KEY, JSON.stringify(openGroups));
-    } catch {
-      // ignore
-    }
-  }, [openGroups]);
 
   useEffect(() => {
     try {
@@ -152,131 +77,28 @@ const Sidebar = ({ isOpen, onClose }) => {
     }
   }, [sidebarWidth]);
 
-  useEffect(() => {
-    if (!canSeeDepartments) {
-      setOrgDepartments([])
-      return undefined
-    }
+  // ── Phase A: shared section resolution — identical output to the SectionTabs bar. ──
+  const sectionLinks = SECTIONS.map((section) => ({
+    ...section,
+    icon: SECTION_ICONS[section.key],
+    href: `${SECTION_LANDING_PREFIX}${section.key}`,
+    items: getSectionItems(section.key, user, orgDepartments),
+  })).filter((section) => section.items.length);
 
-    let cancelled = false
+  const isSectionLinkActive = (section) =>
+    location.pathname === section.href ||
+    section.items.some((item) => isNavItemActive(item, location));
 
-    const loadDepartments = async () => {
-      try {
-        const data = await departmentsAPI.listDepartments()
-        if (cancelled) return
-        setOrgDepartments(Array.isArray(data) ? data : [])
-      } catch {
-        if (!cancelled) {
-          setOrgDepartments([])
-        }
-      }
-    }
+  // Favorites pool: every gated config/HR item across sections (dynamic department tabs excluded).
+  const favoriteItems = SECTIONS.flatMap((section) =>
+    getSectionItems(section.key, user, orgDepartments).filter(
+      (item) => !item.href.startsWith("/admin-permissions?department="),
+    ),
+  ).filter((item) => favorites.includes(item.href));
 
-    const handleDepartmentsChanged = () => {
-      if (!cancelled) {
-        void loadDepartments()
-      }
-    }
-
-    void loadDepartments()
-    window.addEventListener(DEPARTMENTS_CHANGED_EVENT, handleDepartmentsChanged)
-
-    return () => {
-      cancelled = true
-      window.removeEventListener(DEPARTMENTS_CHANGED_EVENT, handleDepartmentsChanged)
-    }
-  }, [canSeeDepartments, userRole])
-
-  // ── Gate: every item passes the SAME role/module/capability/department rules as before ────────
-  const gateItem = (item) => {
-    const roleAllowed = !item.roles ||
-      item.roles.includes(userRole) ||
-      (userRole === ROLE.SUB_ADMIN && item.roles.includes(ROLE.ADMIN))
-    if (!roleAllowed) return false
-    if (!hasModule(item.module)) return false
-    if (!hasCapability(item.capability)) return false
-    return hasDepartment(item.department)
-  };
-
-  const filteredNavigation = navigation.filter(gateItem);
-  const filteredCrmNavigation = crmNavigation.filter(gateItem);
-  const filteredMetaNavigation = metaNavigation.filter(gateItem);
-
-  const departmentItems = useMemo(() => orgDepartments.map((department) => ({
-    name: department.name,
-    href: `/admin-permissions?department=${encodeURIComponent(department.id)}`,
-    icon: Network,
-  })), [orgDepartments]);
-  const toggleFavorite = (href) => {
-    setFavorites((current) => (
-      current.includes(href) ? current.filter((item) => item !== href) : [...current, href]
-    ))
-  };
-  const favoriteItems = [...filteredNavigation, ...filteredCrmNavigation, ...filteredMetaNavigation].filter((item) => favorites.includes(item.href));
   const widthIndex = WIDTH_OPTIONS.indexOf(sidebarWidth);
   const prevWidth = WIDTH_OPTIONS[Math.max(0, widthIndex - 1)];
   const nextWidth = WIDTH_OPTIONS[Math.min(WIDTH_OPTIONS.length - 1, widthIndex + 1)];
-
-  // ── HR items: same role/module/department gate as the old HR group, renamed for People ────────
-  const canSeeHrItems = isManagerRole(userRole) || userDepartment === 'hr' || userRole === ROLE.ADMIN || userRole === ROLE.SUB_ADMIN;
-
-  const hrNavigation = HR_MODULES
-    .filter((module) => canSeeHrItems && module.roles.includes(userRole) && (hasModule(module.module) || module.key === "recruitment") && hasCapability(module.capability) && hasDepartment(module.department))
-    .flatMap((module) => module.navigation
-      .filter((item) => !HR_ITEM_SKIP.has(item.name))
-      .map((item) => ({
-        ...item,
-        name: HR_ITEM_RENAMES[item.name] || item.name,
-        match: item.href === module.basePath ? module.basePath : undefined,
-      })));
-
-  const itemByName = [...filteredNavigation, ...filteredCrmNavigation, ...filteredMetaNavigation].reduce((acc, item) => {
-    acc[item.name] = item;
-    return acc;
-  }, {});
-
-  // ── Phase 4: section-level role gate (spec §9) on top of item-level gating. ──
-  // Standard roles are restricted by each section's `roles` list. Non-standard roles (hr_manager,
-  // recruiter, ...) are not listed in SECTIONS.roles, so they fall through to the item-level gates
-  // (which already restrict by module/capability/department). A section renders only if BOTH the
-  // section gate AND at least one item pass — so this can restrict but never broaden access.
-  const sectionVisible = (section) => {
-    if (!section.roles) return true;
-    if (!STANDARD_ROLES.includes(userRole)) return true; // non-standard role: item gates decide
-    return section.roles.includes(userRole) || (userRole === ROLE.SUB_ADMIN && section.roles.includes(ROLE.ADMIN));
-  };
-
-  // ── Build the 12 sections from config. People gets HR items + dynamic departments appended. ──
-  const navigationGroups = SECTIONS
-    .map((section) => {
-      const items = section.items.map((name) => itemByName[name]).filter(Boolean);
-      if (section.key === "people") {
-        const deptIndex = items.findIndex((item) => item.name === "Departments");
-        if (deptIndex !== -1) items.splice(deptIndex + 1, 0, ...departmentItems);
-        items.push(...hrNavigation);
-      }
-      const group = { ...section, icon: SECTION_ICONS[section.key], items };
-      // Phase 6: attach per-channel unread counts to Inbox items + header total.
-      if (section.key === "inbox") {
-        group.headerCount = inboxCounts.total;
-        group.items = group.items.map((item) => {
-          const countKey = INBOX_COUNT_KEYS[item.name];
-          return countKey ? { ...item, unreadCount: inboxCounts[countKey] || 0 } : item;
-        });
-      }
-      return group;
-    })
-    .filter((group) => sectionVisible(group) && group.items.length);
-
-  const getIconColor = (itemName) => ITEM_COLORS[itemName] || ITEM_COLORS.default;
-  const getGroupColor = (groupKey) => SECTION_COLORS[groupKey] || SECTION_COLORS.default;
-
-  // Default collapsed: only the section containing the current page (and Home) starts expanded.
-  // NOTE: Home renders as a collapsible group (Home + Calendar sub-items). The spec's §8 "opens
-  // directly, no sub-menu" conflicts with §4 (Workspace Calendar -> Home); the plan resolves it by
-  // keeping Calendar reachable under Home. Do not "simplify" this back into a bare link.
-  const isGroupActive = (group) => group.items.some((item) => isNavItemActive(item, location));
-  const defaultGroupOpen = (group) => group.key === "home" || isGroupActive(group);
 
   return (
     <>
@@ -366,7 +188,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             </div>
           </div>
 
-          {/* Navigation with colorful items */}
+          {/* Navigation - 12 link-only sections */}
           <nav className={`flex-1 space-y-2 px-2 py-3 ${collapsed ? "overflow-visible" : "overflow-y-auto"}`}>
             {favoriteItems.length ? (
               <div className="mb-2">
@@ -392,7 +214,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                       onClick={onClose}
                       className="flex min-h-8 items-center rounded-lg px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:bg-white/5 hover:text-yellow-400"
                     >
-                      <Star className={`mr-2 h-4 w-4 ${getIconColor(item.name)}`} />
+                      <Star className={`mr-2 h-4 w-4 ${ITEM_COLORS[item.name] || ITEM_COLORS.default}`} />
                       <span className={collapsed ? "lg:hidden" : ""}>{item.name}</span>
                     </Link>
                   ))}
@@ -400,21 +222,13 @@ const Sidebar = ({ isOpen, onClose }) => {
               </div>
             ) : null}
 
-            {navigationGroups.map((group) => (
-              <SidebarNavGroup
-                key={group.key}
-                group={group}
-                location={location}
+            {sectionLinks.map((section) => (
+              <SidebarSectionLink
+                key={section.key}
+                section={section}
+                isActive={isSectionLinkActive(section)}
                 collapsed={collapsed}
                 onClose={onClose}
-                favorites={favorites}
-                onToggleFavorite={toggleFavorite}
-                isOpen={openGroups[group.key] ?? defaultGroupOpen(group)}
-                onToggle={() => setOpenGroups((current) => ({ ...current, [group.key]: !(current[group.key] ?? defaultGroupOpen(group)) }))}
-                getIconColor={getIconColor}
-                groupColor={getGroupColor(group.key)}
-                groupKey={group.key}
-                headerCount={group.headerCount}
               />
             ))}
           </nav>
@@ -471,150 +285,34 @@ const Sidebar = ({ isOpen, onClose }) => {
 
 export default Sidebar;
 
-// Updated SidebarNavGroup with colorful headers
-function SidebarNavGroup({
-  group,
-  location,
-  collapsed,
-  onClose,
-  favorites,
-  onToggleFavorite,
-  isOpen,
-  onToggle,
-  getIconColor,
-  groupColor = 'text-gray-400',
-  groupKey,
-  headerCount,
-}) {
-  const isGroupActive = group.items.some((item) => isNavItemActive(item, location))
-  const GroupIcon = group.icon
+// A single 12-section link. Icons/colors come from the shared config so the sidebar
+// and the SectionTabs bar always agree.
+function SidebarSectionLink({ section, isActive, collapsed, onClose }) {
+  const Icon = section.icon || section.items[0]?.icon;
+  const color = SECTION_COLORS[section.key] || SECTION_COLORS.default;
 
   return (
-    <div className="mb-1">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isOpen}
-        className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.08em] transition-colors hover:bg-white/5 hover:text-white ${collapsed ? "lg:hidden" : ""} ${isGroupActive ? "text-white" : groupColor}`}
-      >
-        <span className="flex items-center gap-2">
-          {GroupIcon ? <GroupIcon className={`h-3.5 w-3.5 ${groupColor}`} /> : <span className={`w-1.5 h-1.5 rounded-full ${getGroupDotColor(groupKey)}`} />}
-          {group.label}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          {typeof headerCount === 'number' ? (
-            headerCount > 0 ? (
-              <span className="rounded-full bg-rose-500/20 px-1.5 py-0.5 text-[9px] font-bold text-rose-300">
-                {headerCount > 99 ? '99+' : headerCount}
-              </span>
-            ) : null
-          ) : (
-            <span className={`rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] ${groupColor}`}>
-              {group.items.length}
-            </span>
-          )}
-          <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
-        </span>
-      </button>
-      <div className={`space-y-0.5 ${isOpen || collapsed ? '' : 'hidden'}`}>
-        {group.items.map((item) => (
-          <SidebarNavItem
-            key={`${group.key}-${item.name}`}
-            item={item}
-            location={location}
-            collapsed={collapsed}
-            onClose={onClose}
-            favorites={favorites}
-            onToggleFavorite={onToggleFavorite}
-            showFavorite
-            nested={!collapsed}
-            iconColor={getIconColor ? getIconColor(item.name) : 'text-gray-400'}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// Fallback only used if a future section is added without an icon in SECTION_ICONS.
-// All 12 current sections have icons, so this is effectively a safety net.
-function getGroupDotColor(groupKey) {
-  return SECTION_DOT_COLORS[groupKey] || SECTION_DOT_COLORS.default;
-}
-
-// Updated SidebarNavItem with colored icons and hover effects
-function SidebarNavItem({
-  item,
-  location,
-  collapsed,
-  onClose,
-  favorites,
-  onToggleFavorite,
-  showFavorite = false,
-  nested = false,
-  iconColor = 'text-gray-400',
-}) {
-  const isActive = isNavItemActive(item, location)
-
-  return (
-    <div className="group flex items-center gap-0.5">
-      <Link
-        to={item.href}
-        aria-current={isActive ? "page" : undefined}
-        aria-label={item.name}
-        onClick={onClose}
-        className={`group relative flex min-h-8 flex-1 items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${collapsed ? "lg:justify-center lg:px-0" : nested ? "ml-1" : ""
-          } ${isActive
-            ? "bg-gradient-to-r from-primary-500/15 to-transparent text-primary-400 shadow-sm"
-            : "text-gray-300 hover:bg-white/5 hover:text-white"
-          }`}
-      >
-        <item.icon className={`h-4 w-4 flex-shrink-0 transition-colors duration-200 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-primary-400" : iconColor} group-hover:scale-110`} />
-        <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.name}</span>
-        {item.badge && !collapsed ? (
-          <span className="ml-2 shrink-0 whitespace-nowrap rounded-full border border-sky-400/30 bg-sky-500/10 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.04em] text-sky-300">
-            {item.badge}
-          </span>
-        ) : null}
-        {item.unreadCount > 0 && !collapsed ? (
-          <span className="ml-2 shrink-0 whitespace-nowrap rounded-full border border-rose-400/30 bg-rose-500/10 px-1.5 py-0.5 text-[9px] font-bold text-rose-300">
-            {item.unreadCount > 99 ? '99+' : item.unreadCount}
-          </span>
-        ) : null}
-        {isActive && !collapsed ? (
-          <span className={`${item.badge ? "ml-2" : "ml-auto"} flex items-center gap-1`}>
-            <span className="h-1.5 w-1.5 rounded-full bg-primary-400 shadow-lg shadow-primary-400/50 animate-pulse"></span>
-          </span>
-        ) : null}
-        {collapsed && <SidebarTooltip label={item.name} />}
-      </Link>
-      {showFavorite ? (
-        <button
-          type="button"
-          onClick={() => onToggleFavorite(item.href)}
-          className={`hidden min-h-7 min-w-7 rounded p-1 text-gray-400 transition hover:bg-white/5 hover:text-yellow-400 ${collapsed ? 'lg:hidden' : 'lg:inline-flex'}`}
-          aria-label={favorites.includes(item.href) ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
-        >
-          <Star className={`h-3.5 w-3.5 transition-colors ${favorites.includes(item.href) ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-        </button>
+    <Link
+      to={section.href}
+      aria-current={isActive ? "page" : undefined}
+      aria-label={section.label}
+      onClick={onClose}
+      className={`group relative flex min-h-9 w-full items-center rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${collapsed ? "lg:justify-center lg:px-0" : ""} ${
+        isActive
+          ? "bg-gradient-to-r from-primary-500/15 to-transparent text-white shadow-sm"
+          : "text-gray-300 hover:bg-white/5 hover:text-white"
+      }`}
+    >
+      {Icon ? (
+        <Icon className={`h-4 w-4 flex-shrink-0 transition-colors duration-200 ${collapsed ? "" : "mr-2.5"} ${isActive ? "text-primary-400" : color}`} />
       ) : null}
-    </div>
-  )
-}
-
-function isNavItemActive(item, location) {
-  const [itemPath, itemSearch = ''] = item.href.split('?')
-  if (itemSearch) {
-    const expected = new URLSearchParams(itemSearch)
-    const actual = new URLSearchParams(location.search)
-    return location.pathname === itemPath && [...expected].every(([key, value]) => actual.get(key) === value)
-  }
-  if (item.key === 'qualification' && new URLSearchParams(location.search).has('stage')) return false
-  return (
-    location.pathname === itemPath ||
-    (item.match && location.pathname.startsWith(item.match)) ||
-    location.pathname.startsWith(`${itemPath}/`)
-  )
+      <span className={`flex-1 truncate ${collapsed ? "lg:hidden" : ""}`}>{section.label}</span>
+      {isActive ? (
+        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary-400 shadow-lg shadow-primary-400/50 animate-pulse"></span>
+      ) : null}
+      {collapsed && <SidebarTooltip label={section.label} />}
+    </Link>
+  );
 }
 
 function SidebarTooltip({ label }) {

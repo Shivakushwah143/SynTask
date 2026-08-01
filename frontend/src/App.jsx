@@ -1,4 +1,3 @@
-import NavBar from './components/NavBar';
 import DemoLayout from './layouts/DemoLayout';
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
@@ -72,6 +71,7 @@ const Attendance = lazy(() => import('./pages/attendance/Attendance'))
 const LiveMonitor = lazy(() => import('./pages/attendance/LiveMonitor'))
 const AttendanceReports = lazy(() => import('./pages/attendance/AttendanceReports'))
 const GoogleWorkspace = lazy(() => import('./pages/GoogleWorkspace'))
+const SectionLanding = lazy(() => import('./pages/SectionLanding'))
 
 
 const SalesDashboard = lazy(() => import('./pages/sales/SalesDashboard'))
@@ -305,6 +305,7 @@ function App() {
         <Route path="eod" element={withBoundary(<EODReports />)} />
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
+        <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
           <Route path="hr">
             <Route index element={withBoundary(<HRDepartment />)} />
             <Route path="recruitment">
