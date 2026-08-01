@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+
+from app.core.clock import utc_now
 from typing import Any
 from uuid import uuid4
 
@@ -142,7 +144,7 @@ async def unified_assistant_chat(payload: UnifiedAssistantChatRequest, current_u
     )
     message = AIConversationMessage(role="user", content=payload.message)
     conversation.messages.append(message)
-    conversation.updated_at = datetime.utcnow()
+    conversation.updated_at = utc_now()
     await conversation.save()
 
     capability_pack = role_capability_pack(
@@ -227,7 +229,7 @@ async def upsert_personal_memory_preference(payload: PersonalMemoryPreferenceReq
                 "metadata.preference_key": payload.preference_key,
             }
         )
-    now = datetime.utcnow()
+    now = utc_now()
     if memory:
         memory.title = payload.title
         memory.content = payload.content
@@ -259,7 +261,7 @@ async def update_personal_memory_settings(payload: PersonalMemorySettingsRequest
     _require_unified_ai_enabled()
     setting = await _memory_setting(current_user=current_user)
     company_id = _company_id(current_user)
-    now = datetime.utcnow()
+    now = utc_now()
     content = "enabled" if payload.enabled else "disabled"
     if setting:
         setting.content = content

@@ -37,7 +37,7 @@ const workflowIcons = {
 const formatDateTime = (value) => {
   if (!value) return 'Scheduled soon'
   try {
-    return format(timeService.instant(value), 'MMM d, h:mm a')
+    return timeService.formatPattern(value, 'MMM d, h:mm a')
   } catch {
     return String(value)
   }
@@ -473,15 +473,15 @@ export default function CRMDashboardPage() {
                 <div key={meeting.id} className="flex items-center gap-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
                   <div className="flex min-w-[50px] flex-col items-center rounded-lg bg-indigo-50 px-3 py-2 dark:bg-indigo-900/30">
                     <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
-                      {format(new Date(meeting.meeting_date), 'd')}
+                      {timeService.formatDayNumber(meeting.meeting_date)}
                     </span>
                     <span className="text-xs text-indigo-500 dark:text-indigo-300">
-                      {format(new Date(meeting.meeting_date), 'MMM')}
+                      {timeService.formatMonthShort(meeting.meeting_date)}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{meeting.title}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{format(new Date(meeting.meeting_date), 'h:mm a')}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{timeService.formatTimeOnly(meeting.meeting_date)}</p>
                   </div>
                 </div>
               ))}

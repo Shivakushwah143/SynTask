@@ -1,6 +1,8 @@
 """Tenant-scoped Meta customer identity documents."""
 
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from typing import Any, Dict, List, Optional
 
 from beanie import Document
@@ -19,8 +21,8 @@ class CustomerIdentity(Document):
     linked_lead_id: Optional[str] = None
     linked_contact_id: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=aware_utc_now)
+    updated_at: datetime = Field(default_factory=aware_utc_now)
 
     class Settings:
         name = "meta_customer_identities"
@@ -45,9 +47,9 @@ class CrossChannelIdentityLink(Document):
     linked_contact_id: Optional[str] = None
     status: str = "confirmed"
     confirmed_by: str
-    confirmed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    confirmed_at: datetime = Field(default_factory=aware_utc_now)
+    created_at: datetime = Field(default_factory=aware_utc_now)
+    updated_at: datetime = Field(default_factory=aware_utc_now)
 
     class Settings:
         name = "meta_cross_channel_identity_links"

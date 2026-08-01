@@ -145,7 +145,7 @@ const PageEditor = ({ projectId, page, onClose, onSave }) => {
         <div>
           {page && (
             <span>
-              Last updated {format(timeService.instant(page.updated_at || page.created_at), 'MMM d, yyyy h:mm a')}
+              Last updated {timeService.formatPattern(page.updated_at || page.created_at, 'MMM d, yyyy h:mm a')}
             </span>
           )}
         </div>

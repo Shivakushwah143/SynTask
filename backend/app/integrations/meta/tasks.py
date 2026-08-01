@@ -1,7 +1,9 @@
 """Bounded, concurrency-safe worker lifecycle for Meta webhook inbox events."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+
+from app.core.clock import aware_utc_now
 import random
 from typing import Optional
 from uuid import uuid4
@@ -80,7 +82,7 @@ async def create_and_enqueue_insights_sync_run(
     if config is None or not config.ad_account_id:
         raise MetaInsightsConfigurationError("Meta insights sync is not configured")
 
-    now = datetime.now(timezone.utc)
+    now = aware_utc_now()
     run = MetaSyncRun(
         company_id=company_id,
         sync_type="insights",
@@ -171,7 +173,7 @@ async def dispatch_due_meta_insights_sync_runs() -> int:
     """Recover durable pending dispatches without sending credentials to Celery."""
     if not settings.META_INTEGRATION_ENABLED:
         return 0
-    now = datetime.now(timezone.utc)
+    now = aware_utc_now()
     runs = await (
         MetaSyncRun.find(
             {
@@ -255,7 +257,7 @@ def process_meta_insights_sync_run(task, run_id: str):
 
 
 async def claim_meta_insights_sync_run(run_id: str, company_id: str) -> Optional[MetaSyncRun]:
-    now = datetime.now(timezone.utc)
+    now = aware_utc_now()
     return await MetaSyncRun.find_one(
         {
             "_id": PydanticObjectId(run_id),
@@ -291,7 +293,7 @@ async def _process_insights_sync_run(run_id: str, terminal_attempt: bool = False
     try:
         await MetaInsightsService().sync(run)
     except (MetaGraphRateLimitError, MetaGraphTransientError) as exc:
-        now = datetime.now(timezone.utc)
+        now = aware_utc_now()
         if terminal_attempt:
             run.status = MetaSyncStatus.FAILED
             run.active_key = None
@@ -314,7 +316,7 @@ async def _process_insights_sync_run(run_id: str, terminal_attempt: bool = False
         run.active_key = None
         run.error_code = "configuration"
         run.error_message = "Meta insights sync is not configured"
-        run.completed_at = datetime.now(timezone.utc)
+        run.completed_at = aware_utc_now()
         run.updated_at = run.completed_at
         await run.save()
         return "failed"
@@ -323,7 +325,7 @@ async def _process_insights_sync_run(run_id: str, terminal_attempt: bool = False
         run.active_key = None
         run.error_code = "provider_error"
         run.error_message = "Meta insights sync failed"
-        run.completed_at = datetime.now(timezone.utc)
+        run.completed_at = aware_utc_now()
         run.updated_at = run.completed_at
         await run.save()
         return "failed"
@@ -331,7 +333,7 @@ async def _process_insights_sync_run(run_id: str, terminal_attempt: bool = False
     run.status = MetaSyncStatus.COMPLETED
     run.active_key = None
     run.cursor = None
-    run.completed_at = datetime.now(timezone.utc)
+    run.completed_at = aware_utc_now()
     run.error_code = None
     run.error_message = None
     run.updated_at = run.completed_at
@@ -350,7 +352,7 @@ async def dispatch_due_meta_webhook_events() -> int:
     if not settings.META_INTEGRATION_ENABLED:
         return 0
 
-    now = datetime.now(timezone.utc)
+    now = aware_utc_now()
     stale_queued_before = now - timedelta(seconds=STALE_QUEUED_RECOVERY_SECONDS)
     events = await (
         MetaWebhookEvent.find(
@@ -489,7 +491,7 @@ def run_meta_webhook_event(task, event_id: str):
 
 async def claim_meta_webhook_event(event_id: str) -> Optional[MetaWebhookEvent]:
     """Atomically claim exactly one pending event for one worker."""
-    now = datetime.now(timezone.utc)
+    now = aware_utc_now()
     return await MetaWebhookEvent.find_one(
         {
             "_id": PydanticObjectId(event_id),
@@ -527,7 +529,7 @@ async def _process_event(event_id: str) -> str:
     try:
         await _execute_event(event)
     except Exception as exc:
-        now = datetime.now(timezone.utc)
+        now = aware_utc_now()
         if isinstance(exc, MetaLeadQuarantined):
             event.status = MetaWebhookStatus.FAILED
             event.next_retry_at = None
@@ -553,10 +555,10 @@ async def _process_event(event_id: str) -> str:
         raise
 
     event.status = MetaWebhookStatus.PROCESSED
-    event.processed_at = datetime.now(timezone.utc)
+    event.processed_at = aware_utc_now()
     event.error_code = None
     event.error_message = None
-    event.updated_at = datetime.now(timezone.utc)
+    event.updated_at = aware_utc_now()
     await event.save()
     return "processed"
 

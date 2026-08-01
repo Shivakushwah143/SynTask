@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
+
+from app.core.clock import aware_utc_now
 from enum import Enum
 from typing import Literal, Optional
 
@@ -365,7 +367,7 @@ SPECIALIST_OPERATION_MAP: dict[ProjectAgentOperation, tuple[ProjectSpecialistId,
 
 
 def project_agent_definition(created_by: str = "system") -> AgentDefinition:
-    now = datetime.now(UTC)
+    now = aware_utc_now()
     return AgentDefinition.model_construct(
         agent_id=PROJECT_AGENT_ID,
         version=PROJECT_AGENT_VERSION,
@@ -409,7 +411,7 @@ def project_agent_definition(created_by: str = "system") -> AgentDefinition:
 
 
 def project_specialist_definitions(created_by: str = "system") -> list[SpecialistDefinition]:
-    now = datetime.now(UTC)
+    now = aware_utc_now()
     specs = [
         (
             ProjectSpecialistId.TASK_DECOMPOSITION,
@@ -587,7 +589,7 @@ DEPARTMENT_SPECIALIST_FORBIDDEN_ACTIONS = SPECIALIST_FORBIDDEN_ACTIONS + [
 
 
 def department_specialist_definitions(created_by: str = "system") -> list[SpecialistDefinition]:
-    now = datetime.now(UTC)
+    now = aware_utc_now()
     definitions: list[SpecialistDefinition] = []
     for specialist_id, spec in DEPARTMENT_SPECIALIST_SPECS.items():
         pack = DEPARTMENT_PACKS[str(spec["pack_id"])]
@@ -754,7 +756,7 @@ class ProjectSpecialistSelector:
 
 
 def example_project_agent_output(project_id: str, operation: ProjectAgentOperation) -> ProjectAgentOutput:
-    now = datetime.now(UTC)
+    now = aware_utc_now()
     return ProjectAgentOutput(
         project_id=project_id,
         operation=operation,

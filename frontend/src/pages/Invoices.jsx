@@ -166,7 +166,7 @@ const Invoices = () => {
     invoice_type: 'proforma',
     include_tax: false,
     client_id: '',
-    invoice_date: format(timeService.now(), 'yyyy-MM-dd'),
+    invoice_date: timeService.toZonedDateOnly(timeService.now()),
     due_date: '',
     tax_rate: 18,
     notes: '',
@@ -355,7 +355,7 @@ const Invoices = () => {
       invoice_type: 'proforma',
       include_tax: false,
       client_id: '',
-      invoice_date: format(timeService.now(), 'yyyy-MM-dd'),
+      invoice_date: timeService.toZonedDateOnly(timeService.now()),
       due_date: '',
       tax_rate: 18,
       notes: '',
@@ -406,7 +406,7 @@ const Invoices = () => {
       setRecordingPayment(true)
       const result = await invoicesAPI.recordPayment(invoice.id, {
         amount: outstandingAmount,
-        payment_date: format(timeService.now(), 'yyyy-MM-dd'),
+        payment_date: timeService.toZonedDateOnly(timeService.now()),
         payment_method: 'local_test_payment',
         reference_number: `LOCAL-${timeService.now().getTime()}`,
         notes: 'Local test payment recorded before Razorpay go-live',
@@ -744,7 +744,7 @@ const Invoices = () => {
                         <InvoiceTypeBadge type={invoice.invoice_type} />
                       </td>
                       <td className="py-3 pr-4 text-sm text-gray-600 dark:text-gray-400">
-                        {invoice.invoice_date ? format(new Date(invoice.invoice_date), 'MMM d, yyyy') : '-'}
+                        {invoice.invoice_date ? timeService.formatDateOnly(invoice.invoice_date) : '-'}
                       </td>
                       <td className="py-3 pr-4 text-sm font-semibold text-gray-900 dark:text-white">
                         ₹{invoice.total_amount?.toLocaleString() || '0'}

@@ -8,6 +8,48 @@ from app.core.clock import utc_now
 router = APIRouter()
 
 
+async def build_project_list_query(current_user: User) -> dict:
+    """Build the project list query for the current user.
+
+    Visibility matches ``shared.check_project_access``:
+    - SUPER_ADMIN: all projects (no company scope)
+    - ADMIN / SUB_ADMIN / MANAGER: all projects in their company
+    - LEAD: projects they are assigned to / lead / team member of
+    - EMPLOYEE: projects they are assigned to, team member of, or that
+      contain a task assigned to them
+    """
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return {}
+
+    if not current_user.company_id:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="User must belong to a company"
+        )
+
+    # Admins and managers see every project in the company.
+    if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER}:
+        return {"company_id": current_user.company_id}
+
+    query = {"company_id": current_user.company_id}
+    if current_user.role == UserRole.LEAD:
+        query["$or"] = [
+            {"assigned_to": str(current_user.id)},
+            {"assigned_user_ids": str(current_user.id)},
+            {"team_member_ids": str(current_user.id)},
+        ]
+    elif current_user.role == UserRole.EMPLOYEE:
+        assigned_tasks = await Task.find({
+            "company_id": current_user.company_id,
+            "assigned_to": str(current_user.id),
+        }).to_list()
+        query.update(build_employee_project_visibility_query(
+            current_user,
+            [task.project_id for task in assigned_tasks if getattr(task, "project_id", None)],
+        ))
+    return query
+
+
 @router.get("/")
 async def list_projects(
     status_filter: Optional[str] = None,
@@ -23,41 +65,8 @@ async def list_projects(
         if cached:
             return cached
 
-    # Super Admin can see all projects, others need company_id
-    if current_user.role == UserRole.SUPER_ADMIN:
-        query = {}
-    else:
-        if not current_user.company_id:
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail="User must belong to a company"
-            )
-        query = {"company_id": current_user.company_id}
-    
-    # For all roles except SUPER_ADMIN, include assigned projects
-    if current_user.role != UserRole.SUPER_ADMIN:
-        if current_user.role == UserRole.LEAD:
-            query["$or"] = [
-                {"assigned_to": str(current_user.id)},
-                {"assigned_user_ids": str(current_user.id)},
-                {"team_member_ids": str(current_user.id)},
-            ]
-        elif current_user.role == UserRole.EMPLOYEE:
-            assigned_tasks = await Task.find({
-                "company_id": current_user.company_id,
-                "assigned_to": str(current_user.id),
-            }).to_list()
-            query.update(build_employee_project_visibility_query(
-                current_user,
-                [task.project_id for task in assigned_tasks if getattr(task, "project_id", None)],
-            ))
-        else:  # ADMIN, SUB_ADMIN, MANAGER
-            query["$or"] = [
-                {"assigned_to": str(current_user.id)},
-                {"assigned_user_ids": str(current_user.id)},
-                {"team_member_ids": str(current_user.id)},
-            ]
-    
+    query = await build_project_list_query(current_user)
+
     if status_filter:
         try:
             query["status"] = ProjectStatus(status_filter.lower())

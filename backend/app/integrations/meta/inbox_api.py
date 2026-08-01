@@ -4,7 +4,9 @@ from typing import Any
 
 from beanie import PydanticObjectId
 from bson.errors import InvalidId
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -175,11 +177,11 @@ async def update_inbox_conversation(
             {
                 "body": payload.note.strip(),
                 "created_by": str(getattr(current_user, "id", "")),
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": aware_utc_now().isoformat(),
             }
         )
         conversation.notes = notes
-    conversation.updated_at = datetime.now(timezone.utc)
+    conversation.updated_at = aware_utc_now()
     await conversation.save()
     return {"items": [_conversation_payload(conversation)]}
 

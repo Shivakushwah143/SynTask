@@ -96,7 +96,7 @@ const DepartmentCard = ({ department, members, onEdit, onDelete }) => {
       {department.created_at && (
         <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
           <Calendar className="h-3.5 w-3.5" />
-          Created {format(new Date(department.created_at), 'MMM d, yyyy')}
+          Created {timeService.formatDate(department.created_at)}
         </div>
       )}
     </div>
@@ -302,7 +302,7 @@ const Departments = () => {
     {
       key: 'created_at',
       header: 'Created Date',
-      render: (row) => format(timeService.instant(row.created_at), 'MMM d, yyyy'),
+      render: (row) => timeService.formatPattern(row.created_at, 'MMM d, yyyy'),
     },
     {
       key: 'actions',

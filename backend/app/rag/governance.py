@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+
+from app.core.clock import utc_now
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -48,7 +50,7 @@ class RAGGovernanceService:
         source.status = RAGSourceStatus.RETIRED
         source.approval_status = "rejected"
         source.failure_reason = reason
-        source.updated_at = datetime.utcnow()
+        source.updated_at = utc_now()
         await source.save()
         return source
 
@@ -56,8 +58,8 @@ class RAGGovernanceService:
         source = await self._editable_source(current_user, source_id)
         source.status = RAGSourceStatus.RETIRED
         source.approval_status = "disabled"
-        source.retired_at = datetime.utcnow()
-        source.updated_at = datetime.utcnow()
+        source.retired_at = utc_now()
+        source.updated_at = utc_now()
         await source.save()
         await RAGQdrantStore().delete_source(company_id=source.company_id, source_id=source.source_id)
         return source

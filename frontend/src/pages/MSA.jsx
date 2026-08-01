@@ -416,12 +416,12 @@ const MSA = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-text-primary">
-                      {msa.sent_date ? format(timeService.instant(msa.sent_date), 'MMM d, yyyy') : '-'}
+                      {msa.sent_date ? timeService.formatDateOnly(msa.sent_date) : '-'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-text-primary">
-                      {msa.signed_date ? format(timeService.instant(msa.signed_date), 'MMM d, yyyy') : '-'}
+                      {msa.signed_date ? timeService.formatDateOnly(msa.signed_date) : '-'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

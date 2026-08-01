@@ -47,8 +47,8 @@ const AttendanceReports = () => {
   const [exporting, setExporting] = useState(false)
 
   // Filters
-  const [startDate, setStartDate] = useState(format(timeService.addDays(timeService.now(), -7), 'yyyy-MM-dd'))
-  const [endDate, setEndDate] = useState(format(timeService.now(), 'yyyy-MM-dd'))
+  const [startDate, setStartDate] = useState(timeService.toZonedDateOnly(timeService.addDays(timeService.now(), -7)))
+  const [endDate, setEndDate] = useState(timeService.toZonedDateOnly(timeService.now()))
   const [employeeId, setEmployeeId] = useState('')
 
   // Load roster for dropdown (if admin/manager/lead)
@@ -124,19 +124,19 @@ const AttendanceReports = () => {
   }
 
   const columns = [
-    { key: 'date', header: 'Date', render: (row) => format(timeService.instant(row.date), 'MMM d, yyyy') },
+    { key: 'date', header: 'Date', render: (row) => timeService.formatDateOnly(row.date) },
     ...(isEmployee ? [] : [
       { key: 'employee_name', header: 'Employee', render: (row) => row.employee_name }
     ]),
     {
       key: 'login_time',
       header: 'Login',
-      render: (row) => row.login_time ? format(timeService.instant(row.login_time), 'hh:mm a') : '—'
+      render: (row) => row.login_time ? timeService.formatPattern(row.login_time, 'hh:mm a') : '—'
     },
     {
       key: 'logout_time',
       header: 'Logout',
-      render: (row) => row.logout_time ? format(timeService.instant(row.logout_time), 'hh:mm a') : 'Active'
+      render: (row) => row.logout_time ? timeService.formatPattern(row.logout_time, 'hh:mm a') : 'Active'
     },
     {
       key: 'total_working_hours',

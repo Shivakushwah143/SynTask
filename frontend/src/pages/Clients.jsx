@@ -766,13 +766,13 @@ const Clients = () => {
                       {client.budget > 0 ? `₹${Number(client.budget).toLocaleString()}` : getTotalBudget(client) > 0 ? `₹${getTotalBudget(client).toLocaleString()}` : '-'}
                     </td>
                     <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      {client.start_date ? format(timeService.instant(client.start_date), 'MMM d, yyyy') : (() => {
+                      {client.start_date ? timeService.formatDateOnly(client.start_date) : (() => {
                         const startDate = getEarliestStartDate(client)
                         return startDate ? format(startDate, 'MMM d, yyyy') : '-'
                       })()}
                     </td>
                     <td className="py-3.5 px-4 text-gray-600 dark:text-gray-300">
-                      {client.delivery_date ? format(timeService.instant(client.delivery_date), 'MMM d, yyyy') : (() => {
+                      {client.delivery_date ? timeService.formatDateOnly(client.delivery_date) : (() => {
                         const deliveryDate = getLatestDeliveryDate(client)
                         return deliveryDate ? format(deliveryDate, 'MMM d, yyyy') : '-'
                       })()}
@@ -1354,13 +1354,13 @@ const Clients = () => {
                             {project.start_date && (
                               <span className="flex items-center gap-1">
                                 <Calendar className="h-3 w-3 text-indigo-500" />
-                                {format(timeService.instant(project.start_date), 'MMM d')}
+                                {timeService.formatDateOnly(project.start_date)}
                               </span>
                             )}
                             {project.delivery_date && (
                               <span className="flex items-center gap-1">
                                 <Clock className="h-3 w-3 text-amber-500" />
-                                {format(timeService.instant(project.delivery_date), 'MMM d, yyyy')}
+                                {timeService.formatDateOnly(project.delivery_date)}
                               </span>
                             )}
                           </div>

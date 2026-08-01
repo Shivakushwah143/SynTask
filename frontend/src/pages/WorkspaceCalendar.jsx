@@ -116,7 +116,7 @@ export default function WorkspaceCalendar() {
   // Helper to parse dates safely
   const parseEventDate = (dateStr) => {
     if (!dateStr) return timeService.now()
-    const parsed = parseISO(dateStr)
+    const parsed = timeService.instant(dateStr)
     return isValid(parsed) ? parsed : timeService.now()
   }
 
@@ -592,7 +592,7 @@ export default function WorkspaceCalendar() {
                   >
                     <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{event.title}</p>
                     <p className="text-[10px] text-rose-600 dark:text-rose-400 font-medium mt-1">
-                      Due: {format(parseEventDate(event.start), 'MMM d, yyyy')}
+                      Due: {timeService.formatPattern(parseEventDate(event.start), 'MMM d, yyyy')}
                     </p>
                   </button>
                 ))}
@@ -619,7 +619,7 @@ export default function WorkspaceCalendar() {
                   >
                     <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{event.title}</p>
                     <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                      {format(parseEventDate(event.start), 'MMM d, yyyy')}
+                      {timeService.formatPattern(parseEventDate(event.start), 'MMM d, yyyy')}
                     </p>
                   </button>
                 ))}
@@ -840,7 +840,7 @@ export default function WorkspaceCalendar() {
                           </span>
                         </div>
                         <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-gray-900 px-2.5 py-1 rounded-xl shadow-xs border border-indigo-200 dark:border-indigo-800">
-                          {format(parseEventDate(selectedEvent.start), 'MMM d, yyyy')}
+                          {timeService.formatPattern(parseEventDate(selectedEvent.start), 'MMM d, yyyy')}
                         </span>
                       </div>
 
@@ -848,9 +848,9 @@ export default function WorkspaceCalendar() {
                         <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Scheduled Start</span>
                         <span className="font-medium text-gray-900 dark:text-gray-100">
                           {selectedEvent.start_date
-                            ? format(parseEventDate(selectedEvent.start_date), 'PPP')
+                            ? timeService.formatPattern(parseEventDate(selectedEvent.start_date), 'PPP')
                             : selectedEvent.is_scheduled
-                              ? format(parseEventDate(selectedEvent.start), 'PPP')
+                              ? timeService.formatPattern(parseEventDate(selectedEvent.start), 'PPP')
                               : 'Not specified'}
                         </span>
                       </div>
@@ -859,9 +859,9 @@ export default function WorkspaceCalendar() {
                         <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Due Date</span>
                         <span className="font-medium text-gray-900 dark:text-gray-100">
                           {selectedEvent.due_date
-                            ? format(parseEventDate(selectedEvent.due_date), 'PPP')
+                            ? timeService.formatPattern(parseEventDate(selectedEvent.due_date), 'PPP')
                             : !selectedEvent.is_scheduled && selectedEvent.type === 'task_due'
-                              ? format(parseEventDate(selectedEvent.start), 'PPP')
+                              ? timeService.formatPattern(parseEventDate(selectedEvent.start), 'PPP')
                               : 'No due date'}
                         </span>
                       </div>
@@ -869,7 +869,9 @@ export default function WorkspaceCalendar() {
                       <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
                         <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Time</span>
                         <span className="font-medium text-gray-900 dark:text-gray-100">
-                          {selectedEvent.time ? format(parseEventDate(`${selectedEvent.start}T${selectedEvent.time}`), 'p') : 'All Day'}
+                          {selectedEvent.start_at
+                            ? timeService.formatTime(selectedEvent.start_at)
+                            : selectedEvent.time ? selectedEvent.time : 'All Day'}
                         </span>
                       </div>
 
@@ -960,7 +962,7 @@ export default function WorkspaceCalendar() {
 
                                 <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800/80 text-[10px] text-gray-500 dark:text-gray-400">
                                   <span className="font-medium">
-                                    {item.time ? item.time : 'All Day'} • {item.assignee || 'Unassigned'}
+                                    {item.start_at ? timeService.formatTime(item.start_at) : item.time ? item.time : 'All Day'} • {item.assignee || 'Unassigned'}
                                   </span>
                                   <div className="flex items-center gap-2">
                                     {!isSelected && (
@@ -1122,7 +1124,7 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
         {days.map((day) => {
           const isToday = isSameDay(day, timeService.now())
           return (
-            <div key={day.toISOString()} className={`p-4 text-center ${isToday ? 'bg-indigo-50/30 dark:bg-indigo-950/30' : ''}`}>
+            <div key={timeService.toUtcISOString(day)} className={`p-4 text-center ${isToday ? 'bg-indigo-50/30 dark:bg-indigo-950/30' : ''}`}>
               <p className="text-xs font-semibold text-gray-500 uppercase dark:text-gray-400">{format(day, 'EEE')}</p>
               <p className={`mt-1 text-lg font-bold inline-block px-2.5 py-0.5 rounded-full ${
                 isToday ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'text-gray-900 dark:text-gray-100'
@@ -1136,7 +1138,7 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
         {days.map((day) => {
           const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
           return (
-            <div key={day.toISOString()} className="p-2 space-y-2">
+            <div key={timeService.toUtcISOString(day)} className="p-2 space-y-2">
               {dayEvents.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-[10px] text-gray-300 dark:text-gray-700 italic select-none py-10">
                   No Events
@@ -1151,12 +1153,17 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
                   >
                     <span className="block font-bold truncate">{event.title}</span>
                     <span className="mt-1 block text-[10px] opacity-75 truncate">{event.project_name || 'No project'}</span>
-                    {event.time && (
+                    {event.start_at ? (
+                      <span className="mt-1.5 inline-flex items-center gap-1 text-[9px] font-bold opacity-80">
+                        <Clock className="h-3 w-3" />
+                        {timeService.formatTime(event.start_at)}
+                      </span>
+                    ) : event.time ? (
                       <span className="mt-1.5 inline-flex items-center gap-1 text-[9px] font-bold opacity-80">
                         <Clock className="h-3 w-3" />
                         {event.time}
                       </span>
-                    )}
+                    ) : null}
                   </button>
                 ))
               )}
@@ -1221,7 +1228,7 @@ function DayView({ day, events, onOpenEvent, parseEventDate }) {
         
         <div className="divide-y divide-gray-100 dark:divide-gray-800">
           {HOURS.map((hour) => {
-            const formattedHour = format(timeService.instant(2026, 0, 1, hour), 'ha')
+            const formattedHour = timeService.hourLabel(hour)
             const hourEvents = timedEvents.filter((e) => {
               const [h] = e.time.split(':').map(Number)
               return h === hour
@@ -1245,7 +1252,7 @@ function DayView({ day, events, onOpenEvent, parseEventDate }) {
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-bold">{event.title}</span>
-                          <span className="text-[9px] opacity-75">{event.time}</span>
+                          <span className="text-[9px] opacity-75">{event.start_at ? timeService.formatTime(event.start_at) : event.time}</span>
                         </div>
                         <p className="text-[10px] mt-0.5 opacity-85">{event.project_name || 'No project'}</p>
                       </button>

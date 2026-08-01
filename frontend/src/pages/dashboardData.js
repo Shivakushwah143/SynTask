@@ -27,7 +27,7 @@ const truncate = (value, limit = 18) => {
 
 const parseDate = (value) => {
   if (!value) return null
-  const date = typeof value === 'string' ? parseISO(value) : timeService.instant(value)
+  const date = timeService.instant(value)
   return isValid(date) ? date : null
 }
 

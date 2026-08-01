@@ -1,4 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from typing import Any, Dict, List, Optional
 from beanie import Document
 from pydantic import Field
@@ -12,8 +14,8 @@ class MetaReadinessRecord(Document):
     verified_at: Optional[datetime] = None
     verified_by: Optional[str] = None
     notes: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=aware_utc_now)
+    updated_at: datetime = Field(default_factory=aware_utc_now)
 
     class Settings:
         name = "meta_readiness_records"

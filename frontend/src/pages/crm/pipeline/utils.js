@@ -49,7 +49,7 @@ export const formatShortDate = (value) => {
   if (!value) return 'N/A'
   const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return 'N/A'
-  return format(date, 'MMM d, yyyy')
+  return timeService.formatPattern(value, 'MMM d, yyyy')
 }
 
 export const buildLeadSearchText = (lead) => {

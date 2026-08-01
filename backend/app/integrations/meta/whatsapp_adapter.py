@@ -1,6 +1,8 @@
 """WhatsApp Cloud API adapter for inbound webhook normalization."""
 
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import from_timestamp_utc
 from typing import Any, Dict, List, Optional
 
 from app.integrations.meta.channel_adapters import (
@@ -159,7 +161,7 @@ class WhatsAppAdapter:
 
 def _timestamp(raw: Any) -> Optional[datetime]:
     try:
-        return datetime.fromtimestamp(int(raw), tz=timezone.utc)
+        return from_timestamp_utc(int(raw))
     except (TypeError, ValueError, OSError):
         return None
 

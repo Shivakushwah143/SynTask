@@ -57,7 +57,7 @@ export default function NaturalDateInput({ value = '', onChange, onDateResolved 
       <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
         {preview && (
           <span className="text-xs font-medium text-blue-600">
-            {format(preview.date, preview.hasTime ? 'MMM d, h:mma' : 'MMM d')}
+            {timeService.formatPattern(preview.date, preview.hasTime ? 'MMM d, h:mma' : 'MMM d')}
           </span>
         )}
         {text && !preview && (

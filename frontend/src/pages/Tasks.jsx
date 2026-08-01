@@ -18,39 +18,8 @@ import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/ro
 import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
 import { timeService } from '@/services/timeService';
-import { eachDayOfInterval, isWeekend } from 'date-fns';
 import { excludeCurrentUser } from '../utils/userFilters';
-
-// Helper to calculate working hours between now and a due date (8h workday, exclude weekends)
-const calculateWorkingHours = (dueIso) => {
-  const now = timeService.now();
-  const due = timeService.instant(dueIso);
-  if (!due || due <= now) return 0;
-  const startDay = new Date(now);
-  startDay.setHours(0,0,0,0);
-  const endDay = new Date(due);
-  endDay.setHours(0,0,0,0);
-  const days = eachDayOfInterval({ start: startDay, end: endDay });
-  let total = 0;
-  days.forEach((day, idx) => {
-    if (isWeekend(day)) return;
-    const workStart = new Date(day);
-    workStart.setHours(9,0,0,0);
-    const workEnd = new Date(day);
-    workEnd.setHours(17,0,0,0);
-    if (idx === 0) {
-      const start = now > workStart ? now : workStart;
-      const end = (days.length === 1) ? Math.min(due, workEnd) : workEnd;
-      total += Math.max(0, (end - start) / 3600000);
-    } else if (idx === days.length - 1) {
-      const end = Math.min(due, workEnd);
-      total += Math.max(0, (end - workStart) / 3600000);
-    } else {
-      total += 8;
-    }
-  });
-  return Math.round(total * 100) / 100;
-};
+import { estimateWorkingHoursUntil } from '../utils/workingHours';
 
 // Stat Card Component
 const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
@@ -147,7 +116,7 @@ const Tasks = () => {
 // Update estimated hours when due date changes
 useEffect(() => {
   if (dueDateValue) {
-    const hrs = Math.round(calculateWorkingHours(dueDateValue));
+    const hrs = estimateWorkingHoursUntil(dueDateValue);
     setEstimatedHoursValue(String(hrs));
   }
 }, [dueDateValue]);
@@ -930,7 +899,7 @@ useEffect(() => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                          {task.due_date ? format(new Date(task.due_date), 'MMM d, yyyy') : '—'}
+                          {task.due_date ? timeService.formatDate(task.due_date) : '—'}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                           {assignedUser ? `${assignedUser.first_name} ${assignedUser.last_name}` : 'Unassigned'}
@@ -1021,7 +990,7 @@ useEffect(() => {
                               {task.due_date && (
                                 <span className="text-xs text-gray-500 dark:text-gray-400">
                                   <Calendar className="inline h-3 w-3 mr-1" />
-                                  {format(new Date(task.due_date), 'MMM d')}
+                                  {timeService.formatMonthDay(task.due_date)}
                                 </span>
                               )}
                               {assignedUser && (
@@ -1061,14 +1030,15 @@ useEffect(() => {
 
       {/* Edit Task Modal */}
       {showEditModal && editingTask && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowEditModal(false)
-          }}
-        >
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm">
           <div
-            className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            className="flex min-h-full items-center justify-center p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowEditModal(false)
+            }}
+          >
+          <div
+            className="my-auto w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-5 flex items-start justify-between gap-4">
@@ -1258,6 +1228,7 @@ useEffect(() => {
               </div>
             </form>
           </div>
+          </div>
         </div>
       )}
 
@@ -1300,14 +1271,15 @@ useEffect(() => {
 
       {/* Create Task Modal */}
       {canManageTasks && showCreateModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeCreateModal()
-          }}
-        >
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm">
           <div
-            className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            className="flex min-h-full items-center justify-center p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeCreateModal()
+            }}
+          >
+          <div
+            className="my-auto w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-5 flex items-start justify-between gap-4">
@@ -1492,7 +1464,6 @@ useEffect(() => {
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Due Date</label>
                 <NaturalDateInput
                   value={dueDateValue}
-                  onChange={(value) => setDueDateValue(value)}
                   onDateResolved={(date) => setDueDateValue(date ? timeService.toUtcISOString(date) : '')}
                 />
                 <input type="hidden" name="due_date" value={dueDateValue} required />
@@ -1559,6 +1530,7 @@ useEffect(() => {
                 </button>
               </div>
             </form>
+          </div>
           </div>
         </div>
       )}
@@ -1688,14 +1660,14 @@ function TaskCard({ task, onOpen }) {
   const formatCreatedTime = (createdAt) => {
     if (!createdAt) return null
     try {
-      const createdDate = new Date(createdAt)
-      const now = new Date()
+      const createdDate = timeService.instant(createdAt)
+      const now = timeService.now()
       const diffMs = now - createdDate
       const diffDays = diffMs / (1000 * 60 * 60 * 24)
       if (diffDays < 2) {
-        return formatDistanceToNow(createdDate, { addSuffix: true })
+        return timeService.formatRelative(createdDate, { addSuffix: true })
       }
-      return format(createdDate, 'MMM d, yyyy')
+      return timeService.formatPattern(createdDate, 'MMM d, yyyy')
     } catch {
       return null
     }
@@ -1757,7 +1729,7 @@ function TaskCard({ task, onOpen }) {
         {task.dueDate && (
           <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
             <Calendar className="h-3 w-3 mr-1" />
-            {format(new Date(task.dueDate), 'MMM d, yyyy')}
+            {timeService.formatDate(task.dueDate)}
           </div>
         )}
         {createdTimeLabel && (

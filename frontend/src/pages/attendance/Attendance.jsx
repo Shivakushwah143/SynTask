@@ -6,7 +6,6 @@ import {
 } from 'lucide-react'
 import { PageHeader, Button, Badge } from '../../components/ui'
 import { useMonitoringSocket } from '../../hooks/useMonitoringSocket'
-import { format, parseISO } from 'date-fns'
 import { timeService } from '@/services/timeService'
 
 const formatTime = (totalSeconds) => {
@@ -210,14 +209,14 @@ const Attendance = () => {
             </div>
 
             <h3 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-0.5">{status}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{format(new Date(), 'eeee, MMMM dd')}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{timeService.formatLongWeekdayDate(timeService.now())}</p>
 
             {/* Login time + late indicator */}
             {loginTime && (
               <div className="flex items-center space-x-2 mb-3">
                 <Clock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  Clocked in at {format(parseISO(loginTime), 'hh:mm:ss a')}
+                  Clocked in at {timeService.formatDateTimeWithSeconds(loginTime)}
                 </span>
                 {isLate && (
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">

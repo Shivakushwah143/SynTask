@@ -129,7 +129,10 @@ def _enum_value(value, fallback: str) -> str:
 def task_to_calendar_event(task, *, assignee_name: str = "Unassigned", project_name: Optional[str] = None) -> Dict[str, Any]:
     event_datetime = task.due_date or task.created_at
     event_date = event_datetime.date() if isinstance(event_datetime, datetime) else event_datetime
-    event_time = event_datetime.strftime("%H:%M") if isinstance(event_datetime, datetime) else None
+    # Full UTC ISO instant so the frontend converts it through the central
+    # timezone service instead of parsing a pre-formatted %H:%M string.
+    event_start_at = event_datetime.isoformat() if isinstance(event_datetime, datetime) else None
+    event_time = None
     priority = _enum_value(getattr(task, "priority", None), "medium")
     status_value = _enum_value(getattr(task, "status", None), "todo")
     return {
@@ -138,6 +141,7 @@ def task_to_calendar_event(task, *, assignee_name: str = "Unassigned", project_n
         "title": task.title,
         "description": task.description,
         "start": event_date.isoformat() if event_date else None,
+        "start_at": event_start_at,
         "time": event_time,
         "due_date": task.due_date.isoformat() if getattr(task, "due_date", None) else None,
         "assignee": assignee_name,
@@ -325,7 +329,8 @@ async def get_calendar_events(
                         "title": f"Project Started: {project.name}",
                         "description": project.description,
                         "start": proj_start_date.isoformat(),
-                        "time": project.start_date.strftime("%H:%M") if isinstance(project.start_date, datetime) else None,
+                        "start_at": project.start_date.isoformat() if isinstance(project.start_date, datetime) else None,
+                        "time": None,
                         "project_id": str(project.id),
                         "project_name": project.name,
                         "status": p_status,
@@ -343,7 +348,8 @@ async def get_calendar_events(
                         "title": f"Project Due: {project.name}",
                         "description": project.description,
                         "start": proj_due_date_parsed.isoformat(),
-                        "time": proj_due_date.strftime("%H:%M") if isinstance(proj_due_date, datetime) else None,
+                        "start_at": proj_due_date.isoformat() if isinstance(proj_due_date, datetime) else None,
+                        "time": None,
                         "project_id": str(project.id),
                         "project_name": project.name,
                         "status": p_status,
@@ -372,9 +378,11 @@ async def get_calendar_events(
                                 "type": "milestone",
                                 "title": f"Milestone: {milestone.get('name') or milestone.get('title')} ({project.name})",
                                 "description": milestone.get("description"),
-                                "start": milestone_date_parsed.isoformat(),
-                                "project_id": str(project.id),
-                                "project_name": project.name,
+                        "start": milestone_date_parsed.isoformat(),
+                        "start_at": milestone_date.isoformat() if isinstance(milestone_date, datetime) else None,
+                        "time": None,
+                        "project_id": str(project.id),
+                        "project_name": project.name,
                                 "status": m_status,
                                 "color": "#9CA3AF" if m_completed else "#EAB308",  # Yellow (Milestone) / Gray (Completed)
                             })
@@ -430,7 +438,8 @@ async def get_calendar_events(
                         "title": f"Task Scheduled: {task.title}",
                         "description": task.description,
                         "start": t_start_date.isoformat(),
-                        "time": task.start_date.strftime("%H:%M") if isinstance(task.start_date, datetime) else None,
+                        "start_at": task.start_date.isoformat() if isinstance(task.start_date, datetime) else None,
+                        "time": None,
                         "start_date": task.start_date.isoformat() if getattr(task, "start_date", None) else None,
                         "due_date": task.due_date.isoformat() if getattr(task, "due_date", None) else None,
                         "created_at": task.created_at.isoformat() if getattr(task, "created_at", None) else None,
@@ -465,7 +474,8 @@ async def get_calendar_events(
                         "title": f"Task Due: {task.title}",
                         "description": task.description,
                         "start": t_due_date_parsed.isoformat(),
-                        "time": t_due_date.strftime("%H:%M") if isinstance(t_due_date, datetime) else None,
+                        "start_at": t_due_date.isoformat() if isinstance(t_due_date, datetime) else None,
+                        "time": None,
                         "start_date": task.start_date.isoformat() if getattr(task, "start_date", None) else None,
                         "due_date": task.due_date.isoformat() if getattr(task, "due_date", None) else None,
                         "created_at": task.created_at.isoformat() if getattr(task, "created_at", None) else None,

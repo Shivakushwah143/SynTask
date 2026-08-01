@@ -98,7 +98,7 @@ function formatRunAt(runAt) {
 function relativeTo(runAt) {
   if (!runAt) return ''
   try {
-    return formatDistanceToNow(timeService.instant(runAt), { addSuffix: true })
+    return timeService.formatRelative(runAt, { addSuffix: true })
   } catch {
     return ''
   }
@@ -122,7 +122,7 @@ function formatScheduledTime(value) {
 function relativeScheduledTime(value) {
   if (!value) return ''
   try {
-    return formatDistanceToNow(timeService.instant(value), { addSuffix: true })
+    return timeService.formatRelative(value, { addSuffix: true })
   } catch {
     return ''
   }

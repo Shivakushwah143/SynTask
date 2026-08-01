@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, Mapping, Optional
 
+from app.core.clock import aware_utc_now
 from app.core.security import decrypt_sensitive_value, encrypt_sensitive_value
 
 
@@ -95,7 +96,7 @@ class MetaIntegrationConfigService:
         cls, company_id: str, channel: str
     ) -> Any:
         import uuid
-        from datetime import datetime, timezone, timedelta
+        from datetime import timedelta
         from app.integrations.meta.messaging_models import MetaOnboardingSession
         from app.integrations.meta.channel_adapters import ChannelType
 
@@ -110,8 +111,8 @@ class MetaIntegrationConfigService:
             channel=channel_type,
             state=state,
             status="pending",
-            created_at=datetime.now(timezone.utc),
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            created_at=aware_utc_now(),
+            expires_at=aware_utc_now() + timedelta(minutes=15),
         )
         await session.insert()
         return session
@@ -121,7 +122,6 @@ class MetaIntegrationConfigService:
         cls, session_id: str, code: str, current_user_id: Optional[str] = None
     ) -> Any:
         import httpx
-        from datetime import datetime, timezone
         from app.core.config import settings
         from app.integrations.meta.messaging_models import MetaOnboardingSession, MetaChannelConnection
         from app.integrations.meta.channel_adapters import ChannelType
@@ -137,7 +137,7 @@ class MetaIntegrationConfigService:
             raise MetaConfigurationError("Onboarding session not found")
         if session.status != "pending":
             raise MetaConfigurationError("Onboarding session is already completed or expired")
-        if session.expires_at < datetime.now(timezone.utc):
+        if session.expires_at < aware_utc_now():
             session.status = "expired"
             await session.save()
             raise MetaConfigurationError("Onboarding session has expired")
@@ -222,7 +222,7 @@ class MetaIntegrationConfigService:
                 connection.can_receive = True
                 connection.can_send = True
                 connection.updated_by = current_user_id
-                connection.updated_at = datetime.now(timezone.utc)
+                connection.updated_at = aware_utc_now()
                 await connection.save()
                 
             elif session.channel == ChannelType.MESSENGER:
@@ -261,7 +261,7 @@ class MetaIntegrationConfigService:
                 connection.can_receive = True
                 connection.can_send = True
                 connection.updated_by = current_user_id
-                connection.updated_at = datetime.now(timezone.utc)
+                connection.updated_at = aware_utc_now()
                 await connection.save()
             else:
                 raise MetaConfigurationError("Channel not supported for OAuth")

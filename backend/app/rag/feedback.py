@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+
+from app.core.clock import utc_now
 from typing import Any
 from uuid import uuid4
 
@@ -60,7 +62,7 @@ class RAGFeedbackService:
             reason=payload.reason,
             incorrect_citation_ids=payload.incorrect_citation_ids,
             unsafe_reported=payload.unsafe_reported,
-            audit_history=[{"event": "feedback_submitted", "at": datetime.utcnow().isoformat()}],
+            audit_history=[{"event": "feedback_submitted", "at": utc_now().isoformat()}],
         )
         await feedback.insert()
         return feedback

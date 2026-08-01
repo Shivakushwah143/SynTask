@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now, parse_date_utc
 from typing import Any, Dict, Iterable, Optional
 
 from app.integrations.meta.client import MetaGraphClient
@@ -37,7 +39,7 @@ def _action_value(actions: Iterable[Dict[str, Any]], action_type: str) -> float:
 
 
 def _date(value: Any) -> datetime:
-    return datetime.strptime(str(value), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return parse_date_utc(str(value))
 
 
 def normalize_insight(
@@ -80,7 +82,7 @@ def normalize_insight(
 
 async def upsert_insight_snapshot(snapshot: Dict[str, Any]) -> None:
     """Upsert using the model's complete tenant-safe unique snapshot identity."""
-    fetched_at = snapshot.get("fetched_at") or datetime.now(timezone.utc)
+    fetched_at = snapshot.get("fetched_at") or aware_utc_now()
     identity = {
         key: snapshot.get(key)
         for key in (
@@ -132,7 +134,7 @@ class MetaInsightsService:
                     since=since,
                     until=until,
                 )
-                fetched_at = datetime.now(timezone.utc)
+                fetched_at = aware_utc_now()
                 page_count += 1
                 for row in page["data"]:
                     snapshot = normalize_insight(
@@ -175,7 +177,7 @@ class MetaInsightsService:
         since, until = await self._incremental_window(run.company_id)
         run.window_since = since
         run.window_until = until
-        run.updated_at = datetime.now(timezone.utc)
+        run.updated_at = aware_utc_now()
         await run.save()
         return since, until
 
@@ -193,7 +195,7 @@ class MetaInsightsService:
             .limit(1)
             .to_list()
         )
-        now = datetime.now(timezone.utc).date().isoformat()
+        now = aware_utc_now().date().isoformat()
         if not previous or previous[0].completed_at is None:
             return now, now
         return previous[0].completed_at.date().isoformat(), now

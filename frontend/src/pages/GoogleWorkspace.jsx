@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from 'react-query'
-import { format, isAfter, parseISO } from 'date-fns'
+import { isAfter } from 'date-fns'
+import { timeService } from '@/services/timeService'
 import {
   CalendarDays,
   CheckCircle2,
@@ -275,7 +276,7 @@ export default function GoogleWorkspacePage() {
                 <StatusPill connected={account.connected !== false} status={account.status} />
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400">{account.email || user?.email}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Last sync: {account.last_sync_at ? format(parseISO(account.last_sync_at), 'PP p') : 'No sync data yet'}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Last sync: {account.last_sync_at ? timeService.formatDateTime(account.last_sync_at) : 'No sync data yet'}</p>
             </div>
           </div>
         </Section>
@@ -304,7 +305,7 @@ export default function GoogleWorkspacePage() {
             {(dashboard.today_events || []).length ? dashboard.today_events.map((event) => (
               <div key={event.id} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
                 <p className="font-medium text-gray-900 dark:text-gray-100">{event.title}</p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{format(parseISO(event.start_at), 'p')} - {format(parseISO(event.end_at), 'p')}</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{timeService.formatTimeOnly(event.start_at)} - {timeService.formatTimeOnly(event.end_at)}</p>
               </div>
             )) : <EmptyState icon={CalendarDays} title="No events today" description="Your synced Google Calendar events will appear here." />}
           </div>
@@ -315,7 +316,7 @@ export default function GoogleWorkspacePage() {
             {(dashboard.upcoming_meetings || []).length ? dashboard.upcoming_meetings.map((meeting) => (
               <div key={meeting.id} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
                 <p className="font-medium text-gray-900 dark:text-gray-100">{meeting.title}</p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{meeting.meeting_date ? format(parseISO(meeting.meeting_date), 'PP') : 'No date'} · {meeting.meeting_time}</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{meeting.meeting_date ? timeService.formatDate(meeting.meeting_date) : 'No date'} · {meeting.meeting_time}</p>
                 {meeting.zoom_meeting_url ? <a className="mt-2 inline-flex items-center gap-2 text-sm text-primary-600 hover:underline" href={meeting.zoom_meeting_url} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4" /> Open link</a> : null}
               </div>
             )) : <EmptyState icon={Video} title="No meetings yet" description="Schedule meetings from Calendar or tasks to see them here." />}
@@ -410,7 +411,7 @@ export default function GoogleWorkspacePage() {
             {(calendar.events || []).length ? calendar.events.map((event) => (
               <div key={event.id} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
                 <p className="font-medium text-gray-900 dark:text-gray-100">{event.title}</p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{format(parseISO(event.start_at), 'PP p')} - {format(parseISO(event.end_at), 'p')}</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{timeService.formatDateTime(event.start_at)} - {timeService.formatTimeOnly(event.end_at)}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button variant="secondary" size="sm" onClick={() => createTaskFromEvent(event.id)}><CheckCircle2 className="h-4 w-4" /> Create task</Button>
                   {event.task_id ? <Badge label="Linked to task" colorKey="approved" /> : null}
@@ -424,7 +425,7 @@ export default function GoogleWorkspacePage() {
             {(calendar.task_deadlines || []).length ? calendar.task_deadlines.map((task) => (
               <div key={task.id} className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
                 <p className="font-medium text-gray-900 dark:text-gray-100">{task.title}</p>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Due: {task.due_date ? format(parseISO(task.due_date), 'PP p') : 'Not scheduled'}</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Due: {task.due_date ? timeService.formatDateTime(task.due_date) : 'Not scheduled'}</p>
                 <div className="mt-3 flex items-center gap-2">
                   <Button variant="secondary" size="sm" onClick={() => createCalendarEventFromTask(task.id)}><CalendarPlus className="h-4 w-4" /> Create event</Button>
                   <Badge label={task.priority} colorKey={task.priority} />

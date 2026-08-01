@@ -1,4 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from typing import Any, Dict, List, Optional
 from app.integrations.meta.readiness_models import MetaReadinessRecord
 
@@ -72,8 +74,8 @@ class MetaReadinessService:
             record.notes = notes
             
         record.verified_by = verified_by
-        record.verified_at = datetime.now(timezone.utc)
-        record.updated_at = datetime.now(timezone.utc)
+        record.verified_at = aware_utc_now()
+        record.updated_at = aware_utc_now()
         await record.save()
         return record
 
@@ -88,7 +90,7 @@ class MetaReadinessService:
         passed_items = [r for r in records if r.status == "passed"]
         
         return {
-            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_at": aware_utc_now().isoformat(),
             "checklist_count": len(records),
             "passed_count": len(passed_items),
             "fully_ready": len(passed_items) == len(records),

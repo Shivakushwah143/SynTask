@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { CalendarDays, CheckCircle2, FileText, Filter, LayoutGrid, PencilLine, Send, Sparkles } from 'lucide-react'
 import { format, isValid, parseISO } from 'date-fns'
+import { timeService } from '@/services/timeService'
 import { contentCalendarApi } from '../../../api/contentCalendar'
 import { CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Skeleton } from '../../../components/ui'
@@ -41,7 +42,7 @@ const ROLE_LABEL = {
 
 function safeDate(value) {
   if (!value) return null
-  const date = parseISO(String(value))
+  const date = timeService.instant(String(value))
   return isValid(date) ? date : null
 }
 

@@ -397,7 +397,7 @@ export function getEventDate(event) {
   if (event.due_date) return timeService.instant(event.due_date)
   if (event.publish_date) return timeService.instant(event.publish_date)
   if (event.shoot_date) return timeService.instant(event.shoot_date)
-  if (event.start && event.time) return timeService.instant(`${event.start}T${event.time.length === 5 ? `${event.time}:00` : event.time}`)
+  if (event.start && event.time) return timeService.instant(timeService.toUtcISOString(`${event.start}T${event.time.length === 5 ? `${event.time}:00` : event.time}`))
   if (event.start) return timeService.instant(event.start)
   if (event.created_at) return timeService.instant(event.created_at)
   return timeService.now()
@@ -629,7 +629,7 @@ function WeekTimelineView({ days, events, onOpen }) {
           <div className="bg-surface-muted/70 dark:bg-gray-950">
             {HOURS.map((hour) => (
               <div key={hour} className="h-[60px] border-b border-surface-border px-2 py-1 text-right text-xs text-text-muted dark:border-gray-800">
-                {format(timeService.instant(2026, 0, 1, hour), 'ha')}
+                {timeService.hourLabel(hour)}
               </div>
             ))}
           </div>
@@ -646,7 +646,7 @@ function WeekTimelineView({ days, events, onOpen }) {
                   title={event.title}
                 >
                   <span className="block truncate font-semibold">{event.title}</span>
-                  <span className="mt-0.5 block truncate opacity-80">{format(getEventDate(event), 'h:mm a')} · {event.label}</span>
+                  <span className="mt-0.5 block truncate opacity-80">{timeService.formatPattern(getEventDate(event), 'h:mm a')} · {event.label}</span>
                 </button>
               ))}
             </div>
@@ -668,7 +668,7 @@ function TimelineEventCard({ event, onOpen, compact = false }) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-text-primary dark:text-gray-100">{event.title}</span>
-          <span className="mt-1 block text-xs text-text-muted dark:text-gray-400">{format(getEventDate(event), 'MMM d, h:mm a')}</span>
+          <span className="mt-1 block text-xs text-text-muted dark:text-gray-400">{timeService.formatPattern(getEventDate(event), 'MMM d, h:mm a')}</span>
         </span>
       </div>
     </button>

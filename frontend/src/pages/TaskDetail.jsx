@@ -156,7 +156,7 @@ const TaskDetail = () => {
         description: data.description || '',
         priority: data.priority,
         assigned_to: data.assigned_to || '',
-        due_date: data.due_date ? format(timeService.instant(data.due_date), "yyyy-MM-dd'T'HH:mm") : '',
+        due_date: data.due_date ? timeService.toZonedDateTimeInput(data.due_date) : '',
         estimated_hours: data.estimated_hours ?? '',
         tags: data.tags ? data.tags.join(', ') : '',
         issue_type_id: data.issue_type_id || '',
@@ -875,7 +875,7 @@ const TaskDetail = () => {
               <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Due Date</p>
                 <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
-                  {task.due_date ? (() => { try { return format(timeService.instant(task.due_date), 'MMM d, yyyy') } catch { return String(task.due_date).slice(0, 10) } })() : '—'}
+                  {task.due_date ? (() => { try { return timeService.formatPattern(task.due_date, 'MMM d, yyyy') } catch { return String(task.due_date).slice(0, 10) } })() : '—'}
                 </p>
               </div>
 
@@ -883,7 +883,7 @@ const TaskDetail = () => {
               <div className="border-b border-r border-gray-100 px-3 py-2.5 dark:border-gray-700/50">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Created</p>
                 <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
-                  {task.created_at ? (() => { try { return format(timeService.instant(task.created_at), 'MMM d, yyyy') } catch { return String(task.created_at).slice(0, 10) } })() : '—'}
+                  {task.created_at ? (() => { try { return timeService.formatPattern(task.created_at, 'MMM d, yyyy') } catch { return String(task.created_at).slice(0, 10) } })() : '—'}
                 </p>
               </div>
 
@@ -1480,7 +1480,7 @@ const TaskDetail = () => {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-gray-900">{comment.user_name}</span>
                             <span className="text-xs text-gray-500">
-                              {format(timeService.instant(comment.created_at), 'MMMM d, yyyy')} at {format(timeService.instant(comment.created_at), 'h:mm a')}
+                              {timeService.formatPattern(comment.created_at, 'MMMM d, yyyy')} at {timeService.formatPattern(comment.created_at, 'h:mm a')}
                             </span>
                           </div>
                           <p className="text-sm text-gray-700">{comment.content}</p>
@@ -1509,7 +1509,7 @@ const TaskDetail = () => {
                           <span className="text-gray-600">{change.new_value || 'None'}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {format(timeService.instant(change.created_at), 'MMMM d, yyyy')} at {format(timeService.instant(change.created_at), 'h:mm a')}
+                          {timeService.formatPattern(change.created_at, 'MMMM d, yyyy')} at {timeService.formatPattern(change.created_at, 'h:mm a')}
                         </div>
                       </div>
                     </div>
@@ -1666,7 +1666,7 @@ const TaskDetail = () => {
                     <label className="text-xs font-medium text-gray-500 block mb-1">Due date</label>
                     {task.due_date ? (
                       <p className="text-sm text-gray-700">
-                        {(() => { try { return format(timeService.instant(task.due_date), 'MMM d, yyyy') } catch { return String(task.due_date).slice(0, 10) } })()}
+                        {(() => { try { return timeService.formatPattern(task.due_date, 'MMM d, yyyy') } catch { return String(task.due_date).slice(0, 10) } })()}
                       </p>
                     ) : (
                       <p className="text-sm text-gray-400">—</p>
@@ -1704,7 +1704,7 @@ const TaskDetail = () => {
                     <div>
                       <label className="text-xs font-medium text-gray-500 block mb-1">Start date</label>
                       <p className="text-sm text-gray-700">
-                        {(() => { try { return format(timeService.instant(task.start_date), 'MMM d, yyyy') } catch { return String(task.start_date).slice(0, 10) } })()}
+                        {(() => { try { return timeService.formatPattern(task.start_date, 'MMM d, yyyy') } catch { return String(task.start_date).slice(0, 10) } })()}
                       </p>
                     </div>
                   ) : null}
@@ -1868,7 +1868,7 @@ const TaskDetail = () => {
                         <div>
                           <p className="font-medium text-gray-900">{request.status}</p>
                           <p className="mt-1 text-xs text-gray-500">
-                            {request.requested_due_date ? format(timeService.instant(request.requested_due_date), 'MMM d, yyyy') : 'No date'}
+                            {request.requested_due_date ? timeService.formatPattern(request.requested_due_date, 'MMM d, yyyy') : 'No date'}
                           </p>
                         </div>
                         <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">{request.status}</span>

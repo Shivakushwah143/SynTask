@@ -994,13 +994,13 @@ function ProjectCard({ project, onOpen, canAssign, onAssign, canManage, onEdit, 
       {(() => {
         if (!project.created_at) return null
         try {
-          const createdDate = new Date(project.created_at)
-          const now = new Date()
+          const createdDate = timeService.instant(project.created_at)
+          const now = timeService.now()
           const diffMs = now - createdDate
           const diffDays = diffMs / (1000 * 60 * 60 * 24)
           const label = diffDays < 2
-            ? formatDistanceToNow(createdDate, { addSuffix: true })
-            : format(createdDate, 'MMM d, yyyy')
+            ? timeService.formatRelative(createdDate, { addSuffix: true })
+            : timeService.formatPattern(createdDate, 'MMM d, yyyy')
           return (
             <div className="mt-2 flex items-center text-xs text-gray-400 dark:text-gray-500">
               <Clock className="h-3 w-3 mr-1" />

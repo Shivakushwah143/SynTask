@@ -131,7 +131,7 @@ const NotificationItem = ({ notification, onMarkRead, onClick }) => {
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <span className="text-xs text-gray-400 dark:text-gray-500">
                 <Clock className="inline h-3 w-3 mr-1" />
-                {notification.created_at ? format(new Date(notification.created_at), 'MMM d, h:mm a') : 'Recently'}
+                {notification.created_at ? timeService.formatShortDateTime(notification.created_at) : 'Recently'}
               </span>
               {notification.source && (
                 <span className="text-xs text-gray-400 dark:text-gray-500">

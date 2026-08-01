@@ -230,7 +230,7 @@ export default function EODReports() {
                   </div>
                   <div>
                     <h2 className="font-bold text-gray-900 dark:text-white">Today's EOD</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{format(new Date(), 'EEEE, MMM d, yyyy')}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{timeService.formatLongDate(timeService.now())}</p>
                   </div>
                 </div>
                 {status === 'submitted' && (

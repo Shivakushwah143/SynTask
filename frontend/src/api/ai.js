@@ -1,17 +1,18 @@
 import api from './axios'
+import { timeService } from '@/services/timeService'
 
 const unifiedAssistantEnabled = () => import.meta.env.VITE_UNIFIED_AI_ASSISTANT_ENABLED === 'true'
 
 const createIdempotencyKey = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
-  return `ai-assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `ai-assistant-${timeService.nowMs()}-${Math.random().toString(36).slice(2)}`
 }
 
 export const normalizeUnifiedAssistantResponse = (response = {}) => ({
   ...response,
   message: response.answer?.summary || '',
   suggested_actions: response.proposed_actions || [],
-  generated_at: new Date().toISOString(),
+  generated_at: timeService.toUtcISOString(timeService.now()),
 })
 
 export const buildUnifiedAssistantPayload = (payload = {}) => ({
