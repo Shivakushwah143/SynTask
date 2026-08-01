@@ -52,6 +52,8 @@ You will notice the SynTask menu looks different today. Here's what changed and 
 
 If you can't find something, use the **"Where did X go?"** quick reference card attached to this email. You can also search for any feature using the global search bar (`Ctrl + K`).
 
+**Looking for a sub-section?** Click the section in the menu, then pick its **tab at the top of the page** (e.g. click *Clients*, then the *Companies* tab). Sub-sections now live as tabs on each page instead of the menu.
+
 Questions? Reply to this message.
 
 ---
@@ -116,6 +118,11 @@ Questions? Reply to this message.
 | Workspace reports | Insights → Workspace Reports | Was under Reports |
 | Sales reports | Insights → Sales Reports | Was scattered across CRM Reports |
 
+> **Note (tab sub-nav, v3.1):** the sidebar now shows only the 12 sections. Clicking a section
+> opens its landing page (`/sections/:key`), and the section's sub-pages render as Chrome-style
+> **tabs at the top of each page** instead of menu sub-items. Favorites and Inbox unread counts
+> live on the tabs too. Every destination in this card is still reachable — via a section tab.
+>
 > Items intentionally **not** in the new sidebar (no page exists yet — Phase 0 hide decision):
 > Proposals, Quotations, Contracts, Follow Ups, Won/Lost, Deals (Sales); Documents, Notes,
 > Client Communication (Clients); Campaigns, Scripts, Graphics, Videos, Brand Kit, Media Library,

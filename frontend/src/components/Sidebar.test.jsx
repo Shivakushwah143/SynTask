@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Sidebar from './Sidebar'
@@ -24,22 +24,6 @@ vi.mock('../api/departments', () => ({
   },
 }))
 
-// Mutable mock so tests can exercise the Phase 6 unread badges without network calls.
-const { mockInboxCounts } = vi.hoisted(() => ({
-  mockInboxCounts: {
-    whatsapp: 0,
-    instagram: 0,
-    messenger: 0,
-    metaTotal: 0,
-    notifications: 0,
-    total: 0,
-  },
-}))
-
-vi.mock('../hooks/useInboxUnreadCounts', () => ({
-  useInboxUnreadCounts: () => mockInboxCounts,
-}))
-
 const SECTION_LABELS = [
   'Home',
   'Sales',
@@ -55,6 +39,21 @@ const SECTION_LABELS = [
   'Settings',
 ]
 
+const SECTION_KEYS = [
+  'home',
+  'sales',
+  'clients',
+  'work',
+  'content',
+  'publishing',
+  'inbox',
+  'ai',
+  'people',
+  'finance',
+  'insights',
+  'settings',
+]
+
 const renderSidebar = (path = '/dashboard') =>
   render(
     <MemoryRouter initialEntries={[path]}>
@@ -62,104 +61,85 @@ const renderSidebar = (path = '/dashboard') =>
     </MemoryRouter>,
   )
 
-// Section headers are buttons whose accessible name starts with the section label (the label +
-// item-count badge). Anchor the regex so we don't accidentally match per-item favourite-star
-// buttons ("Add All Clients to favourites") or other sections containing the word (e.g. "AI Workspace"
-// contains "Work").
-const expandSection = (label) => {
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}`, 'i') }))
-}
-
 beforeEach(() => {
   mockUser.role = 'admin'
   mockUser.modules = ['task', 'invoicing_ledger']
-  Object.assign(mockInboxCounts, {
-    whatsapp: 0,
-    instagram: 0,
-    messenger: 0,
-    metaTotal: 0,
-    notifications: 0,
-    total: 0,
-  })
   localStorage.clear()
 })
 
-describe('Sidebar v3 navigation', () => {
-  it('shows exactly 12 top-level sections', () => {
+describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
+  it('shows exactly 12 top-level sections as links', () => {
     renderSidebar()
     for (const label of SECTION_LABELS) {
-      expect(screen.getByRole('button', { name: new RegExp(`^${label}`, 'i') })).toBeTruthy()
+      expect(screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeTruthy()
     }
   })
 
   it('renders the 12 sections in the exact spec order', () => {
     renderSidebar()
-    const buttons = SECTION_LABELS.map((label) => screen.getByRole('button', { name: new RegExp(`^${label}`, 'i') }))
-    const orderMatches = buttons.every((button, index) => {
+    const links = SECTION_LABELS.map((label) => screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') }))
+    const orderMatches = links.every((link, index) => {
       if (index === 0) return true
-      return (buttons[index - 1].compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+      return (links[index - 1].compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
     })
     expect(orderMatches).toBe(true)
   })
 
-  it('shows All Clients under the Clients section pointing to /clients', () => {
+  it('links every section to its landing page (/sections/:key)', () => {
     renderSidebar()
-    expandSection('Clients')
-    expect(screen.getByRole('link', { name: /all clients/i }).getAttribute('href')).toBe('/clients')
+    SECTION_KEYS.forEach((key, index) => {
+      const link = screen.getByRole('link', { name: new RegExp(`^${SECTION_LABELS[index]}$`, 'i') })
+      expect(link.getAttribute('href')).toBe(`/sections/${key}`)
+    })
+  })
+
+  it('removed the sub-items: no WhatsApp link, no expand buttons for sections', () => {
+    renderSidebar()
+    expect(screen.queryByRole('link', { name: /^whatsapp$/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /^all clients$/i })).toBeNull()
   })
 
   it('keeps the People section labelled People, not Team', () => {
     renderSidebar()
-    expect(screen.getByRole('button', { name: /^people/i })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /^team/i })).toBeNull()
+    expect(screen.getByRole('link', { name: /^people$/i })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /^team$/i })).toBeNull()
   })
 
-  it('removes duplicate Departments, Subscriptions and Users entries', () => {
-    renderSidebar()
-    expandSection('People')
-    expandSection('Finance')
-
-    expect(screen.getAllByRole('link', { name: /departments/i })).toHaveLength(1)
-    expect(screen.getAllByRole('link', { name: /subscriptions/i })).toHaveLength(1)
-    expect(screen.queryByRole('link', { name: /^users$/i })).toBeNull()
-    expect(screen.getByRole('link', { name: /employees/i })).toBeTruthy()
+  it('highlights the active section when on one of its pages', () => {
+    renderSidebar('/projects/p1/board')
+    const work = screen.getByRole('link', { name: /^work$/i })
+    expect(work.getAttribute('aria-current')).toBe('page')
+    const clients = screen.getByRole('link', { name: /^clients$/i })
+    expect(clients.getAttribute('aria-current')).toBeNull()
   })
 
-  it('maps Work items to their existing routes', () => {
+  it('renders no empty Finance link for a Manager (all Finance items are admin-gated)', () => {
+    mockUser.role = 'manager'
     renderSidebar()
-    expandSection('Work')
-    expect(screen.getByRole('link', { name: /^projects$/i }).getAttribute('href')).toBe('/projects')
-    expect(screen.getByRole('link', { name: /^requests$/i }).getAttribute('href')).toBe('/tickets')
-    expect(screen.getByRole('link', { name: /scheduled work/i }).getAttribute('href')).toBe('/scheduled-jobs')
-    expect(screen.getByRole('link', { name: /time tracking/i }).getAttribute('href')).toBe('/timesheet')
+    expect(screen.queryByRole('link', { name: /^finance$/i })).toBeNull()
+    expect(screen.getByRole('link', { name: /^insights$/i })).toBeTruthy()
   })
 
-  it('maps Finance items to their existing routes', () => {
+  it('keeps a non-empty sidebar for a non-standard role (hr_manager falls through to item gates)', () => {
+    mockUser.role = 'hr_manager'
     renderSidebar()
-    expandSection('Finance')
-    expect(screen.getByRole('link', { name: /^invoices$/i }).getAttribute('href')).toBe('/invoices')
-    expect(screen.getByRole('link', { name: /^transactions$/i }).getAttribute('href')).toBe('/ledger')
-    expect(screen.getByRole('link', { name: /^subscriptions$/i }).getAttribute('href')).toBe('/subscriptions')
-  })
-
-  it('removes all legacy group labels (CRM Tools, Administration, Meta Omnichannel, etc.)', () => {
-    renderSidebar()
-    const legacy = /crm tools|administration|meta omnichannel|core operations|project delivery|people & activity|finance tools|ai & marketing|client management|your departments/i
-    expect(screen.queryByRole('button', { name: legacy })).toBeNull()
+    // hr_manager is not in STANDARD_ROLES, so section gates must not blank the sidebar;
+    // item-level gates still decide what is visible (meta channel items carry no roles).
+    expect(screen.getByRole('link', { name: /^inbox$/i })).toBeTruthy()
   })
 })
 
-describe('Sidebar v3 role-based visibility (spec §9)', () => {
+describe('Sidebar role-based visibility (spec §9)', () => {
   it('shows only Home, Work and Inbox for an Employee role', () => {
     mockUser.role = 'employee'
     renderSidebar()
 
     for (const label of ['Home', 'Work', 'Inbox']) {
-      expect(screen.getByRole('button', { name: new RegExp(`^${label}`, 'i') })).toBeTruthy()
+      expect(screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeTruthy()
     }
     const hidden = ['Sales', 'Clients', 'Content', 'Publishing', 'AI Workspace', 'People', 'Finance', 'Insights', 'Settings']
     for (const label of hidden) {
-      expect(screen.queryByRole('button', { name: new RegExp(`^${label}`, 'i') })).toBeNull()
+      expect(screen.queryByRole('link', { name: new RegExp(`^${label}$`, 'i') })).toBeNull()
     }
   })
 
@@ -167,114 +147,65 @@ describe('Sidebar v3 role-based visibility (spec §9)', () => {
     mockUser.role = 'manager'
     renderSidebar()
 
-    expect(screen.queryByRole('button', { name: /^settings/i })).toBeNull()
-    expect(screen.getByRole('button', { name: /^sales/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /^people/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /^work/i })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /^settings$/i })).toBeNull()
+    expect(screen.getByRole('link', { name: /^sales$/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /^people$/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /^work$/i })).toBeTruthy()
   })
 
   it('hides Settings for a Team Lead', () => {
     mockUser.role = 'lead'
     renderSidebar()
 
-    expect(screen.queryByRole('button', { name: /^settings/i })).toBeNull()
-    expect(screen.getByRole('button', { name: /^sales/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /^inbox/i })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /^settings$/i })).toBeNull()
+    expect(screen.getByRole('link', { name: /^sales$/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /^inbox$/i })).toBeTruthy()
   })
 
   it('shows Settings for a Sub Admin (inherits admin access)', () => {
     mockUser.role = 'sub_admin'
     renderSidebar()
 
-    expect(screen.getByRole('button', { name: /^settings/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /^settings$/i })).toBeTruthy()
   })
 
   it('does not show the Sales section for a non-sales employee', () => {
     mockUser.role = 'employee'
     renderSidebar()
 
-    expect(screen.queryByRole('button', { name: /^sales/i })).toBeNull()
-    expect(screen.queryByRole('link', { name: /^leads$/i })).toBeNull()
-  })
-
-  it('renders no empty Finance header for a Manager (all Finance items are admin-gated)', () => {
-    mockUser.role = 'manager'
-    renderSidebar()
-
-    // Section gate passes for a manager, but every Finance item is admin-only, so the
-    // section must be suppressed entirely rather than showing a bare header.
-    expect(screen.queryByRole('button', { name: /^finance/i })).toBeNull()
-    expect(screen.getByRole('button', { name: /^insights/i })).toBeTruthy()
-  })
-
-  it('keeps a non-empty sidebar for a non-standard role (hr_manager falls through to item gates)', () => {
-    mockUser.role = 'hr_manager'
-    renderSidebar()
-
-    // hr_manager is not in STANDARD_ROLES, so section gates must not blank the sidebar;
-    // item-level gates still decide what is visible (meta channel items carry no roles).
-    expect(screen.getByRole('button', { name: /^inbox/i })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /^sales$/i })).toBeNull()
   })
 })
 
-describe('Sidebar v3 inbox unread badges (Phase 6)', () => {
-  it('shows per-channel unread counts on Inbox items', () => {
-    Object.assign(mockInboxCounts, {
-      whatsapp: 45,
-      instagram: 32,
-      messenger: 0,
-      metaTotal: 77,
-      notifications: 3,
-      total: 80,
-    })
+describe('Sidebar favorites (D4: kept, sub-item shortcuts still work)', () => {
+  it('shows favorited sub-items as shortcuts', () => {
+    localStorage.setItem('syntask-sidebar-favorites', JSON.stringify(['/crm/leads', '/projects']))
     renderSidebar()
-    expandSection('Inbox')
 
-    const whatsapp = screen.getByRole('link', { name: /^whatsapp$/i })
-    expect(whatsapp.textContent).toContain('45')
-    const instagram = screen.getByRole('link', { name: /^instagram$/i })
-    expect(instagram.textContent).toContain('32')
-    const notifications = screen.getByRole('link', { name: /^notifications$/i })
-    expect(notifications.textContent).toContain('3')
+    expect(screen.getByRole('button', { name: /favorites/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /^leads$/i }).getAttribute('href')).toBe('/crm/leads')
+    expect(screen.getByRole('link', { name: /^projects$/i }).getAttribute('href')).toBe('/projects')
   })
 
-  it('shows the grand total on the Inbox section header', () => {
-    Object.assign(mockInboxCounts, {
-      whatsapp: 45,
-      instagram: 32,
-      messenger: 5,
-      metaTotal: 82,
-      notifications: 3,
-      total: 85,
-    })
+  it('does not show the favorites block when nothing is starred', () => {
     renderSidebar()
-
-    expect(screen.getByRole('button', { name: /^inbox/i }).textContent).toContain('85')
+    expect(screen.queryByRole('button', { name: /favorites/i })).toBeNull()
   })
 
-  it('hides badges when all counts are zero', () => {
+  it('removing a favorite hides it from the shortcuts', () => {
+    localStorage.setItem('syntask-sidebar-favorites', JSON.stringify(['/projects']))
     renderSidebar()
-    expandSection('Inbox')
+    expect(screen.getByRole('link', { name: /^projects$/i })).toBeTruthy()
 
-    const whatsapp = screen.getByRole('link', { name: /^whatsapp$/i })
-    expect(whatsapp.textContent).not.toContain('0')
-    // No numeric badge on the header either (only the item-count pill renders for other sections).
-    expect(screen.getByRole('button', { name: /^inbox/i }).textContent).not.toMatch(/\d+/)
-  })
-
-  it('caps very large counts at 99+', () => {
-    Object.assign(mockInboxCounts, {
-      whatsapp: 150,
-      instagram: 0,
-      messenger: 0,
-      metaTotal: 150,
-      notifications: 0,
-      total: 150,
+    // Simulate the SectionTabs star toggle removing it: the shared useFavorites hook
+    // listens for this broadcast event and re-reads localStorage (wrapped in act so
+    // React flushes the re-render before the assertions).
+    act(() => {
+      localStorage.setItem('syntask-sidebar-favorites', JSON.stringify([]))
+      window.dispatchEvent(new Event('syntask:favorites-changed'))
     })
-    renderSidebar()
-    expandSection('Inbox')
 
-    expect(screen.getByRole('link', { name: /^whatsapp$/i }).textContent).toContain('99+')
-    expect(screen.getByRole('button', { name: /^inbox/i }).textContent).toContain('99+')
+    expect(screen.queryByRole('button', { name: /favorites/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /^projects$/i })).toBeNull()
   })
 })

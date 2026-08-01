@@ -9,10 +9,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { matchPath } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
+import * as navigationModule from './navigation'
 import {
   HR_ITEM_RENAMES,
   HR_ITEM_SKIP,
-  NAV_GROUPS_OPEN_KEY,
   SECTIONS,
   crmNavigation,
   metaNavigation,
@@ -121,6 +121,7 @@ describe('sidebar route correctness (Phase 7, spec §11)', () => {
       '/super-admin/dashboard',
       '/clients/:clientId/workspace',
       '/projects/:projectId/board',
+      '/sections/:sectionKey', // tab sub-nav landing pages (D1)
     ]) {
       expect(ROUTE_PATTERNS).toContain(expected)
     }
@@ -225,7 +226,15 @@ describe('sidebar config integrity (Phase 7)', () => {
     }
   })
 
-  it('NAV_GROUPS_OPEN_KEY is the v2 key so stale localStorage resets on deploy (QA #20)', () => {
-    expect(NAV_GROUPS_OPEN_KEY).toBe('syntask-sidebar-groups-open-v2')
+  it('removes the collapsible-groups localStorage key entirely (tab sub-nav Phase D)', () => {
+    // The sidebar no longer has collapsible groups, so the expand-state key must not exist
+    // (stale localStorage from the old sidebar is simply ignored).
+    expect('NAV_GROUPS_OPEN_KEY' in navigationModule).toBe(false)
+  })
+
+  it('exposes the shared section-item resolver used by sidebar and tab bar (Phase A)', () => {
+    expect(typeof navigationModule.getSectionItems).toBe('function')
+    expect(typeof navigationModule.isNavItemActive).toBe('function')
+    expect(typeof navigationModule.gateNavItem).toBe('function')
   })
 })

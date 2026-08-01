@@ -1,9 +1,30 @@
-# SynTask — Tab-Based Sub-Navigation Implementation Plan
+1# SynTask — Tab-Based Sub-Navigation Implementation Plan
 
 > Companion to `sidebar-phase-implementation-plan.md` and `sidebarnewnew.md`.
 > Question answered: **Can we move every main section's sub-items out of the sidebar and into
 > Chrome-style tabs inside the page, keeping only the 12 main sections in the sidebar?**
-> Status: Ready for product sign-off · Owner: Developer / Product
+> Status: **Implemented** (Phases A–F) · Owner: Developer / Product
+>
+> ## Implementation log (2026-07-31)
+>
+> Shipped end-to-end. Product sign-off decisions (gate 1):
+>
+> | # | Decision | Chosen option |
+> |---|---|---|
+> | D1 | Section click target | **(b) Section landing page** — every sidebar section links to `/sections/:key` (`SectionLanding.jsx`), which lists the section's tabs as cards |
+> | D2 | Home tabs | **(b) Yes — two tabs** (Home · Calendar); sidebar stays a clean 12 sections |
+> | D3 | "Soon" badge items | **(c) Normal tabs now** — Approval Queue, Publishing Analytics, Integrations, Social Accounts render as clickable tabs |
+> | D4 | Favorites | **(a) Keep + star toggle on tabs** — shared `useFavorites` hook syncs sidebar shortcuts and tab stars |
+> | D5 | Single-tab sections | **(b) Only when ≥2 tabs** — `SectionTabs` renders `null` for sections with fewer than two gated tabs |
+>
+> **Delivered:** `getSectionItems`/`isNavItemActive`/`gateNavItem` shared gating in
+> `config/navigation.js` (Phase A); `useOrgDepartments` + `useFavorites` hooks; `SectionTabs`
+> component mounted in `MainLayout` (Phase B/C); link-only sidebar with no expand state
+> (`NAV_GROUPS_OPEN_KEY` removed, Phase D); `SectionLanding` page + `/sections/:sectionKey`
+> route + breadcrumb support; HR pages resolve to People tabs (exactly one active tab).
+> **Tests:** `SectionTabs.test.jsx` (new), `Sidebar.test.jsx` (rewritten), routes/breadcrumbs
+> suites updated — all green. Docs updated: this plan, `sidebar-launch-kit.md` (note + email
+> addendum).
 
 ---
 
