@@ -35,7 +35,6 @@ import {
 } from 'lucide-react'
 import { ledgerAPI } from '../api/ledger'
 import toast from 'react-hot-toast'
-import { format } from 'date-fns'
 import { formatCurrency } from './crm/pipeline/utils'
 import { Button, Modal, Table } from '../components/ui'
 import { timeService } from '@/services/timeService'
@@ -143,7 +142,7 @@ const Ledger = () => {
   
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
-    payment_date: format(timeService.now(), 'yyyy-MM-dd'),
+    payment_date: timeService.toZonedDateOnly(timeService.now()),
     payment_method: 'cash',
     reference_number: '',
     notes: '',
@@ -209,7 +208,7 @@ const Ledger = () => {
       setShowPaymentModal(false)
       setPaymentForm({
         amount: '',
-        payment_date: format(timeService.now(), 'yyyy-MM-dd'),
+        payment_date: timeService.toZonedDateOnly(timeService.now()),
         payment_method: 'cash',
         reference_number: '',
         notes: '',
@@ -273,12 +272,12 @@ const Ledger = () => {
       )
     },
     { 
-      key: 'invoice_date_formatted', 
+      key: 'invoice_date', 
       header: 'Invoice Date', 
       render: (invoice) => (
         <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
           <Calendar className="h-3.5 w-3.5" />
-          <span>{invoice.invoice_date_formatted}</span>
+          <span>{timeService.formatDateOnly(invoice.invoice_date)}</span>
         </div>
       )
     },
@@ -343,7 +342,7 @@ const Ledger = () => {
             setSelectedInvoice(invoice)
             setPaymentForm({
               amount: invoice.outstanding_amount > 0 ? invoice.outstanding_amount.toString() : '',
-              payment_date: format(timeService.now(), 'yyyy-MM-dd'),
+              payment_date: timeService.toZonedDateOnly(timeService.now()),
               payment_method: 'cash',
               reference_number: '',
               notes: '',

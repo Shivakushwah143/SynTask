@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+
+from app.core.clock import utc_now
 from uuid import uuid4
 
 from app.rag.chunking import chunk_sections
@@ -58,7 +60,7 @@ async def _process_source_version(source_id: str, version_id: str) -> dict:
                 "embedding_model": version.embedding_model,
                 "embedding_dimensions": version.embedding_dimensions,
                 "embedding_schema_version": version.embedding_schema_version,
-                "indexed_at": datetime.utcnow().isoformat(),
+                "indexed_at": utc_now().isoformat(),
             }
             await store.upsert(point_id=point_id, vector=vector, payload=payload)
             await RAGKnowledgeChunk(
@@ -78,9 +80,9 @@ async def _process_source_version(source_id: str, version_id: str) -> dict:
         source.status = RAGSourceStatus.ACTIVE
         version.status = RAGSourceStatus.ACTIVE
         version.chunk_count = len(chunks)
-        version.indexed_at = datetime.utcnow()
-        version.updated_at = datetime.utcnow()
-        source.updated_at = datetime.utcnow()
+        version.indexed_at = utc_now()
+        version.updated_at = utc_now()
+        source.updated_at = utc_now()
         await version.save()
         await source.save()
         return {"status": "active", "chunk_count": len(chunks)}

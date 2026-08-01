@@ -179,7 +179,7 @@ export default function ContentCalendar() {
   // Safe date helper
   const parseEventDate = (dateStr) => {
     if (!dateStr) return null
-    const parsed = parseISO(dateStr)
+    const parsed = timeService.instant(dateStr)
     return isValid(parsed) ? parsed : null
   }
 
@@ -211,8 +211,8 @@ export default function ContentCalendar() {
       platform: 'Instagram',
       priority: 'medium',
       status: 'draft',
-      start_date: format(date, 'yyyy-MM-dd'),
-      end_date: format(date, 'yyyy-MM-dd'),
+      start_date: timeService.toZonedDateOnly(date),
+      end_date: timeService.toZonedDateOnly(date),
       time: '12:00',
       assigned_person: user ? `${user.first_name} ${user.last_name}` : '',
       reminder: 'none',
@@ -233,8 +233,8 @@ export default function ContentCalendar() {
       platform: item.platform || 'Instagram',
       priority: item.priority || 'medium',
       status: item.status || 'draft',
-      start_date: item.start_date ? format(timeService.instant(item.start_date), 'yyyy-MM-dd') : item.publish_date ? format(timeService.instant(item.publish_date), 'yyyy-MM-dd') : '',
-      end_date: item.end_date ? format(timeService.instant(item.end_date), 'yyyy-MM-dd') : item.due_date ? format(timeService.instant(item.due_date), 'yyyy-MM-dd') : '',
+      start_date: item.start_date ? timeService.toZonedDateOnly(item.start_date) : item.publish_date ? timeService.toZonedDateOnly(item.publish_date) : '',
+      end_date: item.end_date ? timeService.toZonedDateOnly(item.end_date) : item.due_date ? timeService.toZonedDateOnly(item.due_date) : '',
       time: item.time || '12:00',
       assigned_person: item.assigned_person || item.assignee_name || '',
       reminder: item.reminder || 'none',

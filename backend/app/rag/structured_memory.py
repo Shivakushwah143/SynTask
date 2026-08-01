@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from enum import Enum
 from typing import Any, Awaitable, Callable
 
@@ -46,7 +48,7 @@ class StructuredMemoryRecord(BaseModel):
     record_id: str | None = None
     tenant_scope: dict[str, Any]
     fields: dict[str, Any] = Field(default_factory=dict)
-    fetched_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    fetched_at: datetime = Field(default_factory=aware_utc_now)
     source_updated_at: datetime | None = None
     freshness_status: str = "current"
     authority: str = "STRUCTURED_MEMORY"

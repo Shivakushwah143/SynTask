@@ -323,7 +323,7 @@ export default function AIChat() {
               <StatRow label="Messages" value={messages.length} />
               <StatRow label="Conversation" value={conversationId ? 'Persisted' : 'New'} />
               <StatRow label="Session" value={sessionId ? 'Active' : 'Not started'} />
-              <StatRow label="Last updated" value={lastUpdated ? format(timeService.instant(lastUpdated), 'MMM d, HH:mm') : '-'} />
+              <StatRow label="Last updated" value={lastUpdated ? timeService.formatPattern(lastUpdated, 'MMM d, HH:mm') : '-'} />
             </dl>
           </section>
 

@@ -1,5 +1,7 @@
 import logging
 from datetime import datetime
+
+from app.core.clock import utc_now
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -83,7 +85,7 @@ async def _record_admin_action(actor: User, target_user: User | None, action: st
             description=f"{action} for {target_type}",
             metadata={"actor_role": _role_value(getattr(actor, "role", None)), "before": before, "after": after, "target_type": target_type},
             actor_id=str(actor.id),
-            idempotency_key=f"admin-permissions:{actor.id}:{target_type}:{action}:{datetime.utcnow().timestamp()}",
+            idempotency_key=f"admin-permissions:{actor.id}:{target_type}:{action}:{utc_now().timestamp()}",
         )
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.warning("Failed to record admin permission timeline event: %s", exc)
@@ -152,7 +154,7 @@ async def update_department_modules(department_id: str, payload: ModuleUpdateReq
 
     normalized_modules = _cap_modules_for_actor(current_user, payload.modules)
     department.enabled_modules = normalized_modules
-    department.updated_at = datetime.utcnow()
+    department.updated_at = utc_now()
     await department.save()
     await _record_admin_action(current_user, None, "department_modules_updated", before={}, after={"modules": normalized_modules}, target_type="department")
     return {"modules": normalized_modules}
@@ -192,7 +194,7 @@ async def update_user_modules(user_id: str, payload: ModuleUpdateRequest, curren
     normalized_modules = _cap_modules_for_actor(current_user, payload.modules)
     before_modules = list(getattr(target_user, "modules", []) or [])
     target_user.modules = normalized_modules
-    target_user.updated_at = datetime.utcnow()
+    target_user.updated_at = utc_now()
     await target_user.save()
     await _record_admin_action(current_user, target_user, "user_modules_updated", before={"modules": before_modules}, after={"modules": normalized_modules}, target_type="user")
     return {"modules": normalized_modules}
@@ -212,7 +214,7 @@ async def promote_user_to_admin(user_id: str, current_user: User = Depends(get_c
     previous_role = current_target_role
     target_user.previous_role = previous_role
     target_user.role = UserRole.SUB_ADMIN
-    target_user.updated_at = datetime.utcnow()
+    target_user.updated_at = utc_now()
     await target_user.save()
     await _record_admin_action(current_user, target_user, "user_promoted", before={"role": _role_value(previous_role)}, after={"role": UserRole.SUB_ADMIN.value}, target_type="user")
     return {"message": "User promoted to sub-admin", "previous_role": _role_value(previous_role)}
@@ -238,7 +240,7 @@ async def demote_user_to_previous_role(user_id: str, current_user: User = Depend
     previous_role = _normalize_role(getattr(target_user, "previous_role", None)) or UserRole.EMPLOYEE
     target_user.role = previous_role
     target_user.previous_role = None
-    target_user.updated_at = datetime.utcnow()
+    target_user.updated_at = utc_now()
     await target_user.save()
     await _record_admin_action(current_user, target_user, "user_demoted", before={"role": _role_value(demoted_from)}, after={"role": _role_value(previous_role)}, target_type="user")
     return {"message": "User demoted", "role": _role_value(previous_role)}

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.core.clock import utc_now
+
 from app.models.agent import AgentRun, AgentRunState, TERMINAL_AGENT_RUN_STATES
 
 
@@ -52,9 +54,9 @@ class AgentRunStateMachine:
         self.validate_transition(run.state, target)
         run.state = target
         run.state_revision += 1
-        run.updated_at = datetime.utcnow()
+        run.updated_at = utc_now()
         if target in TERMINAL_AGENT_RUN_STATES:
-            run.completed_at = datetime.utcnow()
+            run.completed_at = utc_now()
         return run
 
     def validate_repair_allowed(self, run: AgentRun) -> None:

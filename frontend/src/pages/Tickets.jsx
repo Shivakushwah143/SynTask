@@ -104,7 +104,7 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
           {ticket.created_at ? (
             <div className="flex items-center text-xs text-text-secondary dark:text-gray-400">
               <Calendar className="mr-1 h-3.5 w-3.5" />
-              {format(timeService.instant(ticket.created_at), 'MMM d')}
+              {timeService.formatPattern(ticket.created_at, 'MMM d')}
             </div>
           ) : null}
           {ticket.assigned_to ? (
@@ -122,7 +122,7 @@ const SortableTicketCard = ({ ticket, onClick, priorities, statuses }) => {
         {ticket.created_at && (
           <div className="flex items-center text-xs text-gray-400 dark:text-gray-500">
             <Calendar className="mr-1 h-3 w-3" />
-            {format(new Date(ticket.created_at), 'MMM d')}
+            {timeService.formatMonthDay(ticket.created_at)}
           </div>
         )}
       </div>

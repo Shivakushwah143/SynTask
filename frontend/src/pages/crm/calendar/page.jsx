@@ -90,7 +90,7 @@ const ACTIVITY_LABELS = {
 
 const parseCalendarTimestamp = (value) => {
   if (!value) return null
-  const date = value instanceof Date ? value : parseISO(String(value))
+  const date = value instanceof Date ? value : timeService.instant(String(value))
   return isValid(date) ? date : null
 }
 
@@ -234,7 +234,7 @@ export default function CRMCalendarPage() {
     visibleEvents.forEach((event) => {
       const date = parseCalendarTimestamp(event.timestamp)
       if (!date) return
-      const key = format(date, 'yyyy-MM-dd')
+      const key = timeService.toZonedDateOnly(date)
       if (!map.has(key)) map.set(key, [])
       map.get(key).push(event)
     })
@@ -272,7 +272,7 @@ export default function CRMCalendarPage() {
               </span>
               <button
                 type="button"
-                onClick={() => setCursorDate(new Date())}
+                onClick={() => setCursorDate(timeService.now())}
                 className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
               >
                 Today
@@ -439,7 +439,7 @@ export default function CRMCalendarPage() {
                   {groupedByDay.map((group) => (
                     <div key={group.date} className="space-y-3">
                       <div className="sticky top-0 rounded-xl bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                        {format(parseISO(group.date), 'EEEE, MMM d')}
+                        {timeService.format(group.date, { weekday: 'long', month: 'short', day: 'numeric' })}
                       </div>
                       {group.items.map((event) => <CalendarEventCard key={event.id} event={event} navigate={navigate} />)}
                     </div>

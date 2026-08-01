@@ -20,14 +20,14 @@ export const formatDate = (value) => {
   if (!value) return '-'
   const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return String(value)
-  return format(date, 'MMM d, yyyy')
+  return timeService.formatPattern(value, 'MMM d, yyyy')
 }
 
 export const formatDateTime = (value) => {
   if (!value) return '-'
   const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return String(value)
-  return format(date, 'MMM d, yyyy h:mm a')
+  return timeService.formatPattern(value, 'MMM d, yyyy h:mm a')
 }
 
 export const formatMoney = (value) =>

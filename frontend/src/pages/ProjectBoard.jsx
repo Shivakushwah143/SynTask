@@ -455,21 +455,21 @@ export default function ProjectBoard() {
     const end = timeService.instant(endDate)
     const MS_PER_HOUR = 1000 * 60 * 60
     let total = 0
-    let cursor = new Date(start)
+    let cursor = timeService.instant(start)
     // iterate day by day
     while (cursor < end) {
       const year = cursor.getFullYear()
       const month = cursor.getMonth()
       const day = cursor.getDate()
-      const workStart = new Date(year, month, day, 10, 0, 0)
-      const workEnd = new Date(year, month, day, 19, 0, 0)
+      const workStart = timeService.instantFromParts(year, month, day, 10, 0, 0)
+      const workEnd = timeService.instantFromParts(year, month, day, 19, 0, 0)
       const segmentStart = cursor > workStart ? cursor : workStart
       const segmentEnd = end < workEnd ? end : workEnd
       if (segmentEnd > segmentStart) {
         total += (segmentEnd.getTime() - segmentStart.getTime()) / MS_PER_HOUR
       }
       // advance to next day at 00:00
-      cursor = new Date(year, month, day + 1, 0, 0, 0)
+      cursor = timeService.instantFromParts(year, month, day + 1, 0, 0, 0)
     }
     // round to nearest 0.25
     const rounded = Math.round(total * 4) / 4
@@ -508,7 +508,7 @@ export default function ProjectBoard() {
       setProjectAgentSubmitting(true)
       const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
-        : `project-agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        : `project-agent-${timeService.nowMs()}-${Math.random().toString(36).slice(2)}`
       const response = await projectsApi.createProjectAgentRun({
         schema_version: '1.0',
         project_id: projectId,

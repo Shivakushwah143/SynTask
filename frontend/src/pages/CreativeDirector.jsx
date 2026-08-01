@@ -231,7 +231,7 @@ const ReviewCard = ({ review, isSelected, onClick }) => (
         </div>
         <div className="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
           <Clock className="h-3 w-3" />
-          <span>{format(new Date(review.created_at || review.createdAt || Date.now()), 'MMM d, yyyy')}</span>
+          <span>{timeService.formatDate(review.created_at || review.createdAt || timeService.nowMs())}</span>
           <span className="h-1 w-1 rounded-full bg-gray-300 dark:bg-gray-600"></span>
           <span className="capitalize">{review.risk_level || 'unknown'} risk</span>
         </div>
@@ -682,7 +682,7 @@ export default function CreativeDirector() {
                         <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-700">
                           <span className="text-gray-500 dark:text-gray-500">Latest review</span>
                           <span className="font-medium text-gray-900 dark:text-white">
-                            {reviewDetail.review.completed_at ? format(new Date(reviewDetail.review.completed_at), 'MMM d, HH:mm') : 'Not completed'}
+                            {reviewDetail.review.completed_at ? timeService.formatShortDateTime(reviewDetail.review.completed_at) : 'Not completed'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between border-b border-gray-100 pb-2 dark:border-gray-700">

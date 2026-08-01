@@ -172,8 +172,8 @@ const Timeline = () => {
   const uniqueModules = new Set(events.map(e => e.related_module)).size
   const uniqueEventTypes = new Set(events.map(e => e.event_type)).size
   const recentEvents = events.filter(e => {
-    const date = new Date(e.timestamp)
-    const now = new Date()
+    const date = timeService.instant(e.timestamp)
+    const now = timeService.now()
     const diff = (now - date) / (1000 * 60 * 60 * 24)
     return diff <= 7
   }).length

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.core.clock import utc_now
+
 from fastapi import HTTPException, status
 
 from app.models.agent import AgentDefinition, SpecialistDefinition
@@ -40,6 +42,6 @@ class SpecialistRegistry:
 
     async def retire(self, definition: SpecialistDefinition) -> SpecialistDefinition:
         definition.enabled = False
-        definition.retired_at = datetime.utcnow()
+        definition.retired_at = utc_now()
         await definition.save()
         return definition

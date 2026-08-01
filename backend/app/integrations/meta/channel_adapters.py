@@ -1,6 +1,8 @@
 """Channel-neutral contracts for Meta messaging adapters."""
 
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now, from_timestamp_utc
 from enum import Enum
 from typing import Any, Dict, List, Optional, Protocol
 
@@ -31,7 +33,7 @@ class ChannelConnectionHealth(BaseModel):
     can_receive: bool = False
     can_send: bool = False
     reason: Optional[str] = None
-    checked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    checked_at: datetime = Field(default_factory=aware_utc_now)
 
 
 class ChannelCapabilities(BaseModel):
@@ -126,7 +128,7 @@ def _milliseconds_to_datetime(value: Any) -> datetime:
     timestamp = int(value or 0)
     if timestamp > 10_000_000_000:
         timestamp = timestamp // 1000
-    return datetime.fromtimestamp(timestamp, tz=datetime.now().astimezone().tzinfo)
+    return from_timestamp_utc(timestamp)
 
 
 def _text_message_event_id(channel_prefix: str, item: dict[str, Any]) -> str:

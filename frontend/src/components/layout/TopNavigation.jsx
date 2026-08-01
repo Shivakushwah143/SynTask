@@ -6,24 +6,28 @@ import ThemeToggle from '../ThemeToggle'
 import GlobalClock from '../GlobalClock'
 import { Button } from '../ui'
 import { useAuthStore } from '../../store/authStore'
-import { ROLE, hasCompanyAdminAccess, isManagerRole, isSuperAdminRole, normalizeRole } from '../../utils/roles'
+import { ROLE, hasCompanyAdminAccess, isManagerRole, normalizeRole } from '../../utils/roles'
+import { filterNavItems } from '../../utils/rbac'
 import { SynzinAvatar } from '../ai/SynzinAvatar'
 import { getAvatarUrl } from '../../utils/avatarUrl'
+
+// Same role set used by the sidebar (backend: /chat is gated by the chat module
+// which aliases task; /meetings has no backend module gate).
+const ALL_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.EMPLOYEE]
 
 const GLOBAL_COMMUNICATION_LINKS = [
   {
     name: 'Chat',
     href: '/chat',
     icon: MessageCircle,
-    roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    module: 'task',
+    roles: ALL_ROLES,
+    module: 'chat',
   },
   {
     name: 'Meetings',
     href: '/meetings',
     icon: Video,
-    roles: [ROLE.ADMIN, ROLE.LEAD, ROLE.EMPLOYEE, ROLE.MANAGER],
-    module: 'task',
+    roles: ALL_ROLES,
   },
 ]
 
@@ -44,11 +48,7 @@ export function TopNavigation({
   const location = useLocation()
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)
-  const hasModule = (module) =>
-    !module || user?.modules?.includes(module) || isSuperAdminRole(userRole)
-  const communicationLinks = GLOBAL_COMMUNICATION_LINKS.filter(
-    (item) => item.roles.includes(userRole) && hasModule(item.module),
-  )
+  const communicationLinks = filterNavItems(GLOBAL_COMMUNICATION_LINKS, user)
   const canUseAssistant = hasCompanyAdminAccess(userRole) || isManagerRole(userRole)
   const avatarUrl = getAvatarUrl(user?.avatar, user?.avatar_version)
   const searchShortcut = useMemo(() => getSearchShortcutLabel(), [])

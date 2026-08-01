@@ -86,7 +86,7 @@ const ActivityItem = ({ activity }) => {
               </span>
             </div>
             <time className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
-              {format(new Date(activity.timestamp), 'MMM d, h:mm a')}
+              {timeService.formatShortDateTime(activity.timestamp)}
             </time>
           </div>
 
@@ -97,7 +97,7 @@ const ActivityItem = ({ activity }) => {
             </div>
             <span className="text-xs text-gray-300 dark:text-gray-600">•</span>
             <span className="text-xs text-gray-400 dark:text-gray-500">
-              {format(new Date(activity.timestamp), 'MMM d, yyyy')}
+              {timeService.formatDate(activity.timestamp)}
             </span>
           </div>
 

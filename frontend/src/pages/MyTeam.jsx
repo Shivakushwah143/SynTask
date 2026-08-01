@@ -346,7 +346,7 @@ const MyTeam = () => {
                   )}
                   <div className="flex items-center text-sm text-gray-600">
                     <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                    Joined {format(timeService.instant(member.created_at), 'MMM d, yyyy')}
+                    Joined {timeService.formatPattern(member.created_at, 'MMM d, yyyy')}
                   </div>
                 </div>
 

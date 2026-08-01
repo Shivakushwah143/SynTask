@@ -4,6 +4,7 @@ import { ClipboardCheck, Download, AlertTriangle, CheckCircle, XCircle, ArrowUpR
 import { metaApi } from '../../../api/meta'
 import { Button } from '../../../components/ui'
 import toast from 'react-hot-toast'
+import { timeService } from '@/services/timeService'
 
 export function MetaReadinessDashboard() {
   const queryClient = useQueryClient()
@@ -38,7 +39,7 @@ export function MetaReadinessDashboard() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `meta-app-review-readiness-${new Date().toISOString().slice(0, 10)}.json`
+        a.download = `meta-app-review-readiness-${timeService.toUtcDateOnlyNow()}.json`
         a.click()
         URL.revokeObjectURL(url)
         toast.success('App Review evidence package exported!')
@@ -162,7 +163,7 @@ export function MetaReadinessDashboard() {
                     <p className="text-xs text-slate-500 mt-1">{item.notes}</p>
                     {item.verified_at && (
                       <p className="text-[10px] text-slate-400 mt-1">
-                        Verified by {item.verified_by} on {new Date(item.verified_at).toLocaleDateString()}
+                        Verified by {item.verified_by} on {timeService.formatDate(item.verified_at)}
                       </p>
                     )}
                   </td>

@@ -295,7 +295,7 @@ const Companies = () => {
                     <p className="text-sm text-gray-500">{company.email}</p>
                     {company.created_at && (
                       <p className="text-xs text-gray-400 mt-1">
-                        Registered: {format(timeService.instant(company.created_at), 'MMM d, yyyy')}
+                        Registered: {timeService.formatPattern(company.created_at, 'MMM d, yyyy')}
                       </p>
                     )}
                   </div>

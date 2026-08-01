@@ -1,7 +1,9 @@
 """Tenant-safe durable inbox handling for verified Meta webhook payloads."""
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+
+from app.core.clock import aware_utc_now
 import hashlib
 import json
 from typing import Any, Callable, Dict, Iterable, Optional
@@ -100,7 +102,7 @@ class MetaWebhookService:
                 correlation_id=correlation_id,
                 error_code=None if settings is not None else "tenant_mapping_unknown",
                 error_message=None if settings is not None else "No enabled tenant mapping",
-                queued_at=datetime.now(timezone.utc) if settings is not None else None,
+                queued_at=aware_utc_now() if settings is not None else None,
             )
             try:
                 await event.insert()
@@ -128,7 +130,7 @@ class MetaWebhookService:
                 # Conditional state replacement avoids overwriting a worker's
                 # later claim and never persists broker exception text.
                 await mark_initial_webhook_dispatch_failure(
-                    str(event.id), datetime.now(timezone.utc)
+                    str(event.id), aware_utc_now()
                 )
 
             result = WebhookIngestResult(

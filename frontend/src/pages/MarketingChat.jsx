@@ -447,7 +447,7 @@ export default function MarketingChat() {
             <div className="p-4">
               <dl className="space-y-3">
                 <StatRow label="Messages" value={messages.length} />
-                <StatRow label="Last updated" value={lastUpdated ? format(new Date(lastUpdated), 'MMM d, HH:mm') : '-'} />
+                <StatRow label="Last updated" value={lastUpdated ? timeService.formatShortDateTime(lastUpdated) : '-'} />
                 <StatRow label="Status" value={
                   <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>

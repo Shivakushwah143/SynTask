@@ -19,7 +19,7 @@ async def get_projects_for_task_creation(
         return {"projects": []}
 
     query = {"company_id": current_user.company_id, "status": {"$ne": ProjectStatus.ARCHIVED.value}}
-    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
         if current_user.role == UserRole.LEAD:
             query["$or"] = [
                 {"assigned_to": str(current_user.id)},

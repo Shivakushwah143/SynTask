@@ -13,7 +13,7 @@ import {
   Users,
   Video,
 } from 'lucide-react'
-import { format, isToday, isYesterday } from 'date-fns'
+import { format } from 'date-fns'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, EmptyState } from '../../../components/ui'
 import { timeService } from '@/services/timeService'
@@ -56,15 +56,18 @@ const formatTimestamp = (value) => {
   if (!value) return 'N/A'
   const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return 'N/A'
-  return format(date, 'MMM d, yyyy h:mm a')
+  return timeService.formatPattern(value, 'MMM d, yyyy h:mm a')
 }
 
 const formatDayLabel = (value) => {
   const date = timeService.instant(value)
   if (Number.isNaN(date.getTime())) return 'Unknown day'
-  if (isToday(date)) return 'Today'
-  if (isYesterday(date)) return 'Yesterday'
-  return format(date, 'EEEE, MMM d, yyyy')
+  const dayKey = timeService.toZonedDateOnly(date)
+  const todayKey = timeService.toZonedDateOnly(timeService.now())
+  if (dayKey === todayKey) return 'Today'
+  const yesterdayKey = timeService.toZonedDateOnly(timeService.addDays(timeService.now(), -1))
+  if (dayKey === yesterdayKey) return 'Yesterday'
+  return timeService.formatPattern(date, 'EEEE, MMM d, yyyy')
 }
 
 const buildSearchIndex = (item) => {
@@ -109,7 +112,7 @@ const groupItemsByDay = (items) => {
   items.forEach((item) => {
     const timestamp = item?.timestamp ? timeService.instant(item.timestamp) : null
     if (!timestamp || Number.isNaN(timestamp.getTime())) return
-    const dayKey = format(timestamp, 'yyyy-MM-dd')
+    const dayKey = timeService.toZonedDateOnly(timestamp)
     if (!lookup.has(dayKey)) {
       const group = {
         key: dayKey,

@@ -484,7 +484,7 @@ const TicketDetailModal = ({ ticket, onClose, onStatusChange, onAssign, teamMemb
                         )}
                       </div>
                       <span className="text-xs text-gray-500">
-                        {format(timeService.instant(comment.created_at), 'MMM d, h:mm a')}
+                        {timeService.formatPattern(comment.created_at, 'MMM d, h:mm a')}
                       </span>
                     </div>
                     <p className="text-sm text-gray-700 ml-6">{comment.content}</p>

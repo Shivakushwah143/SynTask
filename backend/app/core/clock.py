@@ -27,6 +27,33 @@ class ClockService:
         return ClockService.utc_now().date()
 
     @staticmethod
+    def zoned_now(timezone_name: str | None = None):
+        """Return an aware datetime for the given timezone (or the default)."""
+        tz = timezone_name or DEFAULT_TIMEZONE
+        zone = pytz.timezone(tz) if tz in pytz.all_timezones_set else pytz.timezone(DEFAULT_TIMEZONE)
+        return datetime.now(zone)
+
+    @staticmethod
+    def today_str(timezone_name: str | None = None, fmt: str = "%Y-%m-%d") -> str:
+        """Return today's date key in the given timezone (used for date-keyed records)."""
+        return ClockService.zoned_now(timezone_name).strftime(fmt)
+
+    @staticmethod
+    def user_today_str(user: Any, fmt: str = "%Y-%m-%d") -> str:
+        """Return today's date key in the user's configured timezone (falls back to default)."""
+        return ClockService.today_str(getattr(user, "timezone", None), fmt)
+
+    @staticmethod
+    def format_in_tz(value: datetime, timezone_name: str | None, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+        """Format a naive-UTC datetime as a wall-clock string in the given timezone.
+
+        Used for user-facing exports/emails (CSV, notifications) where the
+        frontend is not available to convert through timeService.
+        """
+        zone = pytz.timezone(timezone_name) if timezone_name in pytz.all_timezones_set else pytz.timezone(DEFAULT_TIMEZONE)
+        return ClockService.ensure_utc(value).astimezone(zone).strftime(fmt)
+
+    @staticmethod
     def parse_to_utc(value: datetime | str | None) -> Optional[datetime]:
         if value is None:
             return None
@@ -43,6 +70,27 @@ class ClockService:
         if timezone_name not in pytz.all_timezones_set:
             raise ValueError("Invalid timezone")
         return timezone_name
+
+    @staticmethod
+    def ensure_utc(value: datetime | None) -> Optional[datetime]:
+        """Return an aware UTC datetime; stamp UTC onto naive values."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @staticmethod
+    def from_timestamp_utc(timestamp: float | int) -> datetime:
+        """Convert a Unix timestamp to an aware UTC datetime."""
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+
+    @staticmethod
+    def parse_date_utc(value: datetime | str, fmt: str = "%Y-%m-%d") -> datetime:
+        """Parse a date-only string and return an aware UTC datetime."""
+        if isinstance(value, datetime):
+            value = value.strftime(fmt)
+        return datetime.strptime(str(value), fmt).replace(tzinfo=timezone.utc)
 
     @staticmethod
     def settings_payload(user: Any) -> dict[str, Any]:
@@ -63,5 +111,41 @@ def utc_now() -> datetime:
     return clock_service.utc_now()
 
 
+def aware_utc_now() -> datetime:
+    return clock_service.aware_utc_now()
+
+
+def today_utc():
+    return clock_service.today_utc()
+
+
+def zoned_now(timezone_name: str | None = None):
+    return clock_service.zoned_now(timezone_name)
+
+
+def today_str(timezone_name: str | None = None, fmt: str = "%Y-%m-%d") -> str:
+    return clock_service.today_str(timezone_name, fmt)
+
+
+def user_today_str(user: Any, fmt: str = "%Y-%m-%d") -> str:
+    return clock_service.user_today_str(user, fmt)
+
+
+def format_in_tz(value: datetime, timezone_name: str | None, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    return clock_service.format_in_tz(value, timezone_name, fmt)
+
+
 def parse_to_utc(value: datetime | str | None) -> Optional[datetime]:
     return clock_service.parse_to_utc(value)
+
+
+def ensure_utc(value: datetime | None) -> Optional[datetime]:
+    return clock_service.ensure_utc(value)
+
+
+def from_timestamp_utc(timestamp: float | int) -> datetime:
+    return clock_service.from_timestamp_utc(timestamp)
+
+
+def parse_date_utc(value: datetime | str, fmt: str = "%Y-%m-%d") -> datetime:
+    return clock_service.parse_date_utc(value, fmt)

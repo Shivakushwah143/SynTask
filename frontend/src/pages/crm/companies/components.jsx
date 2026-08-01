@@ -44,8 +44,8 @@ export const CompanyOverview = memo(function CompanyOverview({ company, contacts
     { label: 'Website', value: company?.website || 'N/A' },
     { label: 'Email', value: company?.email || 'N/A' },
     { label: 'Phone', value: company?.phone || 'N/A' },
-    { label: 'Created', value: company?.created_at ? format(timeService.instant(company.created_at), 'MMM d, yyyy') : 'N/A' },
-    { label: 'Updated', value: company?.updated_at ? format(timeService.instant(company.updated_at), 'MMM d, yyyy') : 'N/A' },
+    { label: 'Created', value: company?.created_at ? timeService.formatPattern(company.created_at, 'MMM d, yyyy') : 'N/A' },
+    { label: 'Updated', value: company?.updated_at ? timeService.formatPattern(company.updated_at, 'MMM d, yyyy') : 'N/A' },
   ]
 
   return (
@@ -71,7 +71,7 @@ export const CompanyStats = memo(function CompanyStats({ company, contacts = [],
       <CRMStatCard icon={Building2} label="Company" value={company?.name || '-'} tone="blue" />
       <CRMStatCard icon={Users} label="Contacts" value={String(contacts.length)} tone="emerald" helper={primary ? `${primary.full_name || `${primary.first_name} ${primary.last_name}`}` : 'No primary contact yet'} />
       <CRMStatCard icon={CircleDot} label="Open leads" value={String(openLeads)} tone="amber" helper="Linked leads in active motion." />
-      <CRMStatCard icon={Clock3} label="Last updated" value={company?.updated_at ? format(timeService.instant(company.updated_at), 'MMM d, yyyy') : 'N/A'} tone="slate" />
+      <CRMStatCard icon={Clock3} label="Last updated" value={company?.updated_at ? timeService.formatPattern(company.updated_at, 'MMM d, yyyy') : 'N/A'} tone="slate" />
     </div>
   )
 })
@@ -125,7 +125,7 @@ export const CompanyLeadTable = memo(function CompanyLeadTable({ leads = [] }) {
                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.owner_name || lead.assigned_to || 'Unassigned'}</td>
                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.won_amount ? `${lead.won_amount}` : '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.status || 'active'}</td>
-                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.updated_at ? format(timeService.instant(lead.updated_at), 'MMM d, yyyy') : 'N/A'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200">{lead.updated_at ? timeService.formatPattern(lead.updated_at, 'MMM d, yyyy') : 'N/A'}</td>
               </tr>
             ))}
           </tbody>
@@ -155,7 +155,7 @@ export const CompanyTimeline = memo(function CompanyTimeline({ timeline }) {
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
             <h3 className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">
-              {format(timeService.instant(group.date), 'MMM d, yyyy')}
+              {timeService.formatDateOnly(group.date)}
             </h3>
             <div className="h-px flex-1 bg-gray-200 dark:bg-gray-800" />
           </div>
@@ -172,7 +172,7 @@ export const CompanyTimeline = memo(function CompanyTimeline({ timeline }) {
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.actor || 'System'}</p>
                   </div>
                   <div className="text-right text-xs text-gray-500 dark:text-gray-400">
-                    <p>{item.timestamp ? format(timeService.instant(item.timestamp), 'h:mm a') : ''}</p>
+                    <p>{item.timestamp ? timeService.formatPattern(item.timestamp, 'h:mm a') : ''}</p>
                   </div>
                 </div>
                 {item.metadata ? (

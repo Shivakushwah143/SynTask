@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+
+from app.core.clock import aware_utc_now
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -35,7 +37,7 @@ class Clock(Protocol):
 
 class SystemClock:
     def now(self) -> datetime:
-        return datetime.now(timezone.utc)
+        return aware_utc_now()
 
 
 class WorkingMemoryUnavailable(Exception):

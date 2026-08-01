@@ -2,6 +2,8 @@
 Super Admin - tenant feature flags.
 """
 from datetime import datetime
+
+from app.core.clock import utc_now
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -77,9 +79,9 @@ async def toggle_feature(
         flag = FeatureFlag(company_id=company_id, feature_key=body.feature_key)
     flag.is_enabled = body.is_enabled
     flag.enabled_by = str(current_user.id)
-    flag.enabled_at = datetime.utcnow()
+    flag.enabled_at = utc_now()
     flag.notes = body.notes
-    flag.updated_at = datetime.utcnow()
+    flag.updated_at = utc_now()
     await flag.save() if flag.id else await flag.insert()
     await log_audit(
         "toggle_feature",

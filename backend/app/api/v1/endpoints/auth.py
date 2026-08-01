@@ -11,6 +11,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from app.models.user import AuthProvider, User, UserRole, UserStatus
+from app.models.department import Department
+from app.models.capability import get_capabilities_for_role
 from app.core.security import (
     verify_password, 
     get_password_hash, 
@@ -83,6 +85,7 @@ def _auth_response(user: User, remember_me: bool = False) -> Dict:
             "last_name": user.last_name,
             "role": user.role,
             "company_id": user.company_id,
+            "department_id": getattr(user, "department_id", None),
             "modules": getattr(user, "modules", ["task", "attendance_leaves"]),
             "active_module": getattr(user, "active_module", "task"),
             "notification_preferences": getattr(user, 'notification_preferences', {
@@ -596,6 +599,25 @@ async def get_current_user_info(
     current_user: User = Depends(get_current_user)
 ):
     """Get current user information"""
+    # Resolve department + capabilities so the frontend sidebar/route gates can use
+    # the same permission model as the backend (see frontend/src/utils/rbac.js).
+    department = None
+    if getattr(current_user, "department_id", None):
+        department = await Department.get(current_user.department_id)
+        if (
+            department is None
+            or department.deleted_at is not None
+            or (current_user.company_id and department.company_id != current_user.company_id)
+        ):
+            department = None
+    department_key = department.department_type.value if department else None
+    capabilities = (
+        await get_capabilities_for_role(
+            department.department_type, current_user.role, current_user.company_id
+        )
+        if department
+        else []
+    )
     return {
         "id": str(current_user.id),
         "email": current_user.email,
@@ -603,6 +625,10 @@ async def get_current_user_info(
         "last_name": current_user.last_name,
         "role": current_user.role,
         "company_id": current_user.company_id,
+        "department_id": getattr(current_user, "department_id", None),
+        "department_key": department_key,
+        "modules": getattr(current_user, "modules", ["task", "attendance_leaves"]),
+        "capabilities": capabilities,
         "status": current_user.status.value,
         "avatar": current_user.avatar,
         "notification_preferences": getattr(current_user, 'notification_preferences', {

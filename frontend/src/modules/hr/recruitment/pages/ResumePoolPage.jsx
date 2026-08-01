@@ -32,6 +32,7 @@ import {
 
 import { Button, PageHeader } from "../../../../components/ui";
 import { recruitmentApi } from "../../../../api/recruitment";
+import { timeService } from "@/services/timeService";
 import { RecruitmentFilters } from "../components/RecruitmentFilters";
 import { RecruitmentTable } from "../components/RecruitmentTable";
 import { fmtDateTime, toArray } from "../utils/data";
@@ -381,7 +382,7 @@ export default function ResumePoolPage() {
           action={
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
               <TrendingUp className="h-3.5 w-3.5" />
-              <span>Last updated: {new Date().toLocaleDateString()}</span>
+              <span>Last updated: {timeService.formatDate(timeService.now())}</span>
             </div>
           }
         />

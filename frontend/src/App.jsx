@@ -10,7 +10,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import ConfirmDialog from './components/ConfirmDialog';
 import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isSuperAdminRole, isManagerRole } from './utils/roles';
+import { hasCompanyAdminAccess, isManagerRole, isSuperAdminRole } from './utils/roles';
+import { hasModuleAccess } from './utils/rbac';
 import { applySeoMeta, getSeoMeta } from './utils/seo';
 import DemoHome from './pages/DemoHome';
 
@@ -159,10 +160,13 @@ const CRMSettingsGuard = ({ children }) => {
   return <Navigate to="/crm/leads" replace />
 }
 
+// Route-level module gate — SAME permission check as the backend's require_module
+// (utils/rbac.js hasModuleAccess): admins/sub-admins/super-admins pass everything,
+// Manager/Lead/Employee are auto-granted sales_crm/tickets/recruitment, otherwise the
+// user's module list is consulted. This keeps the UI gate aligned with API auth.
 const ModuleGuard = ({ module, children }) => {
   const { user } = useAuthStore()
-  if (isSuperAdminRole(user?.role)) return children
-  if (user?.modules?.includes(module)) return children
+  if (hasModuleAccess(user?.role, user?.modules, module)) return children
   return <Navigate to="/dashboard" replace />
 }
 

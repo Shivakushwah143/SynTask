@@ -19,6 +19,12 @@ function parseTimeFromText(text, baseDate) {
   const match = text.match(TIME_PATTERN)
   if (!match) return { date: baseDate, hasTime: false }
 
+  // A bare number without a colon or am/pm marker is a quantity ("in 3 days",
+  // "5 day sprint"), not a clock time — don't treat it as a time-of-day.
+  const hasColon = Boolean(match[2])
+  const hasMeridiem = Boolean(match[3])
+  if (!hasColon && !hasMeridiem) return { date: baseDate, hasTime: false }
+
   let hours = Number(match[1])
   const minutes = Number(match[2] || 0)
   const meridiem = match[3]?.toLowerCase()
@@ -26,9 +32,12 @@ function parseTimeFromText(text, baseDate) {
   if (meridiem === 'pm' && hours < 12) hours += 12
   if (meridiem === 'am' && hours === 12) hours = 0
 
-  const date = timeService.instant(baseDate)
-  date.setHours(hours, minutes, 0, 0)
-  return { date, hasTime: true }
+  // Interpret the wall-clock time in the configured timezone, not the browser's.
+  const datePart = timeService.toZonedDateOnly(baseDate)
+  const hh = String(hours).padStart(2, '0')
+  const mm = String(minutes).padStart(2, '0')
+  const iso = timeService.zonedInputToUtcISOString(`${datePart}T${hh}:${mm}`)
+  return { date: timeService.instant(iso), hasTime: true }
 }
 
 function parseAbsoluteDate(text, referenceDate) {
@@ -84,6 +93,18 @@ export function parseNaturalDate(text, referenceDate = timeService.now()) {
   if (!baseDate) return null
 
   const { date, hasTime } = parseTimeFromText(text, baseDate)
+  if (!hasTime) {
+    // Date-only phrases ("today", "tomorrow", "next friday", "in 3 days")
+    // resolve to end of workday (18:00) in the configured timezone, so the
+    // resolved date is in the future and the estimated-hours suggestion works.
+    const datePart = timeService.toZonedDateOnly(baseDate)
+    const endOfDayIso = timeService.zonedInputToUtcISOString(`${datePart}T18:00`)
+    return {
+      date: timeService.instant(endOfDayIso),
+      matchedText: text.trim(),
+      hasTime: false,
+    }
+  }
   return {
     date,
     matchedText: text.trim(),

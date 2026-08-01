@@ -493,7 +493,7 @@ const Dashboard = () => {
     }
   }, [sectionOrder])
 
-  const todayLabel = useMemo(() => format(timeService.now(), 'EEEE, MMM d').toUpperCase(), [])
+  const todayLabel = useMemo(() => timeService.formatPattern(timeService.now(), 'EEEE, MMM d').toUpperCase(), [])
 
   const handleExport = async () => {
     try {
@@ -643,7 +643,7 @@ const Dashboard = () => {
     { key: 'name', header: 'Project' },
     { key: 'status', header: 'Status', render: (row) => <Badge label={row.status || 'active'} colorKey={row.status || 'active'} /> },
     { key: 'task_count', header: 'Tasks' },
-    { key: 'delivery_date', header: 'Delivery', render: (row) => row.delivery_date ? format(timeService.instant(row.delivery_date), 'MMM d') : '—' },
+    { key: 'delivery_date', header: 'Delivery', render: (row) => row.delivery_date ? timeService.formatPattern(row.delivery_date, 'MMM d') : '—' },
   ]
 
   const dashboardSections = [
@@ -1277,7 +1277,7 @@ const Dashboard = () => {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{item.title}</p>
                       <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-                        {role === ROLE.EMPLOYEE ? `Created ${item.created_at ? format(new Date(item.created_at), 'MMM d') : 'recently'}` : item.due_date ? `Due ${format(new Date(item.due_date), 'MMM d')}` : 'No due date'}
+                        {role === ROLE.EMPLOYEE ? `Created ${item.created_at ? timeService.formatMonthDay(item.created_at) : 'recently'}` : item.due_date ? `Due ${timeService.formatMonthDay(item.due_date)}` : 'No due date'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 ml-4">
@@ -1315,7 +1315,7 @@ const Dashboard = () => {
                 <div key={meeting.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{meeting.title}</p>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {meeting.meeting_date ? format(new Date(meeting.meeting_date), 'MMM d, h:mm a') : 'Date not set'}
+                    {meeting.meeting_date ? timeService.formatShortDateTime(meeting.meeting_date) : 'Date not set'}
                   </p>
                   {meeting.status && <div className="mt-2"><Badge label={meeting.status} colorKey={meeting.status} /></div>}
                 </div>
@@ -1484,7 +1484,7 @@ const Dashboard = () => {
                 <div key={item.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{item.title}</p>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {item.updated_at ? format(new Date(item.updated_at), 'MMM d, h:mm a') : item.created_at ? format(new Date(item.created_at), 'MMM d, h:mm a') : 'Recently'}
+                    {item.updated_at ? timeService.formatShortDateTime(item.updated_at) : item.created_at ? timeService.formatShortDateTime(item.created_at) : 'Recently'}
                   </p>
                 </div>
               ))}

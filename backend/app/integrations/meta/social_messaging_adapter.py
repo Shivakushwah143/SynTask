@@ -1,6 +1,8 @@
 """Shared Instagram/Messenger webhook normalization helpers."""
 
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import from_timestamp_utc
 from typing import Any, Dict, List, Optional
 
 from app.integrations.meta.channel_adapters import (
@@ -160,7 +162,7 @@ def _timestamp(raw: Any) -> Optional[datetime]:
         value = int(raw)
         if value > 9_999_999_999:
             value = value // 1000
-        return datetime.fromtimestamp(value, tz=timezone.utc)
+        return from_timestamp_utc(value)
     except (TypeError, ValueError, OSError):
         return None
 

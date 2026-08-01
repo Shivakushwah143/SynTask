@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from enum import Enum
 from typing import Literal, Optional
 
@@ -240,7 +242,7 @@ class EmailDraftAgentOutput(BaseModel):
     approval_required: bool = True
     read_only: Literal[True] = True
     send_available: Literal[False] = False
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    generated_at: datetime = Field(default_factory=aware_utc_now)
 
     @model_validator(mode="after")
     def validate_draft_invariants(self) -> "EmailDraftAgentOutput":
@@ -266,7 +268,7 @@ def detect_sensitive_terms(*values: str | None) -> list[str]:
 
 
 def email_draft_agent_definition(created_by: str = "system") -> AgentDefinition:
-    now = datetime.now(UTC)
+    now = aware_utc_now()
     return AgentDefinition.model_construct(
         agent_id=EMAIL_DRAFT_AGENT_ID,
         version=EMAIL_DRAFT_AGENT_VERSION,
