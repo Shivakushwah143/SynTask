@@ -1,4 +1,6 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
+
+from app.core.clock import aware_utc_now, ensure_utc
 from typing import Any, Dict, Optional
 from bson import ObjectId
 
@@ -63,9 +65,9 @@ class MetaSendService:
             
             last_inbound = conversation.last_inbound_at
             if last_inbound.tzinfo is None:
-                last_inbound = last_inbound.replace(tzinfo=timezone.utc)
+                last_inbound = ensure_utc(last_inbound)
             
-            now_utc = datetime.now(timezone.utc)
+            now_utc = aware_utc_now()
             if (now_utc - last_inbound) > timedelta(hours=24):
                 raise ValueError("Outside Meta's 24-hour reply window. Outbound send blocked.")
 
@@ -128,13 +130,13 @@ class MetaSendService:
             raw_payload={"provider_result": result},
             status="sent",
             correlation_id=correlation_id,
-            occurred_at=datetime.now(timezone.utc),
+            occurred_at=aware_utc_now(),
         )
         await message.insert()
 
         # 8. Update conversation
-        conversation.last_message_at = datetime.now(timezone.utc)
-        conversation.last_outbound_at = datetime.now(timezone.utc)
+        conversation.last_message_at = aware_utc_now()
+        conversation.last_outbound_at = aware_utc_now()
         conversation.unread_count = 0
         await conversation.save()
 

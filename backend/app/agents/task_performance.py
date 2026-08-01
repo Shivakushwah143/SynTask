@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from enum import Enum
 from typing import Literal, Optional
 
@@ -234,7 +236,7 @@ class TaskPerformanceAgentOutput(BaseModel):
     limitations: list[str] = Field(default_factory=list, max_length=50)
     approval_required: bool = True
     read_only: Literal[True] = True
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    generated_at: datetime = Field(default_factory=aware_utc_now)
 
     @model_validator(mode="after")
     def validate_fairness_invariants(self) -> "TaskPerformanceAgentOutput":
@@ -255,7 +257,7 @@ class TaskPerformanceAgentOutput(BaseModel):
 
 
 def task_performance_agent_definition(created_by: str = "system") -> AgentDefinition:
-    now = datetime.now(UTC)
+    now = aware_utc_now()
     return AgentDefinition.model_construct(
         agent_id=TASK_PERFORMANCE_AGENT_ID,
         version=TASK_PERFORMANCE_AGENT_VERSION,

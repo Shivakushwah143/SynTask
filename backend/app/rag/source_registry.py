@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
+
+from app.core.clock import utc_now
 from pathlib import Path
 from uuid import uuid4
 
@@ -153,8 +155,8 @@ class RAGSourceRegistry:
         source.status = RAGSourceStatus.APPROVED
         source.approval_status = "approved"
         source.approved_by = str(current_user.id)
-        source.approved_at = datetime.utcnow()
-        source.updated_at = datetime.utcnow()
+        source.approved_at = utc_now()
+        source.updated_at = utc_now()
         await source.save()
         version = await RAGKnowledgeSourceVersion.find_one(
             RAGKnowledgeSourceVersion.company_id == source.company_id,
@@ -162,7 +164,7 @@ class RAGSourceRegistry:
         )
         if version:
             version.status = RAGSourceStatus.APPROVED
-            version.updated_at = datetime.utcnow()
+            version.updated_at = utc_now()
             await version.save()
         return source
 
@@ -174,7 +176,7 @@ class RAGSourceRegistry:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Source retirement denied")
         source.status = RAGSourceStatus.DELETED if deleted else RAGSourceStatus.RETIRED
         source.approval_status = "deleted" if deleted else "retired"
-        now = datetime.utcnow()
+        now = utc_now()
         source.deleted_at = now if deleted else source.deleted_at
         source.retired_at = now
         source.updated_at = now

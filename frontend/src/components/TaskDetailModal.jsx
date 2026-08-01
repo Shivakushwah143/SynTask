@@ -69,7 +69,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
       description: task.description || '',
       priority: task.priority,
       assigned_to: task.assigned_to || '',
-      due_date: task.due_date ? format(timeService.instant(task.due_date), "yyyy-MM-dd'T'HH:mm") : '',
+      due_date: task.due_date ? timeService.toZonedDateTimeInput(task.due_date) : '',
       tags: task.tags ? task.tags.join(', ') : '',
       issue_type_id: task.issue_type_id || '',
       component_id: task.component_id || '',
@@ -582,7 +582,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                 <div>
                   <label className="text-sm font-medium text-gray-700">Due Date</label>
                   <p className="text-gray-900 mt-1">
-                    {format(timeService.instant(task.due_date), 'PPpp')}
+                    {timeService.formatPattern(task.due_date, 'PPpp')}
                   </p>
                 </div>
               )}
@@ -875,7 +875,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                         </span>
                       </div>
                       <span className="text-xs text-gray-500">
-                        {format(timeService.instant(comment.created_at), 'MMM d, h:mm a')}
+                        {timeService.formatPattern(comment.created_at, 'MMM d, h:mm a')}
                       </span>
                     </div>
                     <p className="text-sm text-gray-700 ml-6">{comment.content}</p>
@@ -1039,7 +1039,7 @@ const TaskDetailModal = ({ task, onClose, onStatusChange, onDelete, onRefresh })
                           <span className="text-gray-600">{change.new_value || 'None'}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          {format(timeService.instant(change.created_at), 'PPpp')}
+                          {timeService.formatPattern(change.created_at, 'PPpp')}
                         </div>
                       </div>
                     </div>

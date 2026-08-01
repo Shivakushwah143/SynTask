@@ -1,7 +1,9 @@
 """Public, signed Meta webhook routes."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import parse_date_utc, utc_now
 from uuid import uuid4
 
 from beanie import PydanticObjectId
@@ -87,7 +89,7 @@ def _iso_date(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return parse_date_utc(value)
     except ValueError:
         raise HTTPException(status_code=400, detail="Date must use YYYY-MM-DD") from None
 
@@ -218,7 +220,7 @@ async def update_meta_settings(
         company_id=target,
         payload=payload_data,
     )
-    now = datetime.utcnow()
+    now = utc_now()
     if existing is None:
         config = MetaIntegrationSettings(
             **update_data,
@@ -293,13 +295,13 @@ async def test_meta_connection(
     except MetaGraphClientError:
         config.last_connection_status = "failed"
         config.last_error_code = "connection_failed"
-        config.last_error_at = datetime.utcnow()
+        config.last_error_at = utc_now()
         await config.save()
         raise HTTPException(status_code=502, detail="Meta connection test failed") from None
     finally:
         await client.aclose()
     config.last_connection_status = "connected"
-    config.last_connection_test_at = datetime.utcnow()
+    config.last_connection_test_at = utc_now()
     config.last_error_code = None
     await config.save()
     return {"status": "connected", "account_id": identity["id"]}
@@ -526,7 +528,7 @@ async def validate_meta_channel(
     if not connection:
         raise HTTPException(status_code=404, detail="Channel connection not found")
         
-    connection.last_health_check_at = datetime.utcnow()
+    connection.last_health_check_at = utc_now()
     connection.status = "active"
     await connection.save()
     return {

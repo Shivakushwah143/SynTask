@@ -206,7 +206,7 @@ const TimeTracking = () => {
                             <div className="text-sm text-gray-500 mt-1">{log.description}</div>
                           )}
                           <div className="text-xs text-gray-400 mt-1">
-                            {format(timeService.instant(log.date), 'MMM d, yyyy')}
+                            {timeService.formatDateOnly(log.date)}
                           </div>
                         </div>
                         <button

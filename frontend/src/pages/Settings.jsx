@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { authAPI } from '../api/auth'
+import { timeService } from '@/services/timeService'
 import { aiAPI } from '../api/ai'
 import toast from 'react-hot-toast'
 import { Badge, Button, FormField, inputClassName } from '../components/ui'
@@ -185,13 +186,13 @@ const Settings = () => {
     
     // If avatar is already a full URL
     if (user.avatar.startsWith('http://') || user.avatar.startsWith('https://')) {
-      const version = avatarVersion || user.avatar_version || Date.now();
+      const version = avatarVersion || user.avatar_version || timeService.nowMs();
       return `${user.avatar}${user.avatar.includes('?') ? '&' : '?'}v=${version}`;
     }
     
     // If it's a relative path
     const cleanAvatar = user.avatar.startsWith('/') ? user.avatar : `/${user.avatar}`;
-    const version = avatarVersion || user.avatar_version || Date.now();
+    const version = avatarVersion || user.avatar_version || timeService.nowMs();
     return `${API_URL}${cleanAvatar}?v=${version}`;
   }, [user?.avatar, avatarVersion, user?.avatar_version, API_URL]);
 
@@ -279,7 +280,7 @@ const Settings = () => {
       // Handle avatar removal
       if (avatarRemoved && user?.avatar) {
         await authAPI.deleteAvatar();
-        const nextVersion = String(Date.now());
+        const nextVersion = String(timeService.nowMs());
         setAvatarVersion(nextVersion);
         const updatedUser = { 
           ...user, 
@@ -309,7 +310,7 @@ const Settings = () => {
           avatarUrl = avatarUrl.startsWith('/') ? `${API_URL}${avatarUrl}` : `${API_URL}/${avatarUrl}`;
         }
         
-        const nextVersion = String(Date.now());
+        const nextVersion = String(timeService.nowMs());
         setAvatarVersion(nextVersion);
         
         const updatedUser = { 

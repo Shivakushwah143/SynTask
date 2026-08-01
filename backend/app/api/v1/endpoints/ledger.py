@@ -75,7 +75,6 @@ async def get_ledger(
                 "client_name": inv.client_name,
                 "client_id": inv.client_id,
                 "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
-                "invoice_date_formatted": inv.invoice_date.strftime("%d/%m/%Y") if inv.invoice_date else "",
                 "days_passed": days_passed,
                 "total_amount": inv.total_amount,
                 "total_received": inv.total_received,

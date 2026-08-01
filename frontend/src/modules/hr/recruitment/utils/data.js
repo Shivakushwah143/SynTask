@@ -19,13 +19,13 @@ export const compactParams = (params) =>
 export const fmtDate = (value) => {
   if (!value) return "—";
   const date = timeService.instant(value);
-  return Number.isNaN(date.getTime()) ? String(value) : format(date, "MMM d, yyyy");
+  return Number.isNaN(date.getTime()) ? String(value) : timeService.formatPattern(value, "MMM d, yyyy");
 };
 
 export const fmtDateTime = (value) => {
   if (!value) return "—";
   const date = timeService.instant(value);
-  return Number.isNaN(date.getTime()) ? String(value) : format(date, "MMM d, yyyy, h:mm a");
+  return Number.isNaN(date.getTime()) ? String(value) : timeService.formatPattern(value, "MMM d, yyyy, h:mm a");
 };
 
 export const labelize = (value) => String(value || "—").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());

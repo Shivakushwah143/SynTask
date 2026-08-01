@@ -1,7 +1,9 @@
 """Channel-neutral Meta messaging core."""
 
 import inspect
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from typing import Any, Callable, Optional
 
 from beanie.exceptions import CollectionWasNotInitialized
@@ -85,7 +87,7 @@ class MetaMessagingService:
             await self._update_existing_conversation(existing, event)
             return existing
 
-        now = event.occurred_at or datetime.now(timezone.utc)
+        now = event.occurred_at or aware_utc_now()
         linked_contact_id, linked_lead_id = await self._deterministic_crm_links(event)
         customer_identity_id = await self._upsert_customer_identity(
             event,
@@ -113,9 +115,9 @@ class MetaMessagingService:
     async def _update_existing_conversation(
         self, conversation: MetaConversation, event: NormalizedChannelEvent
     ) -> None:
-        now = event.occurred_at or datetime.now(timezone.utc)
+        now = event.occurred_at or aware_utc_now()
         conversation.last_message_at = now
-        conversation.updated_at = datetime.now(timezone.utc)
+        conversation.updated_at = aware_utc_now()
         if event.event_type == NormalizedEventType.INBOUND_MESSAGE:
             conversation.last_inbound_at = now
             conversation.unread_count = (conversation.unread_count or 0) + 1
@@ -197,7 +199,7 @@ class MetaMessagingService:
                 identity.linked_lead_id = linked_lead_id
                 changed = True
             if changed:
-                identity.updated_at = datetime.now(timezone.utc)
+                identity.updated_at = aware_utc_now()
                 save = getattr(identity, "save", None)
                 if save is not None:
                     await _maybe_await(save())

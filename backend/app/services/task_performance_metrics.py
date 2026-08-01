@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time
+from datetime import date, datetime, time
+
+from app.core.clock import aware_utc_now, ensure_utc
 from enum import Enum
 from typing import Any, Iterable, Optional
 
@@ -196,7 +198,7 @@ class TaskPerformanceMetricService:
     ) -> None:
         self.tenant_id = tenant_id
         self.authorized_user_ids = {str(user_id) for user_id in authorized_user_ids}
-        self.generated_at = generated_at or datetime.now(UTC)
+        self.generated_at = generated_at or aware_utc_now()
 
     def calculate(
         self,
@@ -478,8 +480,8 @@ class TaskPerformanceMetricService:
 
     def _to_datetime(self, value: datetime | date) -> datetime:
         if isinstance(value, datetime):
-            return value if value.tzinfo else value.replace(tzinfo=UTC)
-        return datetime.combine(value, time.min, tzinfo=UTC)
+            return ensure_utc(value)
+        return ensure_utc(datetime.combine(value, time.min))
 
     def _confidence(self, sample_size: int, missing: list[str]) -> float:
         if sample_size <= 0:

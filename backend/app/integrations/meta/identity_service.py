@@ -1,7 +1,9 @@
 """Deterministic Meta identity suggestions and human-confirmed links."""
 
 import inspect
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from typing import Any, Callable, Optional
 
 from beanie import PydanticObjectId
@@ -96,7 +98,7 @@ class MetaIdentityService:
 
         linked_lead_id = getattr(source, "linked_lead_id", None) or getattr(target, "linked_lead_id", None)
         linked_contact_id = getattr(source, "linked_contact_id", None) or getattr(target, "linked_contact_id", None)
-        now = datetime.now(timezone.utc)
+        now = aware_utc_now()
         link = self._link_factory(
             company_id=company_id,
             identity_ids=identity_ids,

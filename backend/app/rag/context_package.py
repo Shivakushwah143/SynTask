@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from enum import Enum
 from typing import Any, Optional
 from uuid import uuid4
@@ -30,7 +32,7 @@ class ContextItem(BaseModel):
     authority_type: AuthorityType
     content: str
     source_identifier: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=aware_utc_now)
     authorization_status: str = "authorized"
     sensitivity: str = "internal"
     external_model_allowed: bool = True
@@ -145,7 +147,7 @@ class ContextPackageBuilder:
     ) -> ContextPackage:
         if not scope.company_id or not scope.tenant_id:
             raise ValueError("Tenant scope is required before building a ContextPackage")
-        created_at = datetime.now(timezone.utc)
+        created_at = aware_utc_now()
         trace = trace_id or str(uuid4())
         snapshot = await self.working_memory_service.get_session(
             scope=scope,

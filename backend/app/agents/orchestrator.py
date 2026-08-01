@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta
+
+from app.core.clock import utc_now
 from typing import Any, Iterable
 from uuid import uuid4
 
@@ -85,7 +87,7 @@ class AgentOrchestrator:
             prompt_version=definition.prompt_version,
             output_schema_version=definition.output_schema_version,
             idempotency_key=payload.idempotency_key,
-            expires_at=datetime.utcnow() + timedelta(minutes=30),
+            expires_at=utc_now() + timedelta(minutes=30),
         )
         try:
             await run.insert()
@@ -291,7 +293,7 @@ class AgentOrchestrator:
                 evidence_references=action.get("evidence_references") or [],
                 risk_level=str(action.get("risk_level") or "low"),
                 required_approver_roles=definition.approval_policy.get("required_approver_roles", []),
-                expires_at=datetime.utcnow() + timedelta(hours=24),
+                expires_at=utc_now() + timedelta(hours=24),
                 idempotency_key=hashlib.sha256(f"{run.run_id}:{index}:{action}".encode("utf-8")).hexdigest(),
             )
             await proposal.insert()

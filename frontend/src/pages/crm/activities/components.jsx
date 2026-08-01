@@ -84,7 +84,7 @@ export function getActivityLabel(activityType) {
 export function formatActivityDate(value) {
   if (!value) return 'Soon'
   try {
-    return format(timeService.instant(value), 'MMM d, yyyy - h:mm a')
+    return timeService.formatPattern(value, 'MMM d, yyyy - h:mm a')
   } catch {
     return String(value)
   }
@@ -93,7 +93,7 @@ export function formatActivityDate(value) {
 export function formatActivityDay(value) {
   if (!value) return 'Recent'
   try {
-    return format(timeService.instant(value), 'EEEE, MMM d, yyyy')
+    return timeService.formatPattern(value, 'EEEE, MMM d, yyyy')
   } catch {
     return String(value)
   }
@@ -114,8 +114,7 @@ export function isTaskDueToday(task) {
   if (!task?.due_date) return false
   const date = timeService.instant(task.due_date)
   if (Number.isNaN(date.getTime())) return false
-  const now = timeService.now()
-  return date.toDateString() === now.toDateString()
+  return timeService.toZonedDateOnly(date) === timeService.toZonedDateOnly(timeService.now())
 }
 
 export function isTaskOverdue(task) {
@@ -129,10 +128,9 @@ export function isTaskUpcoming(task) {
   if (!task?.due_date) return false
   const date = timeService.instant(task.due_date)
   if (Number.isNaN(date.getTime())) return false
-  const now = timeService.now()
-  const inSevenDays = timeService.now()
-  inSevenDays.setDate(now.getDate() + 7)
-  return date.getTime() > timeService.now().getTime() && date.getTime() <= inSevenDays.getTime()
+  const nowMs = timeService.nowMs()
+  const inSevenDaysMs = nowMs + 7 * 24 * 60 * 60 * 1000
+  return date.getTime() > nowMs && date.getTime() <= inSevenDaysMs
 }
 
 function getPriorityTone(priority) {

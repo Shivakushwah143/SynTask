@@ -92,7 +92,9 @@ def test_assigned_task_serializes_as_employee_calendar_event():
     assert event["id"] == "task_task-1"
     assert event["type"] == "task"
     assert event["start"] == "2026-07-15"
-    assert event["time"] == "14:30"
+    # Backend must return full UTC ISO instants, never pre-formatted times.
+    assert event["start_at"] == "2026-07-15T14:30:00"
+    assert event["time"] is None
     assert event["assignee_id"] == "employee-1"
     assert event["project_name"] == "Client Launch"
 

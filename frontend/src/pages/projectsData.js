@@ -1,3 +1,5 @@
+import { timeService } from '@/services/timeService'
+
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value))
 
 const getProgress = (project) => {
@@ -45,8 +47,8 @@ const getOwner = (project) => (
 export function buildProjectGraphRows(projects, limit = 6) {
   // Sort by created_at descending (newest first) so the most recent projects appear at the top
   const sorted = [...projects].sort((a, b) => {
-    const aTime = new Date(a.created_at || 0).getTime()
-    const bTime = new Date(b.created_at || 0).getTime()
+    const aTime = timeService.instantTime(a.created_at || 0)
+    const bTime = timeService.instantTime(b.created_at || 0)
     return bTime - aTime
   })
   return sorted.slice(0, limit).map((project) => {

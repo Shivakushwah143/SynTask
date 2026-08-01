@@ -137,7 +137,7 @@ const AttendanceSummaryBlock = ({ summary }) => {
             </div>
             <p className="text-sm font-bold text-gray-900 dark:text-white">
               {summary.login_time
-                ? format(parseISO(summary.login_time), 'hh:mm:ss a')
+                ? timeService.formatDateTimeWithSeconds(summary.login_time)
                 : '—'}
             </p>
           </div>
@@ -147,7 +147,7 @@ const AttendanceSummaryBlock = ({ summary }) => {
             </div>
             <p className="text-sm font-bold text-gray-900 dark:text-white">
               {summary.logout_time
-                ? format(parseISO(summary.logout_time), 'hh:mm:ss a')
+                ? timeService.formatDateTimeWithSeconds(summary.logout_time)
                 : summary.status === 'Offline' ? '—' : 'Active'}
             </p>
           </div>
@@ -422,9 +422,9 @@ export default function Timesheet() {
               <div className="grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2 border-b border-gray-200 pb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:text-gray-400">
                 <div>Project / Task</div>
                 {weekDays.map((day) => (
-                  <div key={day.toISOString()} className={`text-center ${isSameDay(day, new Date()) ? 'text-indigo-600 dark:text-indigo-400' : ''}`}>
+                  <div key={timeService.toUtcISOString(day)} className={`text-center ${isSameDay(day, timeService.now()) ? 'text-indigo-600 dark:text-indigo-400' : ''}`}>
                     {format(day, 'EEE dd')}
-                    {isSameDay(day, new Date()) && <span className="block text-[8px] text-indigo-400">Today</span>}
+                    {isSameDay(day, timeService.now()) && <span className="block text-[8px] text-indigo-400">Today</span>}
                   </div>
                 ))}
               </div>
@@ -435,11 +435,11 @@ export default function Timesheet() {
                       {row.label}
                     </div>
                     {weekDays.map((day) => {
-                      const key = `${row.label}-${day.toISOString().slice(0, 10)}`
-                      const isToday = isSameDay(day, new Date())
+                      const key = `${row.label}-${timeService.toUtcISOString(day).slice(0, 10)}`
+                      const isToday = isSameDay(day, timeService.now())
                       return (
                         <input
-                          key={day.toISOString()}
+                          key={timeService.toUtcISOString(day)}
                           className={`${inputClassName} text-center ${isToday ? 'border-indigo-300 dark:border-indigo-700' : ''}`}
                           type="number"
                           min="0"
@@ -464,7 +464,7 @@ export default function Timesheet() {
               <div className="mt-4 grid grid-cols-[240px_repeat(7,minmax(110px,1fr))] gap-2 border-t border-gray-200 pt-3 text-xs dark:border-gray-700">
                 <div className="font-semibold text-gray-700 dark:text-gray-300">Daily total</div>
                 {weekDays.map((day) => (
-                  <div key={day.toISOString()} className={`text-center font-bold ${isSameDay(day, new Date()) ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                  <div key={timeService.toUtcISOString(day)} className={`text-center font-bold ${isSameDay(day, timeService.now()) ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-300'}`}>
                     {weeklyTotal(day).toFixed(1)}h
                   </div>
                 ))}

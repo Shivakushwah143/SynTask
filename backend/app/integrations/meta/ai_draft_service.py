@@ -10,7 +10,9 @@ Draft-only by design:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.clock import aware_utc_now
 from typing import Any, Awaitable, Callable
 
 from beanie import PydanticObjectId
@@ -115,8 +117,8 @@ class MetaAIDraftService:
         draft = await self._find_draft(company_id, draft_id)
         draft.status = "approved"
         draft.approved_by = approved_by
-        draft.approved_at = datetime.now(timezone.utc)
-        draft.updated_at = datetime.now(timezone.utc)
+        draft.approved_at = aware_utc_now()
+        draft.updated_at = aware_utc_now()
         await draft.save()
         await self._audit(
             company_id=company_id,
@@ -138,9 +140,9 @@ class MetaAIDraftService:
         draft = await self._find_draft(company_id, draft_id)
         draft.status = "rejected"
         draft.rejected_by = rejected_by
-        draft.rejected_at = datetime.now(timezone.utc)
+        draft.rejected_at = aware_utc_now()
         draft.rejection_reason = reason
-        draft.updated_at = datetime.now(timezone.utc)
+        draft.updated_at = aware_utc_now()
         await draft.save()
         await self._audit(
             company_id=company_id,

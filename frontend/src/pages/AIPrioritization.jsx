@@ -77,7 +77,7 @@ export default function AIPrioritization() {
           <StatCard label="Source" value={result.source} detail={`${result.provider || '-'} / ${result.model || '-'}`} />
           <StatCard label="Tasks reviewed" value={result.context?.task_count || 0} detail="Campaign signals and delivery pressure." />
           <StatCard label="Generated for" value={result.context?.generated_for?.full_name || 'Current user'} detail={result.context?.generated_for?.role || 'Strategist'} />
-          <StatCard label="Generated at" value={result.generated_at ? format(timeService.instant(result.generated_at), 'MMM d, HH:mm') : '-'} detail={result.source === 'fallback' ? 'Heuristic fallback' : 'Validated output'} />
+          <StatCard label="Generated at" value={result.generated_at ? timeService.formatPattern(result.generated_at, 'MMM d, HH:mm') : '-'} detail={result.source === 'fallback' ? 'Heuristic fallback' : 'Validated output'} />
         </section>
       ) : null}
 
@@ -173,7 +173,7 @@ export default function AIPrioritization() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-semibold text-text-primary dark:text-text-primary">{log.feature}</div>
-                        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">{log.created_at ? format(timeService.instant(log.created_at), 'MMM d, HH:mm:ss') : '-'}</div>
+                        <div className="mt-1 text-xs text-text-muted dark:text-text-secondary">{log.created_at ? timeService.formatPattern(log.created_at, 'MMM d, HH:mm:ss') : '-'}</div>
                       </div>
                       <Badge label={log.status} colorKey={log.status === 'success' ? 'active' : 'pending'} />
                     </div>

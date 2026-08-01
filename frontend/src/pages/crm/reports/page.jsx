@@ -113,8 +113,8 @@ export default function CRMReportsPage() {
   const filteredWindow = useMemo(() => {
     if (!startDate && !endDate) return 'All time'
     const parts = []
-    if (startDate) parts.push(format(timeService.instant(startDate), 'MMM d, yyyy'))
-    if (endDate) parts.push(format(timeService.instant(endDate), 'MMM d, yyyy'))
+    if (startDate) parts.push(timeService.formatDateOnly(startDate))
+    if (endDate) parts.push(timeService.formatDateOnly(endDate))
     return parts.join(' - ')
   }, [endDate, startDate])
 

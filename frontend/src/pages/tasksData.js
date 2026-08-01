@@ -1,3 +1,5 @@
+import { timeService } from '@/services/timeService'
+
 const STATUS_PROGRESS = {
   todo: 12,
   open: 12,
@@ -62,8 +64,8 @@ export function buildTaskGraphRows(tasks, usersOrLimit = [], maybeLimit = 8) {
   const userNameById = buildUserNameLookup(users)
   // Sort by created_at descending (newest first) so the most recent tasks appear at the top
   const sorted = [...tasks].sort((a, b) => {
-    const aTime = new Date(a.created_at || 0).getTime()
-    const bTime = new Date(b.created_at || 0).getTime()
+    const aTime = timeService.instantTime(a.created_at || 0)
+    const bTime = timeService.instantTime(b.created_at || 0)
     return bTime - aTime
   })
   return sorted.slice(0, limit).map((task) => {

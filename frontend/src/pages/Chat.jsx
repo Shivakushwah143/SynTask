@@ -12,7 +12,7 @@ const parseChatTimestamp = (value) => {
   if (value instanceof Date) return value
   const timestamp = String(value)
   const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(timestamp)
-  return new Date(hasTimezone ? timestamp : `${timestamp}Z`)
+  return timeService.instant(hasTimezone ? timestamp : `${timestamp}Z`)
 }
 
 const chatFileUrl = (url) => {
@@ -461,7 +461,7 @@ const Chat = () => {
                     </div>
                     {conversation.last_message_at && (
                       <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                        {formatDistanceToNow(parseChatTimestamp(conversation.last_message_at), { addSuffix: true })}
+                        {timeService.formatRelative(conversation.last_message_at, { addSuffix: true })}
                       </div>
                     )}
                   </div>
@@ -596,7 +596,7 @@ const Chat = () => {
                           )}
                           <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                           <div className={`text-[10px] mt-1 ${isOwn ? 'text-indigo-200' : 'text-gray-400 dark:text-gray-500'}`}>
-                            {format(parseChatTimestamp(message.created_at), 'HH:mm')}
+                            {timeService.formatPattern(parseChatTimestamp(message.created_at), 'MMM d, HH:mm')}
                           </div>
                         </div>
                       </div>

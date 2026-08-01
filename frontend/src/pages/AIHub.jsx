@@ -43,6 +43,7 @@ import toast from 'react-hot-toast'
 import { aiAPI } from '../api/ai'
 import { agentsAPI } from '../api/agents'
 import { Button, PageHeader, Badge, FormField, inputClassName } from '../components/ui'
+import { timeService } from '@/services/timeService'
 
 const QUICK_ACTIONS = [
   { label: 'Open AI Chat', path: '/ai-assistant', icon: MessageSquareText, color: 'blue' },
@@ -344,8 +345,8 @@ export default function AIHub() {
   const [taskPerformanceRun, setTaskPerformanceRun] = useState(null)
   const [taskPerformanceForm, setTaskPerformanceForm] = useState({
     insight_type: 'team_summary',
-    start: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    end: new Date().toISOString().slice(0, 10),
+    start: timeService.toUtcDateOnly(timeService.addDays(timeService.now(), -14)),
+    end: timeService.toUtcDateOnlyNow(),
     department_id: '',
     project_id: '',
     user_id: '',
@@ -411,7 +412,7 @@ export default function AIHub() {
       setProjectAgentSubmitting(true)
       const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
-        : `project-agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        : `project-agent-${timeService.nowMs()}-${Math.random().toString(36).slice(2)}`
       const response = await agentsAPI.createProjectRun({
         schema_version: '1.0',
         project_id: projectAgentForm.project_id,
@@ -448,7 +449,7 @@ export default function AIHub() {
       setEmailDraftSubmitting(true)
       const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
-        : `email-draft-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        : `email-draft-${timeService.nowMs()}-${Math.random().toString(36).slice(2)}`
       const response = await agentsAPI.createEmailDraftRun({
         schema_version: '1.0',
         draft_type: emailDraftForm.draft_type,
@@ -493,7 +494,7 @@ export default function AIHub() {
       setTaskPerformanceSubmitting(true)
       const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
-        : `task-performance-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        : `task-performance-${timeService.nowMs()}-${Math.random().toString(36).slice(2)}`
       const response = await agentsAPI.createTaskPerformanceRun({
         schema_version: '1.0',
         insight_type: taskPerformanceForm.insight_type,

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
+
+from app.core.clock import utc_now
 from uuid import uuid4
 
 from app.core.config import settings
@@ -77,7 +79,7 @@ class RAGRetrievalService:
             no_answer=not citations,
             filters=filters,
             citation_ids=[item["citation_id"] for item in citations],
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         ).insert()
         return {
             "run_id": run_id,

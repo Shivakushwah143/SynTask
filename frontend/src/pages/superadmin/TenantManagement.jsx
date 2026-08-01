@@ -38,6 +38,7 @@ import {
 } from 'lucide-react'
 import { superadminApi } from '../../api/superadmin'
 import { Badge, Button, EmptyState, inputClassName, Modal, PageHeader, SkeletonTable, Table } from '../../components/ui'
+import { timeService } from '@/services/timeService'
 import { asArray, getId } from '../phase4Utils'
 
 // Stat Card Component
@@ -165,7 +166,7 @@ const TenantCard = ({ tenant, onSuspend, onActivate, isActivating, isSuspending 
         <div className="rounded-lg bg-gray-50 p-2.5 text-center dark:bg-gray-900/50">
           <Calendar className="mx-auto h-4 w-4 text-gray-400" />
           <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-            {tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : 'N/A'}
+            {tenant.created_at ? timeService.formatDate(tenant.created_at) : 'N/A'}
           </p>
           <p className="text-[10px] text-gray-500 dark:text-gray-400">Created</p>
         </div>
@@ -284,7 +285,7 @@ export default function TenantManagement() {
       t.status,
       t.plan || 'Free',
       t.user_count ?? t.current_users ?? 0,
-      t.created_at ? new Date(t.created_at).toLocaleDateString() : 'N/A',
+      t.created_at ? timeService.formatDate(t.created_at) : 'N/A',
       riskScore(t)
     ])
     
@@ -293,7 +294,7 @@ export default function TenantManagement() {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `tenants_${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `tenants_${timeService.toUtcDateOnlyNow()}.csv`
     a.click()
     window.URL.revokeObjectURL(url)
   }
@@ -378,7 +379,7 @@ export default function TenantManagement() {
     { 
       key: 'created', 
       header: 'Created', 
-      render: (row) => row.created_at ? new Date(row.created_at).toLocaleDateString() : '-' 
+      render: (row) => row.created_at ? timeService.formatDate(row.created_at) : '-' 
     },
     { 
       key: 'risk', 

@@ -8,8 +8,8 @@ import {
 import { PageHeader, Button, Badge } from '../../components/ui'
 import { attendanceAPI } from '../../api/attendance'
 import { useAuthStore } from '../../store/authStore'
-import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
+import { timeService } from '@/services/timeService'
 import { closeOpenWebSocket } from '../../utils/webSocket'
 
 const formatTime = (totalSeconds) => {
@@ -423,7 +423,7 @@ const LiveMonitor = () => {
                     {emp.login_time && (
                       <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-1 flex items-center">
                         <Clock className="h-2.5 w-2.5 mr-1" />
-                        {format(parseISO(emp.login_time), 'hh:mm a')}
+                        {timeService.formatTime(emp.login_time)}
                       </p>
                     )}
                     <div className="flex items-center justify-between">

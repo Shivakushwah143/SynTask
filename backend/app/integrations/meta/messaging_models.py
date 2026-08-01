@@ -9,6 +9,7 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from app.integrations.meta.channel_adapters import ChannelType, NormalizedEventType
 from app.integrations.meta.redaction import sanitize_error_message
+from app.core.clock import aware_utc_now
 
 
 class MetaChannelConnection(Document):
@@ -29,8 +30,8 @@ class MetaChannelConnection(Document):
     last_webhook_at: Optional[datetime] = None
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=aware_utc_now)
+    updated_at: datetime = Field(default_factory=aware_utc_now)
 
     _sanitize_health_reason = field_validator("health_reason", mode="before")(
         sanitize_error_message
@@ -66,8 +67,8 @@ class MetaConversation(Document):
     last_inbound_at: Optional[datetime] = None
     last_outbound_at: Optional[datetime] = None
     unread_count: int = 0
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=aware_utc_now)
+    updated_at: datetime = Field(default_factory=aware_utc_now)
 
     class Settings:
         name = "meta_conversations"
@@ -98,8 +99,8 @@ class MetaMessage(Document):
     status: str = "received"
     correlation_id: str
     occurred_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=aware_utc_now)
+    updated_at: datetime = Field(default_factory=aware_utc_now)
 
     class Settings:
         name = "meta_messages"
@@ -119,7 +120,7 @@ class MetaOnboardingSession(Document):
     channel: ChannelType
     state: str
     status: str = "pending"  # pending, completed, expired
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=aware_utc_now)
     expires_at: datetime
 
     class Settings:
@@ -131,9 +132,11 @@ class MetaOnboardingSession(Document):
 """Channel-neutral Meta messaging contracts."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
+
+from app.core.clock import aware_utc_now
 
 
 class MetaChannel(str, Enum):
@@ -162,6 +165,6 @@ class NormalizedMessagingEvent:
     sender_id: Optional[str] = None
     recipient_id: Optional[str] = None
     text: Optional[str] = None
-    occurred_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    occurred_at: datetime = field(default_factory=aware_utc_now)
     metadata: dict[str, Any] = field(default_factory=dict)
 

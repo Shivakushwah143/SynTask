@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
+from app.core.json_response import UTCJSONResponse
 
 def compute_work_type(total_seconds: float) -> dict:
     """Compute work type and overtime similar to attendance endpoint."""
@@ -167,6 +168,9 @@ app = FastAPI(
     redoc_url="/api/redoc" if settings.ENVIRONMENT != "production" else None,
     openapi_url="/api/openapi.json" if settings.ENVIRONMENT != "production" else None,
     lifespan=lifespan,
+    # Always serialize naive UTC datetimes with an explicit Z so the frontend
+    # never misinterprets stored UTC instants as browser-local time.
+    default_response_class=UTCJSONResponse,
 )
 
 app.state.limiter = limiter

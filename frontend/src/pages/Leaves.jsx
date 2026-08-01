@@ -809,5 +809,5 @@ function availabilityLabel(value) {
 }
 
 function dateRange(leave) {
-  return `${format(new Date(leave.start_date), 'MMM d, yyyy')} - ${format(new Date(leave.end_date), 'MMM d, yyyy')}`
+  return `${timeService.formatDateOnly(leave.start_date)} - ${timeService.formatDateOnly(leave.end_date)}`
 }

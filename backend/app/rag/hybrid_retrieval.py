@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
+
+from app.core.clock import utc_now
 from uuid import uuid4
 
 from app.core.config import settings
@@ -75,7 +77,7 @@ class HybridRAGRetrievalService:
             no_answer=evidence_decision.decision.value not in {"SUFFICIENT_EVIDENCE", "PARTIAL_EVIDENCE"},
             filters=filters,
             citation_ids=[item["citation_id"] for item in citations],
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         ).insert()
         return {
             "run_id": run_id,

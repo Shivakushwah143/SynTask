@@ -109,6 +109,15 @@ export const timeService = {
   instantTime(value) {
     return this.instant(value).getTime()
   },
+  nowMs() {
+    return this.now().getTime()
+  },
+  toUtcDateOnly(value) {
+    return this.toUtcISOString(value)?.slice(0, 10) || ''
+  },
+  toUtcDateOnlyNow() {
+    return this.toUtcDateOnly(this.now())
+  },
   addDays(value, days) {
     return new Date(this.instantTime(value) + days * 24 * 60 * 60 * 1000)
   },
@@ -146,6 +155,139 @@ export const timeService = {
       hour: 'numeric',
       minute: '2-digit',
       second: (settings || useTimeStore.getState().settings).show_seconds ? '2-digit' : undefined,
+    }, settings)
+  },
+  formatDate(value, settings) {
+    return this.format(value, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    }, settings)
+  },
+  formatDateOnly(value, settings) {
+    if (!value) return ''
+    const str = String(value)
+    const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (match) {
+      // Pure calendar-date fields must not shift across timezones.
+      const [, year, month, day] = match
+      const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+      return this.dateTimeFormat('en-US', {
+        timeZone: 'UTC',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }, settings).format(date)
+    }
+    return this.formatDate(value, settings)
+  },
+  formatMonthDay(value, settings) {
+    return this.format(value, {
+      month: 'short',
+      day: 'numeric',
+    }, settings)
+  },
+  formatShortDateTime(value, settings) {
+    return this.format(value, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }, settings)
+  },
+  formatLongWeekdayDate(value, settings) {
+    return this.format(value, {
+      weekday: 'long',
+      month: 'long',
+      day: '2-digit',
+    }, settings)
+  },
+  formatLongDate(value, settings) {
+    return this.format(value, {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }, settings)
+  },
+  formatDayNumber(value, settings) {
+    return this.format(value, {
+      day: 'numeric',
+    }, settings)
+  },
+  formatMonthShort(value, settings) {
+    return this.format(value, {
+      month: 'short',
+    }, settings)
+  },
+  formatTimeOnly(value, settings) {
+    return this.format(value, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }, settings)
+  },
+  // Map of date-fns-style patterns to Intl.DateTimeFormat options. These keep
+  // the same visual output as the legacy `format(...)` calls but always render
+  // through the configured timezone instead of browser-local time.
+  formatPattern(value, pattern, settings = useTimeStore.getState().settings) {
+    if (!value) return ''
+    const PATTERN_OPTIONS = {
+      'MMM d, yyyy': { month: 'short', day: 'numeric', year: 'numeric' },
+      'MMM d, yyyy h:mm a': { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' },
+      'MMM d, yyyy, h:mm a': { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' },
+      'MMM d, yyyy - h:mm a': { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' },
+      'MMM d': { month: 'short', day: 'numeric' },
+      'MMM d, h:mm a': { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
+      'MMM d, HH:mm': { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false },
+      'MMM d, HH:mm:ss': { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false },
+      'hh:mm a': { hour: 'numeric', minute: '2-digit' },
+      'h:mm a': { hour: 'numeric', minute: '2-digit' },
+      'ha': { hour: 'numeric', hour12: true },
+      'EEEE, MMM d, yyyy': { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' },
+      'EEEE, MMM d': { weekday: 'long', month: 'short', day: 'numeric' },
+      'MMMM d, yyyy': { month: 'long', day: 'numeric', year: 'numeric' },
+      'MMMM dd, yyyy': { month: 'long', day: '2-digit', year: 'numeric' },
+      'MMMM yyyy': { month: 'long', year: 'numeric' },
+      'PPP': { year: 'numeric', month: 'long', day: 'numeric' },
+      'MMM d, h:mma': { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
+      'EEE': { weekday: 'short' },
+      'd': { day: 'numeric' },
+      'PPpp': { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
+    }
+    const options = PATTERN_OPTIONS[pattern]
+    if (!options) return this.formatDateTime(value, settings)
+    return this.format(value, options, settings)
+  },
+  // Date-only YYYY-MM-DD string for the configured timezone (input values).
+  toZonedDateOnly(value, settings = useTimeStore.getState().settings) {
+    const input = this.toZonedDateTimeInput(value, settings)
+    return input ? input.slice(0, 10) : ''
+  },
+  // Fixed hour label like '9AM' for calendar grid rows (no timezone shifting).
+  hourLabel(hour) {
+    const h = ((Number(hour) % 24) + 24) % 24
+    const h12 = h % 12 === 0 ? 12 : h % 12
+    return `${h12}${h >= 12 ? 'PM' : 'AM'}`
+  },
+  formatRelative(value, options = {}, settings = useTimeStore.getState().settings) {
+    if (!value) return ''
+    const date = this.instant(value)
+    if (Number.isNaN(date.getTime())) return ''
+    const diffMs = date.getTime() - this.now().getTime()
+    const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', ...options })
+    const absMs = Math.abs(diffMs)
+    if (absMs < 60 * 1000) return rtf.format(Math.round(diffMs / 1000), 'second')
+    if (absMs < 60 * 60 * 1000) return rtf.format(Math.round(diffMs / (60 * 1000)), 'minute')
+    if (absMs < 24 * 60 * 60 * 1000) return rtf.format(Math.round(diffMs / (60 * 60 * 1000)), 'hour')
+    if (absMs < 30 * 24 * 60 * 60 * 1000) return rtf.format(Math.round(diffMs / (24 * 60 * 60 * 1000)), 'day')
+    if (absMs < 12 * 30 * 24 * 60 * 60 * 1000) return rtf.format(Math.round(diffMs / (30 * 24 * 60 * 60 * 1000)), 'month')
+    return rtf.format(Math.round(diffMs / (365 * 24 * 60 * 60 * 1000)), 'year')
+  },
+  formatDateTimeWithSeconds(value, settings) {
+    return this.format(value, {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
     }, settings)
   },
 }

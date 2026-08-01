@@ -143,7 +143,7 @@ const MSASign = () => {
               <div className="pt-4 border-t border-gray-200">
                 <p className="text-sm text-gray-600">
                   <span className="font-medium">Effective Date:</span>{' '}
-                  {format(timeService.instant(msa.effective_date), 'MMMM dd, yyyy')}
+                  {timeService.formatPattern(msa.effective_date, 'MMMM dd, yyyy')}
                 </p>
               </div>
             )}
@@ -180,7 +180,7 @@ const MSASign = () => {
                   </p>
                   <p className="text-xs text-gray-500">
                     {msa.staffing_company_signature.signed_at ? 
-                      format(timeService.instant(msa.staffing_company_signature.signed_at), 'MMM d, yyyy h:mm a') : ''}
+                      timeService.formatPattern(msa.staffing_company_signature.signed_at, 'MMM d, yyyy h:mm a') : ''}
                   </p>
                 </div>
               ) : (
@@ -203,7 +203,7 @@ const MSASign = () => {
                   </p>
                   <p className="text-xs text-gray-500">
                     {msa.client_signature.signed_at ? 
-                      format(timeService.instant(msa.client_signature.signed_at), 'MMM d, yyyy h:mm a') : ''}
+                      timeService.formatPattern(msa.client_signature.signed_at, 'MMM d, yyyy h:mm a') : ''}
                   </p>
                 </div>
               ) : (
