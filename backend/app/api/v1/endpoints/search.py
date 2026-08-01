@@ -3,6 +3,7 @@ Global search endpoint.
 
 Uses scoped regex queries now; Phase 6 can replace this with text indexes.
 """
+import re
 from typing import List
 
 from fastapi import APIRouter, Depends, Query
@@ -24,7 +25,9 @@ def _company_scope(user: User) -> dict:
 
 
 def _regex(value: str) -> dict:
-    return {"$regex": value, "$options": "i"}
+    # Escape user input so regex metacharacters (e.g. "C++", "v2.0", "(") are
+    # treated as literal text instead of breaking the MongoDB query.
+    return {"$regex": re.escape(value), "$options": "i"}
 
 
 @router.get("/search", response_model=List[dict])

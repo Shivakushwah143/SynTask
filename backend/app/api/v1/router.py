@@ -160,7 +160,10 @@ api_router.include_router(ai_assistant.router, prefix="/ai-assistant", tags=["Un
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 api_router.include_router(agents.router, prefix="/agents", tags=["Agent Platform"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(creative.router, prefix="/creative", tags=["Creative Director"])
-api_router.include_router(search.router, tags=["Search"], dependencies=[Depends(require_module("task"))])
+# Global search must work for every authenticated user, not just users with the
+# task module enabled. The endpoint itself scopes results to the user's company,
+# so no module gate is needed here.
+api_router.include_router(search.router, tags=["Search"])
 
 # Sales Tracker module
 sales_module_dependency = [Depends(require_module("sales_crm"))]
