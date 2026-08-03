@@ -182,6 +182,22 @@ def test_cors_blocks_unknown_origin():
     assert response.headers.get("access-control-allow-origin") is None
 
 
+def test_login_preflight_allows_synzent_origins():
+    for origin in ("https://synzent.ai", "https://www.synzent.ai"):
+        response = client.options(
+            "/api/v1/auth/login",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == origin
+        assert response.headers.get("access-control-allow-credentials") == "true"
+
+
 def test_spoofed_upload_is_rejected_by_signature_validation():
     spoofed_bytes = b"<!doctype html><html><body>not really a png</body></html>"
 

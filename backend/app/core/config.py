@@ -73,11 +73,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8000",
-        "https://task.synzent.ai",
+        "https://synzent.ai",
+        "https://www.synzent.ai",
     ]
-    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
+    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1", "synzent.ai", "www.synzent.ai"]
     # Frontend URL (for email links and redirects)
-    FRONTEND_URL: str = "https://task.synzent.ai"
+    FRONTEND_URL: str = "https://synzent.ai"
     
     # Database
     MONGODB_URL: str = Field(..., description="MongoDB connection string.")
