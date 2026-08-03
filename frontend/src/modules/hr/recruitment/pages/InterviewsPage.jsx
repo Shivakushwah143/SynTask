@@ -270,6 +270,7 @@ export default function InterviewsPage() {
   const candidatesQuery = useQuery(["recruitment", "interviewCandidates"], () => recruitmentApi.getCandidates({ page: 1, page_size: 100 }), { staleTime: 5 * 60 * 1000 });
   const jobsQuery = useQuery(["recruitment", "interviewJobs"], () => recruitmentApi.getJobs({ page: 1, page_size: 100 }), { staleTime: 5 * 60 * 1000 });
   const interviewersQuery = useQuery(["recruitment", "interviewers"], () => usersAPI.getAssignableUsersWithJuniors(), { staleTime: 5 * 60 * 1000 });
+  const microsoftQuery = useQuery(["recruitment", "microsoftStatus"], () => recruitmentApi.getMicrosoftStatus(), { staleTime: 60 * 1000 });
   
   const interviews = toArray(query.data);
   const candidates = toArray(candidatesQuery.data);
@@ -353,6 +354,27 @@ export default function InterviewsPage() {
       }
     } 
   );
+  const connectMicrosoft = useMutation(() => recruitmentApi.getMicrosoftAuthorizeUrl({ redirect_after: window.location.pathname }), {
+    onSuccess: (response) => {
+      const url = response?.data?.authorization_url || response?.authorization_url;
+      if (url) window.location.href = url;
+    },
+    onError: (error) => toast.error(error?.response?.data?.detail || "Microsoft connection failed"),
+  });
+  const disconnectMicrosoft = useMutation(() => recruitmentApi.disconnectMicrosoft(), {
+    onSuccess: () => {
+      toast.success("Microsoft disconnected");
+      microsoftQuery.refetch();
+    },
+    onError: (error) => toast.error(error?.response?.data?.detail || "Microsoft disconnect failed"),
+  });
+  const testMicrosoft = useMutation(() => recruitmentApi.testMicrosoft(), {
+    onSuccess: () => {
+      toast.success("Microsoft connection verified");
+      microsoftQuery.refetch();
+    },
+    onError: (error) => toast.error(error?.response?.data?.detail || "Microsoft test failed"),
+  });
 
   const isLoading = query.isLoading || candidatesQuery.isLoading || jobsQuery.isLoading || interviewersQuery.isLoading;
   const isError = query.isError;
@@ -433,6 +455,22 @@ export default function InterviewsPage() {
           color="emerald"
           subtitle="Finished interviews"
         />
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Microsoft Teams Calendar</h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Status: {microsoftQuery.data?.data?.status || microsoftQuery.data?.status || "checking"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => connectMicrosoft.mutate()} disabled={connectMicrosoft.isLoading}>Connect Microsoft</Button>
+            <Button size="sm" variant="secondary" onClick={() => testMicrosoft.mutate()} disabled={testMicrosoft.isLoading}>Test connection</Button>
+            <Button size="sm" variant="secondary" onClick={() => disconnectMicrosoft.mutate()} disabled={disconnectMicrosoft.isLoading}>Disconnect</Button>
+          </div>
+        </div>
       </div>
 
       {/* ============================================================ */}

@@ -24,7 +24,8 @@ from app.recruitment.models import (Application, Candidate, CandidateStatus,
                                     JobAnalyticsCounters,
                                     JobEmploymentType, JobLifecycleStatus,
                                     JobStatus, JobVisibility, JobWorkMode, Offer,
-                                    RecruitmentJob, Resume)
+                                    RecruitmentJob, Resume, ResumeParsedProfile,
+                                    CandidateSkillExtraction)
 from app.recruitment.events import publish_recruitment_event
 from app.recruitment.repositories import (ApplicationRepository,
                                          CandidateNoteRepository,
@@ -730,11 +731,12 @@ class ResumeStorageService:
     """Service for handling resume uploads."""
 
     # Allowed resume extensions
-    ALLOWED_RESUME_EXTENSIONS = {".pdf", ".doc", ".docx"}
+    ALLOWED_RESUME_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt"}
     ALLOWED_RESUME_MIME_TYPES = {
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
     }
 
     # Max resume size (5MB)
@@ -1485,13 +1487,25 @@ class CandidateWorkspaceService:
         candidate = await CandidateWorkspaceService.get_candidate(company_id, candidate_id)
         applications = await ApplicationRepository.list_for_candidate(company_id, candidate_id)
         resumes = await ResumeRepository.list_for_candidate(company_id, candidate_id)
+        resume_payloads = []
+        for resume in resumes:
+            payload = {**resume.model_dump(), "id": str(resume.id)}
+            profile = await ResumeParsedProfile.find_one({"company_id": company_id, "resume_id": str(resume.id)})
+            if profile:
+                payload["parsed_profile"] = profile.profile
+                payload["parse_warnings"] = profile.parse_warnings
+                payload["parser_confidence"] = profile.parser_confidence
+                payload["field_sources"] = profile.field_sources
+            skills = await CandidateSkillExtraction.find({"company_id": company_id, "resume_id": str(resume.id)}).to_list()
+            payload["normalized_skills"] = [skill.normalized_skill for skill in skills]
+            resume_payloads.append(payload)
         timeline = await CandidateTimelineRepository.list_for_candidate(company_id, candidate_id)
         notes = await CandidateNoteRepository.list_for_candidate(company_id, candidate_id)
         attachments = await RecruitmentAttachmentRepository.list_for_candidate(company_id, candidate_id)
         return {
             "candidate": CandidateWorkspaceService.candidate_payload(candidate),
             "applications": [{**app.model_dump(), "id": str(app.id)} for app in applications],
-            "resumes": [{**resume.model_dump(), "id": str(resume.id)} for resume in resumes],
+            "resumes": resume_payloads,
             "timeline": [{**item.model_dump(), "id": str(item.id)} for item in timeline],
             "notes": [{**note.model_dump(), "id": str(note.id)} for note in notes],
             "attachments": [{**attachment.model_dump(), "id": str(attachment.id)} for attachment in attachments],
