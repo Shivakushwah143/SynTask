@@ -251,6 +251,7 @@ class Resume(Document):
     parser_provider: Optional[str] = None
     parser_model: Optional[str] = None
     parser_version: str = "resume-parser-v1"
+    processing_metadata: dict[str, Any] = Field(default_factory=dict)
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
     deleted_at: Optional[datetime] = None
 
@@ -528,6 +529,73 @@ class MicrosoftRecruitmentConnection(Document):
     class Settings:
         name = "recruitment_microsoft_connections"
         indexes = [IndexModel([("company_id", ASCENDING), ("scope", ASCENDING), ("owner_user_id", ASCENDING)], unique=True)]
+
+
+class MicrosoftOAuthState(Document):
+    company_id: Indexed(str)
+    actor_id: str
+    state_hash: Indexed(str, unique=True)
+    redirect_after: Optional[str] = None
+    expires_at: datetime
+    consumed_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "recruitment_microsoft_oauth_states"
+        indexes = [
+            IndexModel([("state_hash", ASCENDING)], unique=True),
+            IndexModel([("company_id", ASCENDING), ("expires_at", ASCENDING)]),
+        ]
+
+
+class RecruitmentExternalOperation(Document):
+    company_id: Indexed(str)
+    idempotency_key: Indexed(str, unique=True)
+    provider: str
+    operation_type: str
+    entity_type: str
+    entity_id: str
+    status: str = "pending"
+    request_fingerprint: Optional[str] = None
+    external_id: Optional[str] = None
+    response: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+    attempts: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "recruitment_external_operations"
+        indexes = [
+            IndexModel([("company_id", ASCENDING), ("provider", ASCENDING), ("operation_type", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("entity_type", ASCENDING), ("entity_id", ASCENDING)]),
+        ]
+
+
+class RecruitmentEmailDelivery(Document):
+    company_id: Indexed(str)
+    idempotency_key: Indexed(str, unique=True)
+    email_type: str
+    entity_type: str
+    entity_id: str
+    recipient_email: str
+    subject: str
+    provider: str
+    status: str = "pending"
+    provider_message_id: Optional[str] = None
+    safe_error: Optional[str] = None
+    attempts: int = 0
+    sent_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "recruitment_email_deliveries"
+        indexes = [
+            IndexModel([("company_id", ASCENDING), ("entity_type", ASCENDING), ("entity_id", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)]),
+        ]
 
 
 class CandidateTimeline(Document):

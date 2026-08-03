@@ -2,15 +2,27 @@ import hashlib
 import io
 import re
 import secrets
+import time
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlencode
 
+import httpx
 from fastapi import HTTPException, UploadFile, status
+from pydantic import EmailStr, TypeAdapter
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.core.clock import utc_now
 from app.core.config import settings
+from app.core.security import decrypt_sensitive_value, encrypt_sensitive_value
 from app.models.user import User
 from app.recruitment.models import (
     Application,
@@ -21,10 +33,13 @@ from app.recruitment.models import (
     Interview,
     InterviewLifecycleStatus,
     JobRequirementProfile,
+    MicrosoftOAuthState,
     MicrosoftRecruitmentConnection,
     Offer,
     OfferAccessToken,
     OfferTemplate,
+    RecruitmentEmailDelivery,
+    RecruitmentExternalOperation,
     RecruitmentJob,
     Resume,
     ResumeParsedProfile,
@@ -74,6 +89,167 @@ def _safe_sentence(text: str, term: str) -> Optional[str]:
     return text[start:end].strip()[:240]
 
 
+def _email_ok(value: str) -> bool:
+    try:
+        TypeAdapter(EmailStr).validate_python(value)
+        return True
+    except Exception:
+        return False
+
+
+def _normalize_resume_text(text: str) -> str:
+    lines = [re.sub(r"\s+", " ", line).strip() for line in text.replace("\x00", " ").splitlines()]
+    lines = [line for line in lines if line]
+    counts = {}
+    for line in lines:
+        if len(line) < 120:
+            counts[line] = counts.get(line, 0) + 1
+    filtered = [line for line in lines if counts.get(line, 0) <= 3]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(filtered)).strip()
+
+
+class RecruitmentEmailService:
+    @staticmethod
+    async def send(
+        *,
+        company_id: str,
+        email_type: str,
+        entity_type: str,
+        entity_id: str,
+        to_email: str,
+        subject: str,
+        html: str,
+        text: str,
+        idempotency_key: str,
+        attachments: Optional[list[dict[str, Any]]] = None,
+    ) -> RecruitmentEmailDelivery:
+        if not _email_ok(to_email):
+            raise HTTPException(status_code=422, detail="Invalid recipient email")
+        existing = await RecruitmentEmailDelivery.find_one({"company_id": company_id, "idempotency_key": idempotency_key})
+        if existing and existing.status == "sent":
+            return existing
+        item = existing or RecruitmentEmailDelivery(
+            company_id=company_id,
+            idempotency_key=idempotency_key,
+            email_type=email_type,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            recipient_email=to_email.lower(),
+            subject=subject,
+            provider="brevo" if settings.BREVO_API_KEY else "smtp",
+        )
+        item.status = "retrying" if item.attempts else "pending"
+        item.attempts += 1
+        item.updated_at = utc_now()
+        await item.save() if item.id else await item.insert()
+        try:
+            from app.services.notification_service import EmailService
+
+            brevo = EmailService()
+            if brevo.configured:
+                result = await brevo.send_email(
+                    to_email=to_email,
+                    subject=subject,
+                    html=html,
+                    text=text,
+                    attachments=attachments,
+                    idempotency_key=idempotency_key,
+                )
+                if not result.success:
+                    raise RuntimeError(result.error or result.status)
+                item.provider = result.provider
+                item.provider_message_id = result.message_id
+            else:
+                from app.core.email import EMAIL_CONFIGURED, FastMail, MessageSchema, MessageType, conf
+
+                if not EMAIL_CONFIGURED or not FastMail or not conf:
+                    raise RuntimeError("Email provider not configured")
+                message = MessageSchema(subject=subject, recipients=[to_email], body=html, subtype=MessageType.html)
+                await FastMail(conf).send_message(message)
+                item.provider = "smtp"
+            item.status = "sent"
+            item.sent_at = utc_now()
+            item.safe_error = None
+        except Exception as exc:
+            item.status = "failed"
+            item.safe_error = str(exc)[:300]
+        item.updated_at = utc_now()
+        await item.save()
+        return item
+
+
+class MicrosoftGraphError(RuntimeError):
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class MicrosoftGraphClient:
+    base_url = "https://graph.microsoft.com/v1.0"
+
+    def __init__(self, access_token: str, http_client: Optional[httpx.AsyncClient] = None) -> None:
+        self.access_token = access_token
+        self.http_client = http_client
+
+    async def request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
+        headers = kwargs.pop("headers", {})
+        headers["Authorization"] = f"Bearer {self.access_token}"
+        headers["Content-Type"] = "application/json"
+        close = self.http_client is None
+        client = self.http_client or httpx.AsyncClient(timeout=30)
+        try:
+            for attempt in range(3):
+                response = await client.request(method, f"{self.base_url}{path}", headers=headers, **kwargs)
+                if response.status_code == 429 and attempt < 2:
+                    await self._sleep_retry(response)
+                    continue
+                if response.status_code >= 400:
+                    msg = "Microsoft Graph request failed"
+                    try:
+                        msg = response.json().get("error", {}).get("message") or msg
+                    except Exception:
+                        pass
+                    raise MicrosoftGraphError(response.status_code, msg)
+                if response.status_code == 204:
+                    return {}
+                return response.json()
+        finally:
+            if close:
+                await client.aclose()
+
+    @staticmethod
+    async def _sleep_retry(response: httpx.Response) -> None:
+        retry = response.headers.get("Retry-After")
+        delay = min(int(retry), 10) if retry and retry.isdigit() else 2
+        import asyncio
+
+        await asyncio.sleep(delay)
+
+    async def me(self) -> dict[str, Any]:
+        return await self.request("GET", "/me")
+
+    async def get_schedule(self, emails: list[str], start: datetime, end: datetime, timezone: str) -> dict[str, Any]:
+        return await self.request(
+            "POST",
+            "/me/calendar/getSchedule",
+            json={
+                "schedules": emails,
+                "startTime": {"dateTime": start.isoformat(), "timeZone": timezone},
+                "endTime": {"dateTime": end.isoformat(), "timeZone": timezone},
+                "availabilityViewInterval": 15,
+            },
+        )
+
+    async def create_event(self, organizer: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self.request("POST", f"/users/{organizer}/events", json=payload)
+
+    async def update_event(self, organizer: str, event_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self.request("PATCH", f"/users/{organizer}/events/{event_id}", json=payload)
+
+    async def cancel_event(self, organizer: str, event_id: str, comment: str) -> dict[str, Any]:
+        return await self.request("POST", f"/users/{organizer}/events/{event_id}/cancel", json={"comment": comment})
+
+
 class ResumeIntelligenceService:
     allowed_ext = {".pdf", ".docx", ".txt"}
     allowed_mimes = {
@@ -118,16 +294,27 @@ class ResumeIntelligenceService:
             except Exception as exc:
                 raise HTTPException(status_code=400, detail="DOCX resume is corrupted or password protected") from exc
         if ext == ".pdf":
-            if b"/Encrypt" in content[:4096] or b"/Encrypt" in content:
-                raise HTTPException(status_code=400, detail="Password-protected PDF cannot be processed")
             try:
-                raw = content.decode("latin-1", errors="ignore")
-                chunks = re.findall(r"\(([^()]{2,})\)\s*Tj|\[([^\]]+)\]\s*TJ", raw)
-                text = " ".join(a or b for a, b in chunks)
-                text = re.sub(r"\\[()]", "", text)
-                text = re.sub(r"\s+", " ", text).strip()
+                reader = PdfReader(io.BytesIO(content))
+                if reader.is_encrypted:
+                    raise HTTPException(status_code=400, detail="Password-protected PDF cannot be processed")
+                if len(reader.pages) > 50:
+                    raise HTTPException(status_code=413, detail="Resume PDF exceeds 50 page processing limit")
+                page_text = []
+                empty_pages = 0
+                for page in reader.pages:
+                    extracted = page.extract_text() or ""
+                    normalized = _normalize_resume_text(extracted)
+                    if not normalized:
+                        empty_pages += 1
+                    page_text.append(normalized)
+                text = _normalize_resume_text("\n\n".join(page_text))
+                if len(text) < 80 or empty_pages == len(reader.pages):
+                    raise HTTPException(status_code=422, detail="PDF appears scanned or image-only; OCR is not configured")
                 return text
-            except Exception as exc:
+            except HTTPException:
+                raise
+            except (PdfReadError, Exception) as exc:
                 raise HTTPException(status_code=400, detail="PDF resume is corrupted") from exc
         raise HTTPException(status_code=400, detail="Unsupported resume file type")
 
@@ -150,11 +337,18 @@ class ResumeIntelligenceService:
             if not path.exists():
                 raise HTTPException(status_code=404, detail="Stored resume file not found")
             content = path.read_bytes()
+            started = time.perf_counter()
             text = ResumeIntelligenceService.extract_text_from_bytes(content, resume.original_filename)
-            if not text:
+            if not text or len(text) < 40:
                 raise HTTPException(status_code=400, detail="Resume has no extractable text")
             resume.parsed_text = text
             resume.extracted_text_checksum = hashlib.sha256(text.encode()).hexdigest()
+            resume.processing_metadata = {
+                "extraction_method": Path(resume.original_filename).suffix.lower().lstrip("."),
+                "library": "pypdf" if resume.original_filename.lower().endswith(".pdf") else "python-stdlib",
+                "character_count": len(text),
+                "processing_duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            }
             resume.processing_status = "parsing"
             await resume.save()
             profile = await ResumeIntelligenceService.parse_profile(company_id, resume, text)
@@ -177,7 +371,7 @@ class ResumeIntelligenceService:
             await record(company_id, "ResumeProcessed", actor_id, candidate_id=resume.candidate_id, payload={"resume_id": resume_id})
             return resume
         except HTTPException as exc:
-            resume.processing_status = "failed"
+            resume.processing_status = "needs_review" if exc.status_code == 422 else "failed"
             resume.processing_error = str(exc.detail)
             await resume.save()
             raise
@@ -395,6 +589,8 @@ class CandidateScoringService:
 class InterviewSchedulingService:
     @staticmethod
     async def propose_slots(company_id: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        if payload.get("use_microsoft", True):
+            return await MicrosoftGraphRecruitmentService.propose_slots(company_id, payload)
         start = payload.get("date_from") or utc_now().isoformat()
         end = payload.get("date_to")
         start_dt = datetime.fromisoformat(str(start).replace("Z", "+00:00")).replace(tzinfo=None)
@@ -433,7 +629,9 @@ class InterviewSchedulingService:
 
     @staticmethod
     async def schedule(company_id: str, actor_id: str, payload: dict[str, Any]) -> Interview:
-        slots = await InterviewSchedulingService.propose_slots(company_id, {**payload, "date_from": payload["scheduled_start"], "date_to": payload["scheduled_end"]})
+        if payload.get("use_microsoft", True):
+            return await MicrosoftGraphRecruitmentService.schedule_interview(company_id, actor_id, payload)
+        slots = await InterviewSchedulingService.propose_slots(company_id, {**payload, "date_from": payload["scheduled_start"], "date_to": payload["scheduled_end"], "use_microsoft": False})
         if not slots:
             raise HTTPException(status_code=409, detail="Selected slot is no longer available")
         start = datetime.fromisoformat(str(payload["scheduled_start"]).replace("Z", "+00:00")).replace(tzinfo=None)
@@ -465,23 +663,330 @@ class InterviewSchedulingService:
 
 
 class MicrosoftGraphRecruitmentService:
+    token_url = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+    authorize_url = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize"
+
+    @staticmethod
+    def configured() -> bool:
+        return bool(settings.MICROSOFT_CLIENT_ID and settings.MICROSOFT_CLIENT_SECRET and settings.MICROSOFT_REDIRECT_URI)
+
+    @staticmethod
+    def scopes() -> list[str]:
+        return getattr(settings, "MICROSOFT_SCOPES", None) or getattr(settings, "MICROSOFT_GRAPH_SCOPES", [])
+
     @staticmethod
     async def status(company_id: str) -> dict[str, Any]:
         conn = await MicrosoftRecruitmentConnection.find_one({"company_id": company_id, "scope": "organization"})
-        configured = bool(getattr(settings, "MICROSOFT_CLIENT_ID", None) and getattr(settings, "MICROSOFT_CLIENT_SECRET", None))
-        return {"connected": bool(conn and conn.status == "connected"), "configured": configured, "status": conn.status if conn else "not_connected", "permissions": ["Calendars.ReadWrite", "OnlineMeetings.ReadWrite"]}
+        configured = MicrosoftGraphRecruitmentService.configured()
+        status_value = conn.status if conn else "not_connected"
+        if conn and conn.status == "connected":
+            try:
+                client = MicrosoftGraphClient(await MicrosoftGraphRecruitmentService.access_token(conn))
+                await client.me()
+            except HTTPException as exc:
+                status_value = "reauthorization_required" if exc.status_code == 401 else "connection_error"
+                conn.status = status_value
+                conn.error = str(exc.detail)
+                await conn.save()
+        return {"connected": bool(conn and status_value == "connected"), "configured": configured, "status": status_value, "permissions": MicrosoftGraphRecruitmentService.scopes()}
 
     @staticmethod
-    async def connect(company_id: str, actor_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def authorization_url(company_id: str, actor_id: str, redirect_after: Optional[str] = None) -> dict[str, Any]:
+        if not MicrosoftGraphRecruitmentService.configured():
+            raise HTTPException(status_code=503, detail="Microsoft Graph OAuth is not configured")
+        raw_state = secrets.token_urlsafe(32)
+        await MicrosoftOAuthState(
+            company_id=company_id,
+            actor_id=actor_id,
+            state_hash=hashlib.sha256(raw_state.encode()).hexdigest(),
+            redirect_after=redirect_after,
+            expires_at=utc_now() + timedelta(minutes=10),
+        ).insert()
+        tenant = settings.MICROSOFT_TENANT_ID or "organizations"
+        params = {
+            "client_id": settings.MICROSOFT_CLIENT_ID,
+            "response_type": "code",
+            "redirect_uri": settings.MICROSOFT_REDIRECT_URI,
+            "response_mode": "query",
+            "scope": " ".join(MicrosoftGraphRecruitmentService.scopes()),
+            "state": raw_state,
+            "prompt": "select_account",
+        }
+        return {"authorization_url": f"{MicrosoftGraphRecruitmentService.authorize_url.format(tenant=tenant)}?{urlencode(params)}", "expires_at": utc_now() + timedelta(minutes=10)}
+
+    @staticmethod
+    async def callback(company_id: str, actor_id: str, code: str, state: str) -> dict[str, Any]:
+        state_hash = hashlib.sha256(state.encode()).hexdigest()
+        saved = await MicrosoftOAuthState.find_one({"company_id": company_id, "state_hash": state_hash, "consumed_at": None})
+        if not saved or saved.expires_at < utc_now() or saved.actor_id != actor_id:
+            raise HTTPException(status_code=400, detail="Invalid or expired Microsoft OAuth state")
+        saved.consumed_at = utc_now()
+        await saved.save()
+        tenant = settings.MICROSOFT_TENANT_ID or "organizations"
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                MicrosoftGraphRecruitmentService.token_url.format(tenant=tenant),
+                data={
+                    "client_id": settings.MICROSOFT_CLIENT_ID,
+                    "client_secret": settings.MICROSOFT_CLIENT_SECRET,
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": settings.MICROSOFT_REDIRECT_URI,
+                    "scope": " ".join(MicrosoftGraphRecruitmentService.scopes()),
+                },
+            )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=400, detail="Microsoft token exchange failed")
+        tokens = response.json()
         conn = await MicrosoftRecruitmentConnection.find_one({"company_id": company_id, "scope": "organization"})
         if not conn:
             conn = MicrosoftRecruitmentConnection(company_id=company_id, owner_user_id=actor_id)
-        conn.tenant_id = payload.get("tenant_id")
-        conn.status = "connected" if payload.get("authorization_code") or payload.get("access_token") else "authorization_required"
-        conn.error = None if conn.status == "connected" else "Microsoft authorization code is required"
+        conn.tenant_id = tokens.get("tenant")
+        conn.access_token_encrypted = encrypt_sensitive_value(tokens["access_token"])
+        conn.refresh_token_encrypted = encrypt_sensitive_value(tokens.get("refresh_token", ""))
+        conn.expires_at = utc_now() + timedelta(seconds=int(tokens.get("expires_in", 3600)) - 60)
+        conn.status = "connected"
+        conn.error = None
         conn.updated_at = utc_now()
         await conn.save() if conn.id else await conn.insert()
         return await MicrosoftGraphRecruitmentService.status(company_id)
+
+    @staticmethod
+    async def connect(company_id: str, actor_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get("code") and payload.get("state"):
+            return await MicrosoftGraphRecruitmentService.callback(company_id, actor_id, payload["code"], payload["state"])
+        return await MicrosoftGraphRecruitmentService.authorization_url(company_id, actor_id, payload.get("redirect_after"))
+
+    @staticmethod
+    async def access_token(conn: MicrosoftRecruitmentConnection) -> str:
+        if conn.expires_at and conn.expires_at > utc_now() and conn.access_token_encrypted:
+            return decrypt_sensitive_value(conn.access_token_encrypted)
+        if not conn.refresh_token_encrypted:
+            conn.status = "reauthorization_required"
+            await conn.save()
+            raise HTTPException(status_code=401, detail="Microsoft reauthorization required")
+        tenant = settings.MICROSOFT_TENANT_ID or conn.tenant_id or "organizations"
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                MicrosoftGraphRecruitmentService.token_url.format(tenant=tenant),
+                data={
+                    "client_id": settings.MICROSOFT_CLIENT_ID,
+                    "client_secret": settings.MICROSOFT_CLIENT_SECRET,
+                    "grant_type": "refresh_token",
+                    "refresh_token": decrypt_sensitive_value(conn.refresh_token_encrypted),
+                    "redirect_uri": settings.MICROSOFT_REDIRECT_URI,
+                    "scope": " ".join(MicrosoftGraphRecruitmentService.scopes()),
+                },
+            )
+        if response.status_code >= 400:
+            conn.status = "reauthorization_required"
+            conn.error = "Microsoft refresh token failed"
+            await conn.save()
+            raise HTTPException(status_code=401, detail="Microsoft reauthorization required")
+        tokens = response.json()
+        conn.access_token_encrypted = encrypt_sensitive_value(tokens["access_token"])
+        if tokens.get("refresh_token"):
+            conn.refresh_token_encrypted = encrypt_sensitive_value(tokens["refresh_token"])
+        conn.expires_at = utc_now() + timedelta(seconds=int(tokens.get("expires_in", 3600)) - 60)
+        conn.status = "connected"
+        conn.error = None
+        await conn.save()
+        return tokens["access_token"]
+
+    @staticmethod
+    async def client(company_id: str) -> tuple[MicrosoftGraphClient, MicrosoftRecruitmentConnection]:
+        conn = await MicrosoftRecruitmentConnection.find_one({"company_id": company_id, "scope": "organization", "status": "connected"})
+        if not conn:
+            raise HTTPException(status_code=409, detail="Microsoft account is not connected")
+        return MicrosoftGraphClient(await MicrosoftGraphRecruitmentService.access_token(conn)), conn
+
+    @staticmethod
+    async def _interviewer_emails(ids: list[str]) -> dict[str, str]:
+        users = {}
+        for user_id in ids:
+            user = await User.get(user_id)
+            if not user or not user.email:
+                raise HTTPException(status_code=422, detail=f"Interviewer {user_id} has no email")
+            users[user_id] = user.email
+        return users
+
+    @staticmethod
+    async def propose_slots(company_id: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        client, _ = await MicrosoftGraphRecruitmentService.client(company_id)
+        start = datetime.fromisoformat(str(payload.get("date_from") or utc_now().isoformat()).replace("Z", "+00:00")).replace(tzinfo=None)
+        end = datetime.fromisoformat(str(payload.get("date_to") or (start + timedelta(days=7)).isoformat()).replace("Z", "+00:00")).replace(tzinfo=None)
+        duration = int(payload.get("duration_minutes") or 60)
+        timezone = payload.get("timezone") or "UTC"
+        required = payload.get("required_interviewer_ids") or payload.get("interviewer_ids") or []
+        optional = payload.get("optional_interviewer_ids") or []
+        emails_by_id = await MicrosoftGraphRecruitmentService._interviewer_emails(required + optional)
+        graph = await client.get_schedule(list(emails_by_id.values()), start, end, timezone)
+        busy_by_email = {item.get("scheduleId"): item.get("scheduleItems", []) for item in graph.get("value", [])}
+        working = payload.get("working_hours") or {"start": "09:00", "end": "17:00"}
+        slots = []
+        cursor = start.replace(hour=int(working["start"].split(":")[0]), minute=0, second=0, microsecond=0)
+        notice_minutes = int(payload.get("minimum_notice_minutes") or 60)
+        while cursor < end and len(slots) < 12:
+            slot_end = cursor + timedelta(minutes=duration)
+            unavailable = []
+            for user_id, email in emails_by_id.items():
+                for item in busy_by_email.get(email, []):
+                    status_value = item.get("status")
+                    busy_start = datetime.fromisoformat(item["start"]["dateTime"].replace("Z", "+00:00")).replace(tzinfo=None)
+                    busy_end = datetime.fromisoformat(item["end"]["dateTime"].replace("Z", "+00:00")).replace(tzinfo=None)
+                    if status_value in {"busy", "tentative", "oof", "workingElsewhere"} and busy_start < slot_end and busy_end > cursor:
+                        unavailable.append(user_id)
+                        break
+            if cursor.weekday() < 5 and cursor > utc_now() + timedelta(minutes=notice_minutes) and not (set(required) & set(unavailable)):
+                slots.append({
+                    "start": cursor.isoformat(),
+                    "end": slot_end.isoformat(),
+                    "timezone": timezone,
+                    "available_interviewers": [i for i in required + optional if i not in unavailable],
+                    "unavailable_interviewers": unavailable,
+                    "confidence": 1 if not unavailable else 0.75,
+                    "reason": "Microsoft Graph free/busy confirms required panel availability",
+                })
+            cursor += timedelta(minutes=duration + int(payload.get("buffer_minutes") or 15))
+            if cursor.hour >= int(working["end"].split(":")[0]):
+                cursor = (cursor + timedelta(days=1)).replace(hour=int(working["start"].split(":")[0]), minute=0)
+        return slots
+
+    @staticmethod
+    async def schedule_interview(company_id: str, actor_id: str, payload: dict[str, Any]) -> Interview:
+        client, conn = await MicrosoftGraphRecruitmentService.client(company_id)
+        start = datetime.fromisoformat(str(payload["scheduled_start"]).replace("Z", "+00:00")).replace(tzinfo=None)
+        end = datetime.fromisoformat(str(payload.get("scheduled_end") or (start + timedelta(minutes=int(payload.get("duration_minutes") or 60))).isoformat()).replace("Z", "+00:00")).replace(tzinfo=None)
+        slots = await MicrosoftGraphRecruitmentService.propose_slots(company_id, {**payload, "date_from": start.isoformat(), "date_to": end.isoformat()})
+        if not slots or slots[0]["start"] != start.isoformat():
+            raise HTTPException(status_code=409, detail="Selected slot is no longer available")
+        idempotency_key = payload.get("idempotency_key") or f"teams:{company_id}:{payload['candidate_id']}:{start.isoformat()}:{','.join(payload.get('interviewer_ids') or payload.get('required_interviewer_ids') or [])}"
+        op = await RecruitmentExternalOperation.find_one({"company_id": company_id, "idempotency_key": idempotency_key})
+        if op and op.status == "completed" and op.response.get("interview_id"):
+            existing = await TenantRepository.get(Interview, op.response["interview_id"], company_id)
+            if existing:
+                return existing
+        op = op or RecruitmentExternalOperation(company_id=company_id, idempotency_key=idempotency_key, provider="microsoft_graph", operation_type="create_event", entity_type="interview", entity_id=payload["candidate_id"])
+        op.attempts += 1
+        await op.save() if op.id else await op.insert()
+        interviewer_ids = payload.get("interviewer_ids") or payload.get("required_interviewer_ids") or []
+        emails_by_id = await MicrosoftGraphRecruitmentService._interviewer_emails(interviewer_ids)
+        candidate_email = payload.get("candidate_email")
+        attendees = [{"emailAddress": {"address": email}, "type": "required"} for email in emails_by_id.values()]
+        if candidate_email:
+            attendees.append({"emailAddress": {"address": candidate_email}, "type": "required"})
+        organizer = payload.get("organizer_email") or next(iter(emails_by_id.values()))
+        event = await client.create_event(organizer, {
+            "subject": payload.get("title") or "Interview",
+            "body": {"contentType": "HTML", "content": payload.get("agenda") or "Interview scheduled from SynTask."},
+            "start": {"dateTime": start.isoformat(), "timeZone": payload.get("timezone") or "UTC"},
+            "end": {"dateTime": end.isoformat(), "timeZone": payload.get("timezone") or "UTC"},
+            "attendees": attendees,
+            "isOnlineMeeting": True,
+            "onlineMeetingProvider": "teamsForBusiness",
+        })
+        interview = Interview(
+            company_id=company_id,
+            candidate_id=payload["candidate_id"],
+            job_id=payload.get("job_id"),
+            round=int(payload.get("round", 1)),
+            interview_type=payload.get("interview_type", "technical"),
+            interview_mode="online",
+            interviewer_ids=interviewer_ids,
+            required_interviewer_ids=payload.get("required_interviewer_ids") or interviewer_ids,
+            optional_interviewer_ids=payload.get("optional_interviewer_ids") or [],
+            mode="online",
+            schedule_at=start,
+            scheduled_at=utc_now(),
+            duration_minutes=int(payload.get("duration_minutes") or 60),
+            status=InterviewLifecycleStatus.SCHEDULED,
+            timezone=payload.get("timezone") or "UTC",
+            meeting_provider="microsoft_teams",
+            meeting_url=(event.get("onlineMeeting") or {}).get("joinUrl"),
+            meeting_link=(event.get("onlineMeeting") or {}).get("joinUrl"),
+            external_event_id=event.get("id"),
+            external_meeting_id=(event.get("onlineMeeting") or {}).get("conferenceId"),
+            organizer_id=organizer,
+            candidate_email=candidate_email,
+            interviewer_responses={user_id: "none" for user_id in interviewer_ids},
+            created_by=actor_id,
+        )
+        await interview.insert()
+        op.status = "completed"
+        op.external_id = event.get("id")
+        op.response = {"interview_id": str(interview.id), "join_url_present": bool(interview.meeting_url)}
+        op.updated_at = utc_now()
+        await op.save()
+        await RecruitmentEmailService.send(
+            company_id=company_id,
+            email_type="candidate_interview_invitation",
+            entity_type="interview",
+            entity_id=str(interview.id),
+            to_email=candidate_email,
+            subject=f"Interview invitation: {payload.get('title') or 'Interview'}",
+            html=f"<p>Your interview is scheduled for {start.isoformat()} {interview.timezone}.</p><p><a href='{interview.meeting_url}'>Join Microsoft Teams meeting</a></p>",
+            text=f"Your interview is scheduled for {start.isoformat()} {interview.timezone}. Teams: {interview.meeting_url}",
+            idempotency_key=f"interview-invite:candidate:{interview.id}",
+        ) if candidate_email else None
+        for user_id, email in emails_by_id.items():
+            await RecruitmentEmailService.send(
+                company_id=company_id,
+                email_type="interviewer_invitation",
+                entity_type="interview",
+                entity_id=str(interview.id),
+                to_email=email,
+                subject=f"Interview panel: {payload.get('title') or 'Interview'}",
+                html=f"<p>Interview scheduled for {start.isoformat()} {interview.timezone}.</p><p><a href='{interview.meeting_url}'>Join Microsoft Teams meeting</a></p>",
+                text=f"Interview scheduled for {start.isoformat()} {interview.timezone}. Teams: {interview.meeting_url}",
+                idempotency_key=f"interview-invite:{user_id}:{interview.id}",
+            )
+        await record(company_id, "InterviewScheduled", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": str(interview.id), "external_event_id": event.get("id")})
+        return interview
+
+    @staticmethod
+    async def reschedule_interview(company_id: str, actor_id: str, interview: Interview, schedule_at: datetime, duration_minutes: Optional[int], reason: Optional[str]) -> Interview:
+        if not interview.external_event_id or not interview.organizer_id:
+            return interview
+        client, _ = await MicrosoftGraphRecruitmentService.client(company_id)
+        end = schedule_at + timedelta(minutes=duration_minutes or interview.duration_minutes)
+        await client.update_event(interview.organizer_id, interview.external_event_id, {
+            "start": {"dateTime": schedule_at.isoformat(), "timeZone": interview.timezone},
+            "end": {"dateTime": end.isoformat(), "timeZone": interview.timezone},
+            "body": {"contentType": "HTML", "content": reason or "Interview rescheduled from SynTask."},
+        })
+        interview.schedule_at = schedule_at
+        interview.duration_minutes = duration_minutes or interview.duration_minutes
+        interview.status = InterviewLifecycleStatus.SCHEDULED
+        interview.updated_at = utc_now()
+        await interview.save()
+        await record(company_id, "InterviewRescheduled", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": str(interview.id)})
+        return interview
+
+    @staticmethod
+    async def cancel_interview(company_id: str, actor_id: str, interview: Interview, reason: Optional[str]) -> Interview:
+        if interview.external_event_id and interview.organizer_id:
+            client, _ = await MicrosoftGraphRecruitmentService.client(company_id)
+            await client.cancel_event(interview.organizer_id, interview.external_event_id, reason or "Cancelled from SynTask")
+        interview.status = InterviewLifecycleStatus.CANCELLED
+        interview.cancelled_by = actor_id
+        interview.cancellation_reason = reason
+        interview.updated_at = utc_now()
+        await interview.save()
+        await record(company_id, "InterviewCancelled", actor_id, candidate_id=interview.candidate_id, job_id=interview.job_id, payload={"interview_id": str(interview.id)})
+        return interview
+
+    @staticmethod
+    async def attendee_status(company_id: str, interview: Interview) -> dict[str, Any]:
+        if interview.external_event_id and interview.organizer_id:
+            client, _ = await MicrosoftGraphRecruitmentService.client(company_id)
+            event = await client.request("GET", f"/users/{interview.organizer_id}/events/{interview.external_event_id}")
+            responses = {}
+            for attendee in event.get("attendees", []):
+                email = (attendee.get("emailAddress") or {}).get("address")
+                responses[email] = (attendee.get("status") or {}).get("response")
+            interview.interviewer_responses = responses
+            await interview.save()
+        return {"candidate_response": interview.candidate_response, "interviewer_responses": interview.interviewer_responses, "provider": interview.meeting_provider}
 
     @staticmethod
     async def disconnect(company_id: str) -> dict[str, Any]:
@@ -512,6 +1017,8 @@ class OfferWorkflowService:
         offer = await TenantRepository.get(Offer, offer_id, company_id)
         if not offer:
             raise HTTPException(status_code=404, detail="Offer not found")
+        if offer.status not in {"approved", "ready"}:
+            raise HTTPException(status_code=409, detail="Approve offer before PDF generation")
         candidate = await TenantRepository.get(Candidate, offer.candidate_id, company_id)
         variables = {
             "candidate_name": candidate.full_name if candidate else "",
@@ -548,12 +1055,41 @@ class OfferWorkflowService:
         if not offer:
             raise HTTPException(status_code=404, detail="Offer not found")
         preview = await OfferWorkflowService.preview(company_id, offer_id)
-        content = preview["preview"].replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-        pdf = f"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length {len(content)+80}>>stream\nBT /F1 12 Tf 72 720 Td ({content[:3000]}) Tj ET\nendstream endobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n".encode()
         path = Path(settings.UPLOAD_DIR) / "offers"
         path.mkdir(parents=True, exist_ok=True)
-        file_path = path / f"{offer.offer_number or offer_id}.pdf"
-        file_path.write_bytes(pdf)
+        version = int(time.time())
+        file_path = path / f"{offer.offer_number or offer_id}-v{version}.pdf"
+        doc = SimpleDocTemplate(str(file_path), pagesize=A4, rightMargin=20 * mm, leftMargin=20 * mm, topMargin=18 * mm, bottomMargin=18 * mm)
+        styles = getSampleStyleSheet()
+        story = [
+            Paragraph(settings.COMPANY, styles["Title"]),
+            Paragraph(f"Offer Letter: {offer.offer_number or offer_id}", styles["Heading2"]),
+            Spacer(1, 6 * mm),
+            Paragraph(preview["preview"].replace("\n", "<br/>"), styles["BodyText"]),
+            Spacer(1, 6 * mm),
+            Table(
+                [
+                    ["Component", "Amount"],
+                    ["Base salary", f"{offer.currency} {offer.base_salary:,.2f}"],
+                    ["Variable pay", f"{offer.currency} {offer.variable_pay:,.2f}"],
+                    ["Joining bonus", f"{offer.currency} {offer.joining_bonus:,.2f}"],
+                    ["Total compensation", f"{offer.currency} {offer.offered_ctc:,.2f}"],
+                ],
+                colWidths=[90 * mm, 70 * mm],
+                style=TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2ff")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("PADDING", (0, 0), (-1, -1), 8),
+                ]),
+            ),
+            Spacer(1, 8 * mm),
+            Paragraph("Terms and conditions, signature, and acceptance are governed by the approved offer record in SynTask.", styles["BodyText"]),
+            Spacer(1, 12 * mm),
+            Paragraph("Authorized Signature: ____________________________", styles["BodyText"]),
+        ]
+        doc.build(story)
+        pdf = file_path.read_bytes()
         offer.pdf_checksum = hashlib.sha256(pdf).hexdigest()
         offer.immutable_pdf_path = str(file_path)
         offer.pdf_file_id = f"/uploads/offers/{file_path.name}"
@@ -581,8 +1117,23 @@ class OfferWorkflowService:
         offer.updated_at = utc_now()
         await offer.save()
         await RecruitmentService.move(await TenantRepository.get(Candidate, offer.candidate_id, company_id), CandidateStatus.OFFER_SENT, actor_id)
+        candidate = await TenantRepository.get(Candidate, offer.candidate_id, company_id)
+        secure_url = f"{settings.FRONTEND_URL}/public/offers/{raw}" if not existing else None
+        delivery = None
+        if candidate and candidate.email and secure_url:
+            delivery = await RecruitmentEmailService.send(
+                company_id=company_id,
+                email_type="offer_letter",
+                entity_type="offer",
+                entity_id=offer_id,
+                to_email=candidate.email,
+                subject=f"Offer letter: {offer.job_title or 'SynTask offer'}",
+                html=f"<p>Dear {candidate.full_name},</p><p>Your offer letter is ready.</p><p><a href='{secure_url}'>View secure offer</a></p><p>Offer expires: {expiry.date().isoformat()}</p>",
+                text=f"Your offer letter is ready: {secure_url}\nOffer expires: {expiry.date().isoformat()}",
+                idempotency_key=f"offer-send:{offer_id}:{candidate.email}",
+            )
         await record(company_id, "OfferSent", actor_id, candidate_id=offer.candidate_id, job_id=offer.job_id, payload={"offer_id": offer_id})
-        return {"offer": offer, "secure_url": f"{settings.FRONTEND_URL}/public/offers/{raw}" if not existing else None, "email_status": "queued" if settings.MAIL_USERNAME or settings.BREVO_API_KEY else "not_configured"}
+        return {"offer": offer, "secure_url": secure_url, "email_status": delivery.status if delivery else "not_sent"}
 
     @staticmethod
     async def public_offer(token: str) -> tuple[Offer, OfferAccessToken]:
@@ -622,5 +1173,19 @@ class OfferWorkflowService:
             candidate = await TenantRepository.get(Candidate, offer.candidate_id, offer.company_id)
             if candidate:
                 await RecruitmentService.move(candidate, CandidateStatus.OFFER_ACCEPTED, None)
+            if candidate and candidate.assigned_recruiter_id:
+                recruiter = await User.get(candidate.assigned_recruiter_id)
+                if recruiter and recruiter.email:
+                    await RecruitmentEmailService.send(
+                        company_id=offer.company_id,
+                        email_type="offer_accepted_notification",
+                        entity_type="offer",
+                        entity_id=str(offer.id),
+                        to_email=recruiter.email,
+                        subject=f"Offer accepted: {candidate.full_name}",
+                        html=f"<p>{candidate.full_name} accepted the offer for {offer.job_title or 'the role'}.</p>",
+                        text=f"{candidate.full_name} accepted the offer.",
+                        idempotency_key=f"offer-accepted:{offer.id}:{recruiter.email}",
+                    )
         await record(offer.company_id, "OfferAccepted" if accepted else "OfferRejected", None, candidate_id=offer.candidate_id, job_id=offer.job_id, payload={"offer_id": str(offer.id)})
         return offer

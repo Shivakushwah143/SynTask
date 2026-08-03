@@ -47,12 +47,19 @@ class Settings(BaseSettings):
     MICROSOFT_CLIENT_SECRET: Optional[str] = None
     MICROSOFT_TENANT_ID: Optional[str] = None
     MICROSOFT_REDIRECT_URI: Optional[str] = None
+    MICROSOFT_SCOPES: List[str] = [
+        "offline_access",
+        "Calendars.ReadWrite",
+        "OnlineMeetings.ReadWrite",
+        "User.Read",
+    ]
     MICROSOFT_GRAPH_SCOPES: List[str] = [
         "offline_access",
         "Calendars.ReadWrite",
         "OnlineMeetings.ReadWrite",
         "User.Read",
     ]
+    MICROSOFT_TOKEN_ENCRYPTION_KEY: Optional[str] = None
     RECRUITMENT_RESUME_MAX_BYTES: int = 5242880
     RECRUITMENT_OFFER_TOKEN_TTL_DAYS: int = 7
     RECRUITMENT_INTERVIEW_REMINDER_HOURS: List[int] = [24, 1]

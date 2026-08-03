@@ -114,9 +114,10 @@ from app.integrations.google_workspace.models import (
 from app.recruitment.models import (
     Application, Candidate, CandidateJobScore, CandidateNote, CandidateSkillExtraction,
     CandidateTimeline, Interview, InterviewFeedback, JobRequirementProfile,
-    MicrosoftRecruitmentConnection, Offer, OfferAccessToken, OfferTemplate,
-    RecruitmentAttachment, RecruitmentAudit, RecruitmentImportJob, RecruitmentJob,
-    RecruitmentOutbox, Resume, ResumeParsedProfile, SkillAlias,
+    MicrosoftOAuthState, MicrosoftRecruitmentConnection, Offer, OfferAccessToken,
+    OfferTemplate, RecruitmentAttachment, RecruitmentAudit, RecruitmentEmailDelivery,
+    RecruitmentExternalOperation, RecruitmentImportJob, RecruitmentJob, RecruitmentOutbox,
+    Resume, ResumeParsedProfile, SkillAlias,
 )
 
 logger = logging.getLogger(__name__)
@@ -307,6 +308,9 @@ async def init_db():
                 OfferTemplate,
                 OfferAccessToken,
                 MicrosoftRecruitmentConnection,
+                MicrosoftOAuthState,
+                RecruitmentExternalOperation,
+                RecruitmentEmailDelivery,
                 CandidateNote,
                 RecruitmentAttachment,
                 RecruitmentImportJob,

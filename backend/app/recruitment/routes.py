@@ -963,6 +963,8 @@ async def get_interview(interview_id: str, user: User = Depends(require_intervie
 @router.get("/interviews/{interview_id}/attendee-status")
 async def attendee_status(interview_id: str, user: User = Depends(require_interview_view)):
     interview = await InterviewService.get_interview(company(user), interview_id)
+    if getattr(interview, "external_event_id", None):
+        return await MicrosoftGraphRecruitmentService.attendee_status(company(user), interview)
     return {
         "candidate_response": getattr(interview, "candidate_response", None),
         "interviewer_responses": getattr(interview, "interviewer_responses", {}),
@@ -975,6 +977,16 @@ async def microsoft_connect(payload: dict, user: User = Depends(require_recruitm
     return await MicrosoftGraphRecruitmentService.connect(company(user), str(user.id), payload)
 
 
+@router.get("/integrations/microsoft/authorize-url")
+async def microsoft_authorize_url(redirect_after: Optional[str] = None, user: User = Depends(require_recruitment_manager)):
+    return await MicrosoftGraphRecruitmentService.authorization_url(company(user), str(user.id), redirect_after)
+
+
+@router.get("/integrations/microsoft/callback")
+async def microsoft_callback(code: str, state: str, user: User = Depends(require_recruitment_manager)):
+    return await MicrosoftGraphRecruitmentService.callback(company(user), str(user.id), code, state)
+
+
 @router.get("/integrations/microsoft/status")
 async def microsoft_status(user: User = Depends(require_recruitment_access)):
     return await MicrosoftGraphRecruitmentService.status(company(user))
@@ -985,6 +997,30 @@ async def microsoft_disconnect(user: User = Depends(require_recruitment_manager)
     return await MicrosoftGraphRecruitmentService.disconnect(company(user))
 
 
+@router.post("/integrations/microsoft/test")
+async def microsoft_test(user: User = Depends(require_recruitment_manager)):
+    return await MicrosoftGraphRecruitmentService.status(company(user))
+
+
+@router.post("/email/test")
+async def recruitment_test_email(payload: dict, user: User = Depends(require_recruitment_manager)):
+    from app.recruitment.advanced_services import RecruitmentEmailService
+
+    to_email = payload.get("to_email") or user.email
+    delivery = await RecruitmentEmailService.send(
+        company_id=company(user),
+        email_type="test",
+        entity_type="recruitment",
+        entity_id="test",
+        to_email=to_email,
+        subject="SynTask recruitment email test",
+        html="<p>Recruitment email delivery is configured.</p>",
+        text="Recruitment email delivery is configured.",
+        idempotency_key=f"recruitment-test:{company(user)}:{to_email}:{utc_now().date().isoformat()}",
+    )
+    return delivery
+
+
 @router.patch("/interviews/{interview_id}", response_model=InterviewResponse)
 async def update_interview(interview_id: str, payload: InterviewUpdate, user: User = Depends(require_interview_manage)):
     interview = await InterviewService.update(company(user), interview_id, payload, str(user.id))
@@ -993,12 +1029,20 @@ async def update_interview(interview_id: str, payload: InterviewUpdate, user: Us
 
 @router.post("/interviews/{interview_id}/reschedule", response_model=InterviewResponse)
 async def reschedule_interview(interview_id: str, payload: InterviewRescheduleRequest, user: User = Depends(require_interview_manage)):
+    current = await InterviewService.get_interview(company(user), interview_id)
+    if getattr(current, "external_event_id", None):
+        interview = await MicrosoftGraphRecruitmentService.reschedule_interview(company(user), str(user.id), current, payload.schedule_at, payload.duration_minutes, payload.reason)
+        return InterviewResponse.model_validate(InterviewService.payload(interview))
     interview = await InterviewService.reschedule(company(user), interview_id, payload, str(user.id))
     return InterviewResponse.model_validate(InterviewService.payload(interview))
 
 
 @router.post("/interviews/{interview_id}/cancel", response_model=InterviewResponse)
 async def cancel_interview(interview_id: str, payload: InterviewCancelRequest, user: User = Depends(require_interview_manage)):
+    current = await InterviewService.get_interview(company(user), interview_id)
+    if getattr(current, "external_event_id", None):
+        interview = await MicrosoftGraphRecruitmentService.cancel_interview(company(user), str(user.id), current, payload.reason)
+        return InterviewResponse.model_validate(InterviewService.payload(interview))
     interview = await InterviewService.cancel(company(user), interview_id, payload, str(user.id))
     return InterviewResponse.model_validate(InterviewService.payload(interview))
 

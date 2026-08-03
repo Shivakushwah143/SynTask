@@ -8,10 +8,13 @@ from app.recruitment.models import (
     CandidateJobScore,
     CandidateSkillExtraction,
     JobRequirementProfile,
+    MicrosoftOAuthState,
     MicrosoftRecruitmentConnection,
     Offer,
     OfferAccessToken,
     OfferTemplate,
+    RecruitmentEmailDelivery,
+    RecruitmentExternalOperation,
     Resume,
     ResumeParsedProfile,
     SkillAlias,
@@ -34,6 +37,9 @@ async def main() -> None:
             OfferTemplate,
             OfferAccessToken,
             MicrosoftRecruitmentConnection,
+            MicrosoftOAuthState,
+            RecruitmentExternalOperation,
+            RecruitmentEmailDelivery,
         ],
     )
     print("Recruitment advanced workflow indexes ensured.")
