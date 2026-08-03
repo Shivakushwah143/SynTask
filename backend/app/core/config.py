@@ -43,6 +43,20 @@ class Settings(BaseSettings):
     AUTH_COOKIE_SECURE: bool = True
     AUTH_COOKIE_SAMESITE: str = "lax"
     AUTH_COOKIE_DOMAIN: Optional[str] = None
+    MICROSOFT_CLIENT_ID: Optional[str] = None
+    MICROSOFT_CLIENT_SECRET: Optional[str] = None
+    MICROSOFT_TENANT_ID: Optional[str] = None
+    MICROSOFT_REDIRECT_URI: Optional[str] = None
+    MICROSOFT_GRAPH_SCOPES: List[str] = [
+        "offline_access",
+        "Calendars.ReadWrite",
+        "OnlineMeetings.ReadWrite",
+        "User.Read",
+    ]
+    RECRUITMENT_RESUME_MAX_BYTES: int = 5242880
+    RECRUITMENT_OFFER_TOKEN_TTL_DAYS: int = 7
+    RECRUITMENT_INTERVIEW_REMINDER_HOURS: List[int] = [24, 1]
+    RECRUITMENT_OFFER_REMINDER_DAYS: List[int] = [2, 0]
     
     # CORS
     ALLOWED_ORIGINS: List[str] = [

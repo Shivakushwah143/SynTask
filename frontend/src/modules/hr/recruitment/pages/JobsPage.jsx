@@ -95,10 +95,16 @@ export default function JobsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [drawerJob, setDrawerJob] = useState(null);
   const [archiveJob, setArchiveJob] = useState(null);
+  const [selectedRankings, setSelectedRankings] = useState([]);
   
   const params = compactParams({ page, page_size: 20, search, ...filters });
   const query = useQuery(["recruitment", "jobs", params], () => recruitmentApi.getJobs(params), { keepPreviousData: true });
   const departmentsQuery = useQuery(["recruitment", "departments"], () => departmentsAPI.listDepartments(), { retry: 1 });
+  const rankingsQuery = useQuery(
+    ["recruitment", "rankings", idOf(drawerJob)],
+    () => recruitmentApi.getCandidateRankings(idOf(drawerJob)),
+    { enabled: !!drawerJob }
+  );
   
   const jobs = toArray(query.data);
   const departments = Array.isArray(departmentsQuery.data) ? departmentsQuery.data : departmentsQuery.data?.departments || [];
@@ -142,6 +148,25 @@ export default function JobsPage() {
       }
     }
   );
+  const extractRequirementsMutation = useMutation((id) => recruitmentApi.extractJobRequirements(id), {
+    onSuccess: () => toast.success("Requirements extracted"),
+    onError: (error) => toast.error(error?.response?.data?.detail || "Failed to extract requirements"),
+  });
+  const scoreCandidatesMutation = useMutation((id) => recruitmentApi.scoreCandidates(id), {
+    onSuccess: () => {
+      toast.success("Candidates scored");
+      rankingsQuery.refetch();
+    },
+    onError: (error) => toast.error(error?.response?.data?.detail || "Failed to score candidates"),
+  });
+  const shortlistMutation = useMutation((candidateIds) => recruitmentApi.shortlistCandidates(idOf(drawerJob), { candidate_ids: candidateIds, reason: "Reviewed ranking and shortlisted by HR" }), {
+    onSuccess: () => {
+      toast.success("Candidates shortlisted");
+      setSelectedRankings([]);
+      rankingsQuery.refetch();
+    },
+    onError: (error) => toast.error(error?.response?.data?.detail || "Failed to shortlist candidates"),
+  });
   
   const confirmArchiveJob = () => {
     if (!archiveJob) return;
@@ -528,6 +553,63 @@ export default function JobsPage() {
                 </p>
               </div>
             )}
+
+            <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Candidate Ranking</h4>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">AI ranking is decision support only. Human review is required.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => extractRequirementsMutation.mutate(idOf(drawerJob))} disabled={extractRequirementsMutation.isLoading}>
+                    <FileText className="h-4 w-4" /> Extract
+                  </Button>
+                  <Button size="sm" onClick={() => scoreCandidatesMutation.mutate(idOf(drawerJob))} disabled={scoreCandidatesMutation.isLoading}>
+                    <ArrowUpDown className="h-4 w-4" /> Score
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => shortlistMutation.mutate(selectedRankings)} disabled={!selectedRankings.length || shortlistMutation.isLoading}>
+                    <CheckCircle className="h-4 w-4" /> Shortlist
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="text-left text-xs uppercase text-gray-500">
+                    <tr>
+                      <th className="py-2 pr-3"></th>
+                      <th className="py-2 pr-3">Candidate</th>
+                      <th className="py-2 pr-3">Score</th>
+                      <th className="py-2 pr-3">Required</th>
+                      <th className="py-2 pr-3">Experience</th>
+                      <th className="py-2 pr-3">Recommendation</th>
+                      <th className="py-2 pr-3">Missing</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(rankingsQuery.data?.items || []).map((row) => {
+                      const candidateId = idOf(row.candidate) || row.score?.candidate_id;
+                      const score = row.score?.score || {};
+                      return (
+                        <tr key={candidateId} className="border-t border-gray-100 dark:border-gray-800">
+                          <td className="py-2 pr-3">
+                            <input type="checkbox" checked={selectedRankings.includes(candidateId)} onChange={(e) => setSelectedRankings((current) => e.target.checked ? [...current, candidateId] : current.filter((id) => id !== candidateId))} />
+                          </td>
+                          <td className="py-2 pr-3 font-medium text-gray-900 dark:text-white">{row.candidate?.full_name || candidateId}</td>
+                          <td className="py-2 pr-3">{score.overall_score ?? "-"}</td>
+                          <td className="py-2 pr-3">{score.required_skills_score ?? "-"}</td>
+                          <td className="py-2 pr-3">{score.experience_score ?? "-"}</td>
+                          <td className="py-2 pr-3">{labelize(score.recommendation || "not scored")}</td>
+                          <td className="py-2 pr-3 text-xs text-rose-600">{(score.missing_required_skills || []).join(", ") || "-"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {!rankingsQuery.data?.items?.length ? (
+                  <p className="py-6 text-center text-sm text-gray-500">No ranking results yet. Extract requirements, then score candidates.</p>
+                ) : null}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center py-12">

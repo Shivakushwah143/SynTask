@@ -2,14 +2,23 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.core.clock import utc_now
 from app.models.user import User
-from app.recruitment.models import (Candidate, CandidateStatus, CandidateTimeline,
+from app.recruitment.models import (Candidate, CandidateJobScore, CandidateStatus, CandidateTimeline,
                                     ImportStatus, Interview, JobLifecycleStatus,
-                                    JobStatus, Offer, RecruitmentJob, Resume)
+                                    JobRequirementProfile, JobStatus, Offer, RecruitmentJob,
+                                    Resume, ResumeParsedProfile)
+from app.recruitment.advanced_services import (
+    CandidateScoringService,
+    InterviewSchedulingService,
+    MicrosoftGraphRecruitmentService,
+    OfferWorkflowService,
+    ResumeIntelligenceService,
+)
 from app.recruitment.permissions import (require_job_archive, require_job_create,
                                          require_job_publish, require_job_update,
                                          require_job_view, require_recruitment_access,
@@ -62,6 +71,7 @@ from app.recruitment.services import (ApplicationService, CareerPortalService,
 
 router = APIRouter()
 careers_router = APIRouter()
+public_router = APIRouter()
 
 
 def company(user: User) -> str:
@@ -743,6 +753,143 @@ async def recruitment_resume_pool(search: Optional[str] = None, page: int = 1, p
     return ResumePoolResponse(items=items, total=total, page=page, page_size=page_size, has_next=(page * page_size) < total)
 
 
+@router.post("/candidates/{candidate_id}/resumes", status_code=201)
+async def upload_candidate_resume(candidate_id: str, file: UploadFile = File(...), user: User = Depends(require_candidate_manage)):
+    return await ResumeIntelligenceService.upload_resume(company(user), str(user.id), candidate_id, file)
+
+
+@router.post("/resumes/{resume_id}/process")
+async def process_resume(resume_id: str, force: bool = False, user: User = Depends(require_candidate_manage)):
+    return await ResumeIntelligenceService.process_resume(company(user), resume_id, str(user.id), force=force)
+
+
+@router.get("/resumes/{resume_id}/status")
+async def resume_status(resume_id: str, user: User = Depends(require_candidate_view)):
+    resume = await TenantRepository.get(Resume, resume_id, company(user))
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    return {
+        "resume_id": resume_id,
+        "status": resume.processing_status,
+        "error": resume.processing_error,
+        "started_at": resume.processing_started_at,
+        "completed_at": resume.processing_completed_at,
+    }
+
+
+@router.get("/resumes/{resume_id}/parsed-profile")
+async def parsed_profile(resume_id: str, user: User = Depends(require_candidate_view)):
+    resume = await TenantRepository.get(Resume, resume_id, company(user))
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    profile = await ResumeParsedProfile.find_one({"company_id": company(user), "resume_id": resume_id})
+    return {
+        "resume": resume,
+        "parsed_profile": profile.profile if profile else {},
+        "field_sources": profile.field_sources if profile else {},
+        "parser_confidence": profile.parser_confidence if profile else 0,
+        "parse_warnings": profile.parse_warnings if profile else [],
+        "extracted_text": resume.parsed_text,
+    }
+
+
+@router.patch("/resumes/{resume_id}/parsed-profile")
+async def update_parsed_profile(resume_id: str, payload: dict, user: User = Depends(require_candidate_manage)):
+    resume = await TenantRepository.get(Resume, resume_id, company(user))
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    profile = await ResumeParsedProfile.find_one({"company_id": company(user), "resume_id": resume_id})
+    if not profile:
+        profile = ResumeParsedProfile(company_id=company(user), resume_id=resume_id, candidate_id=resume.candidate_id)
+    changes = payload.get("profile", payload)
+    for key, value in changes.items():
+        old = profile.profile.get(key)
+        if old != value:
+            profile.previous_values.append({"field": key, "old": old, "new": value, "source": "hr_correction", "changed_at": utc_now().isoformat(), "actor_id": str(user.id)})
+            profile.profile[key] = value
+            profile.field_sources[key] = "hr_correction"
+    profile.updated_at = utc_now()
+    await profile.save() if profile.id else await profile.insert()
+    await record(company(user), "ResumeProfileCorrected", str(user.id), candidate_id=resume.candidate_id, payload={"resume_id": resume_id, "fields": list(changes)})
+    return profile
+
+
+@router.post("/jobs/{job_id}/extract-requirements")
+async def extract_job_requirements(job_id: str, user: User = Depends(require_job_update)):
+    return await CandidateScoringService.extract_requirements(company(user), job_id, str(user.id))
+
+
+@router.get("/jobs/{job_id}/requirements")
+async def get_job_requirements(job_id: str, user: User = Depends(require_job_view)):
+    job = await JobService.get_job(job_id, company(user))
+    profile = await JobRequirementProfile.find_one({"company_id": company(user), "job_id": str(job.id)})
+    return profile or await CandidateScoringService.extract_requirements(company(user), job_id, str(user.id))
+
+
+@router.patch("/jobs/{job_id}/requirements")
+async def patch_job_requirements(job_id: str, payload: dict, user: User = Depends(require_job_update)):
+    await JobService.get_job(job_id, company(user))
+    profile = await JobRequirementProfile.find_one({"company_id": company(user), "job_id": job_id})
+    if not profile:
+        profile = JobRequirementProfile(company_id=company(user), job_id=job_id)
+    if "requirements" in payload:
+        profile.requirements = payload["requirements"]
+    if "scoring_weights" in payload:
+        profile.scoring_weights = payload["scoring_weights"]
+    profile.edited_by = str(user.id)
+    profile.updated_at = utc_now()
+    await profile.save() if profile.id else await profile.insert()
+    await record(company(user), "JobRequirementsUpdated", str(user.id), job_id=job_id)
+    return profile
+
+
+@router.post("/jobs/{job_id}/score-candidates")
+async def score_candidates(job_id: str, user: User = Depends(require_candidate_manage)):
+    scores = await CandidateScoringService.score_job_candidates(company(user), job_id)
+    await record(company(user), "CandidatesScored", str(user.id), job_id=job_id, payload={"count": len(scores)})
+    return {"items": scores, "human_review_required": True}
+
+
+@router.get("/jobs/{job_id}/candidate-rankings")
+async def candidate_rankings(job_id: str, min_score: Optional[float] = None, recommendation: Optional[str] = None, user: User = Depends(require_candidate_view)):
+    query = {"company_id": company(user), "job_id": job_id}
+    if min_score is not None:
+        query["score.overall_score"] = {"$gte": min_score}
+    if recommendation:
+        query["score.recommendation"] = recommendation
+    scores = await CandidateJobScore.find(query).sort("-score.overall_score").to_list()
+    candidate_map = {}
+    for score in scores:
+        candidate = await TenantRepository.get(Candidate, score.candidate_id, company(user))
+        if candidate:
+            candidate_map[score.candidate_id] = candidate
+    return {"items": [{"score": s, "candidate": candidate_map.get(s.candidate_id)} for s in scores], "human_review_required": True}
+
+
+@router.get("/candidates/{candidate_id}/job-score/{job_id}")
+async def candidate_job_score(candidate_id: str, job_id: str, user: User = Depends(require_candidate_view)):
+    score = await CandidateJobScore.find_one({"company_id": company(user), "candidate_id": candidate_id, "job_id": job_id})
+    if not score:
+        score = await CandidateScoringService.score_candidate(company(user), job_id, candidate_id)
+    return score
+
+
+@router.post("/jobs/{job_id}/shortlist")
+async def shortlist_candidates(job_id: str, payload: dict, user: User = Depends(require_candidate_manage)):
+    candidate_ids = payload.get("candidate_ids") or []
+    reason = payload.get("reason") or "Human shortlisted from ranking screen"
+    updated = []
+    for candidate_id in candidate_ids:
+        candidate = await TenantRepository.get(Candidate, candidate_id, company(user))
+        if candidate:
+            candidate.status = CandidateStatus.SHORTLISTED
+            candidate.updated_at = utc_now()
+            await candidate.save()
+            await record(company(user), "CandidateShortlisted", str(user.id), candidate_id=candidate_id, job_id=job_id, payload={"reason": reason})
+            updated.append(candidate_id)
+    return {"updated": updated}
+
+
 @router.get("/interviews", response_model=InterviewListResponse)
 async def list_interviews(
     candidate_id: Optional[str] = None,
@@ -784,10 +931,58 @@ async def create_interview(payload: InterviewCreate, user: User = Depends(requir
     return InterviewResponse.model_validate(InterviewService.payload(interview))
 
 
+@router.post("/interviews/availability")
+async def interview_availability(payload: dict, user: User = Depends(require_interview_manage)):
+    return {"slots": await InterviewSchedulingService.propose_slots(company(user), payload)}
+
+
+@router.post("/interviews/propose-slots")
+async def interview_propose_slots(payload: dict, user: User = Depends(require_interview_manage)):
+    return {"slots": await InterviewSchedulingService.propose_slots(company(user), payload)}
+
+
+@router.post("/interviews/schedule", status_code=201)
+async def schedule_interview_with_teams(payload: dict, user: User = Depends(require_interview_manage)):
+    return await InterviewSchedulingService.schedule(company(user), str(user.id), payload)
+
+
+@router.post("/interviews/bulk-schedule")
+async def bulk_schedule_interviews(payload: dict, user: User = Depends(require_interview_manage)):
+    created = []
+    for item in payload.get("interviews", []):
+        created.append(await InterviewSchedulingService.schedule(company(user), str(user.id), item))
+    return {"items": created}
+
+
 @router.get("/interviews/{interview_id}", response_model=InterviewResponse)
 async def get_interview(interview_id: str, user: User = Depends(require_interview_view)):
     interview = await InterviewService.get_interview(company(user), interview_id)
     return InterviewResponse.model_validate(InterviewService.payload(interview))
+
+
+@router.get("/interviews/{interview_id}/attendee-status")
+async def attendee_status(interview_id: str, user: User = Depends(require_interview_view)):
+    interview = await InterviewService.get_interview(company(user), interview_id)
+    return {
+        "candidate_response": getattr(interview, "candidate_response", None),
+        "interviewer_responses": getattr(interview, "interviewer_responses", {}),
+        "provider": getattr(interview, "meeting_provider", None),
+    }
+
+
+@router.post("/integrations/microsoft/connect")
+async def microsoft_connect(payload: dict, user: User = Depends(require_recruitment_manager)):
+    return await MicrosoftGraphRecruitmentService.connect(company(user), str(user.id), payload)
+
+
+@router.get("/integrations/microsoft/status")
+async def microsoft_status(user: User = Depends(require_recruitment_access)):
+    return await MicrosoftGraphRecruitmentService.status(company(user))
+
+
+@router.post("/integrations/microsoft/disconnect")
+async def microsoft_disconnect(user: User = Depends(require_recruitment_manager)):
+    return await MicrosoftGraphRecruitmentService.disconnect(company(user))
 
 
 @router.patch("/interviews/{interview_id}", response_model=InterviewResponse)
@@ -833,12 +1028,15 @@ async def interview_decision(interview_id: str, payload: InterviewDecisionReques
 
 
 @router.post("/offers", status_code=201)
-async def create_offer(payload: OfferCreate, user: User = Depends(require_recruitment_manager)):
-    candidate = await get_candidate(payload.candidate_id, user)
-    offer = Offer(company_id=company(user), candidate_id=payload.candidate_id, offered_ctc=payload.offered_ctc, joining_date=payload.joining_date, status="sent" if payload.send else "draft", sent_at=utc_now() if payload.send else None); await offer.insert()
-    if payload.send:
-        candidate = await RecruitmentService.move(candidate, CandidateStatus.OFFER_SENT, str(user.id))
-        await record(company(user), "OfferSent", str(user.id), candidate_id=payload.candidate_id, payload={"offer_id": str(offer.id)})
+async def create_offer(payload: dict, user: User = Depends(require_recruitment_manager)):
+    return await OfferWorkflowService.create(company(user), str(user.id), payload)
+
+
+@router.get("/offers/{offer_id}")
+async def get_offer(offer_id: str, user: User = Depends(require_recruitment_manager)):
+    offer = await TenantRepository.get(Offer, offer_id, company(user))
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer not found")
     return offer
 
 
@@ -846,8 +1044,87 @@ async def create_offer(payload: OfferCreate, user: User = Depends(require_recrui
 async def update_offer(offer_id: str, payload: OfferUpdate, user: User = Depends(require_recruitment_manager)):
     item = await TenantRepository.get(Offer, offer_id, company(user))
     if not item: raise HTTPException(status_code=404, detail="Offer not found")
-    for key, value in payload.model_dump(exclude_unset=True).items(): setattr(item, key, value)
+    data = payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else payload
+    for key, value in data.items(): setattr(item, key, value)
+    if any(k in data for k in ("base_salary", "variable_pay", "joining_bonus")):
+        item.offered_ctc = (item.base_salary or 0) + (item.variable_pay or 0) + (item.joining_bonus or 0)
     item.updated_at = utc_now(); await item.save(); return item
+
+
+@router.post("/offers/{offer_id}/submit-for-approval")
+async def submit_offer_for_approval(offer_id: str, user: User = Depends(require_recruitment_manager)):
+    item = await TenantRepository.get(Offer, offer_id, company(user))
+    if not item: raise HTTPException(status_code=404, detail="Offer not found")
+    if item.status != "draft": raise HTTPException(status_code=409, detail="Only draft offers can be submitted")
+    item.status = "pending_approval"
+    item.approval_history.append({"approver": str(user.id), "decision": "submitted", "timestamp": utc_now().isoformat(), "comment": None, "previous_status": "draft", "new_status": "pending_approval"})
+    item.updated_at = utc_now(); await item.save()
+    await record(company(user), "OfferSubmittedForApproval", str(user.id), candidate_id=item.candidate_id, job_id=item.job_id, payload={"offer_id": offer_id})
+    return item
+
+
+@router.post("/offers/{offer_id}/approve")
+async def approve_offer(offer_id: str, payload: dict | None = None, user: User = Depends(require_recruitment_manager)):
+    item = await TenantRepository.get(Offer, offer_id, company(user))
+    if not item: raise HTTPException(status_code=404, detail="Offer not found")
+    if item.status not in {"pending_approval", "draft"}: raise HTTPException(status_code=409, detail="Offer cannot be approved from current status")
+    previous = item.status
+    item.status = "approved"
+    item.approved_by = str(user.id)
+    item.approval_history.append({"approver": str(user.id), "decision": "approved", "timestamp": utc_now().isoformat(), "comment": (payload or {}).get("comment"), "previous_status": previous, "new_status": "approved"})
+    item.updated_at = utc_now(); await item.save()
+    return item
+
+
+@router.post("/offers/{offer_id}/reject-approval")
+async def reject_offer_approval(offer_id: str, payload: dict, user: User = Depends(require_recruitment_manager)):
+    item = await TenantRepository.get(Offer, offer_id, company(user))
+    if not item: raise HTTPException(status_code=404, detail="Offer not found")
+    previous = item.status
+    item.status = "draft"
+    item.approval_history.append({"approver": str(user.id), "decision": "rejected", "timestamp": utc_now().isoformat(), "comment": payload.get("comment"), "previous_status": previous, "new_status": "draft"})
+    item.updated_at = utc_now(); await item.save()
+    return item
+
+
+@router.post("/offers/{offer_id}/preview")
+async def preview_offer(offer_id: str, user: User = Depends(require_recruitment_manager)):
+    return await OfferWorkflowService.preview(company(user), offer_id)
+
+
+@router.post("/offers/{offer_id}/generate-pdf")
+async def generate_offer_pdf(offer_id: str, user: User = Depends(require_recruitment_manager)):
+    return await OfferWorkflowService.generate_pdf(company(user), str(user.id), offer_id)
+
+
+@router.post("/offers/{offer_id}/send")
+async def send_offer(offer_id: str, user: User = Depends(require_recruitment_manager)):
+    return await OfferWorkflowService.send(company(user), str(user.id), offer_id)
+
+
+@router.post("/offers/{offer_id}/withdraw")
+async def withdraw_offer(offer_id: str, payload: dict | None = None, user: User = Depends(require_recruitment_manager)):
+    item = await TenantRepository.get(Offer, offer_id, company(user))
+    if not item: raise HTTPException(status_code=404, detail="Offer not found")
+    item.status = "withdrawn"
+    item.withdrawn_at = utc_now()
+    item.updated_at = utc_now()
+    await item.save()
+    await record(company(user), "OfferWithdrawn", str(user.id), candidate_id=item.candidate_id, job_id=item.job_id, payload={"offer_id": offer_id, "reason": (payload or {}).get("reason")})
+    return item
+
+
+@router.post("/offers/{offer_id}/resend")
+async def resend_offer(offer_id: str, user: User = Depends(require_recruitment_manager)):
+    return await OfferWorkflowService.send(company(user), str(user.id), offer_id)
+
+
+@router.get("/offers/{offer_id}/history")
+async def offer_history(offer_id: str, user: User = Depends(require_recruitment_manager)):
+    item = await TenantRepository.get(Offer, offer_id, company(user))
+    if not item: raise HTTPException(status_code=404, detail="Offer not found")
+    timeline = await CandidateTimeline.find({"company_id": company(user), "candidate_id": item.candidate_id, "payload.offer_id": offer_id}).sort("-created_at").to_list()
+    return {"approval_history": item.approval_history, "audit_history": timeline}
 
 
 async def decide_offer(offer_id: str, decision: str, user: User):
@@ -987,3 +1264,54 @@ async def reports(
         "offers": await RecruitmentReportService.offers(company(user), filters),
         "trends": await RecruitmentReportService.trends(company(user), filters),
     }
+
+
+@public_router.get("/offers/{secure_token}")
+async def public_offer(secure_token: str):
+    offer, _ = await OfferWorkflowService.public_offer(secure_token)
+    return {
+        "id": str(offer.id),
+        "offer_number": offer.offer_number,
+        "status": offer.status,
+        "job_title": offer.job_title,
+        "department": offer.department,
+        "joining_date": offer.joining_date,
+        "currency": offer.currency,
+        "base_salary": offer.base_salary,
+        "variable_pay": offer.variable_pay,
+        "joining_bonus": offer.joining_bonus,
+        "total_compensation": offer.offered_ctc,
+        "offer_expiry": offer.offer_expiry,
+        "pdf_available": bool(offer.immutable_pdf_path),
+        "preview": offer.rendered_preview,
+    }
+
+
+@public_router.post("/offers/{secure_token}/request-otp")
+async def public_offer_request_otp(secure_token: str):
+    await OfferWorkflowService.public_offer(secure_token)
+    return {"status": "otp_not_required", "message": "Secure token verification succeeded"}
+
+
+@public_router.post("/offers/{secure_token}/verify-otp")
+async def public_offer_verify_otp(secure_token: str, payload: dict | None = None):
+    await OfferWorkflowService.public_offer(secure_token)
+    return {"verified": True}
+
+
+@public_router.post("/offers/{secure_token}/accept")
+async def public_offer_accept(secure_token: str, payload: dict | None = None):
+    return await OfferWorkflowService.decide_public(secure_token, True, payload or {})
+
+
+@public_router.post("/offers/{secure_token}/reject")
+async def public_offer_reject(secure_token: str, payload: dict):
+    return await OfferWorkflowService.decide_public(secure_token, False, payload or {})
+
+
+@public_router.get("/offers/{secure_token}/pdf")
+async def public_offer_pdf(secure_token: str):
+    offer, _ = await OfferWorkflowService.public_offer(secure_token)
+    if not offer.immutable_pdf_path:
+        raise HTTPException(status_code=404, detail="Offer PDF not generated")
+    return FileResponse(offer.immutable_pdf_path, media_type="application/pdf", filename=f"{offer.offer_number or 'offer'}.pdf")

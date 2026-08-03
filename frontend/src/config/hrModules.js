@@ -3,6 +3,7 @@ import {
   CalendarClock,
   ClipboardList,
   FileBarChart2,
+  FileText,
   Gauge,
   Inbox,
   UserCheck,
@@ -66,6 +67,11 @@ export const HR_MODULES = [
         name: "Interviews",
         href: "/hr/recruitment/interviews",
         icon: CalendarClock,
+      },
+      {
+        name: "Offers",
+        href: "/hr/recruitment/offers",
+        icon: FileText,
       },
       {
         name: "Reports",
