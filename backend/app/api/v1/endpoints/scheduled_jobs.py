@@ -13,6 +13,8 @@ from app.services.scheduling_service import SchedulingService
 from app.api.deps import Pagination20, PaginationParams
 from app.models.notification import Notification, NotificationType
 from app.core.clock import parse_to_utc, utc_now
+from app.core.cache import cache_delete_pattern, project_list_key
+from app.services.project_permissions import ProjectPermission, has_project_permission, load_project_for_permission
 
 router = APIRouter()
 
@@ -43,11 +45,21 @@ def _ensure_future_run_at(run_at: datetime) -> datetime:
     return normalized
 
 
-def _ensure_can_schedule_action(current_user: User, action_type: ScheduledJobActionType) -> None:
+async def _ensure_can_schedule_action(current_user: User, action_type: ScheduledJobActionType, payload: Optional[Dict[str, Any]] = None) -> None:
     if action_type == ScheduledJobActionType.CREATE_PROJECT:
         allowed_roles = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN}
     else:
         allowed_roles = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}
+
+    if current_user.role in allowed_roles:
+        return
+
+    if action_type == ScheduledJobActionType.CREATE_TASK and payload:
+        project_id = payload.get("project_id")
+        if project_id:
+            project = await load_project_for_permission(str(project_id), current_user)
+            if has_project_permission(current_user, project, ProjectPermission.CREATE_TASK):
+                return
 
     if current_user.role not in allowed_roles:
         raise HTTPException(
@@ -92,7 +104,7 @@ async def create_scheduled_job(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User must belong to a company"
         )
-    _ensure_can_schedule_action(current_user, request.action_type)
+    await _ensure_can_schedule_action(current_user, request.action_type, request.payload)
     run_at = _ensure_future_run_at(request.run_at)
 
     # If action_type is CREATE_PROJECT, verify project_id and key uniqueness
@@ -121,6 +133,8 @@ async def create_scheduled_job(
         company_id=current_user.company_id,
         notes=request.notes,
     )
+    if request.action_type == ScheduledJobActionType.CREATE_PROJECT:
+        await cache_delete_pattern(f"{project_list_key(current_user.company_id)}*")
     return _serialize_job(job)
 
 
@@ -202,6 +216,8 @@ async def update_scheduled_job(
 
     job.run_at = _ensure_future_run_at(request.run_at)
     await job.save()
+    if job.action_type == ScheduledJobActionType.CREATE_PROJECT:
+        await cache_delete_pattern(f"{project_list_key(job.company_id)}*")
     return _serialize_job(job)
 
 
@@ -228,6 +244,8 @@ async def cancel_scheduled_job(
     job.status = ScheduledJobStatus.CANCELLED
     job.completed_at = utc_now()
     await job.save()
+    if job.action_type == ScheduledJobActionType.CREATE_PROJECT:
+        await cache_delete_pattern(f"{project_list_key(job.company_id)}*")
 
     # Send cancellation notification to creator
     notification = Notification(
@@ -272,6 +290,8 @@ async def retry_failed_job(
     if _normalize_run_at(job.run_at) <= utc_now():
         job.run_at = utc_now()
     await job.save()
+    if job.action_type == ScheduledJobActionType.CREATE_PROJECT:
+        await cache_delete_pattern(f"{project_list_key(job.company_id)}*")
     return _serialize_job(job)
 
 

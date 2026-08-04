@@ -2,11 +2,11 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, CalendarDays, ChevronDown, Filter, MoreHorizontal, MoveRight, RefreshCw, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
+import { AlertCircle, ChevronDown, Filter, MoreHorizontal, MoveRight, RefreshCw, Sparkles } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
-import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, getStageDealValue, getStageKey } from './utils'
+import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadTags, getStageDealValue, getStageKey } from './utils'
 
 const leadColumnStyle = 'w-[300px] flex-none snap-start'
 export const pipelineLeadCardClassNames = {
@@ -36,42 +36,6 @@ export const PipelineBoardShell = ({ title, description, actions, children }) =>
     </CRMSection>
   </div>
 )
-
-export const PipelineTopMetrics = memo(function PipelineTopMetrics({ visibleLeads = [], stages = [], currency = 'INR' }) {
-  const metrics = useMemo(() => {
-    const totalLeads = visibleLeads.length
-    const totalValue = visibleLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0)
-    const activeStages = stages.filter((stage) => stage.leads?.length).length
-    const wonLeads = visibleLeads.filter((lead) => getLeadStageKey(lead).includes('won')).length
-    const hotLeads = visibleLeads.filter((lead) => ['critical', 'high'].includes(getLeadPriority(lead))).length
-    return [
-      { label: 'Total Leads', value: totalLeads, helper: 'Visible after filters', icon: Users, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200' },
-      { label: 'Total Value', value: formatCurrency(totalValue, currency), helper: 'Pipeline value', icon: TrendingUp, tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' },
-      { label: 'Hot Leads', value: hotLeads, helper: 'Critical or high priority', icon: Target, tone: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200' },
-      { label: 'Active Stages', value: activeStages, helper: 'With at least one lead', icon: Sparkles, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200' },
-      { label: 'Won', value: wonLeads, helper: 'Visible won leads', icon: CalendarDays, tone: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200' },
-    ]
-  }, [currency, stages, visibleLeads])
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      {metrics.map((metric) => (
-        <article key={metric.label} className="rounded-xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center gap-3">
-            <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${metric.tone}`}>
-              <metric.icon className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-text-secondary dark:text-gray-400">{metric.label}</p>
-              <p className="mt-1 truncate text-xl font-semibold tracking-tight text-text-primary dark:text-gray-100">{metric.value}</p>
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-text-secondary dark:text-gray-400">{metric.helper}</p>
-        </article>
-      ))}
-    </div>
-  )
-})
 
 export const PipelineFiltersBar = memo(function PipelineFiltersBar({
   filters,

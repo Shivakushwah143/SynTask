@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.services.project_permissions import ProjectPermission, has_project_permission
 
 router = APIRouter()
 
@@ -15,18 +16,22 @@ async def get_projects_for_task_creation(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail="User must belong to a company",
         )
-    if current_user.role == UserRole.EMPLOYEE:
-        return {"projects": []}
-
     query = {"company_id": current_user.company_id, "status": {"$ne": ProjectStatus.ARCHIVED.value}}
     if current_user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
         if current_user.role == UserRole.LEAD:
             query["$or"] = [
+                {"lead_id": str(current_user.id)},
                 {"assigned_to": str(current_user.id)},
                 {"assigned_user_ids": str(current_user.id)},
             ]
+        else:
+            query["lead_id"] = str(current_user.id)
 
     projects = await Project.find(query).sort("-created_at").to_list()
+    projects = [
+        project for project in projects
+        if has_project_permission(current_user, project, ProjectPermission.CREATE_TASK)
+    ]
     return {
         "projects": [
             {

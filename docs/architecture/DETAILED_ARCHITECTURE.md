@@ -66,7 +66,9 @@ Legacy routes still contain some orchestration. New reusable rules should live i
 
 ## Tenancy and authorization
 
-The shared database/collection approach relies on `company_id`. Decisions evaluate active identity, tenant, enabled module, role/hierarchy, resource ownership/membership, action, and state. Tenant-owned queries should filter by record ID and tenant together.
+The shared database/collection approach relies on `company_id`. Decisions evaluate active identity, tenant, enabled module, role/hierarchy, resource ownership/membership, project-scoped effective role, action, and state. Tenant-owned queries should filter by record ID and tenant together.
+
+Project/task authorization uses `app.services.project_permissions` as the source of truth for effective project roles. Permission priority is organization-level management, assigned project Lead from the current project record, project member, then no access. Employee users assigned as `Project.lead_id` keep their global Employee role but receive Lead permissions only for that project; each protected request reloads the project and recalculates permissions, so replacement or removal takes effect immediately. Task mutations verify the task's stored project and reject forged cross-project identifiers.
 
 Negative cross-tenant tests are mandatory for records, search, export, files, jobs, notifications, caches, and AI retrieval. Redis-backed revocation has a documented fail-open limitation; production must approve fail-closed or controlled degradation.
 

@@ -1,11 +1,44 @@
 from fastapi import APIRouter
 
 from .shared import *
+from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, ScheduledJobStatus
 from app.api.deps import Pagination50, PaginationParams
 from app.api.v1.endpoints.tasks import build_employee_project_visibility_query
+from app.api.v1.endpoints.tasks import serialize_utc_datetime
 from app.core.clock import utc_now
 
 router = APIRouter()
+
+
+def serialize_scheduled_project_placeholder(job: ScheduledJob) -> dict:
+    payload = job.payload or {}
+    return {
+        "id": f"scheduled-{job.id}",
+        "project_id": payload.get("project_id") or f"scheduled-{job.id}",
+        "name": payload.get("name") or "Scheduled project",
+        "key": payload.get("key") or payload.get("project_id") or "SCHEDULED",
+        "description": payload.get("description"),
+        "type": payload.get("type") or ProjectType.SOFTWARE.value,
+        "status": "scheduled",
+        "client_id": payload.get("client_id"),
+        "lead_id": payload.get("lead_id"),
+        "assigned_to": payload.get("assigned_to") or payload.get("lead_id"),
+        "assigned_user_ids": [],
+        "assigned_users": [],
+        "assigned_to_name": None,
+        "start_date": payload.get("start_date"),
+        "delivery_date": payload.get("delivery_date"),
+        "days_until_delivery": None,
+        "priority": "scheduled",
+        "task_count": 0,
+        "completed_task_count": 0,
+        "created_at": serialize_utc_datetime(job.created_at),
+        "is_scheduled_placeholder": True,
+        "scheduled_job_id": str(job.id),
+        "scheduled_run_at": serialize_utc_datetime(job.run_at),
+        "scheduled_status": job.status.value if hasattr(job.status, "value") else job.status,
+        "created_by": job.created_by,
+    }
 
 
 async def build_project_list_query(current_user: User) -> dict:
@@ -34,6 +67,7 @@ async def build_project_list_query(current_user: User) -> dict:
     query = {"company_id": current_user.company_id}
     if current_user.role == UserRole.LEAD:
         query["$or"] = [
+            {"lead_id": str(current_user.id)},
             {"assigned_to": str(current_user.id)},
             {"assigned_user_ids": str(current_user.id)},
             {"team_member_ids": str(current_user.id)},
@@ -142,6 +176,26 @@ async def list_projects(
         x["priority"] == "medium" and 3 or 4,
         x["delivery_date"] if x["delivery_date"] else datetime.max
     ))
+
+    if not status_filter or status_filter.lower() == "scheduled":
+        scheduled_query = {
+            "action_type": ScheduledJobActionType.CREATE_PROJECT.value,
+            "status": ScheduledJobStatus.PENDING.value,
+            "created_by": str(current_user.id),
+        }
+        if current_user.company_id:
+            scheduled_query["company_id"] = current_user.company_id
+        scheduled_jobs = await ScheduledJob.find(scheduled_query).sort("run_at").to_list()
+        scheduled_placeholders = [
+            serialize_scheduled_project_placeholder(job)
+            for job in scheduled_jobs
+        ]
+        if status_filter and status_filter.lower() == "scheduled":
+            projects_with_stats = scheduled_placeholders
+            total = len(scheduled_placeholders)
+        else:
+            projects_with_stats = scheduled_placeholders + projects_with_stats
+            total += len(scheduled_placeholders)
     
     data = {
         "projects": projects_with_stats,

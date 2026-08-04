@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Zap, Target, Award, TrendingUp, Activity, BarChart3, X, Pencil, Trash2 } from 'lucide-react'
+import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Zap, Target, Award, TrendingUp, Activity, BarChart3, X, Pencil, Trash2, Timer } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
-import { format, formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
 import { CreatableSelectField, EmptyState, SkeletonKanban } from '../components/ui'
 import { QuickCreateDepartmentModal, QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import ViewToggle from '../components/layout/ViewToggle'
@@ -42,6 +42,101 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
       </div>
       <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
       {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+    </div>
+  )
+}
+
+const isScheduledTask = (task) => Boolean(task?.is_scheduled_placeholder)
+
+const getScheduledCountdown = (value, nowMs = Date.now()) => {
+  if (!value) {
+    return { label: '--:--:--', shortLabel: '--:--', publishLabel: 'Publish time not set', isDue: false, isOverdue: false, overdueLabel: '--:--:--' }
+  }
+  try {
+    const runAt = timeService.instant(value)
+    const targetMs = runAt.getTime()
+    if (Number.isNaN(targetMs)) throw new Error('Invalid scheduled time')
+
+    const remainingMs = Math.max(0, targetMs - nowMs)
+    const overdueMs = Math.max(0, nowMs - targetMs)
+    const totalSeconds = Math.floor(remainingMs / 1000)
+    const overdueTotalSeconds = Math.floor(overdueMs / 1000)
+    const days = Math.floor(totalSeconds / 86400)
+    const hours = Math.floor((totalSeconds % 86400) / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    const overdueHours = Math.floor((overdueTotalSeconds % 86400) / 3600)
+    const overdueMinutes = Math.floor((overdueTotalSeconds % 3600) / 60)
+    const overdueSeconds = overdueTotalSeconds % 60
+    const timeLabel = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    const overdueLabel = `${String(overdueHours).padStart(2, '0')}:${String(overdueMinutes).padStart(2, '0')}:${String(overdueSeconds).padStart(2, '0')}`
+    const dayPrefix = days > 0 ? `${days}d ` : ''
+
+    return {
+      label: remainingMs === 0 ? 'Publishing soon' : `${dayPrefix}${timeLabel}`,
+      shortLabel: remainingMs === 0 ? 'Soon' : `${dayPrefix}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`,
+      publishLabel: `Publishes ${timeService.formatPattern(runAt, 'MMM d, h:mm a')}`,
+      isDue: remainingMs === 0,
+      isOverdue: overdueMs > 0,
+      overdueLabel: overdueMs > 0 ? overdueLabel : null,
+    }
+  } catch {
+    return { label: '--:--:--', shortLabel: '--:--', publishLabel: 'Scheduled', isDue: false, isOverdue: false, overdueLabel: '--:--:--' }
+  }
+}
+
+function useCountdownNow() {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+  return now
+}
+
+function ScheduledCountdownPill({ runAt }) {
+  const now = useCountdownNow()
+  const countdown = getScheduledCountdown(runAt, now)
+  return (
+    <span
+      title={countdown.publishLabel}
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-800 shadow-sm dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200"
+    >
+      <Timer className="h-3 w-3 text-amber-500" />
+      <span className="font-mono tabular-nums">{countdown.shortLabel}</span>
+      {countdown.isOverdue && countdown.overdueLabel && (
+        <span className="ml-1 font-mono text-rose-600">({countdown.overdueLabel} overdue)</span>
+      )}
+    </span>
+  )
+}
+
+function ScheduledCountdownPanel({ runAt, compact = false }) {
+  const now = useCountdownNow()
+  const countdown = getScheduledCountdown(runAt, now)
+  return (
+    <div className={`rounded-lg border border-cyan-200 bg-gradient-to-r from-cyan-50 via-white to-amber-50 shadow-sm dark:border-cyan-900 dark:from-cyan-950/30 dark:via-gray-900 dark:to-amber-950/20 ${compact ? 'px-2.5 py-1.5' : 'p-3'}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200">
+            <Timer className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Publishes in</p>
+            {!compact && <p className="truncate text-xs text-gray-500 dark:text-gray-400">{countdown.publishLabel}</p>}
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <span className="whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 font-mono text-xs font-bold tabular-nums text-white dark:bg-white dark:text-gray-900">
+            {countdown.label}
+          </span>
+          {countdown.isOverdue && countdown.overdueLabel && (
+            <span className="whitespace-nowrap rounded-md bg-rose-600 px-2 py-1 font-mono text-xs font-bold tabular-nums text-white">
+              Overdue: {countdown.overdueLabel}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -122,6 +217,7 @@ useEffect(() => {
 }, [dueDateValue]);
 
   const statuses = [
+    { id: 'scheduled', label: 'Scheduled', color: 'bg-amber-100' },
     { id: 'todo', label: 'To Do', color: 'bg-gray-100' },
     { id: 'in_progress', label: 'In Progress', color: 'bg-blue-100' },
     { id: 'in_review', label: 'Review', color: 'bg-yellow-100' },
@@ -405,18 +501,19 @@ useEffect(() => {
           toast.error('Schedule time is required')
           return
         }
-        const runAt = timeService.instant(scheduleRunAt)
-        if (Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
+        const runAt = timeService.parseZonedInput(scheduleRunAt)
+        if (!runAt || Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
           toast.error('Schedule time must be in the future')
           return
         }
         await scheduledJobsAPI.scheduleJob({
           action_type: 'CREATE_TASK',
           payload: taskData,
-          run_at: timeService.toUtcISOString(runAt),
+          run_at: runAt.toISOString(),
         })
         toast.success('Task scheduled successfully')
         closeCreateModal()
+        fetchTasks({ isRefresh: true })
         return
       }
 
@@ -494,6 +591,7 @@ useEffect(() => {
   }
 
   const handleTaskClick = (task) => {
+    if (isScheduledTask(task)) return
     if (task.project_id) {
       navigate(`/projects/${task.project_id}/tasks/${task.id}`)
     } else {
@@ -503,6 +601,7 @@ useEffect(() => {
 
   const openEditModal = (task, e) => {
     e?.stopPropagation()
+    if (isScheduledTask(task)) return
     setEditingTask(task)
     setEditFormData({
       title: task.title || '',
@@ -550,6 +649,7 @@ useEffect(() => {
 
   const openDeleteConfirm = (task, e) => {
     e?.stopPropagation()
+    if (isScheduledTask(task)) return
     setDeletingTask(task)
     setShowDeleteConfirm(true)
   }
@@ -850,7 +950,7 @@ useEffect(() => {
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {tasks.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    <td colSpan="6" className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                       No tasks match the current filters.
                     </td>
                   </tr>
@@ -867,17 +967,20 @@ useEffect(() => {
                       in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
                       in_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
                       completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+                      scheduled: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
                     }
                     const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
+                    const scheduled = isScheduledTask(task)
                     return (
                       <tr
                         key={task.id}
                         onClick={() => handleTaskClick(task)}
-                        className="cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                        className={`transition-colors ${scheduled ? 'border-l-4 border-cyan-400 bg-gradient-to-r from-cyan-50/90 via-white to-amber-50/60 dark:from-cyan-950/25 dark:via-gray-900 dark:to-amber-950/15' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
                       >
                         <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
                           <div className="flex items-center gap-2">
                             <span>{task.title}</span>
+                            {scheduled && <ScheduledCountdownPill runAt={task.scheduled_run_at} />}
                             {task.task_type === 'quantitative' && (
                               <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                                 <span>🎯</span>
@@ -890,7 +993,7 @@ useEffect(() => {
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[task.status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}>
-                            {String(task.status || '').replace(/_/g, ' ')}
+                            {scheduled ? 'scheduled' : String(task.status || '').replace(/_/g, ' ')}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -905,24 +1008,31 @@ useEffect(() => {
                           {assignedUser ? `${assignedUser.first_name} ${assignedUser.last_name}` : 'Unassigned'}
                         </td>
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={(e) => openEditModal(task, e)}
-                              className="rounded-lg p-1.5 text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
-                              title="Edit task"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => openDeleteConfirm(task, e)}
-                              className="rounded-lg p-1.5 text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-rose-400 dark:hover:bg-rose-900/20"
-                              title="Delete task"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                          {scheduled ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-md border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200">
+                              <Clock className="h-3.5 w-3.5" />
+                              Scheduled
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => openEditModal(task, e)}
+                                className="rounded-lg p-1.5 text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
+                                title="Edit task"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => openDeleteConfirm(task, e)}
+                                className="rounded-lg p-1.5 text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                                title="Delete task"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )
@@ -961,17 +1071,23 @@ useEffect(() => {
                         critical: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
                       }
                       const assignedUser = assignableUsers.find(u => u.id === task.assigned_to)
+                      const scheduled = isScheduledTask(task)
                       return (
                         <div
                           key={task.id}
-                          className="rounded-xl border border-gray-200 bg-white p-3 transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700"
+                          className={`rounded-xl border p-3 transition-all ${scheduled ? 'border-cyan-300 bg-gradient-to-br from-cyan-50 via-white to-amber-50 ring-1 ring-cyan-100 dark:border-cyan-800 dark:from-cyan-950/30 dark:via-gray-900 dark:to-amber-950/20 dark:ring-cyan-900/50' : 'border-gray-200 bg-white hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700'}`}
                         >
                           <button
                             type="button"
                             onClick={() => handleTaskClick(task)}
-                            className="w-full text-left"
+                            disabled={scheduled}
+                            className={`w-full text-left ${scheduled ? 'cursor-default' : ''}`}
                           >
-                            <p className="font-medium text-gray-900 text-sm dark:text-white">{task.title}</p>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-medium text-gray-900 text-sm dark:text-white">{task.title}</p>
+                              {scheduled && <Timer className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-300" />}
+                            </div>
+                            {scheduled && <div className="mt-2"><ScheduledCountdownPanel runAt={task.scheduled_run_at} /></div>}
                             {task.description && (
                               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{task.description}</p>
                             )}
@@ -1002,20 +1118,28 @@ useEffect(() => {
                             </div>
                           </button>
                           <div className="mt-2 flex items-center gap-1 border-t border-gray-100 pt-2 dark:border-gray-700">
-                            <button
-                              type="button"
-                              onClick={(e) => openEditModal(task, e)}
-                              className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
-                            >
-                              <Pencil className="h-3 w-3" /> Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => openDeleteConfirm(task, e)}
-                              className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-rose-500 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20"
-                            >
-                              <Trash2 className="h-3 w-3" /> Delete
-                            </button>
+                            {scheduled ? (
+                              <span className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+                                <Clock className="h-3 w-3" /> Scheduled
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => openEditModal(task, e)}
+                                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
+                                >
+                                  <Pencil className="h-3 w-3" /> Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => openDeleteConfirm(task, e)}
+                                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-rose-500 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                                >
+                                  <Trash2 className="h-3 w-3" /> Delete
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       )
@@ -1649,6 +1773,7 @@ function TaskGraphPanel({ rows, summary, onOpenTask }) {
 // Enhanced Task Card
 function TaskCard({ task, onOpen }) {
   const progress = task.progress || 0
+  const scheduled = isScheduledTask(task)
   const priorityColors = {
     low: 'from-emerald-400 to-emerald-500',
     medium: 'from-amber-400 to-amber-500',
@@ -1679,14 +1804,19 @@ function TaskCard({ task, onOpen }) {
     <button
       type="button"
       onClick={onOpen}
-      className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700"
+      disabled={scheduled}
+      className={`group rounded-xl border p-4 text-left shadow-sm transition-all ${
+        scheduled
+          ? 'border-cyan-300 bg-gradient-to-br from-cyan-50 via-white to-amber-50 ring-1 ring-cyan-100 dark:border-cyan-800 dark:from-cyan-950/30 dark:via-gray-900 dark:to-amber-950/20 dark:ring-cyan-900/50'
+          : 'border-gray-200 bg-white hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700'
+      }`}
     >
       <div className="flex items-start gap-3">
         <div 
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white font-bold text-sm shadow-lg"
-          style={{ background: `linear-gradient(135deg, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#6366f1'}, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#8b5cf6'})` }}
+          style={{ background: scheduled ? 'linear-gradient(135deg, #0891b2, #f59e0b)' : `linear-gradient(135deg, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#6366f1'}, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#8b5cf6'})` }}
         >
-          {task.title?.charAt(0)?.toUpperCase() || 'T'}
+          {scheduled ? <Timer className="h-5 w-5" /> : (task.title?.charAt(0)?.toUpperCase() || 'T')}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
@@ -1695,7 +1825,7 @@ function TaskCard({ task, onOpen }) {
           <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{task.assignee || 'Unassigned'}</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-              {task.statusLabel}
+              {scheduled ? 'Scheduled' : task.statusLabel}
             </span>
             <span 
               className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-white"
@@ -1711,14 +1841,14 @@ function TaskCard({ task, onOpen }) {
       <div className="mt-3">
         <div className="mb-1.5 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
           <span>Progress</span>
-          <span className="font-semibold text-gray-700 dark:text-gray-300">{progress}%</span>
+          <span className="font-semibold text-gray-700 dark:text-gray-300">{scheduled ? 'Waiting' : `${progress}%`}</span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
           <div 
             className="h-full rounded-full bg-gradient-to-r transition-all duration-500"
             style={{ 
               background: `linear-gradient(to right, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#6366f1'}, ${TASK_GRAPH_PRIORITY_COLORS[task.priority] || '#8b5cf6'})`,
-              width: `${Math.min(progress, 100)}%` 
+              width: `${scheduled ? 100 : Math.min(progress, 100)}%` 
             }}
           />
         </div>
@@ -1737,6 +1867,9 @@ function TaskCard({ task, onOpen }) {
             <Clock className="h-3 w-3 mr-1" />
             {createdTimeLabel}
           </div>
+        )}
+        {scheduled && task.scheduled_run_at && (
+          <ScheduledCountdownPanel runAt={task.scheduled_run_at} />
         )}
       </div>
     </button>

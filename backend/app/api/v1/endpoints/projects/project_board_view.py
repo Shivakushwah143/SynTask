@@ -30,7 +30,7 @@ async def get_project_board(
     if project_id and project_id != str(project.id) and project_id != project_id_for_query:
         or_conditions.append({"project_id": project_id})  # path param (custom id)
     task_query = {"$or": or_conditions, "company_id": project.company_id}
-    if current_user.role == UserRole.EMPLOYEE:
+    if current_user.role == UserRole.EMPLOYEE and not has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
         task_query["assigned_to"] = str(current_user.id)
     all_tasks = await Task.find(task_query).to_list()
     
@@ -73,7 +73,8 @@ async def get_project_board(
     
     # Organize tasks by status
     for task in all_tasks:
-        status_key = task.status.value
+        status_key = enum_or_string_value(task.status)
+        priority_key = enum_or_string_value(task.priority)
         if status_key in tasks_by_status:
             assigned_user = user_map.get(task.assigned_to) if task.assigned_to else None
             created_user = user_map.get(task.created_by) if task.created_by else None
@@ -82,14 +83,14 @@ async def get_project_board(
                 "id": str(task.id),
                 "title": task.title,
                 "description": task.description,
-                "status": task.status.value,
-                "priority": task.priority.value,
+                "status": status_key,
+                "priority": priority_key,
                 "assigned_to": task.assigned_to,
                 "assigned_to_name": assigned_user.full_name() if assigned_user else None,
                 "created_by": task.created_by,
                 "created_by_name": created_user.full_name() if created_user else None,
-                "due_date": task.due_date.isoformat() if task.due_date else None,
-                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "due_date": iso_datetime_or_string(task.due_date),
+                "created_at": iso_datetime_or_string(task.created_at),
                 "tags": task.tags,
                 "story_points": task.story_points,
                 "attachments": task.attachments or [],
@@ -112,12 +113,14 @@ async def get_project_board(
     assigned_ids = project_assignee_ids(project)
     assigned_users = []
     for user_id in assigned_ids:
+        if not ObjectId.is_valid(str(user_id)):
+            continue
         assigned_user = await User.get(user_id)
         if assigned_user:
             assigned_users.append({
                 "id": str(assigned_user.id),
                 "name": assigned_user.full_name(),
-                "role": assigned_user.role.value,
+                "role": enum_or_string_value(assigned_user.role),
             })
     
     return {
@@ -134,11 +137,12 @@ async def get_project_board(
             "assigned_user_ids": getattr(project, "assigned_user_ids", []) or ([project.assigned_to] if project.assigned_to else []),
             "assigned_users": assigned_users,
             "created_by": project.created_by,
-            "start_date": project.start_date.isoformat() if project.start_date else None,
-            "delivery_date": project.delivery_date.isoformat() if project.delivery_date else None,
-            "end_date": project.end_date.isoformat() if project.end_date else None,
-            "created_at": project.created_at.isoformat() if project.created_at else None,
-            "updated_at": project.updated_at.isoformat() if project.updated_at else None,
+            "start_date": iso_datetime_or_string(project.start_date),
+            "delivery_date": iso_datetime_or_string(project.delivery_date),
+            "end_date": iso_datetime_or_string(project.end_date),
+            "created_at": iso_datetime_or_string(project.created_at),
+            "updated_at": iso_datetime_or_string(project.updated_at),
+            **serialize_project_permissions(current_user, project),
         },
         "board_columns": sorted_columns,
         "tasks_by_status": tasks_by_status,

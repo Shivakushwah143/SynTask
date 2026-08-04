@@ -28,7 +28,8 @@ import { versionsApi } from '../api/versions'
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { useAuthStore } from '../store/authStore'
 import { useMediaQuery } from '../hooks/useMediaQuery'
-import { canCreateTask, canManageProject, hasCompanyAdminAccess, isLeadRole, normalizeRole } from '../utils/roles'
+import { canManageProject, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
+import { useProjectPermissions } from '../hooks/useProjectPermissions'
 import { Badge, Button, ConfirmDialog, CreatableSelectField, EmptyState, FormField, Modal, PageHeader, SkeletonCard, SkeletonKanban, SkeletonTable, inputClassName } from '../components/ui'
 import { QuickCreateEmployeeModal } from '../components/relatedRecords/QuickCreateModals'
 import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
@@ -562,10 +563,11 @@ export default function ProjectBoard() {
     assigned_users: projectInfo?.assigned_users || boardData?.project?.assigned_users || [],
     assigned_user_ids: projectInfo?.assigned_user_ids || boardData?.project?.assigned_user_ids || [],
   }
-  const canManageCurrentProject = canManageProject(user?.role, projectRecord, user?.id)
-  const canManageColumns = hasCompanyAdminAccess(user?.role) || isLeadRole(user?.role) || canManageCurrentProject
+  const projectPermissions = useProjectPermissions(user, projectRecord)
+  const canManageCurrentProject = projectPermissions.hasProjectPermission('manage_project') || canManageProject(user?.role, projectRecord, user?.id)
+  const canManageColumns = projectPermissions.hasProjectPermission('manage_board')
   const canAssignProject = hasCompanyAdminAccess(user?.role) || (userRole === 'manager' && canManageCurrentProject)
-  const canCreateProjectTask = canCreateTask(user?.role)
+  const canCreateProjectTask = projectPermissions.hasProjectPermission('create_task')
   const activeProject = projectInfo?.name || boardData?.project?.name || 'Project'
   const projectDescription = projectRecord.description || 'No project description available.'
   const projectStatus = projectRecord.status || 'active'

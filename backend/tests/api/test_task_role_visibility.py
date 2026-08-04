@@ -50,12 +50,18 @@ def test_manager_task_list_query_is_company_wide(monkeypatch):
     assert query == {"company_id": "company-1"}
 
 
-def test_employee_task_list_query_is_assigned_only(monkeypatch):
+def test_employee_task_list_query_includes_assigned_and_created(monkeypatch):
     monkeypatch.setattr(task_endpoints, "_get_user_scope_ids", no_scope_ids)
 
     query = task_endpoints.build_task_list_query(user("employee-1", UserRole.EMPLOYEE))
 
-    assert query == {"company_id": "company-1", "assigned_to": "employee-1"}
+    assert query == {
+        "company_id": "company-1",
+        "$or": [
+            {"assigned_to": "employee-1"},
+            {"created_by": "employee-1"},
+        ],
+    }
 
 
 def test_employee_can_only_edit_progress_fields():
@@ -78,6 +84,7 @@ def test_employee_project_visibility_includes_assigned_task_projects():
 
     assert query == {
         "$or": [
+            {"lead_id": "employee-1"},
             {"team_member_ids": "employee-1"},
             {"project_id": {"$in": ["mongo-project-1", "KEY-2"]}},
             {"_id": {"$in": ["mongo-project-1", "KEY-2"]}},
