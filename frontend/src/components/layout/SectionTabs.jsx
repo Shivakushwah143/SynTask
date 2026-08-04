@@ -31,6 +31,11 @@ const INBOX_COUNT_KEYS = {
   Notifications: "notifications",
 };
 
+// Items kept in the shared navigation config (sidebar favorites, section landing cards)
+// but intentionally hidden from this in-page tab bar. User request: Import Leads stays
+// in the sidebar, it is only removed from the Sales section tabs.
+const TAB_HIDDEN_ITEM_NAMES = new Set(["Import Leads"]);
+
 // Exact pathname + query match (no prefix / match-based activation), used so only ONE tab is
 // ever active — prefix matches would otherwise light up several tabs on detail/HR pages.
 const isExactNavMatch = (item, location) => {
@@ -101,10 +106,10 @@ function SectionTabsInner({ location, context }) {
   // ── All hooks above; early returns only after every hook has run. ──────────
   const tabs = useMemo(() => {
     if (!section) return [];
-    let list = items;
+    let list = items.filter((item) => !TAB_HIDDEN_ITEM_NAMES.has(item.name));
     // Phase 6: per-channel unread counts on the Inbox tabs.
     if (section.key === "inbox") {
-      list = items.map((item) => {
+      list = list.map((item) => {
         const countKey = INBOX_COUNT_KEYS[item.name];
         return countKey ? { ...item, unreadCount: inboxCounts[countKey] || 0 } : item;
       });

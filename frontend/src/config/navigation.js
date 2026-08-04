@@ -91,7 +91,7 @@ const CRM_SETTINGS_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.M
 // A section renders iff at least one of its items passes canAccessNavItem().
 export const SECTIONS = [
   { key: "home", label: "Home", items: ["Home", "Calendar"] },
-  { key: "sales", label: "Sales", items: ["Leads", "Pipeline", "Import Leads"] },
+  { key: "sales", label: "Sales", items: ["Leads", "All Leads", "Pipeline", "Import Leads"] },
   { key: "clients", label: "Clients", items: ["All Clients", "Companies", "Contacts", "Client Calendar", "Client Insights"] },
   { key: "work", label: "Work", items: ["Projects", "Tasks", "Requests", "Scheduled Work", "Time Tracking"] },
   { key: "content", label: "Content", items: ["Content Calendar", "Content Studio"] },
@@ -111,7 +111,9 @@ export const navigation = [
   // /calendar has no backend router module gate → no module field (roles only).
   { name: "Calendar", href: "/calendar", icon: CalendarDays, roles: STANDARD_ROLES },
 
-  // Sales (Pipeline/Leads live in crmNavigation; kept gated by sales_crm like the old "CRM" item)
+  // Sales (Pipeline/Leads/All Leads live in crmNavigation; kept gated by sales_crm like the old "CRM" item)
+  // Import Leads stays in the sidebar config (favorites/landing) but is hidden from the in-page
+  // tab bar — SectionTabs filters it out for the sales section (tab bar only).
   { name: "Import Leads", href: "/bulk-leads", icon: Megaphone, roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.SUPER_ADMIN], module: "sales_crm" },
 
   // Clients — /clients has no backend module gate; company admins only.
@@ -174,6 +176,7 @@ export const navigation = [
 // require_module); roles limit them to the team. Client Settings matches CRMSettingsGuard.
 export const crmNavigation = [
   { name: "Leads", href: "/crm/leads", icon: UserRoundSearch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "All Leads", href: "/crm/leads/all", icon: Users, roles: STANDARD_ROLES, module: "sales_crm" },
   { name: "Pipeline", href: "/crm/pipeline", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
   { name: "Companies", href: "/crm/companies", icon: Factory, roles: TEAM_ROLES, module: "sales_crm" },
   { name: "Contacts", href: "/crm/contacts", icon: UserCheck, roles: TEAM_ROLES, module: "sales_crm" },
@@ -217,6 +220,7 @@ export const ITEM_COLORS = {
   Calendar: "text-fuchsia-400",
 
   Leads: "text-sky-400",
+  "All Leads": "text-indigo-400",
   Pipeline: "text-cyan-300",
   "Import Leads": "text-orange-400",
 
@@ -325,6 +329,9 @@ const SECTION_ITEM_PAIRS = SECTIONS.flatMap((section) =>
 // (chat, meetings, HR screens, ...). Query-string items (meta panels) match on
 // pathname + full query so ?meta=whatsapp resolves to Inbox, not Settings.
 export const getNavContextForPath = (pathname, search = "") => {
+  // Two passes: exact matches win over prefix matches, so a sibling page such as
+  // /crm/leads/all resolves to "All Leads", not to the /crm/leads prefix of "Leads".
+  let prefixMatch = null;
   for (const { section, item } of SECTION_ITEM_PAIRS) {
     const [itemPath, itemSearch = ""] = item.href.split("?");
     if (itemSearch) {
@@ -335,11 +342,11 @@ export const getNavContextForPath = (pathname, search = "") => {
       }
     } else if (pathname === itemPath) {
       return { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: true };
-    } else if (pathname.startsWith(`${itemPath}/`)) {
-      return { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: false };
+    } else if (pathname.startsWith(`${itemPath}/`) && !prefixMatch) {
+      prefixMatch = { sectionKey: section.key, sectionLabel: section.label, itemName: item.name, itemPath, matchedExact: false };
     }
   }
-  return null;
+  return prefixMatch;
 };
 
 // ── Shared gating helpers (Phase A of the tab sub-nav plan) ──────────────────

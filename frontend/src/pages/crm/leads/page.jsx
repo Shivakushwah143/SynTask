@@ -1441,7 +1441,7 @@ export function buildLeadDashboardAnalytics(leads = [], stages = [], now = timeS
   }
 }
 
-function parseLeadCustomFields(lead) {
+export function parseLeadCustomFields(lead) {
   if (typeof lead?.custom_fields === 'string') {
     try {
       return JSON.parse(lead.custom_fields) || {}
@@ -1452,7 +1452,7 @@ function parseLeadCustomFields(lead) {
   return lead?.custom_fields || {}
 }
 
-function PriorityPill({ priority }) {
+export function PriorityPill({ priority }) {
   const normalized = normalizeText(priority || 'medium')
   const styles = {
     critical: 'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-200 dark:ring-rose-900',

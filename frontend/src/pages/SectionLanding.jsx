@@ -136,6 +136,7 @@ const itemFetchers = {
   Home: () => reportsAPI.getAnalyticsCharts("month"),
   Calendar: async () => (await calendarApi.getEvents({ view: "month" })).data,
   Leads: async () => (await salesApi.getLeads({ limit: 50 })).data,
+  "All Leads": async () => (await salesApi.getLeads({ limit: 50 })).data,
   Pipeline: async () => (await crmApi.getPipeline({ limit: 50 })).data,
   "Import Leads": async () => (await salesApi.getImportHistory()).data,
   "All Clients": () => companiesAPI.listCompanies(null, 0, 50),

@@ -93,6 +93,7 @@ const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
 const CRMMetaIntegrationPage = lazy(() => import('./pages/crm/settings/meta'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
+const CRMAllLeadsPage = lazy(() => import('./pages/crm/leads/all'))
 const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
 const CandidateInterviewScreen = lazy(() => import('./pages/hr/recruitment/CandidateInterviewScreen'))
@@ -333,6 +334,7 @@ function App() {
             <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
             <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
             <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
+            <Route path="leads/all" element={withBoundary(<CRMAllLeadsPage />)} />
             <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />
             <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
             <Route path="companies/:companyId" element={withBoundary(<CRMCompanyWorkspacePage />)} />

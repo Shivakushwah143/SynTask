@@ -89,6 +89,11 @@ export const ITEM_OVERVIEWS = {
     examples: ["Create leads", "Assign owners", "Merge duplicates", "Track follow-up"],
     badges: ["CRM", "Pipeline"],
   },
+  "All Leads": {
+    description: "Browse every lead in the account in one full, searchable list.",
+    examples: ["See all leads", "Filter by stage", "Export the list"],
+    badges: ["CRM", "List"],
+  },
   Pipeline: {
     description: "Move leads through stages and understand deal progress from first touch to close.",
     examples: ["Drag stages", "Review deal flow", "Spot blockers"],
@@ -388,6 +393,12 @@ export const ITEM_INSIGHTS = {
     alerts: ["Follow-ups pending", "Hot leads need owner"],
     actions: ["Add Lead", "Import", "Pipeline"],
     queryHints: ["leads", "prospects", "crm"],
+  },
+  "All Leads": {
+    metrics: ["Total leads", "Visible", "Hot leads", "Pipeline value"],
+    alerts: ["Leads need follow-up"],
+    actions: ["Open All Leads", "Export", "Add Lead"],
+    queryHints: ["leads", "all-leads", "prospects"],
   },
   Pipeline: {
     metrics: ["Open deals", "Won month", "Lost", "Pipeline value"],

@@ -105,6 +105,16 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Projects$/i })).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('shows the Sales tabs with All Leads and hides Import Leads from the bar', () => {
+    renderTabs('/crm/leads/all')
+
+    expect(screen.getByRole('tab', { name: /^All Leads$/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^Leads$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Pipeline$/i })).toBeTruthy()
+    // Import Leads stays in the sidebar config but is hidden from the tab bar.
+    expect(screen.queryByRole('tab', { name: /^Import Leads$/i })).toBeNull()
+  })
+
   it('renders nothing for non-section pages (chat)', () => {
     renderTabs('/chat')
     expect(screen.queryByRole('tablist')).toBeNull()
