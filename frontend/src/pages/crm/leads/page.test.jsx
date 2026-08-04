@@ -19,15 +19,13 @@ describe('CRM leads page helpers', () => {
     expect(hasSalesCrmModule(['task'])).toBe(false)
   })
 
-  it('excludes company admins from lead owner options', () => {
+  it('allows active assignable company users in lead owner options', () => {
     const base = { id: 'u1', first_name: 'Ada', last_name: 'Admin', status: 'active' }
 
-    // Admin and Sub Admin are company admins and must not appear as lead owners
-    expect(isValidLeadOwner({ ...base, role: 'admin' })).toBe(false)
-    expect(isValidLeadOwner({ ...base, role: 'sub_admin' })).toBe(false)
+    expect(isValidLeadOwner({ ...base, role: 'admin' })).toBe(true)
+    expect(isValidLeadOwner({ ...base, role: 'sub_admin' })).toBe(true)
     expect(isValidLeadOwner({ ...base, role: 'super_admin' })).toBe(false)
 
-    // Sales staff remain valid lead owners
     expect(isValidLeadOwner({ ...base, role: 'manager' })).toBe(true)
     expect(isValidLeadOwner({ ...base, role: 'lead' })).toBe(true)
     expect(isValidLeadOwner({ ...base, role: 'employee' })).toBe(true)

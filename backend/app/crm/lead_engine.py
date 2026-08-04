@@ -67,6 +67,8 @@ DEFAULT_STAGE_LOOKUP = {
     "closed lost": "Lost",
 }
 
+COMPANY_WIDE_ASSIGNMENT_ROLES = {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}
+
 
 def _now() -> datetime:
     return utc_now()
@@ -632,7 +634,13 @@ class LeadEngine:
 
         duplicate = await DuplicateResolver.find_duplicate(current_user, normalized)
         if duplicate:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prospect with this phone number already exists")
+            logger.info(
+                "Creating duplicate lead phone=%s companyId=%s actorId=%s existingLeadId=%s",
+                normalized.get("phone"),
+                normalized.get("company_id"),
+                getattr(current_user, "id", None),
+                getattr(duplicate, "id", None),
+            )
 
         company_id, company_name = await DuplicateResolver.resolve_company(current_user, normalized)
         contact_id = await DuplicateResolver.resolve_contact(current_user, normalized)
@@ -642,7 +650,9 @@ class LeadEngine:
         if contact_id:
             normalized["contact_id"] = contact_id
         assigned_to = normalized.get("assigned_to")
-        department_id = normalized.get("department_id") or getattr(current_user, "department_id", None)
+        department_id = normalized.get("department_id")
+        if not department_id and current_user.role not in COMPANY_WIDE_ASSIGNMENT_ROLES:
+            department_id = getattr(current_user, "department_id", None)
         if assigned_to:
             _, assignable_users = await AssignmentEngine.validate_target_user(
                 current_user,

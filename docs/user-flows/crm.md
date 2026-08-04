@@ -43,14 +43,14 @@ flowchart TD
 
 ## Leads Dashboard
 - How the user reaches it: CRM sidebar, dashboard shortcut, or direct `/crm/leads`.
-- What they can do: view lead analytics and charts, search/filter leads, create leads, import/export leads, bulk edit leads, review and merge duplicates, and assign leads to employees.
+- What they can do: view lead analytics and charts, search/filter leads, create leads, import/export leads, bulk edit leads, review and merge duplicates, and assign leads to active same-company owners.
 - What happens after every action:
   - Search and filters update the visible lead list client-side.
-  - Creating a lead opens a modal; on success the lead list and pipeline are refreshed.
+  - Creating a lead opens a modal; phone is required, phone duplicates are allowed for later duplicate review/merge, and on success the lead list and pipeline are refreshed.
   - **Import opens a bulk import modal that accepts any file type (CSV, XLSX, or text).** The file is parsed and columns are auto-detected. Known columns (phone, name, email, etc.) map to lead fields; unknown columns are stored as custom fields on the lead record. A field mapping recommendation panel shows detected columns and their mapping status. Missing fields are filled as null. On success the lead list and pipeline are refreshed.
   - Export generates a CSV download of all leads.
   - Bulk edit opens a modal to update stage/owner for selected leads.
-  - **Assign (admin/manager only)**: selecting leads and clicking "Assign" opens a modal to choose an employee; on success the selected leads are reassigned and the list is refreshed.
+  - **Assign (admin/manager only)**: selecting leads and clicking "Assign" opens a modal to choose an active same-company owner; on success the selected leads are reassigned and the list is refreshed.
   - Merge opens a merge modal for duplicate groups; on success duplicates are refreshed.
 - Backend APIs called:
   - `GET /api/v1/crm/pipeline` (for board data)
@@ -64,7 +64,7 @@ flowchart TD
   - `GET /api/v1/users/assignable`
 - Permission rules:
   - **Assign button**: visible only to Admin, Manager, and Super Admin roles. Requires at least one lead selected.
-  - **Create category**: restricted to Admin, Manager, Lead, and Super Admin with `sales_crm` module.
+  - **Create category**: restricted to Admin, Sub Admin, Manager, Lead, and Super Admin with `sales_crm` module.
   - **Employee view**: Employees see only leads assigned to them. The "Lead Workspace" table, "All Leads" section (renamed to "My Leads"), and stat cards all reflect only their assigned leads. Duplicate Management is hidden.
   - **Manager/Admin view**: Managers and Admins see all leads across the account, including Duplicate Management.
 - Timeline events created: lead creation and stage changes publish domain events via backend.
