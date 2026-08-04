@@ -93,7 +93,10 @@ async def list_pending_reminder_toasts(
 ):
     """List unacknowledged due-today/tomorrow reminder notifications for login/dashboard toasts."""
     try:
-        await reminder_service.check_all_reminders()
+        # Throttled: this endpoint is polled frequently, so the full reminder
+        # scan only runs at most once per cooldown window (the hourly background
+        # scheduler is the canonical generation path).
+        await reminder_service.run_catchup_if_due()
     except Exception:
         import logging
 

@@ -33,7 +33,7 @@ from app.api.v1.endpoints import sales_categories, sales_products, sales_contact
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing, superadmin_features
 from app.api.dependencies import require_module
 from app.dependencies import rate_limit
-from app.recruitment.routes import careers_router, router as recruitment_router
+from app.recruitment.routes import careers_router, public_router, router as recruitment_router
 from app.integrations.meta import api as meta_integration
 from app.integrations.google_workspace import router as google_workspace_router
 
@@ -152,6 +152,7 @@ api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"])
 api_router.include_router(eod.router, prefix="/eod", tags=["EOD Reports"])
 api_router.include_router(recruitment_router, prefix="/recruitment", tags=["Recruitment"], dependencies=[Depends(require_module("recruitment"))])
 api_router.include_router(careers_router, prefix="/careers", tags=["Careers"])
+api_router.include_router(public_router, prefix="/public", tags=["Public Recruitment"])
 api_router.include_router(meta_integration.router, prefix="/integrations/meta", tags=["Meta Integration"])
 api_router.include_router(google_workspace_router, prefix="/google-workspace", tags=["Google Workspace"])
 
@@ -160,7 +161,10 @@ api_router.include_router(ai_assistant.router, prefix="/ai-assistant", tags=["Un
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 api_router.include_router(agents.router, prefix="/agents", tags=["Agent Platform"], dependencies=[Depends(require_module("ai_agents"))])
 api_router.include_router(creative.router, prefix="/creative", tags=["Creative Director"])
-api_router.include_router(search.router, tags=["Search"], dependencies=[Depends(require_module("task"))])
+# Global search must work for every authenticated user, not just users with the
+# task module enabled. The endpoint itself scopes results to the user's company,
+# so no module gate is needed here.
+api_router.include_router(search.router, tags=["Search"])
 
 # Sales Tracker module
 sales_module_dependency = [Depends(require_module("sales_crm"))]

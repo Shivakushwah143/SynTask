@@ -187,7 +187,7 @@ const fileUrl = (value) => {
 // ============================================================
 // RESUME TAB CONTENT
 // ============================================================
-const ResumeTabContent = ({ resumes }) => {
+const ResumeTabContent = ({ resumes, onReprocess, loading }) => {
   const items = toArray(resumes);
   if (!items.length) {
     return (
@@ -212,6 +212,15 @@ const ResumeTabContent = ({ resumes }) => {
                 </p>
               </div>
             </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => onReprocess?.(idOf(resume))}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Reprocess
+              </button>
             {resume.storage_url && (
               <a
                 href={fileUrl(resume.storage_url)}
@@ -222,7 +231,21 @@ const ResumeTabContent = ({ resumes }) => {
                 <Download className="h-3.5 w-3.5" /> Open
               </a>
             )}
+            </div>
           </div>
+          <div className="mt-3 rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-gray-800/60 dark:text-gray-300">
+            <span className="font-semibold">Parsing:</span> {resume.processing_status || "uploaded"}
+            {resume.processing_error ? <span className="text-rose-600"> - {resume.processing_error}</span> : null}
+          </div>
+          {resume.parsed_profile && (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {["full_name", "email", "phone", "current_title", "total_experience_years"].map((field) => (
+                <DetailItem key={field} label={labelize(field)} value={resume.parsed_profile[field]} />
+              ))}
+            </div>
+          )}
+          {resume.normalized_skills?.length ? <div className="mt-3"><SkillsList skills={resume.normalized_skills} /></div> : null}
+          {resume.parse_warnings?.length ? <p className="mt-3 text-xs text-amber-600 dark:text-amber-300">{resume.parse_warnings.join(", ")}</p> : null}
           {resume.parsed_text && (
             <p className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-xs leading-relaxed text-gray-600 dark:bg-gray-800/60 dark:text-gray-400">
               {resume.parsed_text}
@@ -433,6 +456,7 @@ export default function CandidatesPage() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignJobOpen, setAssignJobOpen] = useState(false);
   const [note, setNote] = useState("");
+  const [resumeUploadMode, setResumeUploadMode] = useState(false);
   
   const params = compactParams({ page, page_size: 20, search, ...filters });
   const query = useQuery(["recruitment", "candidates", params], () => recruitmentApi.getCandidates(params), { keepPreviousData: true });
@@ -445,6 +469,13 @@ export default function CandidatesPage() {
   );
   
   const invalidate = () => qc.invalidateQueries(["recruitment", "candidates"]);
+  const reprocessResume = useMutation((resumeId) => recruitmentApi.processResume(resumeId, true), {
+    onSuccess: () => {
+      toast.success("Resume reprocessed");
+      qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
+    },
+    onError: (error) => toast.error(error?.response?.data?.detail || "Failed to reprocess resume"),
+  });
   
   const assign = useMutation(
     (payload) => recruitmentApi.assignCandidate(idOf(selected), payload), 
@@ -521,14 +552,20 @@ export default function CandidatesPage() {
     if (!file || !selected) return;
     setUploading(true);
     try {
-      await recruitmentApi.addCandidateAttachment(idOf(selected), file);
-      toast.success("Attachment added successfully! 📎");
+      if (resumeUploadMode) {
+        await recruitmentApi.uploadCandidateResume(idOf(selected), file);
+        toast.success("Resume uploaded and parsed");
+      } else {
+        await recruitmentApi.addCandidateAttachment(idOf(selected), file);
+        toast.success("Attachment added successfully");
+      }
       qc.invalidateQueries(["recruitment", "candidate", idOf(selected)]);
       qc.invalidateQueries(["recruitment", "candidateTimeline", idOf(selected)]);
     } catch (error) {
-      toast.error(error?.response?.data?.detail || "Failed to upload attachment");
+      toast.error(error?.response?.data?.detail || "Failed to upload file");
     } finally {
       setUploading(false);
+      setResumeUploadMode(false);
     }
   };
 
@@ -882,7 +919,7 @@ export default function CandidatesPage() {
             )}
 
             {/* Resume Tab */}
-            {activeTab === "resume" && <ResumeTabContent resumes={detail.data?.resumes} />}
+            {activeTab === "resume" && <ResumeTabContent resumes={detail.data?.resumes} onReprocess={(resumeId) => reprocessResume.mutate(resumeId)} loading={reprocessResume.isLoading} />}
 
             {/* Applications Tab */}
             {activeTab === "applications" && <ApplicationsTabContent applications={detail.data?.applications} />}
@@ -929,10 +966,16 @@ export default function CandidatesPage() {
                   loading={archive.isLoading}
                 />
                 <QuickActionButton 
+                  icon={Upload}
+                  label="Upload Resume"
+                  onClick={() => { setResumeUploadMode(true); fileInputRef.current?.click(); }}
+                  loading={uploading && resumeUploadMode}
+                />
+                <QuickActionButton 
                   icon={Paperclip} 
                   label={uploading ? "Uploading..." : "Add Attachment"} 
-                  onClick={() => fileInputRef.current?.click()}
-                  loading={uploading}
+                  onClick={() => { setResumeUploadMode(false); fileInputRef.current?.click(); }}
+                  loading={uploading && !resumeUploadMode}
                 />
                 <QuickActionButton 
                   icon={Link} 
@@ -987,3 +1030,4 @@ export default function CandidatesPage() {
     </div>
   );
 }
+

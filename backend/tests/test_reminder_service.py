@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -181,3 +182,56 @@ async def test_submitted_content_is_skipped():
 
     assert created is None
     assert repo.created == []
+
+
+@pytest.mark.asyncio
+async def test_catchup_is_throttled_to_one_run_per_cooldown():
+    """The frequently-polled toast endpoint must not trigger a full reminder
+    scan on every request — it runs at most once per cooldown window."""
+    service = ReminderService(notification_repository=FakeNotificationRepository())
+    runs = []
+
+    async def fake_check_all():
+        runs.append(1)
+        return {"task_notifications": 0, "content_notifications": 0, "total": 0}
+
+    service.check_all_reminders = fake_check_all
+
+    # First call runs the scan.
+    assert await service.run_catchup_if_due(cooldown_seconds=60) is True
+    assert len(runs) == 1
+
+    # Immediately after, a second call within the cooldown must be skipped.
+    assert await service.run_catchup_if_due(cooldown_seconds=60) is False
+    assert len(runs) == 1
+
+    # Simulate the cooldown window elapsing: scan runs again.
+    service._last_catchup_at = 0.0
+    assert await service.run_catchup_if_due(cooldown_seconds=60) is True
+    assert len(runs) == 2
+
+
+@pytest.mark.asyncio
+async def test_catchup_concurrent_requests_run_scan_only_once():
+    """Even when many requests race past the first timestamp check, the lock
+    guarantees the scan executes at most once."""
+    service = ReminderService(notification_repository=FakeNotificationRepository())
+    runs = []
+
+    async def fake_check_all():
+        await asyncio.sleep(0)
+        runs.append(1)
+        return {"task_notifications": 0, "content_notifications": 0, "total": 0}
+
+    service.check_all_reminders = fake_check_all
+
+    results = await asyncio.gather(
+        service.run_catchup_if_due(cooldown_seconds=60),
+        service.run_catchup_if_due(cooldown_seconds=60),
+        service.run_catchup_if_due(cooldown_seconds=60),
+    )
+
+    assert sum(results) == 1  # exactly one caller wins the scan
+    assert len(runs) == 1
+
+

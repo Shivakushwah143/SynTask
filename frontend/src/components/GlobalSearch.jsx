@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Building2, CheckSquare, FileText, Search, Sparkles, Ticket, X, Clock, ArrowRight, FolderKanban, Users, Calendar, MessageSquare, Briefcase } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
@@ -98,13 +98,53 @@ export function GlobalSearch({ isOpen, onClose }) {
   const debouncedQuery = useDebounce(query, 300)
   const initialResults = useMemo(() => rankLocalResults(''), [])
 
-  // Reset state when modal opens/closes
+  // Reset state and focus when modal opens (runs only on open/close, not on
+  // every results/selectedIndex change — otherwise setting results would be
+  // immediately wiped out and trigger an infinite update loop).
   useEffect(() => {
     if (!isOpen) return undefined
     setQuery('')
     setResults([])
     setSelectedIndex(-1)
     const timer = setTimeout(() => inputRef.current?.focus(), 50)
+    return () => clearTimeout(timer)
+  }, [isOpen])
+
+  const handleSelect = useCallback((result) => {
+    // Tickets open via the list page + detail modal (no /tickets/:id route).
+    if (result.type === 'ticket') {
+      sessionStorage.setItem('open_ticket_id', result.id)
+      navigate('/tickets')
+      onClose()
+      return
+    }
+    // Users/messages have list/detail flows without dedicated detail routes.
+    if (result.type === 'user') {
+      navigate('/users')
+      onClose()
+      return
+    }
+    if (result.type === 'message') {
+      navigate('/chat')
+      onClose()
+      return
+    }
+    const paths = {
+      task: `/tasks/${result.id}`,
+      project: `/projects/${result.id}/board`,
+      client: `/clients/${result.id}/workspace`,
+      crm: '/crm/pipeline',
+      calendar: '/calendar',
+    }
+    navigate(paths[result.type] || '/dashboard')
+    onClose()
+  }, [navigate, onClose])
+
+  // Global keydown listener for keyboard navigation (stable handler; reads
+  // latest results via the closure re-created on results/selectedIndex changes
+  // without resetting any state).
+  useEffect(() => {
+    if (!isOpen) return undefined
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         onClose()
@@ -121,11 +161,8 @@ export function GlobalSearch({ isOpen, onClose }) {
       }
     }
     document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      clearTimeout(timer)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [isOpen, onClose, results, selectedIndex])
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose, handleSelect, results, selectedIndex])
 
   // Scroll selected item into view
   useEffect(() => {
@@ -149,9 +186,16 @@ export function GlobalSearch({ isOpen, onClose }) {
     api.get('/search', { params: { q: debouncedQuery.trim() } })
       .then((response) => {
         if (!active) return
-        const serverResults = Array.isArray(response?.data) ? response.data : Array.isArray(response?.data?.items) ? response.data.items : []
-        const merged = serverResults.length ? serverResults : rankLocalResults(debouncedQuery.trim())
-        setResults(merged)
+        const serverResults = Array.isArray(response?.data) ? response.data : Array.isArray(response?.data?.items) ? response.data.items : null
+        // A successful server response is authoritative: use it as-is, even
+        // when empty, so users see a real "No results found" state instead of
+        // unrelated local page shortcuts.
+        if (Array.isArray(serverResults)) {
+          setResults(serverResults)
+        } else {
+          // Unexpected payload shape — fall back to local ranking.
+          setResults(rankLocalResults(debouncedQuery.trim()))
+        }
         setSelectedIndex(-1)
       })
       .catch(() => {
@@ -168,21 +212,6 @@ export function GlobalSearch({ isOpen, onClose }) {
       active = false
     }
   }, [debouncedQuery, initialResults])
-
-  const handleSelect = (result) => {
-    const paths = {
-      task: `/tasks/${result.id}`,
-      project: `/projects/${result.id}/board`,
-      ticket: `/tickets/${result.id}`,
-      client: `/clients/${result.id}/workspace`,
-      crm: '/crm/pipeline',
-      calendar: '/calendar',
-      user: `/users/${result.id}`,
-      message: `/messages/${result.id}`,
-    }
-    navigate(paths[result.type] || '/dashboard')
-    onClose()
-  }
 
   const getIcon = (type) => icons[type] || FileText
 

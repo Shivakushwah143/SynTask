@@ -102,7 +102,9 @@ const RecruitmentCandidatesPage = lazy(() => import('./modules/hr/recruitment/pa
 const RecruitmentResumePoolPage = lazy(() => import('./modules/hr/recruitment/pages/ResumePoolPage'))
 const RecruitmentEmployeesPage = lazy(() => import('./modules/hr/recruitment/pages/EmployeesPage'))
 const RecruitmentInterviewsPage = lazy(() => import('./modules/hr/recruitment/pages/InterviewsPage'))
+const RecruitmentOffersPage = lazy(() => import('./modules/hr/recruitment/pages/OffersPage'))
 const RecruitmentReportsPage = lazy(() => import('./modules/hr/recruitment/pages/ReportsPage'))
+const CandidateOfferPage = lazy(() => import('./modules/hr/recruitment/pages/CandidateOfferPage'))
 const CareersLandingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareersLandingPage })))
 const CareerJobDetailsPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerJobDetailsPage })))
 const CareerTrackingPage = lazy(() => import('./modules/hr/recruitment/pages/CareerPortalPage').then((module) => ({ default: module.CareerTrackingPage })))
@@ -255,6 +257,7 @@ function App() {
         <Route path="/careers" element={withBoundary(<CareersLandingPage />)} />
         <Route path="/careers/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
+        <Route path="/public/offers/:token" element={withBoundary(<CandidateOfferPage />)} />
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={<DashboardRoute />} />
@@ -320,6 +323,7 @@ function App() {
               <Route path="employees" element={withBoundary(<RecruitmentEmployeesPage />)} />
               <Route path="resume-pool" element={withBoundary(<RecruitmentResumePoolPage />)} />
               <Route path="interviews" element={withBoundary(<RecruitmentInterviewsPage />)} />
+              <Route path="offers" element={withBoundary(<RecruitmentOffersPage />)} />
               <Route path="reports" element={withBoundary(<RecruitmentReportsPage />)} />
               <Route path="interview-screen" element={withBoundary(<CandidateInterviewScreen />)} />
             </Route>

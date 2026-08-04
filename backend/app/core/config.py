@@ -43,6 +43,27 @@ class Settings(BaseSettings):
     AUTH_COOKIE_SECURE: bool = True
     AUTH_COOKIE_SAMESITE: str = "lax"
     AUTH_COOKIE_DOMAIN: Optional[str] = None
+    MICROSOFT_CLIENT_ID: Optional[str] = None
+    MICROSOFT_CLIENT_SECRET: Optional[str] = None
+    MICROSOFT_TENANT_ID: Optional[str] = None
+    MICROSOFT_REDIRECT_URI: Optional[str] = None
+    MICROSOFT_SCOPES: List[str] = [
+        "offline_access",
+        "Calendars.ReadWrite",
+        "OnlineMeetings.ReadWrite",
+        "User.Read",
+    ]
+    MICROSOFT_GRAPH_SCOPES: List[str] = [
+        "offline_access",
+        "Calendars.ReadWrite",
+        "OnlineMeetings.ReadWrite",
+        "User.Read",
+    ]
+    MICROSOFT_TOKEN_ENCRYPTION_KEY: Optional[str] = None
+    RECRUITMENT_RESUME_MAX_BYTES: int = 5242880
+    RECRUITMENT_OFFER_TOKEN_TTL_DAYS: int = 7
+    RECRUITMENT_INTERVIEW_REMINDER_HOURS: List[int] = [24, 1]
+    RECRUITMENT_OFFER_REMINDER_DAYS: List[int] = [2, 0]
     
     # CORS
     ALLOWED_ORIGINS: List[str] = [
@@ -52,11 +73,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8000",
-        "https://task.synzent.ai",
+        "https://synzent.ai",
+        "https://www.synzent.ai",
     ]
-    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
+    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1", "synzent.ai", "www.synzent.ai"]
     # Frontend URL (for email links and redirects)
-    FRONTEND_URL: str = "https://task.synzent.ai"
+    FRONTEND_URL: str = "https://synzent.ai"
     
     # Database
     MONGODB_URL: str = Field(..., description="MongoDB connection string.")

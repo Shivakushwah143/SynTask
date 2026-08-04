@@ -150,7 +150,7 @@ export function TopNavigation({
           <Button
             variant="ghost"
             size="sm"
-            onClick={onCommandOpen}
+            onClick={onSearchOpen || onCommandOpen}
             className={`hidden md:inline-flex h-10 w-[18rem] max-w-[28vw] items-center gap-3 rounded-2xl border bg-white px-3 text-sm font-medium text-gray-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-white hover:text-gray-900 hover:shadow-lg hover:shadow-indigo-500/10 focus:outline-none focus:ring-4 focus:ring-indigo-500/20 xl:w-[23rem] dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white ${
               highlightSearch
                 ? 'animate-[search-discovery-pulse_1.4s_ease-out_1] border-indigo-400 shadow-lg shadow-indigo-500/20 dark:border-indigo-500'
@@ -168,7 +168,7 @@ export function TopNavigation({
           {/* Mobile Search */}
           <button
             type="button"
-            onClick={onCommandOpen || onSearchOpen}
+            onClick={onSearchOpen || onCommandOpen}
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 transition-all hover:bg-gray-50 hover:text-gray-900 md:hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
             aria-label="Open quick search"
           >
