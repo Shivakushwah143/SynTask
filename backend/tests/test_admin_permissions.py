@@ -199,6 +199,22 @@ def test_require_module_allows_chat_for_task_workspace_users(monkeypatch):
     asyncio.run(run_checks())
 
 
+def test_require_module_allows_standard_work_roles_without_module_assignment(monkeypatch):
+    import asyncio
+    from app.api.dependencies import require_module
+
+    checker_task = require_module("task")
+    checker_tasks_projects = require_module("tasks_projects")
+
+    async def run_checks():
+        for role in [UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE]:
+            user = FakeUser(role=role, modules=[])
+            assert await checker_task(current_user=user) == user
+            assert await checker_tasks_projects(current_user=user) == user
+
+    asyncio.run(run_checks())
+
+
 def test_require_module_allows_sales_or_sales_crm(monkeypatch):
     import asyncio
     from app.api.dependencies import require_module
