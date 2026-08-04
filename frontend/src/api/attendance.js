@@ -3,7 +3,19 @@ import api from './axios'
 export const attendanceAPI = {
   // Fetch today's attendance status and timers
   getTodayAttendance: async () => {
-    const response = await api.get('/attendance/today')
+    const response = await api.get('/attendance/me/today')
+    return response.data
+  },
+
+  checkIn: async () => (await api.post('/attendance/check-in')).data,
+  startBreak: async () => (await api.post('/attendance/break/start')).data,
+  endBreak: async () => (await api.post('/attendance/break/end')).data,
+  checkOut: async () => (await api.post('/attendance/check-out')).data,
+  getMyAttendanceHistory: async (startDate = null, endDate = null) => {
+    const params = new URLSearchParams()
+    if (startDate) params.append('start_date', startDate)
+    if (endDate) params.append('end_date', endDate)
+    const response = await api.get(`/attendance/me/history?${params.toString()}`)
     return response.data
   },
 

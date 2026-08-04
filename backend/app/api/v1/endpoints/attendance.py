@@ -10,6 +10,8 @@ import io
 import json
 import logging
 from typing import List, Optional, Dict, Set
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from app.models.user import User, UserRole, UserStatus, Lead, Manager
 from app.attendance_domain.models import (
@@ -54,6 +56,83 @@ def compute_work_type(total_seconds: float) -> dict:
             "regular_seconds": total_seconds,
             "overtime_seconds": 0.0,
         }
+
+
+def _attendance_response(attendance: Optional[Attendance], current_user: User, now_utc: Optional[datetime] = None) -> dict:
+    now_utc = now_utc or utc_now()
+    today_str = ClockService.user_today_str(current_user)
+    server_time = now_utc.isoformat()
+    if not attendance:
+        return {
+            "id": None,
+            "attendance_date": today_str,
+            "date": today_str,
+            "status": "not_checked_in",
+            "check_in_at": None,
+            "check_out_at": None,
+            "login_time": None,
+            "logout_time": None,
+            "current_break_started_at": None,
+            "total_break_seconds": 0,
+            "total_work_seconds": 0,
+            "total_working_hours": 0,
+            "break_duration": 0,
+            "server_time": server_time,
+            "camera_permission_status": "Denied",
+            "screen_sharing_status": "Denied",
+        }
+
+    total_break = int(max(0, attendance.break_duration or 0))
+    if attendance.status == AttendanceStatus.ON_BREAK and attendance.current_break_started_at:
+        total_work = int(max(0, (attendance.current_break_started_at - attendance.login_time).total_seconds() - total_break)) if attendance.login_time else 0
+    elif attendance.status == AttendanceStatus.WORKING and attendance.login_time:
+        total_work = int(max(0, (now_utc - attendance.login_time).total_seconds() - total_break))
+    else:
+        total_work = int(max(0, attendance.total_working_hours or 0))
+
+    status_map = {
+        AttendanceStatus.WORKING: "working",
+        AttendanceStatus.ON_BREAK: "on_break",
+        AttendanceStatus.CHECKED_OUT: "checked_out",
+        AttendanceStatus.OFFLINE: "checked_out" if attendance.logout_time else "not_checked_in",
+    }
+    mvp_status = status_map.get(attendance.status, attendance.status.value)
+    wt = compute_work_type(total_work)
+    return {
+        "id": str(attendance.id),
+        "attendance_date": attendance.date,
+        "date": attendance.date,
+        "status": mvp_status,
+        "legacy_status": attendance.status.value,
+        "check_in_at": attendance.login_time.isoformat() if attendance.login_time else None,
+        "check_out_at": attendance.logout_time.isoformat() if attendance.logout_time else None,
+        "login_time": attendance.login_time.isoformat() if attendance.login_time else None,
+        "logout_time": attendance.logout_time.isoformat() if attendance.logout_time else None,
+        "current_break_started_at": attendance.current_break_started_at.isoformat() if attendance.current_break_started_at else None,
+        "total_break_seconds": total_break,
+        "total_work_seconds": total_work,
+        "total_working_hours": total_work,
+        "break_duration": total_break,
+        "overtime_seconds": wt["overtime_seconds"],
+        "work_type": "Completed" if mvp_status == "checked_out" else ("On Break" if mvp_status == "on_break" else "Working"),
+        "server_time": server_time,
+        "camera_permission_status": attendance.camera_permission_status,
+        "screen_sharing_status": attendance.screen_sharing_status,
+    }
+
+
+async def _get_today_record(user: User) -> Optional[Attendance]:
+    return await Attendance.find_one(
+        Attendance.company_id == user.company_id,
+        Attendance.employee_id == str(user.id),
+        Attendance.date == ClockService.user_today_str(user),
+    )
+
+
+def _company_required(user: User) -> str:
+    if not user.company_id:
+        raise HTTPException(status_code=400, detail="User does not belong to any company")
+    return user.company_id
 
 
 async def finalize_active_session(attendance: Attendance, now_utc: datetime) -> float:
@@ -308,77 +387,9 @@ manager = ConnectionManager()
 
 
 async def delayed_logout_check(user_id: str, user: User, company_id: str):
-    """Wait for a 10s grace period and mark employee Offline if they have not reconnected"""
+    """WebSocket disconnect affects monitoring presence only, never attendance."""
     await asyncio.sleep(10)
-    # Check if there are active connections now
-    if user_id in manager.active_connections:
-        logger.info(f"User {user.email} reconnected within grace period. Disconnect ignored.")
-        return
-
-    logger.info(f"User {user.email} did not reconnect within grace period. Finalizing shift.")
-    today_str = ClockService.user_today_str(user)
-    attendance = await Attendance.find_one(
-        Attendance.employee_id == user_id,
-        Attendance.date == today_str
-    )
-    if attendance and attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
-        now_utc = utc_now()
-
-        if attendance.status == AttendanceStatus.WORKING:
-            elapsed = await finalize_active_session(attendance, now_utc)
-            attendance.total_working_hours += elapsed
-        elif attendance.status == AttendanceStatus.ON_BREAK:
-            elapsed_break = await finalize_active_break(attendance, now_utc)
-            attendance.break_duration += elapsed_break
-
-        # Close MonitoringSession
-        monitoring_session = await MonitoringSession.find_one(
-            MonitoringSession.attendance_id == str(attendance.id),
-            MonitoringSession.end_time == None
-        )
-        if monitoring_session:
-            monitoring_session.end_time = now_utc
-            monitoring_session.status = "Stopped"
-            await monitoring_session.save()
-
-        wt = compute_work_type(attendance.total_working_hours)
-        attendance.work_type = wt["work_type"]
-        attendance.overtime_seconds = wt["overtime_seconds"]
-        attendance.status = AttendanceStatus.OFFLINE
-        attendance.logout_time = now_utc
-        attendance.monitoring_end_time = now_utc
-        attendance.camera_permission_status = "Denied"
-        attendance.screen_sharing_status = "Denied"
-        attendance.updated_at = now_utc
-        await attendance.save()
-
-        await create_timeline_event(
-            user_id=user_id,
-            company_id=company_id,
-            event_type=TimelineEventType.ATTENDANCE_CHECK_OUT,
-            title="Attendance Check-Out",
-            description="Stopped work session",
-            related_module=TimelineModule.ATTENDANCE,
-            related_record_id=str(attendance.id),
-            actor_id=user_id,
-            timestamp=attendance.logout_time or now_utc,
-            metadata={
-                "date": today_str,
-                "total_working_seconds": attendance.total_working_hours,
-                "work_type": attendance.work_type,
-                "source": "disconnect_timeout",
-            },
-            idempotency_key=f"attendance:{attendance.id}:check_out",
-        )
-
-        broadcast_msg = {
-            "type": "status_changed",
-            "employee_id": user_id,
-            "employee_name": user.full_name(),
-            "status": AttendanceStatus.OFFLINE.value,
-            "timestamp": now_utc.isoformat()
-        }
-        await manager.broadcast_to_company_managers(company_id, broadcast_msg)
+    logger.info(f"WebSocket disconnect ignored for attendance user_id={user_id}")
 
 
 # -----------------------------------------------------------------------------
@@ -733,59 +744,169 @@ async def attendance_websocket(websocket: WebSocket, token: str = Query(...)):
     except WebSocketDisconnect:
         manager.disconnect(websocket, user_id_str)
 
-        # Automatic logout on websocket disconnect (tab close/navigation)
-        if user and user.role in [UserRole.EMPLOYEE, UserRole.MANAGER]:
-            asyncio.create_task(delayed_logout_check(user_id_str, user, user.company_id))
-
 
 # -----------------------------------------------------------------------------
 # HTTP Endpoints - Today's Status
 # -----------------------------------------------------------------------------
+@router.get("/me/today")
+async def get_my_today_attendance(current_user: User = Depends(get_current_user)):
+    attendance = await _get_today_record(current_user)
+    return {"success": True, "data": _attendance_response(attendance, current_user)}
+
+
+@router.post("/check-in")
+async def check_in(current_user: User = Depends(get_current_user)):
+    company_id = _company_required(current_user)
+    now_utc = utc_now()
+    today_str = ClockService.user_today_str(current_user)
+    attendance = await Attendance.find_one(
+        Attendance.company_id == company_id,
+        Attendance.employee_id == str(current_user.id),
+        Attendance.date == today_str,
+    )
+    if attendance:
+        if attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
+            return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
+        raise HTTPException(status_code=409, detail="Attendance already exists for today")
+
+    attendance = Attendance(
+        employee_id=str(current_user.id),
+        company_id=company_id,
+        date=today_str,
+        login_time=now_utc,
+        status=AttendanceStatus.WORKING,
+        total_working_hours=0.0,
+        break_duration=0.0,
+        current_break_started_at=None,
+        camera_permission_status="Denied",
+        screen_sharing_status="Denied",
+        created_at=now_utc,
+        updated_at=now_utc,
+    )
+    try:
+        await attendance.insert()
+    except DuplicateKeyError:
+        attendance = await _get_today_record(current_user)
+        if attendance and attendance.status in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
+            return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
+        raise HTTPException(status_code=409, detail="Attendance already exists for today")
+    return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
+
+
+@router.post("/break/start")
+async def start_break(current_user: User = Depends(get_current_user)):
+    company_id = _company_required(current_user)
+    now_utc = utc_now()
+    today_str = ClockService.user_today_str(current_user)
+    collection = Attendance.get_pymongo_collection()
+    result = await collection.find_one_and_update(
+        {
+            "company_id": company_id,
+            "employee_id": str(current_user.id),
+            "date": today_str,
+            "status": AttendanceStatus.WORKING.value,
+            "current_break_started_at": None,
+            "logout_time": None,
+        },
+        {"$set": {"status": AttendanceStatus.ON_BREAK.value, "current_break_started_at": now_utc, "updated_at": now_utc}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail="Break can only start from working attendance")
+    attendance = await _get_today_record(current_user)
+    return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
+
+
+@router.post("/break/end")
+async def end_break(current_user: User = Depends(get_current_user)):
+    company_id = _company_required(current_user)
+    now_utc = utc_now()
+    attendance = await _get_today_record(current_user)
+    if not attendance or attendance.status != AttendanceStatus.ON_BREAK or not attendance.current_break_started_at:
+        raise HTTPException(status_code=409, detail="Resume requires an open break")
+    elapsed_break = int(max(0, (now_utc - attendance.current_break_started_at).total_seconds()))
+    collection = Attendance.get_pymongo_collection()
+    result = await collection.find_one_and_update(
+        {
+            "_id": attendance.id,
+            "company_id": company_id,
+            "employee_id": str(current_user.id),
+            "status": AttendanceStatus.ON_BREAK.value,
+            "current_break_started_at": attendance.current_break_started_at,
+        },
+        {
+            "$inc": {"break_duration": elapsed_break},
+            "$set": {"status": AttendanceStatus.WORKING.value, "current_break_started_at": None, "updated_at": now_utc},
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    if not result:
+        raise HTTPException(status_code=409, detail="Break was already closed")
+    attendance = await _get_today_record(current_user)
+    return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
+
+
+@router.post("/check-out")
+async def check_out(current_user: User = Depends(get_current_user)):
+    company_id = _company_required(current_user)
+    now_utc = utc_now()
+    attendance = await _get_today_record(current_user)
+    if not attendance:
+        raise HTTPException(status_code=409, detail="Check out requires an active attendance record")
+    if attendance.logout_time:
+        return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
+    if attendance.status not in [AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK]:
+        raise HTTPException(status_code=409, detail="Check out requires working or break status")
+
+    total_break = int(max(0, attendance.break_duration or 0))
+    if attendance.status == AttendanceStatus.ON_BREAK and attendance.current_break_started_at:
+        total_break += int(max(0, (now_utc - attendance.current_break_started_at).total_seconds()))
+    total_work = int(max(0, (now_utc - attendance.login_time).total_seconds() - total_break)) if attendance.login_time else 0
+    wt = compute_work_type(total_work)
+    collection = Attendance.get_pymongo_collection()
+    result = await collection.find_one_and_update(
+        {
+            "_id": attendance.id,
+            "company_id": company_id,
+            "employee_id": str(current_user.id),
+            "status": {"$in": [AttendanceStatus.WORKING.value, AttendanceStatus.ON_BREAK.value]},
+            "logout_time": None,
+        },
+        {
+            "$set": {
+                "status": AttendanceStatus.CHECKED_OUT.value,
+                "logout_time": now_utc,
+                "total_working_hours": total_work,
+                "break_duration": total_break,
+                "current_break_started_at": None,
+                "work_type": "Completed",
+                "overtime_seconds": wt["overtime_seconds"],
+                "updated_at": now_utc,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    if not result:
+        attendance = await _get_today_record(current_user)
+        return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
+    attendance = await _get_today_record(current_user)
+    return {"success": True, "data": _attendance_response(attendance, current_user, now_utc)}
+
+
+@router.get("/me/history")
+async def get_my_attendance_history(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+):
+    return await get_attendance_history(start_date=start_date, end_date=end_date, employee_id=None, status=None, current_user=current_user)
+
+
 @router.get("/today")
 async def get_today_attendance(current_user: User = Depends(get_current_user)):
     """Fetch current employee's attendance record for today"""
-    today_str = ClockService.user_today_str(current_user)
-    attendance = await Attendance.find_one(
-        Attendance.employee_id == str(current_user.id),
-        Attendance.date == today_str
-    )
-
-    if not attendance:
-        return {
-            "success": True,
-            "data": {
-                "status": "Offline",
-                "total_working_hours": 0.0,
-                "break_duration": 0.0,
-                "overtime_seconds": 0.0,
-                "work_type": "Under Time",
-                "is_late": False,
-                "camera_permission_status": "Denied",
-                "screen_sharing_status": "Denied",
-                "login_time": None,
-                "logout_time": None,
-            }
-        }
-
-    total_seconds, break_seconds, wt = await get_active_attendance(attendance)
-
-    return {
-        "success": True,
-        "data": {
-            "id": str(attendance.id),
-            "status": attendance.status.value,
-            "is_late": attendance.is_late,
-            "login_time": attendance.login_time.isoformat() if attendance.login_time else None,
-            "logout_time": attendance.logout_time.isoformat() if attendance.logout_time else None,
-            "total_working_hours": total_seconds,
-            "break_duration": break_seconds,
-            "overtime_seconds": wt["overtime_seconds"],
-            "work_type": wt["work_type"],
-            "regular_seconds": wt["regular_seconds"],
-            "camera_permission_status": attendance.camera_permission_status,
-            "screen_sharing_status": attendance.screen_sharing_status,
-        }
-    }
+    attendance = await _get_today_record(current_user)
+    return {"success": True, "data": _attendance_response(attendance, current_user)}
 
 
 # -----------------------------------------------------------------------------
@@ -923,6 +1044,7 @@ async def get_attendance_history(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     employee_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user)
 ):
     """Fetch attendance record history logs"""
@@ -935,7 +1057,23 @@ async def get_attendance_history(
     if current_user.role == UserRole.EMPLOYEE:
         query["employee_id"] = str(current_user.id)
     elif employee_id:
+        employee = await User.get(employee_id)
+        if not employee or (current_user.role != UserRole.SUPER_ADMIN and employee.company_id != company_id):
+            raise HTTPException(status_code=404, detail="Employee not found")
+        if current_user.role in [UserRole.MANAGER, UserRole.LEAD] and not await user_can_monitor(current_user, employee):
+            raise HTTPException(status_code=403, detail="You are not allowed to view this employee")
         query["employee_id"] = employee_id
+    elif current_user.role in [UserRole.MANAGER, UserRole.LEAD]:
+        query["employee_id"] = {"$in": [str(user.id) for user in await get_monitorable_users(current_user)]}
+
+    if status:
+        status_map = {
+            "working": AttendanceStatus.WORKING.value,
+            "on_break": AttendanceStatus.ON_BREAK.value,
+            "checked_out": AttendanceStatus.CHECKED_OUT.value,
+            "completed": AttendanceStatus.CHECKED_OUT.value,
+        }
+        query["status"] = status_map.get(status, status)
 
     if start_date:
         query["date"] = {"$gte": start_date}
@@ -950,7 +1088,7 @@ async def get_attendance_history(
     enriched_records = []
     for r in records:
         emp = await User.get(r.employee_id)
-        wt = compute_work_type(r.total_working_hours)
+        response = _attendance_response(r, current_user)
         enriched_records.append({
             "id": str(r.id),
             "employee_id": r.employee_id,
@@ -959,12 +1097,16 @@ async def get_attendance_history(
             "date": r.date,
             "login_time": r.login_time.isoformat() if r.login_time else None,
             "logout_time": r.logout_time.isoformat() if r.logout_time else None,
-            "total_working_hours": r.total_working_hours,
-            "break_duration": r.break_duration,
+            "check_in_at": response["check_in_at"],
+            "check_out_at": response["check_out_at"],
+            "total_work_seconds": response["total_work_seconds"],
+            "total_break_seconds": response["total_break_seconds"],
+            "total_working_hours": response["total_work_seconds"],
+            "break_duration": response["total_break_seconds"],
             "overtime_seconds": r.overtime_seconds,
-            "work_type": r.work_type or wt["work_type"],
+            "work_type": response["work_type"],
             "is_late": r.is_late,
-            "status": r.status.value,
+            "status": response["status"],
             "camera_permission_status": r.camera_permission_status,
             "screen_sharing_status": r.screen_sharing_status,
         })
@@ -1147,4 +1289,3 @@ async def get_dashboard_statistics(current_user: User = Depends(get_current_user
             "late_today": late_today,
         }
     }
-
