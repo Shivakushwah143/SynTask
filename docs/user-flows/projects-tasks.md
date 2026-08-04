@@ -22,6 +22,7 @@ flowchart TD
 - Notifications sent: none explicitly in the frontend.
 - Related modules updated: Tasks, Time Tracking, CRM handoff in future flows.
 - Tenant and access rule: task assignee choices come only from the authenticated user's company and are limited to active employee-role records; managers can see employees even when those employees report to a different manager. Negative tests should verify another company's employee never appears in the dropdown.
+- Module gate: the Work route group treats `task` and `tasks_projects` as aliases and permits standard Work roles (Admin, Sub Admin, Manager, Lead, Employee) to reach the APIs shown by sidebar navigation; endpoint rules still enforce company, hierarchy, project membership, assignment, and project-scoped Lead authorization.
 - Quick-create behavior: the nested Create user modal opens above the Create task modal, and the employee designation field uses the shared designation dropdown with search and an inline create-new option.
 
 ## Task Detail

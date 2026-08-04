@@ -3,6 +3,7 @@
 This folder documents the main user journeys by module.
 
 ## Modules
+- [Sidebar Overview Panel](sidebar-overview.md)
 - [CRM](crm.md)
 - [Sales](sales.md)
 - [Projects and Tasks](projects-tasks.md)

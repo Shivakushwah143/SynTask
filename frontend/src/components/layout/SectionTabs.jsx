@@ -109,10 +109,7 @@ function SectionTabsInner({ location, context }) {
         return countKey ? { ...item, unreadCount: inboxCounts[countKey] || 0 } : item;
       });
     }
-    // Landing pages get a leading "Overview" tab that is active there.
-    return context.isLanding
-      ? [{ name: "Overview", href: `/sections/${section.key}`, icon: null, overview: true }, ...list]
-      : list;
+    return [{ name: "Overview", href: `/sections/${section.key}`, icon: null, overview: true }, ...list];
   }, [items, section, inboxCounts, context.isLanding]);
 
   useEffect(() => {
