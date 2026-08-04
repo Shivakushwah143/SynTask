@@ -12,6 +12,7 @@ from app.models.crm_company import CRMCompany
 from app.models.crm_activity import CRMActivity
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal
+from app.models.crm_document import CRMDocument, CRMDocumentEvent, CRMDocumentSequence
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.company_subscription import CompanySubscription
 from app.models.usage_tracking import UsageTracking
@@ -181,6 +182,9 @@ async def init_db():
                 CRMActivity,
                 CRMDeal,
                 CRMProposal,
+                CRMDocument,
+                CRMDocumentEvent,
+                CRMDocumentSequence,
                 Subscription,
                 SubscriptionPlan,
                 CompanySubscription,

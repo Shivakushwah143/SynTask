@@ -1,442 +1,409 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Play, Square, Coffee, RefreshCw, Video, Monitor,
-  Clock, TrendingUp, AlertTriangle, CheckCircle2, Timer,
-  User, Calendar, Zap, Award, Activity, BarChart3
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Coffee,
+  History,
+  PauseCircle,
+  Play,
+  RefreshCw,
+  Square,
 } from 'lucide-react'
-import { PageHeader, Button, Badge } from '../../components/ui'
-import { useMonitoringSocket } from '../../hooks/useMonitoringSocket'
+import toast from 'react-hot-toast'
+import { attendanceAPI } from '../../api/attendance'
+import { Button, Modal, PageHeader, Skeleton } from '../../components/ui'
 import { timeService } from '@/services/timeService'
 
-const formatTime = (totalSeconds) => {
-  const s = Math.max(0, Math.floor(totalSeconds))
+const formatDuration = (totalSeconds) => {
+  const s = Math.max(0, Math.floor(totalSeconds || 0))
   const hrs = Math.floor(s / 3600).toString().padStart(2, '0')
   const mins = Math.floor((s % 3600) / 60).toString().padStart(2, '0')
   const secs = (s % 60).toString().padStart(2, '0')
   return `${hrs}:${mins}:${secs}`
 }
 
-const WorkTypeBadge = ({ workType, overtimeSeconds }) => {
-  if (workType === 'Overtime') {
-    const extraHrs = Math.floor(overtimeSeconds / 3600)
-    const extraMins = Math.floor((overtimeSeconds % 3600) / 60)
-    return (
-      <div className="flex items-center space-x-2">
-        <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-amber-100 to-orange-100 text-amber-800 dark:from-amber-900/40 dark:to-orange-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shadow-sm">
-          <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
-          Overtime +{extraHrs}h {extraMins}m
-        </span>
-      </div>
-    )
+const formatClock = (value) => (value ? timeService.formatPattern(value, 'hh:mm a') : '-')
+const secondsBetween = (from, to) => Math.max(0, Math.floor((new Date(to) - new Date(from)) / 1000))
+
+const getDisplay = (record, nowMs) => {
+  if (!record?.check_in_at) return { work: 0, breakTotal: 0, currentBreak: 0, main: 0 }
+
+  const serverBase = new Date(record.server_time || Date.now()).getTime()
+  const receivedAt = record.received_at || Date.now()
+  const serverNow = new Date(serverBase + nowMs - receivedAt).toISOString()
+  const baseBreak = Math.floor(record.total_break_seconds || 0)
+
+  if (record.status === 'working') {
+    const work = secondsBetween(record.check_in_at, serverNow) - baseBreak
+    return { work, breakTotal: baseBreak, currentBreak: 0, main: work }
   }
-  if (workType === 'Full Time') {
-    return (
-      <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-800 dark:from-emerald-900/40 dark:to-teal-900/40 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 shadow-sm">
-        <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-        Full Time
-      </span>
-    )
+
+  if (record.status === 'on_break' && record.current_break_started_at) {
+    const currentBreak = secondsBetween(record.current_break_started_at, serverNow)
+    const work = secondsBetween(record.check_in_at, record.current_break_started_at) - baseBreak
+    return { work, breakTotal: baseBreak + currentBreak, currentBreak, main: currentBreak }
   }
-  return (
-    <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-rose-100 to-pink-100 text-rose-700 dark:from-rose-900/40 dark:to-pink-900/40 dark:text-rose-300 border border-rose-300 dark:border-rose-700 shadow-sm">
-      <Timer className="h-3.5 w-3.5 mr-1.5" />
-      Under Time
-    </span>
-  )
+
+  const work = Math.floor(record.total_work_seconds || 0)
+  return { work, breakTotal: Math.floor(record.total_break_seconds || 0), currentBreak: 0, main: work }
 }
 
-// Stat Card Component
-const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
-  const colors = {
-    indigo: 'from-indigo-500 to-purple-500',
-    emerald: 'from-emerald-500 to-teal-500',
-    amber: 'from-amber-500 to-orange-500',
-    rose: 'from-rose-500 to-pink-500',
-    blue: 'from-blue-500 to-cyan-500',
-    teal: 'from-teal-500 to-cyan-500',
-  }
+const statusMeta = {
+  not_checked_in: {
+    label: 'Not Checked In',
+    icon: Clock,
+    badge: 'border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200',
+    timerLabel: 'Net working time',
+    help: 'Start tracking your working time for today.',
+    title: 'Attendance | SynTask',
+  },
+  working: {
+    label: 'Working',
+    icon: Play,
+    badge: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
+    timerLabel: 'Net working time',
+    title: 'Working | SynTask',
+  },
+  on_break: {
+    label: 'On Break',
+    icon: Coffee,
+    badge: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+    timerLabel: 'Current break',
+    title: 'On Break | SynTask',
+  },
+  checked_out: {
+    label: 'Day Completed',
+    icon: CheckCircle2,
+    badge: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300',
+    timerLabel: 'Total working time',
+    help: 'Your attendance has been saved for today.',
+    title: 'Completed | SynTask',
+  },
+}
 
-  return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+const attachSyncTime = (record) => ({ ...(record || {}), received_at: Date.now() })
+
+const AttendanceSkeleton = () => (
+  <div className="space-y-5 p-4 md:p-6">
+    <PageHeader title="Attendance" description="Check in, manage breaks, and track today's working time." />
+    <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
-        </div>
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-5 w-28" />
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <Skeleton className="mx-auto mt-8 h-16 w-64" />
+      <Skeleton className="mx-auto mt-3 h-4 w-32" />
+      <div className="mt-8 grid gap-3 md:grid-cols-3">
+        <Skeleton className="h-16" />
+        <Skeleton className="h-16" />
+        <Skeleton className="h-16" />
+      </div>
     </div>
-  )
-}
+  </div>
+)
 
 const Attendance = () => {
-  const {
-    status,
-    workingSeconds,
-    breakSeconds,
-    cameraStatus,
-    screenStatus,
-    workType,
-    overtimeSeconds,
-    loginTime,
-    isLate,
-    cameraStream,
-    screenStream,
-    startWork,
-    stopWork,
-    pauseWork,
-    resumeWork,
-    syncWithServer,
-    restoreStreams,
-  } = useMonitoringSocket()
+  const [record, setRecord] = useState(null)
+  const [history, setHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null)
+  const [confirmCheckout, setConfirmCheckout] = useState(false)
+  const [tick, setTick] = useState(Date.now())
+  const intervalRef = useRef(null)
 
-  const cameraVideoRef = useRef(null)
-  const screenVideoRef = useRef(null)
-
-  // Attach the streams provided by the hook directly
-  useEffect(() => {
-    if (cameraVideoRef.current) {
-      cameraVideoRef.current.srcObject = cameraStream ?? null
+  const loadAttendance = useCallback(async ({ showLoading = false } = {}) => {
+    try {
+      if (showLoading) setLoading(true)
+      setSyncing(true)
+      setLoadError(false)
+      const [today, recent] = await Promise.all([
+        attendanceAPI.getTodayAttendance(),
+        attendanceAPI.getMyAttendanceHistory(),
+      ])
+      setRecord(attachSyncTime(today.data))
+      setHistory(recent.data || [])
+    } catch {
+      setLoadError(true)
+      toast.error('Attendance could not be refreshed.')
+    } finally {
+      setLoading(false)
+      setSyncing(false)
     }
-  }, [cameraStream])
+  }, [])
 
   useEffect(() => {
-    if (screenVideoRef.current) {
-      screenVideoRef.current.srcObject = screenStream ?? null
+    loadAttendance({ showLoading: true })
+  }, [loadAttendance])
+
+  useEffect(() => {
+    intervalRef.current = setInterval(() => setTick(Date.now()), 1000)
+    return () => clearInterval(intervalRef.current)
+  }, [])
+
+  const display = useMemo(() => getDisplay(record, tick), [record, tick])
+  const meta = statusMeta[record?.status] || statusMeta.not_checked_in
+  const StatusIcon = meta.icon
+  const mainTime = formatDuration(display.main)
+
+  useEffect(() => {
+    const previousTitle = document.title
+    return () => {
+      document.title = previousTitle
     }
-  }, [screenStream])
+  }, [])
 
-  // Progress toward 8h for the ring indicator
-  const progressPct = Math.min(100, (workingSeconds / (8 * 3600)) * 100)
-  const ringColor =
-    workType === 'Overtime' ? '#f59e0b' :
-    workType === 'Full Time' ? '#10b981' : '#ef4444'
+  useEffect(() => {
+    if (!record || record.status === 'not_checked_in') {
+      document.title = 'Attendance | SynTask'
+      return
+    }
+    document.title = `${mainTime} - ${meta.title}`
+  }, [mainTime, meta.title, record])
 
-  // Calculate stats
-  const totalWorkingHours = Math.floor(workingSeconds / 3600)
-  const totalBreakHours = Math.floor(breakSeconds / 3600)
+  const mutate = async (key, action, success, failure) => {
+    if (pendingAction) return
+    try {
+      setPendingAction(key)
+      const res = await action()
+      setRecord(attachSyncTime(res.data))
+      toast.success(success)
+      setConfirmCheckout(false)
+      const recent = await attendanceAPI.getMyAttendanceHistory()
+      setHistory(recent.data || [])
+    } catch {
+      toast.error(failure)
+    } finally {
+      setPendingAction(null)
+    }
+  }
 
-  return (
-    <div className="space-y-6 p-4 md:p-6">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <User className="h-6 w-6" />
-            </div>
+  const handleCheckIn = () => mutate('check_in', attendanceAPI.checkIn, 'Checked in successfully', "We couldn't check you in. Please try again.")
+  const handleStartBreak = () => mutate('start_break', attendanceAPI.startBreak, 'Break started', "We couldn't start your break. Your attendance is still active.")
+  const handleResume = () => mutate('resume', attendanceAPI.endBreak, 'Work resumed', "We couldn't resume your work session. Please try again.")
+  const handleCheckout = () => mutate('checkout', attendanceAPI.checkOut, 'Checked out successfully', "We couldn't check you out. Your attendance is still active.")
+
+  const todayActivity = useMemo(() => {
+    const entries = []
+    if (record?.check_in_at) entries.push({ time: record.check_in_at, label: 'Checked in' })
+    if (record?.current_break_started_at && record.status === 'on_break') {
+      entries.push({ time: record.current_break_started_at, label: 'Break started' })
+    }
+    if (record?.check_out_at) entries.push({ time: record.check_out_at, label: 'Checked out' })
+    return entries
+  }, [record])
+
+  const rows = history.slice(0, 7)
+
+  if (loading) return <AttendanceSkeleton />
+
+  if (loadError && !record) {
+    return (
+      <div className="space-y-5 p-4 md:p-6">
+        <PageHeader title="Attendance" description="Check in, manage breaks, and track today's working time." />
+        <div className="rounded-lg border border-red-200 bg-white p-5 dark:border-red-900/60 dark:bg-gray-800">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 text-red-600" />
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Attendance & Monitoring</h1>
-              <p className="mt-1 text-indigo-100">Clock in, manage breaks, and verify active device permissions.</p>
+              <h2 className="font-semibold text-gray-900 dark:text-white">Attendance could not be loaded.</h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Your active attendance has not been changed.</p>
+              <Button className="mt-4" variant="secondary" onClick={() => loadAttendance({ showLoading: true })}>
+                <RefreshCw className="h-4 w-4" /> Try Again
+              </Button>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button
-              onClick={syncWithServer}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Sync Server
-            </button>
-            {status === 'Working' && (!cameraStream || !screenStream) && (
-              <button
-                onClick={restoreStreams}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Restore Streams
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5 p-4 md:p-6">
+      <PageHeader title="Attendance" description="Check in, manage breaks, and track today's working time." />
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold ${meta.badge}`}>
+            <StatusIcon className="h-4 w-4" aria-hidden="true" />
+            {meta.label}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            {syncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : loadError ? <AlertCircle className="h-3.5 w-3.5 text-red-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
+            {syncing ? 'Syncing...' : loadError ? 'Connection interrupted' : 'Synced just now'}
+            {loadError && (
+              <button className="ml-1 font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-300" onClick={() => loadAttendance()}>
+                Try Again
               </button>
             )}
           </div>
         </div>
-      </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Working Hours"
-          value={formatTime(workingSeconds)}
-          icon={Clock}
-          color="indigo"
-          subtitle={`${totalWorkingHours}h total`}
-        />
-        <StatCard
-          label="Break Time"
-          value={formatTime(breakSeconds)}
-          icon={Coffee}
-          color="amber"
-          subtitle={`${totalBreakHours}h break`}
-        />
-        <StatCard
-          label="Status"
-          value={status}
-          icon={Activity}
-          color={status === 'Working' ? 'emerald' : status === 'On Break' ? 'amber' : 'rose'}
-          subtitle={status === 'Working' ? 'Active' : status === 'On Break' ? 'Paused' : 'Offline'}
-        />
-        <StatCard
-          label="Overtime"
-          value={formatTime(overtimeSeconds)}
-          icon={TrendingUp}
-          color="rose"
-          subtitle={overtimeSeconds > 0 ? 'Extra hours' : 'No overtime'}
-        />
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* LEFT COLUMN: Controls & Stopwatches */}
-        <div className="space-y-4 lg:col-span-1">
-
-          {/* Main Control Card */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Current Status</span>
-              <span className="relative flex h-3 w-3">
-                {status === 'Working' && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                )}
-                {status === 'On Break' && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                )}
-                <span className={`relative inline-flex rounded-full h-3 w-3 ${
-                  status === 'Working' ? 'bg-emerald-500' :
-                  status === 'On Break' ? 'bg-amber-500' : 'bg-gray-400'
-                }`} />
-              </span>
-            </div>
-
-            <h3 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-0.5">{status}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{timeService.formatLongWeekdayDate(timeService.now())}</p>
-
-            {/* Login time + late indicator */}
-            {loginTime && (
-              <div className="flex items-center space-x-2 mb-3">
-                <Clock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  Clocked in at {timeService.formatDateTimeWithSeconds(loginTime)}
-                </span>
-                {isLate && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
-                    <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> Late
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Work Type Badge */}
-            {status !== 'Offline' && (
-              <div className="mb-4">
-                <WorkTypeBadge workType={workType} overtimeSeconds={overtimeSeconds} />
-              </div>
-            )}
-
-            {/* Circular Progress + Stopwatch */}
-            <div className="flex flex-col items-center my-4">
-              <div className="relative w-36 h-36">
-                <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="8" className="text-gray-100 dark:text-gray-700" />
-                  <circle
-                    cx="60" cy="60" r="52" fill="none"
-                    stroke={ringColor}
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeDasharray={`${2 * Math.PI * 52}`}
-                    strokeDashoffset={`${2 * Math.PI * 52 * (1 - progressPct / 100)}`}
-                    style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s ease' }}
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-black font-mono text-gray-800 dark:text-white leading-none">
-                    {formatTime(workingSeconds)}
-                  </span>
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">working</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Break Duration */}
-            <div className="bg-gray-50 dark:bg-gray-900 rounded-xl px-4 py-2.5 border border-gray-100 dark:border-gray-700 text-center mb-5">
-              <div className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Break</div>
-              <div className="text-xl font-bold font-mono text-gray-500 dark:text-gray-400">{formatTime(breakSeconds)}</div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="space-y-2">
-              {status === 'Offline' && (
-                <button
-                  className="w-full rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:from-emerald-600 hover:to-emerald-700"
-                  onClick={startWork}
-                >
-                  <Play className="mr-2 h-5 w-5 inline fill-current" />
-                  Start Work
-                </button>
-              )}
-
-              {status === 'Working' && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className="flex items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-300 dark:hover:bg-amber-950/40"
-                    onClick={pauseWork}
-                  >
-                    <Coffee className="mr-2 h-5 w-5" />
-                    Break
-                  </button>
-                  <button
-                    className="flex items-center justify-center rounded-lg bg-rose-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/30 transition hover:bg-rose-600"
-                    onClick={stopWork}
-                  >
-                    <Square className="mr-2 h-5 w-5 fill-current" />
-                    Stop
-                  </button>
-                </div>
-              )}
-
-              {status === 'On Break' && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className="flex items-center justify-center rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:from-emerald-600 hover:to-emerald-700"
-                    onClick={resumeWork}
-                  >
-                    <Play className="mr-2 h-5 w-5 fill-current" />
-                    Resume
-                  </button>
-                  <button
-                    className="flex items-center justify-center rounded-lg bg-rose-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/30 transition hover:bg-rose-600"
-                    onClick={stopWork}
-                  >
-                    <Square className="mr-2 h-5 w-5 fill-current" />
-                    Stop
-                  </button>
-                </div>
-              )}
-            </div>
+        <div className="py-7 text-center md:py-9">
+          <div
+            className="font-mono text-[clamp(38px,5vw,58px)] font-bold leading-none text-gray-950 [font-variant-numeric:tabular-nums] dark:text-white"
+            aria-label={`${meta.timerLabel}: ${mainTime}`}
+          >
+            {mainTime}
           </div>
+          <div className="mt-2 text-sm font-medium text-gray-500 dark:text-gray-400">{meta.timerLabel}</div>
+          {meta.help && <p className="mx-auto mt-3 max-w-md text-sm text-gray-600 dark:text-gray-300">{meta.help}</p>}
+        </div>
 
-          {/* Device Access Card */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">Device Access Status</h4>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
-                <div className="flex items-center">
-                  <Video className="h-4.5 w-4.5 text-gray-400 mr-2.5" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Camera</span>
-                </div>
-                <Badge
-                  label={cameraStatus}
-                  colorKey={cameraStatus === 'Connected' ? 'completed' : cameraStatus === 'Disabled' ? 'hold' : 'rejected'}
-                />
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700">
-                <div className="flex items-center">
-                  <Monitor className="h-4.5 w-4.5 text-gray-400 mr-2.5" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Screen Share</span>
-                </div>
-                <Badge
-                  label={screenStatus}
-                  colorKey={screenStatus === 'Sharing' ? 'completed' : screenStatus === 'Stopped' ? 'hold' : 'rejected'}
-                />
-              </div>
-            </div>
+        <div className="grid gap-3 border-t border-gray-100 pt-4 text-sm dark:border-gray-700 sm:grid-cols-3">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Checked in at</div>
+            <div className="mt-1 font-medium text-gray-900 dark:text-white">{formatClock(record?.check_in_at)}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Checked out at</div>
+            <div className="mt-1 font-medium text-gray-900 dark:text-white">{formatClock(record?.check_out_at)}</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total break time</div>
+            <div className="mt-1 font-mono font-medium text-gray-900 dark:text-white">{formatDuration(display.breakTotal)}</div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Live Captures */}
-        <div className="lg:col-span-2 space-y-5">
-          <div className="grid gap-5 md:grid-cols-2">
-            {/* Camera Viewfinder */}
-            <div className="rounded-2xl bg-gradient-to-b from-gray-900 to-gray-950 border border-gray-700 text-white overflow-hidden flex flex-col h-[360px] shadow-xl">
-              <div className="px-4 py-3 bg-gray-950/80 border-b border-gray-800/60 flex items-center justify-between shrink-0">
-                <span className="text-xs font-semibold uppercase tracking-wider flex items-center">
-                  <Video className="mr-2 h-4 w-4 text-emerald-400 animate-pulse" />
-                  Live Camera Preview
-                </span>
-                <span className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                  cameraStatus === 'Connected' ? 'bg-emerald-500' :
-                  cameraStatus === 'Disabled' ? 'bg-amber-500' : 'bg-rose-500'
-                }`} />
-              </div>
-
-              <div className="flex-1 flex items-center justify-center bg-black relative overflow-hidden">
-                <video
-                  ref={cameraVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 ${
-                    cameraStream ? 'opacity-100' : 'opacity-0'
-                  }`}
-                />
-                {!cameraStream && (
-                  <div className="text-center p-6 space-y-3 text-gray-500 z-10">
-                    <Video className="h-12 w-12 mx-auto stroke-1" />
-                    <p className="text-sm">
-                      {status === 'Working' ? 'Initializing camera...' : 'Click Start Work to activate camera feed.'}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Screen Share Viewfinder */}
-            <div className="rounded-2xl bg-gradient-to-b from-gray-900 to-gray-950 border border-gray-700 text-white overflow-hidden flex flex-col h-[360px] shadow-xl">
-              <div className="px-4 py-3 bg-gray-950/80 border-b border-gray-800/60 flex items-center justify-between shrink-0">
-                <span className="text-xs font-semibold uppercase tracking-wider flex items-center">
-                  <Monitor className="mr-2 h-4 w-4 text-sky-400" />
-                  Live Screen Preview
-                </span>
-                <span className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                  screenStatus === 'Sharing' ? 'bg-sky-500' :
-                  screenStatus === 'Stopped' ? 'bg-amber-500' : 'bg-rose-500'
-                }`} />
-              </div>
-
-              <div className="flex-1 flex items-center justify-center bg-black relative overflow-hidden">
-                <video
-                  ref={screenVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={`absolute inset-0 w-full h-full object-contain ${
-                    screenStream ? 'opacity-100' : 'opacity-0'
-                  }`}
-                />
-                {!screenStream && (
-                  <div className="text-center p-6 space-y-3 text-gray-500 z-10">
-                    <Monitor className="h-12 w-12 mx-auto stroke-1" />
-                    <p className="text-sm">
-                      {status === 'Working' ? 'Awaiting screen stream...' : 'Click Start Work to share your screen.'}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
+        {record?.status === 'on_break' && (
+          <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            Worked today: <span className="font-mono font-semibold">{formatDuration(display.work)}</span>
           </div>
+        )}
 
-          {/* Overtime Highlight Panel */}
-          {workType === 'Overtime' && (
-            <div className="rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 p-4 border border-amber-300 dark:from-amber-950/20 dark:to-orange-950/20 dark:border-amber-800 flex items-center justify-between shadow-sm">
-              <div className="flex items-center space-x-3">
-                <div className="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
-                  <TrendingUp className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">You're in Overtime!</p>
-                  <p className="text-xs text-amber-600 dark:text-amber-400">Extra time beyond 8 hours standard shift.</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-black font-mono text-amber-700 dark:text-amber-300">
-                  +{formatTime(overtimeSeconds)}
-                </p>
-                <p className="text-[10px] text-amber-500">overtime</p>
-              </div>
-            </div>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {record?.status === 'not_checked_in' && (
+            <Button size="lg" loading={pendingAction === 'check_in'} loadingText="Checking in..." onClick={handleCheckIn} className="w-full sm:w-auto">
+              <Play className="h-4 w-4" /> Check In
+            </Button>
+          )}
+          {record?.status === 'working' && (
+            <>
+              <Button loading={pendingAction === 'start_break'} loadingText="Starting break..." onClick={handleStartBreak} className="w-full sm:w-auto">
+                <PauseCircle className="h-4 w-4" /> Start Break
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmCheckout(true)}
+                className="w-full border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30 sm:w-auto"
+              >
+                <Square className="h-4 w-4" /> Check Out
+              </Button>
+            </>
+          )}
+          {record?.status === 'on_break' && (
+            <>
+              <Button loading={pendingAction === 'resume'} loadingText="Resuming..." onClick={handleResume} className="w-full sm:w-auto">
+                <Play className="h-4 w-4" /> Resume Work
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmCheckout(true)}
+                className="w-full border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30 sm:w-auto"
+              >
+                <Square className="h-4 w-4" /> Check Out
+              </Button>
+            </>
           )}
         </div>
-      </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <Clock className="h-4 w-4 text-gray-500" />
+          <h2 className="font-semibold text-gray-900 dark:text-white">Today's Activity</h2>
+        </div>
+        <div className="p-4">
+          {todayActivity.length ? (
+            <div className="space-y-3">
+              {todayActivity.map((entry) => (
+                <div key={`${entry.time}-${entry.label}`} className="grid grid-cols-[5.5rem_1fr] gap-3 text-sm">
+                  <span className="font-mono text-gray-500 dark:text-gray-400">{formatClock(entry.time)}</span>
+                  <span className="text-gray-800 dark:text-gray-200">{entry.label}</span>
+                </div>
+              ))}
+              {record?.status === 'working' && <div className="text-sm text-gray-500 dark:text-gray-400">Current session: Working</div>}
+              {record?.status === 'on_break' && <div className="text-sm text-gray-500 dark:text-gray-400">Current session: On break</div>}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 dark:text-gray-400">No activity recorded for today yet.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-gray-500" />
+            <h2 className="font-semibold text-gray-900 dark:text-white">Recent Attendance</h2>
+          </div>
+          <a href="/attendance/reports" className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-300">View attendance history</a>
+        </div>
+        {rows.length ? (
+          <div className="overflow-hidden">
+            <div className="hidden grid-cols-6 gap-3 border-b border-gray-100 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-gray-700 md:grid">
+              <div>Date</div>
+              <div>Check In</div>
+              <div>Check Out</div>
+              <div>Break</div>
+              <div>Work Time</div>
+              <div>Status</div>
+            </div>
+            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+              {rows.map((item) => (
+                <div key={item.id} className="grid gap-2 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 md:grid-cols-6">
+                  <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
+                    <Calendar className="h-4 w-4 text-gray-400 md:hidden" />
+                    {timeService.formatDateOnly(item.date || item.attendance_date)}
+                  </div>
+                  <div><span className="md:hidden">Check In: </span>{formatClock(item.check_in_at || item.login_time)}</div>
+                  <div><span className="md:hidden">Check Out: </span>{formatClock(item.check_out_at || item.logout_time)}</div>
+                  <div className="font-mono"><span className="font-sans md:hidden">Break: </span>{formatDuration(item.total_break_seconds ?? item.break_duration)}</div>
+                  <div className="font-mono"><span className="font-sans md:hidden">Work: </span>{formatDuration(item.total_work_seconds ?? item.total_working_hours)}</div>
+                  <div>{statusMeta[item.status]?.label || (item.check_out_at || item.logout_time ? 'Day Completed' : 'Working')}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start gap-3 p-4">
+            <History className="mt-0.5 h-5 w-5 text-gray-400" />
+            <div>
+              <h3 className="font-medium text-gray-900 dark:text-white">No attendance records yet</h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Your completed attendance days will appear here.</p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <Modal
+        isOpen={confirmCheckout}
+        onClose={() => setConfirmCheckout(false)}
+        title="Check out for today?"
+        description="Your attendance will be saved with the current server time."
+        size="sm"
+        footer={(
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="secondary" onClick={() => setConfirmCheckout(false)} disabled={pendingAction === 'checkout'}>Cancel</Button>
+            <Button variant="danger" loading={pendingAction === 'checkout'} loadingText="Checking out..." onClick={handleCheckout}>
+              Confirm Check Out
+            </Button>
+          </div>
+        )}
+      >
+        <div className="space-y-3 text-sm">
+          <div className="flex justify-between gap-4">
+            <span className="text-gray-500 dark:text-gray-400">Net working time</span>
+            <span className="font-mono font-semibold text-gray-900 dark:text-white">{formatDuration(display.work)}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-gray-500 dark:text-gray-400">Total break time</span>
+            <span className="font-mono font-semibold text-gray-900 dark:text-white">{formatDuration(display.breakTotal)}</span>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

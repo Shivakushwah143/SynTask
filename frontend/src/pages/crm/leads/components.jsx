@@ -22,6 +22,7 @@ export const LEAD_TABS = [
   { key: 'files', label: 'Files' },
   { key: 'call_logs', label: 'Calls' },
   { key: 'proposal', label: 'Proposal' },
+  { key: 'documents', label: 'Documents' },
   { key: 'ai', label: 'AI' },
 ]
 const PRIMARY_LEAD_TAB_KEYS = new Set(['overview', 'notes', 'tasks', 'meetings', 'emails'])

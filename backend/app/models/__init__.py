@@ -7,6 +7,7 @@ from app.models.crm_company import CRMCompany
 from app.models.crm_activity import CRMActivity, CRMActivityType, CRMActivityStatus, CRMActivityPriority
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal, CRMProposalStatus
+from app.models.crm_document import CRMDocument, CRMDocumentEvent, CRMDocumentSequence, CRMDocumentStatus, CRMDocumentType
 from app.models.subscription_plan import SubscriptionPlan, BillingCycle, PlanStatus
 from app.models.company_subscription import CompanySubscription, CompanySubscriptionStatus
 from app.models.usage_tracking import UsageTracking
@@ -87,6 +88,7 @@ __all__ = [
     "CRMDeal",
     # CRM proposal models
     "CRMProposal", "CRMProposalStatus",
+    "CRMDocument", "CRMDocumentEvent", "CRMDocumentSequence", "CRMDocumentStatus", "CRMDocumentType",
     # Subscription Plan models
     "SubscriptionPlan", "BillingCycle", "PlanStatus",
     # Company Subscription models

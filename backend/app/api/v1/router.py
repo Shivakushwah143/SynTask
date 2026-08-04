@@ -25,6 +25,7 @@ from app.api.v1.endpoints import crm_companies
 from app.api.v1.endpoints import crm_contacts
 from app.api.v1.endpoints import crm_activities
 from app.api.v1.endpoints import crm_deals
+from app.api.v1.endpoints import crm_documents
 from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import content_calendar
@@ -177,6 +178,7 @@ api_router.include_router(crm_companies.router, prefix="/crm/companies", tags=["
 api_router.include_router(crm_contacts.router, prefix="/crm/contacts", tags=["CRM Contacts"])
 api_router.include_router(crm_activities.router, prefix="/crm/activities", tags=["CRM Activities"])
 api_router.include_router(crm_deals.router, prefix="/crm", tags=["CRM Deals"])
+api_router.include_router(crm_documents.router, prefix="/crm", tags=["CRM Documents"])
 api_router.include_router(crm_notes.router, prefix="/crm", tags=["CRM Notes"])
 api_router.include_router(crm_pipeline.router, prefix="/crm/pipeline", tags=["CRM Pipeline"])
 api_router.include_router(sales_categories.router, prefix="/sales/categories", tags=["Sales Categories"], dependencies=sales_module_dependency)
@@ -195,3 +197,4 @@ api_router.include_router(superadmin_usage.router, prefix="/superadmin/usage", t
 api_router.include_router(superadmin_billing.router, prefix="/superadmin/billing", tags=["Super Admin - Billing"])
 api_router.include_router(superadmin_features.router, prefix="/superadmin/features", tags=["Super Admin - Features"])
 api_router.include_router(admin_permissions.router, prefix="/admin/permissions", tags=["Admin Permissions"])
+api_router.include_router(crm_documents.public_router, prefix="/public", tags=["Public CRM Documents"])

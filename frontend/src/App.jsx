@@ -93,6 +93,7 @@ const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
 const CRMMetaIntegrationPage = lazy(() => import('./pages/crm/settings/meta'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
+const PublicCrmDocument = lazy(() => import('./pages/crm/PublicCrmDocument'))
 const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
 const CandidateInterviewScreen = lazy(() => import('./pages/hr/recruitment/CandidateInterviewScreen'))
@@ -258,6 +259,7 @@ function App() {
         <Route path="/careers/jobs/:slug" element={withBoundary(<CareerJobDetailsPage />)} />
         <Route path="/careers/track" element={withBoundary(<CareerTrackingPage />)} />
         <Route path="/public/offers/:token" element={withBoundary(<CandidateOfferPage />)} />
+        <Route path="/public/crm-documents/:token" element={withBoundary(<PublicCrmDocument />)} />
 
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route path="dashboard" element={<DashboardRoute />} />
