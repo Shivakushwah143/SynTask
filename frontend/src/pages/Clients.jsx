@@ -54,6 +54,7 @@ const Clients = () => {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [clientFormStep, setClientFormStep] = useState(1)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedClient, setSelectedClient] = useState(null)
   const [leads, setLeads] = useState([])
@@ -277,6 +278,7 @@ const Clients = () => {
   const handleEditClient = (client) => {
     setFormErrors({})
     setEditingClient(client)
+    setClientFormStep(1)
     setFormData({
       name: client.name || '',
       email: client.email || '',
@@ -511,6 +513,7 @@ const Clients = () => {
     })
     setEditingClient(null)
     setFormErrors({})
+    setClientFormStep(1)
   }
 
   const updateClientField = (field, value) => {
@@ -874,6 +877,162 @@ const Clients = () => {
 
       {/* Create/Edit Modal */}
       {showCreateModal && (
+        <Modal
+          isOpen={showCreateModal}
+          onClose={() => {
+            setShowCreateModal(false)
+            resetForm()
+          }}
+          title={editingClient ? 'Edit client' : 'Create client'}
+          description={clientFormStep === 1 ? 'Step 1 of 2: identify the client and how to contact them.' : 'Step 2 of 2: add ownership, billing, address, and handoff details.'}
+          size="lg"
+          bodyClassName="bg-gray-50/60 dark:bg-gray-950/30"
+          footer={(
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                <span className={clientFormStep === 1 ? 'text-indigo-600 dark:text-indigo-300' : ''}>Step 1: Contact</span>
+                <span className="h-px w-8 bg-gray-300 dark:bg-gray-700" />
+                <span className={clientFormStep === 2 ? 'text-indigo-600 dark:text-indigo-300' : ''}>Step 2: Details</span>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    if (clientFormStep === 2) {
+                      setClientFormStep(1)
+                      return
+                    }
+                    setShowCreateModal(false)
+                    resetForm()
+                  }}
+                >
+                  {clientFormStep === 2 ? 'Back' : 'Cancel'}
+                </Button>
+                {clientFormStep === 1 ? (
+                  <Button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      if (validateClientForm()) setClientFormStep(2)
+                    }}
+                  >
+                    Next
+                  </Button>
+                ) : (
+                  <Button type="submit" form="client-create-form" loading={submitting} loadingText="Saving">
+                    {editingClient ? 'Update client' : 'Create client'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        >
+          <form id="client-create-form" onSubmit={editingClient ? handleUpdateClient : handleCreateClient} className="space-y-5">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-start">
+                <div className="flex gap-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${clientFormStep === 1 ? 'bg-indigo-600 text-white shadow-sm' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'}`}>
+                    {clientFormStep === 1 ? '1' : <CheckCircle2 className="h-4 w-4" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Contact setup</p>
+                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Capture the required client identity, company, email, phone, and industry.</p>
+                  </div>
+                </div>
+                <div className={`hidden h-px w-16 translate-y-4 sm:block ${clientFormStep === 2 ? 'bg-emerald-300 dark:bg-emerald-800' : 'bg-gray-200 dark:bg-gray-800'}`} />
+                <div className="flex gap-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${clientFormStep === 2 ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                    2
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`text-sm font-semibold ${clientFormStep === 2 ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>Client details</p>
+                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Add owner, billing type, budget, timeline, location, tags, and notes.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {clientFormStep === 1 ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField label="Client name" required>
+                  <input type="text" value={formData.name} onChange={(e) => updateClientField('name', e.target.value)} className="input min-h-11" required aria-invalid={Boolean(formErrors.name)} placeholder="Primary contact or account name" />
+                  {formErrors.name ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.name}</p> : null}
+                </FormField>
+                <FormField label="Company name">
+                  <input type="text" value={formData.company_name} onChange={(e) => updateClientField('company_name', e.target.value)} className="input min-h-11" placeholder="Organization name" />
+                </FormField>
+                <FormField label="Email">
+                  <input type="email" value={formData.email} onChange={(e) => updateClientField('email', e.target.value)} className="input min-h-11" aria-invalid={Boolean(formErrors.email)} placeholder="client@example.com" />
+                  {formErrors.email ? <p className="mt-1 text-xs text-red-600" role="alert">{formErrors.email}</p> : null}
+                </FormField>
+                <FormField label="Primary phone">
+                  <PhoneInput value={formData.contact} onChange={(e) => updateClientField('contact', e.target.value)} className="input min-h-11" />
+                </FormField>
+                <FormField label="Alternate phone">
+                  <PhoneInput value={formData.alternate_contact} onChange={(e) => updateClientField('alternate_contact', e.target.value)} className="input min-h-11" />
+                </FormField>
+                <FormField label="Industry">
+                  <input type="text" value={formData.industry} onChange={(e) => updateClientField('industry', e.target.value)} className="input min-h-11" placeholder="SaaS, Retail, Healthcare" />
+                </FormField>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <FormField label="Assigned to">
+                    <CreatableSelectField value={formData.assigned_to} onChange={(value) => updateClientField('assigned_to', value)} className="input min-h-11" createLabel="Create user" onCreate={() => setShowQuickEmployeeModal(true)} canCreate={isCompanyAdmin || isLead}>
+                      <option value="">Select owner</option>
+                      {leads.map(lead => (
+                        <option key={lead.id} value={lead.id}>{lead.first_name} {lead.last_name}</option>
+                      ))}
+                    </CreatableSelectField>
+                  </FormField>
+                  <FormField label="Client type">
+                    <select value={formData.client_type} onChange={(e) => updateClientField('client_type', e.target.value)} className="input min-h-11">
+                      <option value="">Select type</option>
+                      <option value="monthly">Monthly Client</option>
+                      <option value="one_time">One Time Client</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Budget">
+                    <input type="number" value={formData.budget} onChange={(e) => updateClientField('budget', e.target.value)} className="input min-h-11" step="0.01" placeholder="Total client budget" />
+                  </FormField>
+                  <FormField label="Start date">
+                    <input type="date" value={formData.start_date} onChange={(e) => updateClientField('start_date', e.target.value)} className="input min-h-11" />
+                  </FormField>
+                  <FormField label="Delivery date">
+                    <input type="date" value={formData.delivery_date} onChange={(e) => updateClientField('delivery_date', e.target.value)} className="input min-h-11" />
+                  </FormField>
+                  <FormField label="Tags">
+                    <input type="text" value={formData.tags} onChange={(e) => updateClientField('tags', e.target.value)} className="input min-h-11" placeholder="important, vip, recurring" />
+                  </FormField>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <FormField label="Address">
+                    <input type="text" value={formData.address} onChange={(e) => updateClientField('address', e.target.value)} className="input min-h-11" placeholder="Street address" />
+                  </FormField>
+                  <FormField label="City">
+                    <input type="text" value={formData.city} onChange={(e) => updateClientField('city', e.target.value)} className="input min-h-11" />
+                  </FormField>
+                  <FormField label="State">
+                    <input type="text" value={formData.state} onChange={(e) => updateClientField('state', e.target.value)} className="input min-h-11" />
+                  </FormField>
+                  <FormField label="Country">
+                    <input type="text" value={formData.country} onChange={(e) => updateClientField('country', e.target.value)} className="input min-h-11" />
+                  </FormField>
+                  <FormField label="ZIP code">
+                    <input type="text" value={formData.zip_code} onChange={(e) => updateClientField('zip_code', e.target.value)} className="input min-h-11" />
+                  </FormField>
+                </div>
+                <FormField label="Notes">
+                  <textarea value={formData.notes} onChange={(e) => updateClientField('notes', e.target.value)} className="input min-h-24" rows="3" placeholder="Contract context, preferred communication, or handoff notes" />
+                </FormField>
+              </div>
+            )}
+          </form>
+        </Modal>
+      )}
+      {false && showCreateModal && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={(e) => {

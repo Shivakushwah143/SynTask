@@ -15,7 +15,10 @@ flowchart TD
 ## Clients
 - How the user reaches it: main navigation or sales/CRM adjacent links.
 - What they can do: manage clients, inspect details, open related records.
-- What happens after every action: create/update operations refresh the list/detail.
+- What happens after every action:
+  - Create/edit opens a guided modal sequence with two steps: Contact setup for required identity fields, then Client details for ownership, budget, schedule, address, tags, and notes.
+  - Required name and email format validation run before the user can continue to Details or submit.
+  - Create/update operations refresh the list/detail.
 - Backend APIs called: clients APIs and linked document/project endpoints.
 - Timeline events created: client lifecycle should be reflected where backend events exist.
 - Notifications sent: none explicitly in the frontend.
