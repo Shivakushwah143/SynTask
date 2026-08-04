@@ -150,18 +150,13 @@ class TaskService:
             _can_access_project_for_task,
             _send_task_side_effects,
         )
+        from app.services.project_permissions import ProjectPermission, has_project_permission
 
         if not current_user.company_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User must belong to a company"
             )
-        if current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to create tasks",
-            )
-
         try:
             task_priority = TaskPriority(priority.lower())
         except ValueError:
@@ -194,21 +189,6 @@ class TaskService:
         parent_task_id = parent_task_id.strip() if parent_task_id and parent_task_id.strip() else None
         assigned_to = assigned_to.strip() if assigned_to and assigned_to.strip() else None
 
-        assignee = None
-        if assigned_to:
-            assignee = await User.get(assigned_to)
-            if not assignee:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Assigned user not found"
-                )
-            if assignee.company_id != current_user.company_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Assigned user must be from the same company"
-                )
-            await _assert_can_assign_task(current_user, assignee)
-
         project = None
         if project_id:
             from app.api.dependencies import get_project_by_id
@@ -233,6 +213,11 @@ class TaskService:
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You cannot create tasks in this project",
                 )
+            if not has_project_permission(current_user, project, ProjectPermission.CREATE_TASK):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to create tasks in this project",
+                )
 
             def looks_like_objectid(s):
                 return s and len(s) == 24 and all(c in "0123456789abcdef" for c in s.lower())
@@ -243,6 +228,26 @@ class TaskService:
                 project_id = user_project_id
             else:
                 project_id = str(project.id)
+        elif current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to create tasks",
+            )
+
+        assignee = None
+        if assigned_to:
+            assignee = await User.get(assigned_to)
+            if not assignee:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Assigned user not found"
+                )
+            if assignee.company_id != current_user.company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Assigned user must be from the same company"
+                )
+            await _assert_can_assign_task(current_user, assignee, project)
 
         if epic_id:
             from app.models.project import Epic
@@ -260,6 +265,24 @@ class TaskService:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Sprint not found"
+                )
+            if project and sprint.project_id not in {str(project.id), str(project.project_id or "")}:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Sprint does not belong to this project"
+                )
+
+        if parent_task_id:
+            parent_task = await Task.get(parent_task_id)
+            if not parent_task or parent_task.company_id != current_user.company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Parent task not found"
+                )
+            if project and str(parent_task.project_id or "") not in {str(project.id), str(project.project_id or "")}:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Parent task does not belong to this project"
                 )
 
         department_doc = await _resolve_department(current_user.company_id, department_id)

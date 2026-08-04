@@ -13,7 +13,7 @@ async def create_epic(
     owner_id: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),
     color: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """Create an epic in a project. Path project_id can be custom ID or MongoDB _id."""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
@@ -22,7 +22,8 @@ async def create_epic(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail="Project not found"
         )
-    check_company_access(current_user, project.company_id)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_EPIC):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage epics")
     
     parsed_due_date = None
     if due_date:
@@ -66,7 +67,7 @@ async def list_epics(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    await ensure_project_access_for_user(project, current_user)
     
     epics = await Epic.find({
         "project_id": project_id,

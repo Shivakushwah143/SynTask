@@ -28,21 +28,23 @@ def test_ensure_future_run_at_rejects_past_datetime():
     assert exc.value.detail == "Schedule time must be in the future"
 
 
-def test_lead_can_schedule_task_creation_but_not_project_creation():
+@pytest.mark.asyncio
+async def test_lead_can_schedule_task_creation_but_not_project_creation():
     lead = SimpleNamespace(role=UserRole.LEAD)
 
-    _ensure_can_schedule_action(lead, ScheduledJobActionType.CREATE_TASK)
+    await _ensure_can_schedule_action(lead, ScheduledJobActionType.CREATE_TASK)
     with pytest.raises(HTTPException) as exc:
-        _ensure_can_schedule_action(lead, ScheduledJobActionType.CREATE_PROJECT)
+        await _ensure_can_schedule_action(lead, ScheduledJobActionType.CREATE_PROJECT)
 
     assert exc.value.status_code == 403
 
 
-def test_sub_admin_can_schedule_project_and_task_creation():
+@pytest.mark.asyncio
+async def test_sub_admin_can_schedule_project_and_task_creation():
     sub_admin = SimpleNamespace(role=UserRole.SUB_ADMIN)
 
-    _ensure_can_schedule_action(sub_admin, ScheduledJobActionType.CREATE_PROJECT)
-    _ensure_can_schedule_action(sub_admin, ScheduledJobActionType.CREATE_TASK)
+    await _ensure_can_schedule_action(sub_admin, ScheduledJobActionType.CREATE_PROJECT)
+    await _ensure_can_schedule_action(sub_admin, ScheduledJobActionType.CREATE_TASK)
 
 
 def test_sub_admin_can_manage_scheduled_jobs():

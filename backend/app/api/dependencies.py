@@ -125,7 +125,7 @@ def require_capability(capability: str):
             return current_user
         if current_role == UserRole.ADMIN:
             return current_user
-        if current_role == UserRole.SUB_ADMIN and _module_access_allowed("tasks_projects", getattr(current_user, "modules", []) or []):
+        if current_role == UserRole.SUB_ADMIN:
             return current_user
         department_id = getattr(current_user, "department_id", None)
         if not department_id:

@@ -19,7 +19,7 @@ async def get_board_columns(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    await ensure_project_access_for_user(project, current_user)
     
     # Ensure default columns exist if none are set
     if not project.board_columns:
@@ -43,7 +43,7 @@ async def create_board_column(
     label: str = Form(...),
     color: str = Form("bg-gray-100"),
     order: Optional[int] = Form(None),
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """Create a new board column"""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
@@ -53,7 +53,8 @@ async def create_board_column(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_BOARD):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage this board")
     
     # Ensure board_columns exists
     if not project.board_columns:
@@ -95,7 +96,7 @@ async def update_board_column(
     label: Optional[str] = Form(None),
     color: Optional[str] = Form(None),
     order: Optional[int] = Form(None),
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """Update a board column"""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
@@ -105,7 +106,8 @@ async def update_board_column(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_BOARD):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage this board")
     
     # Ensure board_columns exists
     if not project.board_columns:
@@ -148,7 +150,7 @@ async def update_board_column(
 async def delete_board_column(
     project_id: str,
     column_id: str,
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """Delete a board column"""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
@@ -158,7 +160,8 @@ async def delete_board_column(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_BOARD):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage this board")
     
     # Ensure board_columns exists
     if not project.board_columns:

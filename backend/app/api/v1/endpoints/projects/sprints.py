@@ -13,7 +13,7 @@ async def create_sprint(
     goal: Optional[str] = Form(None),
     start_date: str = Form(...),
     end_date: str = Form(...),
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """Create a sprint in a project"""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
@@ -23,7 +23,8 @@ async def create_sprint(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_SPRINT):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage sprints")
     
     try:
         parsed_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
@@ -76,7 +77,7 @@ async def list_sprints(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    await ensure_project_access_for_user(project, current_user)
     
     query = {
         "project_id": project_id,
@@ -115,7 +116,7 @@ async def update_sprint_state(
     project_id: str,
     sprint_id: str,
     state: str = Form(...),
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """Update sprint state (future, active, closed)"""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
@@ -125,7 +126,8 @@ async def update_sprint_state(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_SPRINT):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage sprints")
     
     sprint = await Sprint.get(sprint_id)
     

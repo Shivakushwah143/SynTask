@@ -360,7 +360,7 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/scheduled-jobs/` | `list_scheduled_jobs` | Company-scoped list with status/search pagination. Admin, Sub Admin, Manager, Lead, and Super Admin can view jobs; jobs expose payload summaries and creator names. |
-| POST | `/api/v1/scheduled-jobs/` | `create_scheduled_job` | Schedules `CREATE_PROJECT` or `CREATE_TASK`. Project scheduling is limited to Admin, Sub Admin, Manager, and Super Admin; task scheduling also allows Sub Admin, Manager, and Lead. `run_at` must be a future datetime and is stored as UTC. |
+| POST | `/api/v1/scheduled-jobs/` | `create_scheduled_job` | Schedules `CREATE_PROJECT` or `CREATE_TASK`. Project scheduling is limited to Admin, Sub Admin, Manager, and Super Admin; task scheduling also allows Sub Admin, Manager, Lead, and project-scoped Leads for their own project. `run_at` must be a future datetime and is stored as UTC. |
 | PATCH | `/api/v1/scheduled-jobs/{job_id}` | `update_scheduled_job` | Edits `run_at` for pending jobs only; same-tenant access required and past datetimes are rejected. |
 | POST | `/api/v1/scheduled-jobs/{job_id}/cancel` | `cancel_scheduled_job` | Cancels pending or failed jobs and notifies the creator. |
 | POST | `/api/v1/scheduled-jobs/{job_id}/retry` | `retry_failed_job` | Moves failed or cancelled jobs back to pending and clears the stored error/retry count. |
@@ -370,13 +370,13 @@ Chat endpoints require authentication, active user status, same-tenant access, a
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/projects/` | `list_projects` | Company-scoped. Admin/Super Admin and Manager list company projects; Employee list includes project membership and projects containing tasks assigned to them. |
+| GET | `/api/v1/projects/` | `list_projects` | Company-scoped. Admin/Super Admin and Manager list company projects; Employee list includes projects where they are the project leader, project member, or have assigned tasks. Pending scheduled `CREATE_PROJECT` jobs are also returned as `scheduled` placeholders only to the scheduling creator, with `is_scheduled_placeholder=true`, `scheduled_job_id`, and `scheduled_run_at`; they are not visible to other tenant users before publish. |
 | POST | `/api/v1/projects/` | `create_project` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/projects/for-task-creation` | `get_projects_for_task_creation` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/for-task-creation` | `get_projects_for_task_creation` | Returns non-archived projects where the authenticated user has `create_task`. Employees assigned as that project's `lead_id` are treated as project-scoped Lead only for that project. |
 | DELETE | `/api/v1/projects/{project_id}` | `delete_project` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/projects/{project_id}` | `get_project` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}` | `get_project` | Loads the real project by logical ID or MongoDB ID, enforces project-scoped access, and returns `effective_project_role` plus permission flags. |
 | PUT | `/api/v1/projects/{project_id}` | `update_project` | Uses router/endpoint dependencies where configured. |
-| GET | `/api/v1/projects/{project_id}/board` | `get_project_board` | Uses router/endpoint dependencies where configured. |
+| GET | `/api/v1/projects/{project_id}/board` | `get_project_board` | Loads the real project, enforces project-scoped access, and returns board data with `effective_project_role` plus permission flags. Project-scoped Leads see all project tasks; ordinary Employee members see only assigned tasks. |
 | GET | `/api/v1/projects/{project_id}/board-columns` | `get_board_columns` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/projects/{project_id}/board-columns` | `create_board_column` | Uses router/endpoint dependencies where configured. |
 | DELETE | `/api/v1/projects/{project_id}/board-columns/{column_id}` | `delete_board_column` | Uses router/endpoint dependencies where configured. |
@@ -557,7 +557,7 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 
 | Method | Path | Handler | Notes |
 |---|---|---|---|
-| GET | `/api/v1/tasks/` | `list_tasks` | Company-scoped. Admin/Super Admin and Manager list company tasks; Employee list is assigned-only. Response includes `assigned_to_name` for assigned task display. |
+| GET | `/api/v1/tasks/` | `list_tasks` | Company-scoped. Admin/Super Admin and Manager list company tasks; Employee list includes tasks assigned to them or created by them, so employee project leads keep visibility of tasks they assign to others. Pending scheduled `CREATE_TASK` jobs are returned as `scheduled` placeholders only to the scheduling creator, with `is_scheduled_placeholder=true`, `scheduled_job_id`, and UTC `scheduled_run_at`; they are not visible to assignees or other tenant users before publish. Response includes `assigned_to_name` for assigned task display. |
 | POST | `/api/v1/tasks/` | `create_task` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/tasks/{task_id}` | `get_task` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/tasks/{task_id}` | `update_task` | Admin/Super Admin manage company tasks; Manager detail edits/assignment are limited to matching `department_id`; Employees cannot edit details through this endpoint. |
@@ -572,11 +572,11 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | Method | Path | Handler | Notes |
 |---|---|---|---|
 | GET | `/api/v1/tickets/` | `list_tickets` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/tickets/` | `create_ticket` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/tickets/` | `create_ticket` | Only Employees and Leads can create tickets. If `assigned_to` is provided the assignee must belong to the same company; an Employee may only assign to a Lead, Sub Admin, or Admin (403 for disallowed roles, 400 for cross-company). |
 | DELETE | `/api/v1/tickets/{ticket_id}` | `delete_ticket` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/tickets/{ticket_id}` | `get_ticket` | Uses router/endpoint dependencies where configured. |
 | PUT | `/api/v1/tickets/{ticket_id}` | `update_ticket` | Uses router/endpoint dependencies where configured. |
-| POST | `/api/v1/tickets/{ticket_id}/assign` | `assign_ticket` | Uses router/endpoint dependencies where configured. |
+| POST | `/api/v1/tickets/{ticket_id}/assign` | `assign_ticket` | Assigns a ticket to a same-company user. An Employee may only assign to a Lead, Sub Admin, or Admin; Leads, Sub Admins, and Admins may assign to any user in the company (403 for disallowed roles, 400 for cross-company). |
 | GET | `/api/v1/tickets/{ticket_id}/comments` | `get_ticket_comments` | Uses router/endpoint dependencies where configured. |
 | POST | `/api/v1/tickets/{ticket_id}/comments` | `add_ticket_comment` | Uses router/endpoint dependencies where configured. |
 | PATCH | `/api/v1/tickets/{ticket_id}/status` | `update_ticket_status` | Uses router/endpoint dependencies where configured. |
@@ -707,9 +707,9 @@ Suspended tenant enforcement occurs in `get_current_user`: non-superadmin users 
 List endpoints commonly use `skip` and `limit`; default page size is configured in `Settings.DEFAULT_PAGE_SIZE` and max size is `Settings.MAX_PAGE_SIZE`.
 
 ## Role and Module Access
-Route groups for task-management features are protected with `require_module("task")`; chat also allows `task` or `tasks_projects` workspace access so global communication works for task workspace users. Sales routes rely on endpoint-level role checks. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.
+Route groups for task-management features are protected with `require_module("task")`; chat also allows `task` or `tasks_projects` workspace access so global communication works for task workspace users. Sales routes rely on endpoint-level role checks. Recruitment routes require the recruitment module gate plus recruitment capability dependencies for non-admin HR users. Role helpers in `app/api/dependencies.py` enforce super admin, admin, lead/manager, and company access checks.
 
 Role conventions:
-- `SUB_ADMIN` is treated as a company admin for module access: it sees the full company leave list/dashboard/calendar like `ADMIN` (all company leaves except its own, including forwarded leaves); approve/reject is limited to leaves assigned to it via `pending_with_user_ids` (manager leaves and forwarded employee leaves); and it is eligible as a leave forward target.
+- `SUB_ADMIN` is treated as a company admin for module and department capability checks: it can access company-scoped recruitment job dashboards and other admin module endpoints without an HR department assignment, it sees the full company leave list/dashboard/calendar like `ADMIN` (all company leaves except its own, including forwarded leaves); approve/reject is limited to leaves assigned to it via `pending_with_user_ids` (manager leaves and forwarded employee leaves); and it is eligible as a leave forward target.
 - Leave forward targets are `ADMIN` and `SUB_ADMIN` users in the same company only.
 - `SUPER_ADMIN` keeps audit-only leave access; it never weakens tenant/company isolation.

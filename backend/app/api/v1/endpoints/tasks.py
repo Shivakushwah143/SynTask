@@ -4,10 +4,11 @@ Task Management Endpoints
 import inspect
 from fastapi import APIRouter, HTTPException, status, Depends, Form, BackgroundTasks
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 
 from app.models.task import Task, TaskExtensionRequest, TaskStatus, TaskPriority, TaskType
+from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, ScheduledJobStatus
 from app.schemas.tasks import UpdateProductionProgressRequest, ProductionDashboardResponse, ProductionEmployeeMetric
 from app.models.department import Department
 from app.models.user import User, UserRole
@@ -15,7 +16,6 @@ from app.events import publish_event
 from app.events.factories import build_domain_event
 from app.api.dependencies import (
     get_current_user,
-    get_current_company_admin_or_lead,
     check_company_access,
 )
 from app.services.task_service import TaskService
@@ -39,8 +39,64 @@ from app.services.timeline_service import create_timeline_event
 from app.core.cache import cache_delete_pattern, company_dashboard_pattern
 from app.api.deps import Pagination20, PaginationParams
 from app.core.clock import utc_now
+from app.services.project_permissions import (
+    ProjectPermission,
+    has_project_permission,
+    load_project_for_permission,
+    load_task_project,
+)
 
 router = APIRouter()
+
+
+def enum_or_string_value(value, default=None):
+    if value is None:
+        return default
+    return getattr(value, "value", value)
+
+
+def serialize_utc_datetime(value: datetime | None) -> str | None:
+    if not value:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def serialize_scheduled_task_placeholder(job: ScheduledJob) -> dict:
+    payload = job.payload or {}
+    return {
+        "id": f"scheduled-job-{job.id}",
+        "title": payload.get("title") or "Scheduled task",
+        "description": payload.get("description") or "",
+        "status": "scheduled",
+        "payload_status": payload.get("status") or "todo",
+        "priority": payload.get("priority") or "medium",
+        "assigned_to": payload.get("assigned_to") or None,
+        "assigned_to_name": None,
+        "created_by": job.created_by,
+        "project_id": payload.get("project_id") or None,
+        "department_id": payload.get("department_id") or None,
+        "department": None,
+        "due_date": payload.get("due_date") or None,
+        "start_date": None,
+        "health_status": "scheduled",
+        "extension_count": 0,
+        "estimated_hours": payload.get("estimated_hours"),
+        "task_type": payload.get("task_type") or "standard",
+        "measurement_type": payload.get("measurement_type"),
+        "custom_measurement_label": payload.get("custom_measurement_label"),
+        "target_quantity": payload.get("target_quantity"),
+        "target_unit": payload.get("target_unit"),
+        "tags": payload.get("tags") or [],
+        "created_at": serialize_utc_datetime(job.created_at),
+        "is_scheduled_placeholder": True,
+        "scheduled_job_id": str(job.id),
+        "scheduled_run_at": serialize_utc_datetime(job.run_at),
+        "scheduled_status": enum_or_string_value(job.status),
+    }
 
 
 async def _get_user_scope_ids(current_user: User) -> list[str]:
@@ -52,23 +108,7 @@ async def _get_user_scope_ids(current_user: User) -> list[str]:
 
 
 async def _can_access_project_for_task(current_user: User, project) -> bool:
-    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER}:
-        return True
-    assignee_ids = set(getattr(project, "assigned_user_ids", None) or [])
-    if getattr(project, "assigned_to", None):
-        assignee_ids.add(str(project.assigned_to))
-    if getattr(project, "lead_id", None):
-        assignee_ids.add(str(project.lead_id))
-    if getattr(project, "created_by", None):
-        assignee_ids.add(str(project.created_by))
-    team_member_ids = set(getattr(project, "team_member_ids", None) or [])
-    if current_user.role == UserRole.MANAGER:
-        return True
-    if current_user.role == UserRole.LEAD:
-        return str(current_user.id) in assignee_ids or str(current_user.id) in team_member_ids
-    if current_user.role == UserRole.EMPLOYEE:
-        return str(current_user.id) in team_member_ids
-    return False
+    return has_project_permission(current_user, project, ProjectPermission.VIEW_PROJECT)
 
 
 async def _assert_task_view(current_user: User, task: Task) -> None:
@@ -109,6 +149,9 @@ async def _assert_task_view(current_user: User, task: Task) -> None:
 
 
 async def _assert_task_manage(current_user: User, task: Task) -> None:
+    project = await load_task_project(task, current_user)
+    if project and has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
+        return
     if current_user.role == UserRole.EMPLOYEE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     await _assert_task_view(current_user, task)
@@ -132,7 +175,11 @@ def build_task_list_query(
         query = {"company_id": current_user.company_id}
 
     if current_user.role == UserRole.EMPLOYEE:
-        query["assigned_to"] = str(current_user.id)
+        current_user_id = str(current_user.id)
+        query["$or"] = [
+            {"assigned_to": current_user_id},
+            {"created_by": current_user_id},
+        ]
     elif current_user.role == UserRole.LEAD:
         ids = scope_ids or [str(current_user.id)]
         query["$or"] = [
@@ -164,6 +211,7 @@ def build_employee_project_visibility_query(current_user: User, project_ids: lis
             clean_project_ids.append(project_id)
     return {
         "$or": [
+            {"lead_id": str(current_user.id)},
             {"team_member_ids": str(current_user.id)},
             {"project_id": {"$in": clean_project_ids}},
             {"_id": {"$in": clean_project_ids}},
@@ -171,8 +219,14 @@ def build_employee_project_visibility_query(current_user: User, project_ids: lis
     }
 
 
-async def _assert_can_assign_task(current_user: User, assignee: Optional[User]) -> None:
+async def _assert_can_assign_task(current_user: User, assignee: Optional[User], project=None) -> None:
     if not assignee:
+        return
+    if project and has_project_permission(current_user, project, ProjectPermission.ASSIGN_TASK):
+        if assignee.company_id != project.company_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user must be from the same company")
+        if assignee.role not in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid assignee role")
         return
     if current_user.role in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.SUPER_ADMIN}:
         if assignee.role not in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
@@ -441,6 +495,10 @@ async def list_tasks(
         # Filter by project_id - only return tasks that have this specific project_id
         # Simple equality check - MongoDB will only match documents where project_id equals this value
         # Tasks with project_id=None or missing project_id field won't match
+        if current_user.role == UserRole.EMPLOYEE:
+            project = await load_project_for_permission(project_id, current_user)
+            if has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
+                query.pop("assigned_to", None)
         query["project_id"] = project_id
     if department_id:
         query["department_id"] = department_id
@@ -449,6 +507,25 @@ async def list_tasks(
     for task in tasks:
         await sync_task_health(task)
     total = await Task.find(query).count()
+    scheduled_task_placeholders = []
+    if current_user.company_id and (not status_filter or status_filter == "scheduled") and not created_by:
+        scheduled_query = {
+            "company_id": current_user.company_id,
+            "created_by": str(current_user.id),
+            "action_type": ScheduledJobActionType.CREATE_TASK.value,
+            "status": ScheduledJobStatus.PENDING.value,
+        }
+        if priority:
+            scheduled_query["payload.priority"] = priority
+        if assigned_to:
+            scheduled_query["payload.assigned_to"] = assigned_to
+        if project_id:
+            scheduled_query["payload.project_id"] = project_id
+        if department_id:
+            scheduled_query["payload.department_id"] = department_id
+        scheduled_jobs = await ScheduledJob.find(scheduled_query).sort("run_at").to_list()
+        scheduled_task_placeholders = [serialize_scheduled_task_placeholder(job) for job in scheduled_jobs]
+        total += len(scheduled_task_placeholders)
     assignee_names = {}
     for assignee_id in {task.assigned_to for task in tasks if task.assigned_to}:
         assignee = await User.get(assignee_id)
@@ -456,12 +533,12 @@ async def list_tasks(
             assignee_names[str(assignee.id)] = f"{assignee.first_name} {assignee.last_name}".strip() or assignee.email
 
     return {
-        "tasks": [
+        "tasks": scheduled_task_placeholders + [
             {
                 "id": str(task.id),
                 "title": task.title,
-                "status": task.status.value,
-                "priority": task.priority.value,
+                "status": enum_or_string_value(task.status),
+                "priority": enum_or_string_value(task.priority),
                 "assigned_to": task.assigned_to,
                 "assigned_to_name": assignee_names.get(str(task.assigned_to or "")),
                 "created_by": task.created_by,
@@ -476,6 +553,7 @@ async def list_tasks(
                 "task_type": getattr(task.task_type, "value", task.task_type) if hasattr(task, "task_type") else "standard",
                 "tags": task.tags,
                 "created_at": task.created_at,
+                "is_scheduled_placeholder": False,
             }
             for task in tasks
         ],
@@ -1258,7 +1336,7 @@ async def update_task(
                     detail="Assigned user must be from the same company"
                 )
             if assigned_to != previous_assigned_to:
-                await _assert_can_assign_task(current_user, assigned_user)
+                await _assert_can_assign_task(current_user, assigned_user, task_project)
             task.assigned_to = assigned_to
             task.assigned_by = str(current_user.id)
     if due_date is not None:

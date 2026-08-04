@@ -10,7 +10,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import ConfirmDialog from './components/ConfirmDialog';
 import UndoBar from './components/UndoBar';
 import { Agentation } from "agentation";
-import { hasCompanyAdminAccess, isManagerRole, isSuperAdminRole } from './utils/roles';
+import { hasCompanyAdminAccess, isManagerRole } from './utils/roles';
 import { hasModuleAccess } from './utils/rbac';
 import { applySeoMeta, getSeoMeta } from './utils/seo';
 import DemoHome from './pages/DemoHome';

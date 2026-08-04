@@ -35,6 +35,25 @@ describe('projects graph data helpers', () => {
     expect(buildProjectGraphRows(projects, 10)).toHaveLength(10)
   })
 
+  test('carries scheduled project placeholder metadata into graph rows', () => {
+    const rows = buildProjectGraphRows([{
+      id: 'scheduled-job-1',
+      name: 'Scheduled Launch',
+      status: 'scheduled',
+      is_scheduled_placeholder: true,
+      scheduled_run_at: '2026-08-05T10:30:00Z',
+    }])
+
+    expect(rows[0]).toEqual(expect.objectContaining({
+      id: 'scheduled-job-1',
+      status: 'scheduled',
+      is_scheduled_placeholder: true,
+      scheduled_run_at: '2026-08-05T10:30:00Z',
+      progress: 0,
+      totalTasks: 0,
+    }))
+  })
+
   test('shows manager and lead names in project graph owner line', () => {
     const rows = buildProjectGraphRows([{
       id: 'p1',

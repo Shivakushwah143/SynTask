@@ -18,6 +18,7 @@ const STATUS_LABELS = {
   review: 'Review',
   completed: 'Completed',
   done: 'Completed',
+  scheduled: 'Scheduled',
 }
 
 export const TASK_GRAPH_PRIORITY_COLORS = {
@@ -74,6 +75,8 @@ export function buildTaskGraphRows(tasks, usersOrLimit = [], maybeLimit = 8) {
     return {
       id: task.id || task._id,
       title: task.title || 'Untitled task',
+      isScheduled: Boolean(task.is_scheduled_placeholder),
+      scheduledRunAt: task.scheduled_run_at,
       assignee: getAssigneeName(task, userNameById),
       statusKey,
       statusLabel: STATUS_LABELS[statusKey] || statusKey.replace(/_/g, ' '),

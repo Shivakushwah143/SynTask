@@ -23,13 +23,16 @@ from app.models.task import Task
 from app.models.page import Page, PageStatus
 from app.api.dependencies import (
     get_current_user,
-    get_current_company_admin_or_lead,
-    get_current_company_admin,
     check_company_access,
     get_project_by_id,
 )
 from app.core.config import settings
 from app.core.cache import cache_delete_pattern, project_list_key, cache_delete, cache_get, cache_set
+from app.services.project_permissions import (
+    ProjectPermission,
+    has_project_permission,
+    serialize_project_permissions,
+)
 
 # Upload directory for project files
 BACKEND_DIR = Path(__file__).resolve().parents[5]
@@ -54,6 +57,12 @@ def enum_or_string_value(value, default: Optional[str] = None) -> Optional[str]:
     return getattr(value, "value", value)
 
 
+def iso_datetime_or_string(value):
+    if not value:
+        return None
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
 def normalize_project_type(value: str | None) -> str:
     normalized = (value or ProjectType.SOFTWARE.value).strip().lower().replace(" ", "_")
     return normalized or ProjectType.SOFTWARE.value
@@ -68,13 +77,7 @@ async def scoped_user_ids(current_user: User) -> list[str]:
 
 
 async def can_manage_project(project: Project, current_user: User) -> bool:
-    if current_user.role in {UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.SUB_ADMIN}:
-        return True
-    if current_user.company_id != project.company_id:
-        return False
-    if current_user.role == UserRole.MANAGER:
-        return True
-    return False
+    return has_project_permission(current_user, project, ProjectPermission.MANAGE_PROJECT)
 
 
 async def can_create_project(current_user: User) -> bool:
@@ -142,48 +145,11 @@ async def check_project_access(project: Project, current_user: User) -> bool:
       a team member, or projects containing a task assigned to them
     """
 
-    # Super Admin has global access
-    if current_user.role == UserRole.SUPER_ADMIN:
+    if has_project_permission(current_user, project, ProjectPermission.VIEW_PROJECT):
         return True
 
-    # Everyone else must belong to the same company
-    if str(current_user.company_id) != str(project.company_id):
-        return False
-
-    # Company-wide project visibility
-    if current_user.role in {
-        UserRole.ADMIN,
-        UserRole.SUB_ADMIN,
-        UserRole.MANAGER,
-    }:
-        return True
-
-    user_id = str(current_user.id)
-
-    # Normalize all project-level assignments
-    assignee_ids = {
-        str(uid)
-        for uid in project_assignee_ids(project)
-        if uid
-    }
-
-    team_member_ids = {
-        str(uid)
-        for uid in (getattr(project, "team_member_ids", None) or [])
-        if uid
-    }
-
-    # Lead access
-    if current_user.role == UserRole.LEAD:
-        return user_id in assignee_ids or user_id in team_member_ids
-
-    # Employee access
     if current_user.role == UserRole.EMPLOYEE:
-
-        # Direct project assignment / membership
-        if user_id in assignee_ids or user_id in team_member_ids:
-            return True
-
+        user_id = str(current_user.id)
         # Also allow access when employee has a task in this project
         project_ids = {
             str(project.id),
