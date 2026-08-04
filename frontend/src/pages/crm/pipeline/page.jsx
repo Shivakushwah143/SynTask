@@ -345,7 +345,7 @@ export default function CRMPipelinePage() {
       toast.error(`Move ${sourceStage.name} leads to ${targetStage.name} through the required workflow steps.`)
       return
     }
-    moveLeadMutation.mutate({ leadId, stageKey: nextStageKey, lead })
+    return moveLeadMutation.mutateAsync({ leadId, stageKey: nextStageKey, lead })
   }, [moveLeadMutation, visibleBoard.stages])
 
   const handleCopyLeadId = useCallback(async (lead) => {
@@ -698,6 +698,8 @@ export default function CRMPipelinePage() {
                 stages={visibleBoard.stages}
                 currency={currency}
                 activeLeadId={activeLeadId}
+                movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
+                users={users}
                 onMoveLeadToStage={handleLeadMove}
                 getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, visibleBoard.stages)}
                 onCopyLeadId={handleCopyLeadId}

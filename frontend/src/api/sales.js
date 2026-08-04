@@ -83,6 +83,9 @@ export const salesApi = {
   retryImportJob: (id) => api.post(`/sales/prospects/imports/${id}/retry`),
   updateProspect: (id, data) => api.put(`/sales/prospects/${id}`, data),
   updateProspectForm: (id, data) => {
+    if (data instanceof FormData) {
+      return api.put(`/sales/prospects/${id}`, data)
+    }
     // Always include all fields, even empty ones, so users can clear values
     const formData = new FormData()
     Object.entries(data || {}).forEach(([key, value]) => {

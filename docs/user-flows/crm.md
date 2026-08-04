@@ -32,7 +32,9 @@ flowchart TD
 - What happens after every action:
   - Search and filters update URL state and board visibility.
   - Drag/drop or quick move sends a stage update request.
+  - Quick move buttons show an in-progress state while the stage update request is waiting for a response.
   - Successful move updates the board optimistically and refreshes pipeline history.
+  - Lead cards show factual metadata from the pipeline payload: owner, phone, interest, status, created date, and stage. Display-name fields are preferred and raw record identifiers are suppressed.
 - Backend APIs called:
   - `GET /api/v1/crm/pipeline`
   - `PATCH /api/v1/crm/pipeline/{leadId}/stage`
@@ -76,6 +78,8 @@ flowchart TD
 - What they can do: inspect lead summary, update deal-related data, manage notes/files, inspect timeline/history, open related CRM modules.
 - What happens after every action:
   - Tab changes swap sections without leaving the workspace.
+  - Header summary chips show stable identity metadata only: resolved owner name, phone, and created date.
+  - Sidebar lead edits submit multipart form data to the legacy Sales prospect update endpoint without re-wrapping the request body.
   - Notes/files mutations refresh the lead record sections.
   - Timeline/history changes are read-only refreshes.
 - Backend APIs called:
