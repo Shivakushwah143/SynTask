@@ -14,26 +14,17 @@ import logging
 import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
-<<<<<<< HEAD
-from typing import List, Optional
-=======
 from pathlib import Path
-from typing import Optional, List
-from datetime import datetime
->>>>>>> cff0398 (add logo img in PDF)
+from typing import List, Optional
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-<<<<<<< HEAD
+    Image,
     KeepTogether,
     LongTable,
-=======
-    Image,
-    SimpleDocTemplate,
->>>>>>> cff0398 (add logo img in PDF)
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -314,42 +305,52 @@ def generate_invoice_pdf(
 
     elements: List = []
 
-<<<<<<< HEAD
-    # Title and company name
-    title_text = "TAX INVOICE" if safe_text(invoice.invoice_type).strip().lower() == "tax" else "PROFORMA INVOICE"
-    elements.append(Paragraph(escape_paragraph(title_text), styles["Heading2"]))
-    if company:
-        elements.append(Paragraph(escape_paragraph(company.name or "Company"), styles["Heading3"]))
-=======
     # Header: logo on the left, title and company name on the right.
-    # Falls back to the previous header layout if the logo asset is missing.
-    title_text = "TAX INVOICE" if invoice.invoice_type == InvoiceType.TAX else "PROFORMA INVOICE"
-    title_cell: List = [Paragraph(title_text, styles["Heading2"])]
+    # Falls back to the previous text-only layout if the logo asset is missing.
+    title_text = "TAX INVOICE" if safe_text(invoice.invoice_type).strip().lower() == "tax" else "PROFORMA INVOICE"
+    title_cell: List = [Paragraph(escape_paragraph(title_text), styles["Heading2"])]
     if company:
-        title_cell.append(Paragraph(company.name or "Company", styles["Heading3"]))
+        title_cell.append(
+            Paragraph(escape_paragraph(company.name or "Company"), styles["Heading3"])
+        )
 
     if INVOICE_LOGO_PATH.is_file():
-        logo = Image(
-            str(INVOICE_LOGO_PATH),
-            width=INVOICE_LOGO_WIDTH_MM * mm,
-            height=INVOICE_LOGO_HEIGHT_MM * mm,
-        )
-        header_table = Table([[logo, title_cell]], colWidths=[30 * mm, None])
-        header_table.setStyle(
-            TableStyle(
-                [
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("LEFTPADDING", (0, 0), (0, -1), 0),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                ]
+        try:
+            logo = Image(
+                str(INVOICE_LOGO_PATH),
+                width=INVOICE_LOGO_WIDTH_MM * mm,
+                height=INVOICE_LOGO_HEIGHT_MM * mm,
             )
-        )
-        elements.append(header_table)
+            header_table = Table(
+                [[logo, title_cell]],
+                colWidths=[30 * mm, doc.width - (30 * mm)],
+            )
+            header_table.setStyle(
+                TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ]
+                )
+            )
+            elements.append(header_table)
+        except Exception:
+            logger.exception(
+                "invoice_pdf: failed to load logo asset at %s",
+                INVOICE_LOGO_PATH,
+            )
+            elements.extend(title_cell)
     else:
+        logger.warning(
+            "invoice_pdf: logo asset not found at %s",
+            INVOICE_LOGO_PATH,
+        )
         elements.extend(title_cell)
 
     if company:
->>>>>>> cff0398 (add logo img in PDF)
         company_lines = [
             company.registration_number or "",
             company.address or "",
@@ -434,16 +435,12 @@ def generate_invoice_pdf(
 
     computed_subtotal = Decimal("0")
     for idx, item in enumerate(invoice.items or [], start=1):
-<<<<<<< HEAD
-        taxable_value, tax_amount, line_total = _line_totals(item, invoice_tax_rate, include_tax)
+        taxable_value, tax_amount, line_total = _line_totals(
+            item,
+            invoice_tax_rate,
+            include_tax,
+        )
         computed_subtotal += taxable_value
-=======
-        qty = _to_float(item.get("quantity"), 1)
-        rate = _to_float(item.get("unit_price"), 0)
-        line_amount = _to_float(item.get("amount"), qty * rate)
-        line_tax = _to_float(item.get("tax_amount"), 0) if invoice.include_tax else 0.0
-        taxable_value = line_amount - line_tax if invoice.include_tax else line_amount
->>>>>>> cff0398 (add logo img in PDF)
         items_data.append(
             [
                 Paragraph(str(idx), styles["NormalSmall"]),
