@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 from fastapi import HTTPException, status
 
 from app.timeline.publisher import publish_crm_timeline_event
-from app.crm.pipeline import WON_STATUSES, apply_stage_status_change, normalize_stage_display, _serialize_lead, _user_display_name
+from app.crm.pipeline import WON_STATUSES, apply_stage_status_change, normalize_stage_display, _serialize_lead, _user_display_name, _run_won_automation
 from app.crm.models import SalesProspect
 from app.models.client import Client
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
@@ -134,6 +134,60 @@ class LeadConversionService:
             {"lead_id": str(prospect.id), "previous_status": current or None, "new_status": normalized, "timestamp": now.isoformat()},
         )
         return _serialize_conversion(prospect)
+
+    @staticmethod
+    async def create_client(current_user: User, lead_id: str) -> Dict[str, Any]:
+        """Idempotently create the Client (and Project/Meeting) records for a won lead.
+
+        Re-runs the same won-deal automation used on Won entry; existing
+        references are reused so repeated clicks or retried requests never create
+        duplicates. This is the inline "Create Client" path behind the guided
+        transfer popup.
+        """
+        prospect = await _load_won_lead(current_user, lead_id)
+        if str(getattr(prospect, "current_stage", "")).lower() not in ["won", "closed won"] and prospect.status.value != "won":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client creation requires a Won lead.")
+
+        existing_client_id = getattr(prospect, "client_id", None)
+        if existing_client_id:
+            existing = await Client.get(existing_client_id)
+            if existing:
+                return {**_serialize_conversion(prospect), "client": {"id": str(existing.id), "name": existing.name, "status": "reused"}}
+
+        result = await _run_won_automation(current_user, prospect, str(getattr(prospect, "company_id", "") or ""))
+        if result.get("status") == "failed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Client creation failed: {result.get('error') or 'unknown error'}",
+            )
+        client_id = result.get("client_id")
+        if not client_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Client creation did not produce a client record. Check the won-deal automation configuration.",
+            )
+
+        now = utc_now()
+        prospect.client_id = client_id
+        prospect.project_id = result.get("project_id") or prospect.project_id
+        prospect.converted_at = prospect.converted_at or now
+        prospect.updated_at = now
+        await prospect.save()
+        await _publish_event(
+            "ClientCreatedFromLead",
+            prospect,
+            current_user,
+            {
+                "lead_id": str(prospect.id),
+                "client_id": client_id,
+                "project_id": result.get("project_id"),
+                "timestamp": now.isoformat(),
+            },
+        )
+        return {
+            **_serialize_conversion(prospect),
+            "client": {"id": client_id, "project_id": result.get("project_id"), "status": result.get("status", "created")},
+        }
 
     @staticmethod
     async def create_invoice(current_user: User, lead_id: str) -> Dict[str, Any]:
@@ -364,13 +418,49 @@ class LeadConversionService:
             return _serialize_conversion(prospect)
 
         if str(getattr(prospect, "current_stage", "")).lower() not in ["won", "closed won"] and prospect.status.value != "won":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only Won leads can be transferred to Clients.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "STAGE_TRANSITION_BLOCKED",
+                    "severity": "warning",
+                    "current_stage": normalize_stage_display(getattr(prospect, "current_stage", "") or "") or "Lead",
+                    "target_stage": "Clients",
+                    "message": "Only Won leads can be transferred to Clients.",
+                    "missing_fields": [],
+                    "status_requirement": {
+                        "field": "current_stage",
+                        "label": "Sales Stage",
+                        "allowed_values": ["Won"],
+                        "current_value": normalize_stage_display(getattr(prospect, "current_stage", "") or "") or "",
+                    },
+                    "action_requirement": None,
+                },
+            )
 
         won_status = str(getattr(prospect, "won_status", "") or "").strip().lower().replace(" ", "_")
         if won_status != "ready" and not current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]:
+            missing_fields = []
+            if not getattr(prospect, "account_manager_id", None):
+                missing_fields.append({"field": "account_manager_id", "label": "Account Manager", "type": "user"})
+            if not getattr(prospect, "client_id", None):
+                missing_fields.append({"field": "client_id", "label": "Client", "type": "reference"})
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Complete the onboarding checklist (mark the lead Ready) before transferring to Clients.",
+                detail={
+                    "code": "STAGE_TRANSITION_BLOCKED",
+                    "severity": "warning",
+                    "current_stage": "Won",
+                    "target_stage": "Clients",
+                    "message": "Complete the required handoff details before transferring this client.",
+                    "missing_fields": missing_fields,
+                    "status_requirement": {
+                        "field": "won_status",
+                        "label": "Won Status",
+                        "allowed_values": ["ready"],
+                        "current_value": won_status or getattr(prospect, "current_stage_status", None) or "",
+                    },
+                    "action_requirement": None,
+                },
             )
 
         client = await _resolve_client(prospect)

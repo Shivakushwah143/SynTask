@@ -24,7 +24,7 @@ class PipelineStageUpdateRequest(BaseModel):
 
 class ConversionUpdateRequest(BaseModel):
     """Idempotent Won-stage conversion actions."""
-    action: str = Field(..., min_length=1)  # won_status | create_invoice | assign_account_manager | send_welcome_email | notify_operations
+    action: str = Field(..., min_length=1)  # won_status | create_client | create_invoice | assign_account_manager | send_welcome_email | notify_operations
     won_status: Optional[str] = None
     user_id: Optional[str] = None
 
@@ -74,6 +74,8 @@ async def update_conversion(lead_id: str, payload: ConversionUpdateRequest, curr
         if not payload.won_status:
             raise HTTPException(status_code=422, detail="won_status is required for the won_status action")
         return await LeadConversionService.update_won_status(current_user, lead_id, payload.won_status)
+    if payload.action == "create_client":
+        return await LeadConversionService.create_client(current_user, lead_id)
     if payload.action == "create_invoice":
         return await LeadConversionService.create_invoice(current_user, lead_id)
     if payload.action == "assign_account_manager":

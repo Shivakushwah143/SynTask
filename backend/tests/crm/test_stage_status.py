@@ -549,6 +549,68 @@ async def test_transfer_to_clients_marks_transferred_and_preserves_lead(monkeypa
     assert len(lead.stage_status_history) == 1  # no duplicate history entry
 
 
+@pytest.mark.asyncio
+async def test_transfer_returns_structured_missing_fields_for_employee(monkeypatch):
+    # A normal salesperson cannot transfer until handoff details exist; the
+    # blocker is structured so the frontend popup can offer Create Client.
+    lead = _lead(
+        current_stage="Won",
+        status=ProspectStatus.WON,
+        won_status="payment_pending",
+        current_stage_status="payment_pending",
+        client_id=None,
+        account_manager_id=None,
+        transferred_at=None,
+    )
+
+    async def fake_load_won(current_user, lead_id):
+        return lead
+
+    monkeypatch.setattr("app.crm.conversion._load_won_lead", fake_load_won)
+
+    user = _user(role=UserRole.EMPLOYEE)
+    with pytest.raises(HTTPException) as exc_info:
+        await LeadConversionService.transfer_to_clients(user, "lead-1")
+    detail = exc_info.value.detail
+    assert exc_info.value.status_code == 400
+    assert detail["code"] == "STAGE_TRANSITION_BLOCKED"
+    assert detail["severity"] == "warning"
+    assert detail["target_stage"] == "Clients"
+    assert {item["field"] for item in detail["missing_fields"]} == {"account_manager_id", "client_id"}
+    assert detail["status_requirement"]["field"] == "won_status"
+    assert detail["status_requirement"]["allowed_values"] == ["ready"]
+
+
+@pytest.mark.asyncio
+async def test_create_client_reuses_existing_client_without_running_automation(monkeypatch):
+    # Idempotency: when the lead already references a client, create_client
+    # returns the existing record and never re-runs the won automation.
+    lead = _lead(
+        current_stage="Won",
+        status=ProspectStatus.WON,
+        won_status="payment_pending",
+        client_id="client-9",
+        project_id="project-9",
+    )
+
+    async def fake_load_won(current_user, lead_id):
+        return lead
+
+    async def fake_client_get(client_id):
+        return SimpleNamespace(id=client_id, name="Alpha")
+
+    async def fake_run_automation(current_user, prospect, company_id):
+        raise AssertionError("automation must not re-run when the client ref already exists")
+
+    monkeypatch.setattr("app.crm.conversion._load_won_lead", fake_load_won)
+    monkeypatch.setattr("app.crm.conversion.Client.get", fake_client_get)
+    monkeypatch.setattr("app.crm.conversion._run_won_automation", fake_run_automation)
+
+    result = await LeadConversionService.create_client(_user(), "lead-1")
+    assert result["client"]["status"] == "reused"
+    assert result["client"]["id"] == "client-9"
+
+
 # ── Canonical config sanity ────────────────────────────────────────────────────
 
 

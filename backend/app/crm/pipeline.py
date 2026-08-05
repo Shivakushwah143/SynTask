@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException, status
 
@@ -187,41 +190,191 @@ def _is_override_role(current_user: User) -> bool:
     return current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]
 
 
-async def _validate_stage_entry(current_user: User, prospect: SalesProspect, target_stage: PipelineStage) -> None:
-    """Enforce the sequential journey gates for a normal user moving to `target_stage`."""
+# Human-readable metadata for the editable fields a stage gate may ask for.
+# The frontend popup renders exactly these fields (see salesTransition.js).
+STAGE_GATE_FIELD_META: Dict[str, Dict[str, str]] = {
+    "budget": {"label": "Budget", "type": "currency"},
+    "decision_maker": {"label": "Decision Maker", "type": "text"},
+    "timeline": {"label": "Timeline", "type": "text"},
+    "discovery_outcome": {"label": "Discovery Outcome", "type": "select"},
+    "qualify_status": {"label": "Qualification Status", "type": "select"},
+    "proposal_status": {"label": "Proposal Status", "type": "select"},
+    "negotiation_status": {"label": "Negotiation Status", "type": "select"},
+    "agreement_status": {"label": "Agreement Status", "type": "select"},
+    "won_status": {"label": "Won Status", "type": "select"},
+    "account_manager_id": {"label": "Account Manager", "type": "user"},
+    "client_id": {"label": "Client", "type": "reference"},
+    "company_name": {"label": "Company", "type": "text"},
+}
+
+
+_LAST_MISSING_STATUS_LABELS: Dict[str, str] = {
+    "qualify_status": "Qualification Status",
+    "discovery_outcome": "Discovery Outcome",
+    "proposal_status": "Proposal Status",
+    "negotiation_status": "Negotiation Status",
+    "agreement_status": "Agreement Status",
+    "won_status": "Won Status",
+    "current_stage_status": "Inner Status",
+}
+
+
+def _field_meta(field: str) -> Dict[str, str]:
+    meta = STAGE_GATE_FIELD_META.get(field, {})
+    return {
+        "field": field,
+        "label": meta.get("label") or field.replace("_", " ").title(),
+        "type": meta.get("type") or "text",
+    }
+
+
+def _transition_blocked(
+    *,
+    current_stage: str,
+    target_stage: str,
+    message: str,
+    missing_fields: Optional[List[Dict[str, Any]]] = None,
+    status_requirement: Optional[Dict[str, Any]] = None,
+    action_requirement: Optional[Dict[str, Any]] = None,
+) -> HTTPException:
+    """Structured business-validation blocker for a stage transition.
+
+    The `detail` stays a stable object so the frontend can classify the blocker
+    (missing details vs. status requirement vs. action requirement) instead of
+    parsing human text. The `message` key preserves the user-safe copy for
+    legacy consumers that only read the string.
+    """
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "code": "STAGE_TRANSITION_BLOCKED",
+            "severity": "warning",
+            "current_stage": current_stage,
+            "target_stage": target_stage,
+            "message": message,
+            "missing_fields": missing_fields or [],
+            "status_requirement": status_requirement,
+            "action_requirement": action_requirement,
+        },
+    )
+
+
+async def _validate_stage_entry(
+    current_user: User,
+    prospect: SalesProspect,
+    target_stage: PipelineStage,
+    current_stage_name: str,
+) -> None:
+    """Enforce the sequential journey gates for a normal user moving to `target_stage`.
+
+    Every blocker is raised as a structured STAGE_TRANSITION_BLOCKED response so
+    the frontend can open the required-details popup or show a warning without
+    parsing human text.
+    """
     requirements = STAGE_ENTRY_REQUIREMENTS.get(target_stage)
     if not requirements:
         return
+    target_stage_name = target_stage.value
     # The unified stage-status snapshot (current_stage_status) is accepted as a
     # source for the gates alongside the per-stage domain field — the two are kept
     # in sync by apply_stage_status_change.
     if "field" in requirements:
-        field_value = getattr(prospect, requirements["field"], None)
+        field = requirements["field"]
+        field_value = getattr(prospect, field, None)
         expected = requirements.get("expected")
+        # First-contact is an action requirement (record a contact activity), not
+        # an editable lead field. A lead already passes when contact evidence
+        # exists: an explicit first_contact_at, a last_contacted_at timestamp, or
+        # a recorded call/email/follow-up activity on the lead. This prevents
+        # leads that already have contact history (phone, call logs) from being
+        # blocked by the missing gate field.
+        if field == "first_contact_at":
+            contact_ok = bool(field_value) or bool(getattr(prospect, "last_contacted_at", None))
+            if not contact_ok:
+                try:
+                    activity_ok = await CRMActivity.find_one(
+                        {
+                            "company_id": str(getattr(prospect, "company_id", "") or ""),
+                            "entity_type": "lead",
+                            "entity_id": str(prospect.id),
+                            "activity_type": {"$in": ["call", "email", "follow_up", "meeting"]},
+                            "status": {"$in": ["completed", "in_progress"]},
+                        }
+                    )
+                    contact_ok = activity_ok is not None
+                except Exception:
+                    contact_ok = False
+            if not contact_ok:
+                raise _transition_blocked(
+                    current_stage=current_stage_name,
+                    target_stage=target_stage_name,
+                    message=requirements["message"],
+                    action_requirement={
+                        "field": "first_contact",
+                        "label": "First Contact",
+                        "message": "Record a call, email, WhatsApp attempt, or other supported contact activity before moving this lead to Qualify.",
+                    },
+                )
+            return
         if expected is not None:
             status_ok = _normalize_status_value(field_value) == expected
             status_ok = status_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) == expected
             if not status_ok:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=requirements["message"])
+                if not field_value:
+                    raise _transition_blocked(
+                        current_stage=current_stage_name,
+                        target_stage=target_stage_name,
+                        message=requirements["message"],
+                        missing_fields=[_field_meta(field)],
+                    )
+                raise _transition_blocked(
+                    current_stage=current_stage_name,
+                    target_stage=target_stage_name,
+                    message=requirements["message"],
+                    status_requirement={
+                        "field": field,
+                        "label": _LAST_MISSING_STATUS_LABELS.get(field, _field_meta(field)["label"]),
+                        "allowed_values": [expected],
+                        "current_value": field_value or getattr(prospect, "current_stage_status", None) or "",
+                    },
+                )
         elif not field_value:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=requirements["message"])
+            raise _transition_blocked(
+                current_stage=current_stage_name,
+                target_stage=target_stage_name,
+                message=requirements["message"],
+                missing_fields=[_field_meta(field)],
+            )
         return
     if "fields" in requirements:
         interest_ok = _normalize_status_value(getattr(prospect, "qualify_status", None)) in QUALIFY_READY_STATUSES
         interest_ok = interest_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) in QUALIFY_READY_STATUSES
         budget_ok = getattr(prospect, "budget", None) not in (None, "", 0)
         decision_ok = bool(getattr(prospect, "decision_maker", None))
-        missing = []
-        if not interest_ok:
-            missing.append("an Interested/Qualified status")
+        missing_fields = []
         if not budget_ok:
-            missing.append("a recorded budget")
+            missing_fields.append(_field_meta("budget"))
         if not decision_ok:
-            missing.append("an identified decision maker")
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot move to Discovery — missing {', '.join(missing)}.",
+            missing_fields.append(_field_meta("decision_maker"))
+        missing_labels = [item["label"] for item in missing_fields]
+        status_requirement = None
+        if not interest_ok:
+            status_requirement = {
+                "field": "qualify_status",
+                "label": "Qualification Status",
+                "allowed_values": sorted(QUALIFY_READY_STATUSES),
+                "current_value": getattr(prospect, "qualify_status", None) or getattr(prospect, "current_stage_status", None) or "",
+            }
+        if missing_fields or status_requirement:
+            parts = [item["label"] for item in missing_fields]
+            if status_requirement:
+                parts.append("an Interested/Qualified status")
+            raise _transition_blocked(
+                current_stage=current_stage_name,
+                target_stage=target_stage_name,
+                message=f"Cannot move to Discovery — missing {', '.join(parts)}.",
+                missing_fields=missing_fields,
+                status_requirement=status_requirement,
             )
         return
     if requirements.get("proposal_accepted"):
@@ -241,7 +394,17 @@ async def _validate_stage_entry(current_user: User, prospect: SalesProspect, tar
             except Exception:
                 accepted = False
         if not accepted:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=requirements["message"])
+            raise _transition_blocked(
+                current_stage=current_stage_name,
+                target_stage=target_stage_name,
+                message=requirements["message"],
+                status_requirement={
+                    "field": "proposal_status",
+                    "label": "Proposal Status",
+                    "allowed_values": ["accepted"],
+                    "current_value": getattr(prospect, "proposal_status", None) or getattr(prospect, "current_stage_status", None) or "",
+                },
+            )
         return
 
 
@@ -698,6 +861,38 @@ def _build_pipeline_summary(prospects: List[SalesProspect]) -> Dict[str, Any]:
     }
 
 
+async def _fetch_prospects_resilient(query: Dict[str, Any], limit: int) -> List[SalesProspect]:
+    """Fetch lead documents, skipping legacy records that fail model validation.
+
+    Dirty legacy documents (invalid emails, wrong value types, unknown enums)
+    must never take down the whole pipeline board. Validating each document
+    individually lets the board keep loading while the offending records are
+    cleaned up separately.
+    """
+    from pydantic import ValidationError
+
+    collection = SalesProspect.get_pymongo_collection()
+    raw_docs = await (
+        collection.find(query)
+        .sort([("updated_at", -1)])
+        .limit(limit)
+        .to_list(length=limit)
+    )
+    prospects: List[SalesProspect] = []
+    skipped = 0
+    for raw in raw_docs:
+        try:
+            prospects.append(SalesProspect.model_validate(raw))
+        except ValidationError:
+            skipped += 1
+    if skipped:
+        logger.warning(
+            "Skipped %s invalid sales_prospect document(s) while loading the pipeline; run scripts/cleanup_invalid_lead_emails.py to repair dirty records.",
+            skipped,
+        )
+    return prospects
+
+
 class CRMPipelineService:
     @staticmethod
     async def load_pipeline(current_user: User, limit: int = 500) -> Dict[str, Any]:
@@ -721,11 +916,23 @@ class CRMPipelineService:
 
         prospects_query = SalesProspect.find(query)
         total_prospects = await prospects_query.count()
-        ordered_prospects = SalesProspect.find(query).sort("-updated_at")
         try:
-            prospects = await ordered_prospects.to_list(length=safe_limit)
-        except TypeError:
-            prospects = (await ordered_prospects.to_list())[:safe_limit]
+            # Primary path: skip legacy documents that fail model validation so
+            # one dirty record can never 500 the whole board.
+            prospects = await _fetch_prospects_resilient(query, safe_limit)
+        except CollectionWasNotInitialized:
+            # Beanie-uninitialized fallback (unit tests patch SalesProspect.find
+            # but not the raw pymongo collection): the regular beanie fetch.
+            # Genuine DB/network failures are NOT caught here and surface as
+            # real technical errors instead of being masked by the legacy path.
+            logger.warning(
+                "Pipeline resilient fetch unavailable (beanie not initialized); falling back to the standard fetch."
+            )
+            ordered_prospects = SalesProspect.find(query).sort("-updated_at")
+            try:
+                prospects = await ordered_prospects.to_list(length=safe_limit)
+            except TypeError:
+                prospects = (await ordered_prospects.to_list())[:safe_limit]
         owner_ids = {
             str(prospect.assigned_to)
             for prospect in prospects
@@ -838,24 +1045,40 @@ class CRMPipelineService:
 
         current_stage = _resolve_stage_name(prospect.current_stage, stage_index) or prospect.current_stage
         if _normalize_stage_value(current_stage) == _normalize_stage_value(resolved_stage):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid transition")
+            raise _transition_blocked(
+                current_stage=current_stage,
+                target_stage=resolved_stage,
+                message=f"This lead is already in the {resolved_stage} stage.",
+            )
         if not _is_allowed_transition(current_stage, resolved_stage):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Illegal transition {current_stage} -> {resolved_stage}",
+            raise _transition_blocked(
+                current_stage=current_stage,
+                target_stage=resolved_stage,
+                message=f"Cannot skip stages: move {current_stage} leads through {resolved_stage} only via the required workflow sequence.",
+                action_requirement={
+                    "field": "stage_sequence",
+                    "label": "Stage Sequence",
+                    "message": "Move the lead through each stage in order (e.g. from Qualify to Discovery, not directly to Proposal).",
+                },
             )
 
         # A transferred lead can no longer move through sales stages.
         if getattr(prospect, "transferred_at", None):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This lead has been transferred to Clients and cannot move through sales stages anymore.",
+            raise _transition_blocked(
+                current_stage=current_stage,
+                target_stage=resolved_stage,
+                message="This lead has been transferred to Clients and cannot move through sales stages anymore.",
+                action_requirement={
+                    "field": "transfer",
+                    "label": "Client Handoff",
+                    "message": "Manage this client from the Clients module; the lead record is preserved for history.",
+                },
             )
 
         # Sequential journey gates: only managers/admins may force past them (never skip stages).
         target_enum = _resolve_pipeline_stage(resolved_stage)
         if target_enum and not (force and _is_override_role(current_user)):
-            await _validate_stage_entry(current_user, prospect, target_enum)
+            await _validate_stage_entry(current_user, prospect, target_enum, current_stage)
 
         now = utc_now()
         previous_entered_at = prospect.stage_entered_at or prospect.created_at or now

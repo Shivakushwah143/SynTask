@@ -934,7 +934,7 @@ Indexes: includes a partial unique `('company_id', 'meta_lead_id')` index for Me
 | `prospect_name` | `str` | Yes | No | Model field |
 | `country_code` | `str` | Yes | Yes | Model field |
 | `phone` | `Optional[Indexed[str]]` | No | Yes | Model field. Optional so bulk file import can create rows without a mobile number (no unique index — duplicates allowed). |
-| `email` | `Optional[EmailStr]` | No | No | Model field |
+| `email` | `Optional[str]` | No | No | Model field. Stored as a plain string on purpose — legacy/imported records may carry non-email values and reads must never 500. Write paths sanitize via `LeadEngine._sanitize_email`; invalid values are stored as `None`. Run `scripts/cleanup_invalid_lead_emails.py` once to clear existing dirty values. |
 | `contact_id` | `Optional[str]` | No | Yes | Model field |
 | `category_id` | `Optional[str]` | No | Yes | Model field |
 | `product_ids` | `List[str]` | No | No | Model field |

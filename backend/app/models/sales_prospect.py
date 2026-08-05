@@ -5,7 +5,7 @@ Legacy storage and import names remain for API and database compatibility.
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from beanie import Document, Indexed
-from pydantic import EmailStr, Field
+from pydantic import Field
 from enum import Enum
 from pymongo import ASCENDING, DESCENDING, TEXT, IndexModel
 
@@ -32,7 +32,12 @@ class SalesProspect(Document):
     prospect_name: Optional[str] = None  # Auto-generated: First + Last, or set manually
     country_code: Optional[str] = None  # Defaults to +91 if not provided
     phone: Optional[Indexed(str)] = None  # Optional for bulk file import
-    email: Optional[EmailStr] = None
+    # Email is stored as a plain string (not EmailStr) on purpose: legacy and
+    # imported records can carry dirty values (e.g. 'vghygcvghgv') that would
+    # make strict EmailStr validation fail at READ time and take down the whole
+    # pipeline board. Invalid values are sanitized to None on write paths
+    # (LeadEngine._sanitize_email); the model stays tolerant so reads never 500.
+    email: Optional[str] = None
     contact_id: Optional[str] = None  # If converted from existing contact
 
     # Sales-Specific Fields

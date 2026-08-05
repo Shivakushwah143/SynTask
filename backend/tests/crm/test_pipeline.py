@@ -4,10 +4,11 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from bson import ObjectId
 from fastapi import HTTPException
 
 from app.crm.pipeline import CRMPipelineService
-from app.models.sales_prospect import ProspectStatus
+from app.models.sales_prospect import ProspectStatus, SalesProspect
 from app.models.user import UserRole
 
 
@@ -164,6 +165,128 @@ async def test_load_pipeline_enforces_tenant_scope_for_writes(monkeypatch):
         {"assigned_to": "user-1"},
         {"assigned_by": "user-1"},
     ]
+
+
+def _stub_beanie_settings(monkeypatch, find_fn=None):
+    """Stub beanie's document settings so SalesProspect can be constructed and
+    model-validated without a live Mongo connection (beanie's Document.__init__
+    calls get_pymongo_collection() -> get_settings()).
+
+    find_fn: optional raw-collection find() callable for the resilient fetch.
+    """
+    from types import SimpleNamespace as _SimpleNamespace
+
+    collection = _SimpleNamespace()
+    if find_fn is not None:
+        collection.find = find_fn
+    monkeypatch.setattr(
+        "app.crm.pipeline.SalesProspect.get_settings",
+        classmethod(lambda cls: _SimpleNamespace(pymongo_collection=collection)),
+    )
+    return collection
+
+
+def test_model_tolerates_dirty_email_values(monkeypatch):
+    # A legacy document carrying a non-email string must parse fine — the model
+    # stores email as a plain string so one dirty record can never 500 reads.
+    _stub_beanie_settings(monkeypatch)
+    lead = SalesProspect.model_validate(
+        {
+            "_id": str(ObjectId()),
+            "assigned_to": "user-1",
+            "company_id": "company-1",
+            "email": "vghygcvghgv",
+            "current_stage": "new",
+        }
+    )
+    assert lead.email == "vghygcvghgv"
+
+
+def test_sanitize_email_clears_invalid_and_normalizes_valid():
+    from app.crm.lead_engine import _sanitize_email
+
+    assert _sanitize_email("vghygcvghgv") is None
+    assert _sanitize_email("") is None
+    assert _sanitize_email(None) is None
+    assert _sanitize_email("  Foo@Bar.COM ") == "foo@bar.com"
+
+
+@pytest.mark.asyncio
+async def test_load_pipeline_skips_invalid_legacy_documents(monkeypatch):
+    now = datetime.utcnow()
+
+    ok_id = str(ObjectId())
+
+    def make_raw(lead_id, status="active"):
+        return {
+            "_id": lead_id,
+            "assigned_to": "user-1",
+            "assigned_by": "user-2",
+            "company_id": "company-1",
+            "deleted": False,
+            "prospect_name": f"Lead {lead_id}",
+            "company_name": f"Company {lead_id}",
+            "current_stage": "new",
+            "status": status,
+            "interest_level": "warm",
+            "email": f"{lead_id}@example.com",
+            "phone": "111",
+            "country_code": "+91",
+            "tag": [],
+            "product_ids": [],
+            "created_at": now,
+            "updated_at": now,
+            "stage_entered_at": None,
+            "stage_last_changed_at": None,
+            "days_in_stage": 0,
+        }
+
+    # One valid document + one legacy document with an unknown status enum
+    # value that fails model validation and must be skipped, not crash the board.
+    raw_docs = [make_raw(ok_id), make_raw(str(ObjectId()), status="bogus_status")]
+
+    class FakeCursor:
+        def sort(self, *args, **kwargs):
+            return self
+
+        def limit(self, *args, **kwargs):
+            return self
+
+        async def to_list(self, **kwargs):
+            return raw_docs
+
+    class FakeCollection:
+        def find(self, query):
+            return FakeCursor()
+
+    async def fake_stage_documents(current_user):
+        return [{"id": None, "name": "Acquire", "order": 0, "is_default": True, "aliases": ["new"]}]
+
+    def fake_find(query):
+        return FakeQuery(raw_docs)  # count = total incl. dirty docs
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.find", fake_find)
+    _stub_beanie_settings(monkeypatch, find_fn=FakeCollection().find)
+    monkeypatch.setattr(
+        "app.crm.pipeline.User.find",
+        lambda query: FakeBeanieQuery([SimpleNamespace(id="user-1", first_name="Ada", last_name="Admin")]),
+    )
+    monkeypatch.setattr(
+        "app.crm.pipeline.CRMCompany.find",
+        lambda query: FakeBeanieQuery([]),
+    )
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.ADMIN)
+    pipeline = await CRMPipelineService.load_pipeline(user)
+
+    # The dirty document is skipped; only the valid lead reaches the board.
+    assert pipeline["summary"]["total_leads"] == 1
+    assert pipeline["leads_by_stage"]["Acquire"][0]["id"] == ok_id
+    # meta.total_leads is the raw count (incl. dirty docs) while the summary
+    # reflects validated leads only — the documented divergence.
+    assert pipeline["meta"]["total_leads"] == 2
+    assert pipeline["meta"]["has_more"] is True
 
 
 @pytest.mark.asyncio
@@ -596,7 +719,11 @@ async def test_acquire_cannot_move_to_qualify_before_first_contact(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         await CRMPipelineService.move_lead(user, "lead-1", "Qualify")
     assert exc_info.value.status_code == 400
-    assert "first contact" in exc_info.value.detail
+    assert exc_info.value.detail["code"] == "STAGE_TRANSITION_BLOCKED"
+    assert exc_info.value.detail["severity"] == "warning"
+    assert "first contact" in exc_info.value.detail["message"]
+    assert exc_info.value.detail["action_requirement"]["field"] == "first_contact"
+    assert exc_info.value.detail["target_stage"] == "Qualify"
     # The same lead, once a contact is recorded, may move to Qualify.
     lead.first_contact_at = datetime.utcnow()
 
@@ -614,6 +741,79 @@ async def test_acquire_cannot_move_to_qualify_before_first_contact(monkeypatch):
     result = await CRMPipelineService.move_lead(user, "lead-1", "Qualify")
     assert result["lead"]["current_stage"] == "Qualify"
     assert history_capture["item"].new_stage == "Qualify"
+
+
+async def _acquire_gate_mocks(monkeypatch, lead):
+    """Shared fakes for Acquire -> Qualify move tests."""
+
+    async def fake_stage_documents(current_user):
+        return [
+            {"name": "Acquire", "order": 0, "is_default": True, "aliases": ["new"]},
+            {"name": "Qualify", "order": 1, "is_default": False, "aliases": ["contacted"]},
+        ]
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_insert(self):
+        return self
+
+    async def fake_publish(**kwargs):
+        return SimpleNamespace(event_name=kwargs["event_name"])
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.pipeline.SalesPipelineHistory.insert", fake_insert)
+    monkeypatch.setattr("app.crm.pipeline.publish_crm_timeline_event", fake_publish)
+
+
+@pytest.mark.asyncio
+async def test_acquire_moves_to_qualify_with_last_contacted_evidence(monkeypatch):
+    # A lead that already has contact history (last_contacted_at set) but no
+    # explicit first_contact_at must NOT be blocked by the first-contact gate.
+    lead = _journey_lead(first_contact_at=None, last_contacted_at=datetime.utcnow())
+    await _acquire_gate_mocks(monkeypatch, lead)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.EMPLOYEE)
+    result = await CRMPipelineService.move_lead(user, "lead-1", "Qualify")
+    assert result["lead"]["current_stage"] == "Qualify"
+
+
+@pytest.mark.asyncio
+async def test_acquire_moves_to_qualify_with_recorded_call_activity(monkeypatch):
+    # A lead with a recorded call activity (no timestamps on the lead itself)
+    # also satisfies the first-contact requirement.
+    lead = _journey_lead(first_contact_at=None, last_contacted_at=None)
+    await _acquire_gate_mocks(monkeypatch, lead)
+
+    async def fake_find_one(query=None):
+        if query and query.get("entity_type") == "lead":
+            return SimpleNamespace(id="activity-1")
+        return None
+
+    monkeypatch.setattr("app.crm.pipeline.CRMActivity.find_one", fake_find_one)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.EMPLOYEE)
+    result = await CRMPipelineService.move_lead(user, "lead-1", "Qualify")
+    assert result["lead"]["current_stage"] == "Qualify"
+
+
+@pytest.mark.asyncio
+async def test_acquire_still_blocked_without_any_contact_evidence(monkeypatch):
+    lead = _journey_lead(first_contact_at=None, last_contacted_at=None)
+    await _acquire_gate_mocks(monkeypatch, lead)
+
+    async def fake_find_one(query=None):
+        return None
+
+    monkeypatch.setattr("app.crm.pipeline.CRMActivity.find_one", fake_find_one)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.EMPLOYEE)
+    with pytest.raises(HTTPException) as exc_info:
+        await CRMPipelineService.move_lead(user, "lead-1", "Qualify")
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "STAGE_TRANSITION_BLOCKED"
+    assert exc_info.value.detail["action_requirement"]["field"] == "first_contact"
 
 
 @pytest.mark.asyncio
@@ -636,7 +836,11 @@ async def test_qualify_cannot_move_to_discovery_without_interest_budget_decision
     with pytest.raises(HTTPException) as exc_info:
         await CRMPipelineService.move_lead(user, "lead-1", "Discovery")
     assert exc_info.value.status_code == 400
-    assert "missing" in exc_info.value.detail
+    assert exc_info.value.detail["code"] == "STAGE_TRANSITION_BLOCKED"
+    assert "missing" in exc_info.value.detail["message"]
+    # Budget and decision maker are editable details; interest is a status requirement.
+    assert {item["field"] for item in exc_info.value.detail["missing_fields"]} == {"budget", "decision_maker"}
+    assert exc_info.value.detail["status_requirement"]["field"] == "qualify_status"
 
     lead.qualify_status = "interested"
     lead.budget = 250000
@@ -675,7 +879,10 @@ async def test_agreement_cannot_move_to_won_before_signature(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         await CRMPipelineService.move_lead(user, "lead-1", "Won")
     assert exc_info.value.status_code == 400
-    assert "agreement must be signed" in exc_info.value.detail
+    assert exc_info.value.detail["code"] == "STAGE_TRANSITION_BLOCKED"
+    assert "agreement must be signed" in exc_info.value.detail["message"]
+    assert exc_info.value.detail["status_requirement"]["field"] == "agreement_status"
+    assert exc_info.value.detail["status_requirement"]["allowed_values"] == ["signed"]
 
     lead.agreement_status = "signed"
     lead.saved = False
@@ -748,7 +955,9 @@ async def test_manager_can_force_past_stage_gate_but_not_skip_stages(monkeypatch
     with pytest.raises(HTTPException) as exc_info:
         await CRMPipelineService.move_lead(manager, "lead-2", "Proposal", force=True)
     assert exc_info.value.status_code == 400
-    assert "Illegal transition" in exc_info.value.detail
+    assert exc_info.value.detail["code"] == "STAGE_TRANSITION_BLOCKED"
+    assert "skip stages" in exc_info.value.detail["message"]
+    assert exc_info.value.detail["action_requirement"]["field"] == "stage_sequence"
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,13 @@ import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, EmptyState, LoadingSpinner, inputClassName } from '../../../components/ui'
+import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
+import {
+  TRANSITION_BLOCKER,
+  TRANSITION_WARNING_TOAST,
+  buildStatusWarningMessage,
+  classifyTransitionFailure,
+} from '../../../utils/salesTransition'
 import { formatCurrency, formatShortDate, getCanonicalPipelineStageKey, getLeadContactLabel, getLeadOwnerLabel, getLeadStageStatus, getLeadTags, getStageStatusLabel, getStageStatusOptions } from '../pipeline/utils'
 import { asArray } from '../../phase4Utils'
 import { LeadFilesTab } from './files'
@@ -55,7 +62,7 @@ const STAGE_GATE = {
     nextKey: 'qualify',
     nextLabel: 'Qualify',
     requirements: (lead) => [
-      { label: 'First contact recorded', met: Boolean(lead?.first_contact_at) },
+      { label: 'First contact recorded', met: Boolean(lead?.first_contact_at) || Boolean(lead?.last_contacted_at) },
     ],
     hint: 'Record a first contact attempt before moving to Qualify.',
   },
@@ -784,10 +791,158 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const stageStatusLabel = getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead))
   const [stageStatus, setStageStatus] = useState(() => getLeadStageStatus(lead))
   const [accountManagerId, setAccountManagerId] = useState(lead?.account_manager_id || '')
+  const [requirementsDialog, setRequirementsDialog] = useState(null)
   const queryClient = useQueryClient()
   const refreshWorkspace = () => {
     queryClient.invalidateQueries(['crm-lead-workspace', lead?.id], { exact: true })
     queryClient.invalidateQueries('crm-pipeline-board')
+  }
+
+  // ── Guided stage-transition validation (shared classifier) ────────────────
+  // Business blockers (missing details / status / action) show the popup or a
+  // warning; only genuine technical failures surface as error toasts.
+  const handleSidebarTransitionError = (error, { mode, targetStageKey }) => {
+    const blocker = classifyTransitionFailure(error, mode === 'transfer' ? 'Transfer failed' : 'Stage update failed')
+    if (blocker.category === TRANSITION_BLOCKER.MISSING_DETAILS) {
+      setRequirementsDialog({ blocker, mode, targetStageKey })
+      return
+    }
+    if (
+      blocker.category === TRANSITION_BLOCKER.STATUS_REQUIREMENT
+      || blocker.category === TRANSITION_BLOCKER.ACTION_REQUIREMENT
+    ) {
+      toast(buildStatusWarningMessage(blocker) || blocker.message, TRANSITION_WARNING_TOAST)
+      return
+    }
+    if (blocker.category === TRANSITION_BLOCKER.PERMISSION_DENIED) {
+      toast(blocker.message, { icon: '🔒', ...TRANSITION_WARNING_TOAST })
+      return
+    }
+    toast.error(blocker.message)
+  }
+
+  // Persist only the fields the popup rendered (account manager goes through the
+  // existing conversion action so transfer rules are not bypassed).
+  const saveDialogFieldsOnly = async (values) => {
+    const leadId = lead?.id
+    if (!leadId) return
+    const entries = Object.entries(values || {})
+    const accountManagerEntry = entries.find(([key]) => key === 'account_manager_id')
+    if (accountManagerEntry && accountManagerEntry[1]) {
+      await crmApi.updateLeadConversion(leadId, {
+        action: 'assign_account_manager',
+        payload: { user_id: accountManagerEntry[1] },
+      })
+    }
+    const leadFields = entries.filter(([key]) => key !== 'account_manager_id')
+    if (leadFields.length) {
+      await salesApi.updateLeadForm(leadId, Object.fromEntries(leadFields))
+    }
+  }
+
+  const handleDialogSaveFields = async (values) => {
+    try {
+      await saveDialogFieldsOnly(values)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Unable to save details')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) toast.error(blocker.message)
+      else toast(blocker.message, TRANSITION_WARNING_TOAST)
+      throw error
+    }
+    refreshWorkspace()
+    toast.success('Details saved')
+    setRequirementsDialog(null)
+  }
+
+  const handleStageSaveAndMove = async (values) => {
+    const leadId = lead?.id
+    const targetStageKey = requirementsDialog?.targetStageKey
+    if (!leadId || !targetStageKey) return
+    try {
+      await saveDialogFieldsOnly(values)
+      await crmApi.updatePipelineStage(leadId, { stage: targetStageKey })
+      toast.success('Lead stage updated')
+      refreshWorkspace()
+      setRequirementsDialog(null)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Stage update failed')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) {
+        setRequirementsDialog(null)
+        toast.error(blocker.message)
+      } else {
+        setRequirementsDialog((current) => ({ ...current, blocker }))
+      }
+    }
+  }
+
+  const handleTransferSaveAndMove = async (values) => {
+    const leadId = lead?.id
+    if (!leadId) return
+    try {
+      await saveDialogFieldsOnly(values)
+      await crmApi.transferLeadToClients(leadId)
+      toast.success('Lead transferred to Clients')
+      refreshWorkspace()
+      setRequirementsDialog(null)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Transfer failed')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) {
+        setRequirementsDialog(null)
+        toast.error(blocker.message)
+      } else {
+        setRequirementsDialog((current) => ({ ...current, blocker }))
+      }
+    }
+  }
+
+  const handleDialogSaveAndMove = (values) => {
+    if (requirementsDialog?.mode === 'transfer') return handleTransferSaveAndMove(values)
+    return handleStageSaveAndMove(values)
+  }
+
+  // Won -> Clients: complete the missing handoff records inline, then re-attempt
+  // the transfer so the popup closes only when every rule passes.
+  const handleCreateClientFromDialog = async () => {
+    const leadId = lead?.id
+    if (!leadId) return
+    try {
+      // Reuse the existing conversion mutation so the popup button shows the
+      // real loading state and the success handler refreshes the workspace.
+      await conversionMutation.mutateAsync({ action: 'create_client' })
+      await crmApi.transferLeadToClients(leadId)
+      toast.success('Lead transferred to Clients')
+      setRequirementsDialog(null)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Transfer failed')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) {
+        setRequirementsDialog(null)
+        toast.error(blocker.message)
+      } else {
+        setRequirementsDialog((current) => ({ ...current, blocker }))
+      }
+    }
+  }
+
+  const dialogContextActions = requirementsDialog?.mode === 'transfer'
+    ? (requirementsDialog.blocker?.missingFields || []).some((item) => item.field === 'client_id')
+      ? [{
+          key: 'create_client',
+          label: 'Create Client',
+          loading: conversionMutation.isLoading,
+          onClick: handleCreateClientFromDialog,
+        }]
+      : []
+    : []
+
+  const handleMoveToNextStage = async () => {
+    if (!gate?.nextKey || !lead?.id) return
+    try {
+      await crmApi.updatePipelineStage(lead.id, { stage: gate.nextKey })
+      toast.success('Lead stage updated')
+      refreshWorkspace()
+    } catch (error) {
+      handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: gate.nextKey })
+    }
   }
 
   useEffect(() => {
@@ -809,7 +964,10 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       toast.success('Lead stage updated')
       refreshWorkspace()
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Stage update failed'),
+    onError: (error) => handleSidebarTransitionError(error, {
+      mode: 'stage',
+      targetStageKey: getCanonicalPipelineStageKey(form.current_stage),
+    }),
   })
 
   const saveMutation = useMutation((payload) => salesApi.updateLeadForm(lead?.id, payload), {
@@ -824,7 +982,11 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
         toast.success(data?.message || 'Conversion action completed')
         refreshWorkspace()
       },
-      onError: (error) => toast.error(error?.response?.data?.detail || 'Conversion action failed'),
+      onError: (error) => {
+        const message = error?.response?.data?.detail || 'Conversion action failed'
+        if (error?.response?.status === 400) toast(message, TRANSITION_WARNING_TOAST)
+        else toast.error(message)
+      },
     },
   )
 
@@ -833,7 +995,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       toast.success(data?.message || 'Lead transferred to Clients')
       refreshWorkspace()
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Transfer failed'),
+    onError: (error) => handleSidebarTransitionError(error, { mode: 'transfer', targetStageKey: 'clients' }),
   })
 
   const statusMutation = useMutation((status) => crmApi.updateStageStatus(lead?.id, status), {
@@ -841,7 +1003,11 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       toast.success('Stage status updated')
       refreshWorkspace()
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Status update failed'),
+    onError: (error) => {
+      const message = error?.response?.data?.detail || 'Status update failed'
+      if (error?.response?.status === 400) toast(message, TRANSITION_WARNING_TOAST)
+      else toast.error(message)
+    },
   })
 
   const saveStageStatus = () => {
@@ -950,9 +1116,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
               type="button"
               variant="primary"
               className="mt-4 w-full justify-center shadow-sm"
-              onClick={() => stageMutation.mutate(gate.nextKey)}
-              loading={stageMutation.isLoading}
-              disabled={!gateReady}
+              onClick={handleMoveToNextStage}
               title={gateReady ? `Move this lead to ${gate.nextLabel}` : gate.hint}
             >
               <ArrowRight className="h-4 w-4" />
@@ -1078,6 +1242,17 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
           <LeadSidebarMiniTile icon={Wand2} title="AI" value="Open AI tab" />
         </div>
       </LeadSidebarPanel>
+
+      <StageRequirementsDialog
+        open={Boolean(requirementsDialog)}
+        blocker={requirementsDialog?.blocker}
+        lead={lead}
+        users={users}
+        onClose={() => setRequirementsDialog(null)}
+        onSaveFields={handleDialogSaveFields}
+        onSaveAndMove={handleDialogSaveAndMove}
+        contextActions={dialogContextActions}
+      />
     </div>
   )
 })

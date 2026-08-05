@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, ChevronDown, Filter, MoreHorizontal, MoveRight, RefreshCw, Sparkles } from 'lucide-react'
+import { AlertCircle, ChevronDown, Filter, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
@@ -346,6 +346,7 @@ export const PipelineBoard = memo(function PipelineBoard({
   users = [],
   onMoveLeadToStage,
   onUpdateStageStatus,
+  onRecordContact,
   getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
@@ -385,6 +386,7 @@ export const PipelineBoard = memo(function PipelineBoard({
               users={users}
               onMoveLeadToStage={onMoveLeadToStage}
               onUpdateStageStatus={onUpdateStageStatus}
+              onRecordContact={onRecordContact}
               getAllowedStageKeys={getAllowedStageKeys}
               onCopyLeadId={onCopyLeadId}
               onLeadSelect={onLeadSelect}
@@ -405,6 +407,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   statusUpdatingId = null,
   onMoveLeadToStage,
   onUpdateStageStatus,
+  onRecordContact,
   onCopyLeadId,
   onLeadSelect,
   onResetFilters,
@@ -510,6 +513,17 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex flex-wrap gap-2">
+                      {getStageKey(stage) === 'acquire' && !lead.first_contact_at && !lead.last_contacted_at ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onRecordContact?.(lead)}
+                        >
+                          <Phone className="h-4 w-4" />
+                          Record contact
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="secondary"
@@ -558,6 +572,7 @@ export const PipelineColumn = memo(function PipelineColumn({
   movingLeadId = null,
   statusUpdatingId = null,
   users = [],
+  onRecordContact,
   onMoveLeadToStage,
   onUpdateStageStatus,
   getAllowedStageKeys,
@@ -612,6 +627,7 @@ export const PipelineColumn = memo(function PipelineColumn({
                 users={users}
                 onMoveLeadToStage={onMoveLeadToStage}
                 onUpdateStageStatus={onUpdateStageStatus}
+                onRecordContact={onRecordContact}
                 allowedStageKeys={allowedStageKeys}
                 onCopyLeadId={onCopyLeadId}
                 onLeadSelect={onLeadSelect}
@@ -650,6 +666,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   users = [],
   onMoveLeadToStage,
   onUpdateStageStatus,
+  onRecordContact,
   allowedStageKeys = new Set(),
   onCopyLeadId,
   onLeadSelect,
@@ -788,6 +805,15 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           setMenuOpen(false)
         }}
       />
+      {getStageKey(stage) === 'acquire' && !lead.first_contact_at && !lead.last_contacted_at ? (
+        <ActionItem
+          label="Record contact attempt"
+          onClick={() => {
+            onRecordContact?.(lead)
+            setMenuOpen(false)
+          }}
+        />
+      ) : null}
       {stageActions.map((action) => (
         <ActionItem
           key={`${action.key}-${action.label}`}
@@ -904,6 +930,18 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
       ) : null}
 
       <div className={pipelineLeadCardClassNames.actions}>
+        {getStageKey(stage) === 'acquire' && !lead.first_contact_at && !lead.last_contacted_at ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className={pipelineLeadCardClassNames.nextButton}
+            onClick={() => onRecordContact?.(lead)}
+          >
+            <Phone className="h-4 w-4" />
+            Record contact
+          </Button>
+        ) : null}
         {canMoveNext ? (
           <Button
             type="button"

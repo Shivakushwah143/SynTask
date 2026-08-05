@@ -64,6 +64,14 @@ import {
   stageOptionsFromBoard,
 } from './utils'
 import { sanitizeLocalPhone, parsePhonePaste } from '../../../components/ui/phoneUtils'
+import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
+import { ContactAttemptDialog } from '../../../components/sales/ContactAttemptDialog'
+import {
+  TRANSITION_BLOCKER,
+  TRANSITION_WARNING_TOAST,
+  buildStatusWarningMessage,
+  classifyTransitionFailure,
+} from '../../../utils/salesTransition'
 
 // ============================================================
 // CONSTANTS & HELPERS
@@ -139,6 +147,8 @@ export default function CRMPipelinePage() {
   const productsQuery = useQuery('crm-lead-products', salesApi.getProducts, { staleTime: 5 * 60 * 1000 })
   const [activeLeadId, setActiveLeadId] = useState(null)
   const [dragOverlayLead, setDragOverlayLead] = useState(null)
+  const [requirementsDialog, setRequirementsDialog] = useState(null)
+  const [contactAttemptLead, setContactAttemptLead] = useState(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -349,6 +359,33 @@ export default function CRMPipelinePage() {
     createLeadMutation.mutate(payload)
   }, [createForm, createLeadMutation, defaultOwnerId])
 
+  // Shared failure handling for stage-movement attempts. Business validation
+  // blockers open the required-details popup or show a warning; only genuine
+  // technical failures surface as error toasts.
+  const handleMoveFailure = (error, variables) => {
+    const blocker = classifyTransitionFailure(error, 'Failed to update lead stage')
+    if (blocker.category === TRANSITION_BLOCKER.MISSING_DETAILS) {
+      setRequirementsDialog({
+        blocker,
+        lead: variables?.lead,
+        targetStageKey: variables?.stageKey,
+      })
+      return
+    }
+    if (
+      blocker.category === TRANSITION_BLOCKER.STATUS_REQUIREMENT
+      || blocker.category === TRANSITION_BLOCKER.ACTION_REQUIREMENT
+    ) {
+      toast(buildStatusWarningMessage(blocker) || blocker.message, TRANSITION_WARNING_TOAST)
+      return
+    }
+    if (blocker.category === TRANSITION_BLOCKER.PERMISSION_DENIED) {
+      toast(blocker.message, { icon: '🔒', ...TRANSITION_WARNING_TOAST })
+      return
+    }
+    toast.error(blocker.message)
+  }
+
   const moveLeadMutation = useMutation(
     ({ leadId, stageKey }) => crmApi.updatePipelineStage(leadId, { stage: stageKey }),
     {
@@ -369,7 +406,7 @@ export default function CRMPipelinePage() {
         if (context?.previousBoard) {
           queryClient.setQueryData(PIPELINE_QUERY_KEY, context.previousBoard)
         }
-        toast.error(error?.response?.data?.detail || 'Failed to update lead stage')
+        handleMoveFailure(error, variables)
       },
       onSuccess: (response) => {
         const updatedLead = response?.lead || response?.data?.lead || response?.updatedLead || response
@@ -391,11 +428,65 @@ export default function CRMPipelinePage() {
     const targetStage = interactiveStages.find((stage) => stage.key === nextStageKey)
     if (sourceStage?.key === nextStageKey) return
     if (sourceStage && targetStage && !isAllowedPipelineTransition(sourceStage, targetStage)) {
-      toast.error(`Move ${sourceStage.name} leads to ${targetStage.name} through the required workflow steps.`)
+      toast(`Move ${sourceStage.name} leads to ${targetStage.name} through the required workflow steps.`, TRANSITION_WARNING_TOAST)
       return
     }
-    return moveLeadMutation.mutateAsync({ leadId, stageKey: nextStageKey, lead })
+    // onError already handles rollback + dialog/warning; swallow the rejection
+    // so board buttons and drag-and-drop never produce an unhandled promise.
+    return moveLeadMutation.mutateAsync({ leadId, stageKey: nextStageKey, lead }).catch(() => {})
   }, [interactiveStages, moveLeadMutation])
+
+  // ── Required-details dialog (guided validation) ────────────────────────────
+  // Save Details: persists only the missing editable fields, keeps the lead on
+  // its current stage. Save and Move Forward: persists, then re-runs the
+  // transition; the lead moves only when every backend rule passes.
+  const handleDialogSaveFields = async (values) => {
+    const leadId = requirementsDialog?.lead?.id || requirementsDialog?.lead?._id
+    if (!leadId) return
+    try {
+      await salesApi.updateLeadForm(leadId, values)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Unable to save details')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) toast.error(blocker.message)
+      else toast(blocker.message, TRANSITION_WARNING_TOAST)
+      throw error
+    }
+    queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+    queryClient.invalidateQueries('crm-leads-entry')
+    queryClient.invalidateQueries('sales-prospects')
+    toast.success('Details saved')
+    setRequirementsDialog(null)
+  }
+
+  const handleDialogSaveAndMove = async (values) => {
+    const leadId = requirementsDialog?.lead?.id || requirementsDialog?.lead?._id
+    const stageKey = requirementsDialog?.targetStageKey
+    if (!leadId || !stageKey) return
+    try {
+      await salesApi.updateLeadForm(leadId, values)
+      await crmApi.updatePipelineStage(leadId, { stage: stageKey })
+      queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+      queryClient.invalidateQueries('crm-leads-entry')
+      queryClient.invalidateQueries('sales-prospects')
+      queryClient.invalidateQueries(['crm-pipeline-history', leadId], { exact: true })
+      toast.success('Lead moved successfully! 🚀')
+      setRequirementsDialog(null)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Failed to update lead stage')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) {
+        setRequirementsDialog(null)
+        toast.error(blocker.message)
+      } else {
+        // Keep the popup open with the updated blocker (e.g. remaining status rule)
+        // and merge the just-saved values into the dialog's lead context.
+        setRequirementsDialog((current) => ({
+          ...current,
+          blocker,
+          lead: { ...(current?.lead || {}), ...values },
+        }))
+      }
+    }
+  }
 
   const updateStatusMutation = useMutation(
     ({ leadId, stageStatus }) => crmApi.updateStageStatus(leadId, stageStatus),
@@ -415,6 +506,54 @@ export default function CRMPipelinePage() {
       },
     }
   )
+
+  // ── Record Contact Attempt (Acquire) ──────────────────────────────────────
+  // Creates a real call/email activity and backfills the lead's contact
+  // timestamps; the backend then treats the first-contact gate as satisfied.
+  const recordContactMutation = useMutation(
+    async ({ leadId, method, notes }) => {
+      // The lead timestamp is the source of truth for the first-contact gate;
+      // the activity is the audit trail (types: call / email / follow_up).
+      await salesApi.updateLeadForm(leadId, { last_contacted_at: new Date().toISOString() })
+      const activityType = method === 'email' ? 'email' : method === 'call' ? 'call' : 'follow_up'
+      const title = method === 'email'
+        ? 'First contact email'
+        : method === 'call'
+          ? 'First contact call'
+          : `First contact via ${method}`
+      await crmApi.createActivity({
+        entity_type: 'lead',
+        entity_id: leadId,
+        activity_type: activityType,
+        title,
+        description: notes || `First contact attempt recorded via ${method}.`,
+        status: 'completed',
+      })
+    },
+    {
+      onSuccess: () => {
+        toast.success('Contact attempt recorded')
+        setContactAttemptLead(null)
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to record contact attempt')
+      },
+    }
+  )
+
+  const handleRecordContact = useCallback((lead) => {
+    if (!lead?.id && !lead?._id) return
+    setContactAttemptLead(lead)
+  }, [])
+
+  const handleContactSubmit = useCallback((method, notes) => {
+    const leadId = contactAttemptLead?.id || contactAttemptLead?._id
+    if (!leadId) return
+    recordContactMutation.mutate({ leadId, method, notes })
+  }, [contactAttemptLead, recordContactMutation])
 
   const handleStageStatusChange = useCallback((lead, nextStatus) => {
     const leadId = lead?.id || lead?._id
@@ -818,6 +957,7 @@ export default function CRMPipelinePage() {
               statusUpdatingId={updateStatusMutation.isLoading ? updateStatusMutation.variables?.leadId : null}
               onMoveLeadToStage={handleLeadMove}
               onUpdateStageStatus={handleStageStatusChange}
+              onRecordContact={handleRecordContact}
               onCopyLeadId={handleCopyLeadId}
               onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
               onResetFilters={clearFilters}
@@ -840,6 +980,7 @@ export default function CRMPipelinePage() {
                 users={users}
                 onMoveLeadToStage={handleLeadMove}
                 onUpdateStageStatus={handleStageStatusChange}
+                onRecordContact={handleRecordContact}
                 getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, interactiveStages)}
                 onCopyLeadId={handleCopyLeadId}
                 onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
@@ -895,6 +1036,35 @@ export default function CRMPipelinePage() {
           />
         </div>
       </div>
+
+      {/* ============================================================ */}
+      {/* RECORD CONTACT ATTEMPT - Acquire stage quick action */}
+      {/* ============================================================ */}
+      <ContactAttemptDialog
+        open={Boolean(contactAttemptLead)}
+        lead={contactAttemptLead}
+        onClose={() => setContactAttemptLead(null)}
+        onRecord={handleContactSubmit}
+        saving={recordContactMutation.isLoading}
+      />
+
+      {/* ============================================================ */}
+      {/* REQUIRED DETAILS DIALOG - Guided stage-transition validation */}
+      {/* ============================================================ */}
+      <StageRequirementsDialog
+        open={Boolean(requirementsDialog)}
+        blocker={requirementsDialog?.blocker}
+        lead={requirementsDialog?.lead}
+        users={users}
+        onClose={() => setRequirementsDialog(null)}
+        onSaveFields={handleDialogSaveFields}
+        onSaveAndMove={handleDialogSaveAndMove}
+        onOpenLeadEditor={() => {
+          const leadId = requirementsDialog?.lead?.id || requirementsDialog?.lead?._id
+          setRequirementsDialog(null)
+          if (leadId) navigate(`/crm/leads/${leadId}`)
+        }}
+      />
 
       {/* ============================================================ */}
       {/* CREATE LEAD MODAL - Beautiful Glassmorphism */}

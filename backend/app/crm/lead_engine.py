@@ -313,7 +313,9 @@ class LeadNormalizer:
         normalized["prospect_name"] = _normalize_text(normalized.get("prospect_name")) or full_name or "Unknown Lead"
         normalized["country_code"] = _normalize_text(normalized.get("country_code")) or "+91"
         normalized["phone"] = _normalize_text(normalized.get("phone"))
-        normalized["email"] = _normalize_text(normalized.get("email")).lower() or None
+        # Dirty email values (e.g. 'vghygcvghgv') are cleared to None so they can
+        # never poison later reads of the pipeline / leads endpoints.
+        normalized["email"] = _sanitize_email(normalized.get("email"))
         normalized["remark"] = _normalize_text(normalized.get("remark")) or None
         normalized["company_name"] = _normalize_text(normalized.get("company_name")) or None
         normalized["crm_company_id"] = _normalize_text(normalized.get("crm_company_id")) or None
@@ -881,7 +883,9 @@ class LeadEngine:
         if "phone" in payload and payload["phone"] is not None:
             prospect.phone = _normalize_text(payload["phone"])
         if "email" in payload:
-            prospect.email = _normalize_text(payload["email"]).lower() or None
+            # Same sanitization as creation/import: invalid values become None
+            # instead of being persisted as junk that breaks future reads.
+            prospect.email = _sanitize_email(payload["email"])
         if "contact_id" in payload:
             prospect.contact_id = payload["contact_id"] or None
         if "category_id" in payload:
