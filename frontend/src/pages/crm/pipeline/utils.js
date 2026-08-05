@@ -1,4 +1,3 @@
-import { format } from 'date-fns'
 import { timeService } from '@/services/timeService'
 
 export const PIPELINE_FILTER_KEYS = ['q', 'owner', 'priority', 'tags', 'minValue', 'maxValue', 'createdFrom', 'createdTo', 'stage']
@@ -127,15 +126,19 @@ export const getStageKey = (stage) => normalizeText(stage?.key || stage?.name ||
 
 export const getStageLabel = (stage) => stage?.name || stage?.label || stage?.title || stage?.key || stage?.id || 'Stage'
 
+// Guided sales journey stages. Legacy values (new/contacted/qualified) map onto the
+// canonical Acquire/Qualify stages so existing leads keep their meaning.
 const PIPELINE_STAGE_ALIASES = {
-  lead: 'new',
-  new: 'new',
-  contacted: 'contacted',
-  'follow-up': 'contacted',
-  'follow up': 'contacted',
-  'follow up call': 'contacted',
-  qualified: 'qualified',
-  qualification: 'qualified',
+  acquire: 'acquire',
+  lead: 'acquire',
+  new: 'acquire',
+  qualify: 'qualify',
+  contacted: 'qualify',
+  'follow-up': 'qualify',
+  'follow up': 'qualify',
+  'follow up call': 'qualify',
+  qualified: 'qualify',
+  qualification: 'qualify',
   discovery: 'discovery',
   meeting: 'discovery',
   'discovery scheduled': 'discovery',
@@ -144,20 +147,21 @@ const PIPELINE_STAGE_ALIASES = {
   proposal: 'proposal',
   'proposal sent': 'proposal',
   negotiation: 'negotiation',
+  agreement: 'agreement',
   won: 'won',
   client: 'won',
   lost: 'lost',
 }
 
 export const PIPELINE_ALLOWED_TRANSITIONS = {
-  new: ['contacted', 'qualified', 'lost'],
-  contacted: ['qualified', 'lost'],
-  qualified: ['discovery', 'lost'],
+  acquire: ['qualify', 'lost'],
+  qualify: ['discovery', 'lost'],
   discovery: ['proposal', 'lost'],
   proposal: ['negotiation', 'lost'],
-  negotiation: ['won', 'lost'],
+  negotiation: ['agreement', 'lost'],
+  agreement: ['won', 'lost'],
   won: [],
-  lost: ['new'],
+  lost: ['acquire'],
 }
 
 export const getCanonicalPipelineStageKey = (value) => {

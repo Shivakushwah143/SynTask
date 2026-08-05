@@ -47,12 +47,12 @@ DEFAULT_SOURCE_LABELS = {
     "website": "website_form",
 }
 DEFAULT_STAGE_LOOKUP = {
-    "new": "New",
-    "lead": "New",
-    "contacted": "Contacted",
-    "follow up": "Contacted",
-    "follow up call": "Contacted",
-    "qualified": "Qualified",
+    "new": "Acquire",
+    "lead": "Acquire",
+    "contacted": "Qualify",
+    "follow up": "Qualify",
+    "follow up call": "Qualify",
+    "qualified": "Qualify",
     "discovery": "Discovery",
     "discovery scheduled": "Discovery",
     "discovery completed": "Discovery",
@@ -61,6 +61,7 @@ DEFAULT_STAGE_LOOKUP = {
     "proposal": "Proposal",
     "proposal sent": "Proposal",
     "negotiation": "Negotiation",
+    "agreement": "Agreement",
     "won": "Won",
     "closed won": "Won",
     "lost": "Lost",
@@ -315,6 +316,25 @@ class LeadNormalizer:
         normalized["source"] = normalized.get("source") or source
         normalized["current_stage"] = _normalize_text(normalized.get("current_stage") or "new")
         normalized["status"] = _normalize_text(normalized.get("status") or ProspectStatus.ACTIVE.value).lower()
+
+        # ── Sales journey fields (passed through, kept lenient) ──
+        for key in [
+            "industry", "requirement", "timeline", "decision_maker", "location",
+            "pain_points", "current_agency", "num_employees",
+            "qualify_status", "discovery_outcome", "discovery_notes",
+            "proposal_status", "negotiation_status", "negotiation_notes",
+            "agreement_status", "next_action",
+        ]:
+            value = normalized.get(key)
+            normalized[key] = _normalize_text(value) if value is not None else None
+        budget = normalized.get("budget")
+        if budget is not None and budget != "":
+            try:
+                normalized["budget"] = float(budget)
+            except (TypeError, ValueError):
+                normalized["budget"] = None
+        else:
+            normalized["budget"] = None
         return normalized
 
     @staticmethod
@@ -726,6 +746,24 @@ class LeadEngine:
             deleted=False,
             created_at=normalized["created_at"],
             updated_at=normalized["updated_at"],
+            # Sales journey fields
+            industry=normalized.get("industry"),
+            requirement=normalized.get("requirement"),
+            budget=normalized.get("budget"),
+            timeline=normalized.get("timeline"),
+            decision_maker=normalized.get("decision_maker"),
+            location=normalized.get("location"),
+            pain_points=normalized.get("pain_points"),
+            current_agency=normalized.get("current_agency"),
+            num_employees=normalized.get("num_employees"),
+            qualify_status=normalized.get("qualify_status"),
+            discovery_outcome=normalized.get("discovery_outcome"),
+            discovery_notes=normalized.get("discovery_notes"),
+            proposal_status=normalized.get("proposal_status"),
+            negotiation_status=normalized.get("negotiation_status"),
+            negotiation_notes=normalized.get("negotiation_notes"),
+            agreement_status=normalized.get("agreement_status"),
+            next_action=normalized.get("next_action"),
         )
         await prospect.insert()
 
@@ -885,6 +923,42 @@ class LeadEngine:
             prospect.reason_for_lost = _normalize_text(payload.get("reason_for_lost")) or None
         if "won_amount" in payload:
             prospect.won_amount = float(payload.get("won_amount") or 0) if payload.get("won_amount") is not None else None
+
+        # ── Sales journey fields ──
+        text_field_keys = [
+            "industry", "requirement", "timeline", "decision_maker", "location",
+            "pain_points", "current_agency", "num_employees",
+            "qualify_status", "discovery_outcome", "discovery_notes",
+            "proposal_status", "negotiation_status", "negotiation_notes",
+            "agreement_status", "next_action",
+        ]
+        for key in text_field_keys:
+            if key in payload:
+                setattr(prospect, key, _normalize_text(payload.get(key)) or None)
+        if "budget" in payload:
+            budget_value = payload.get("budget")
+            if budget_value is None or budget_value == "":
+                prospect.budget = None
+            else:
+                try:
+                    prospect.budget = float(budget_value)
+                except (TypeError, ValueError):
+                    prospect.budget = None
+        if "source" in payload:
+            prospect.source = _normalize_text(payload.get("source")) or prospect.source
+        if "first_contact_at" in payload:
+            prospect.first_contact_at = _parse_datetime(payload.get("first_contact_at"))
+        if "last_contacted_at" in payload:
+            prospect.last_contacted_at = _parse_datetime(payload.get("last_contacted_at"))
+        if "next_follow_up_at" in payload:
+            prospect.next_follow_up_at = _parse_datetime(payload.get("next_follow_up_at"))
+        if "agreement_expiry_date" in payload:
+            prospect.agreement_expiry_date = _parse_datetime(payload.get("agreement_expiry_date"))
+        if "agreement_signed_at" in payload:
+            prospect.agreement_signed_at = _parse_datetime(payload.get("agreement_signed_at"))
+        # Recording any contact auto-fills the first-contact gate used by Acquire -> Qualify.
+        if prospect.last_contacted_at and not prospect.first_contact_at:
+            prospect.first_contact_at = prospect.last_contacted_at
 
         prospect.updated_at = now
         await prospect.save()

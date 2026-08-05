@@ -16,6 +16,7 @@ import asyncio
 
 from bson import ObjectId
 
+from app.models.crm_activity import CRMActivity
 from app.models.crm_deal import CRMDeal
 from app.models.crm_proposal import CRMProposal
 from app.models.sales_product import SalesProduct
@@ -277,13 +278,29 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
     now = utc_now()
     month_labels = _get_last_12_month_labels(now)
     month_ranges = _build_month_ranges(now)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
 
-    prospects = await SalesProspect.find(
-        {
-            "company_id": current_user.company_id,
-            "deleted": False,
-        }
-    ).to_list()
+    prospects, activities, proposals = await asyncio.gather(
+        SalesProspect.find(
+            {
+                "company_id": current_user.company_id,
+                "deleted": False,
+            }
+        ).to_list(),
+        CRMActivity.find(
+            {
+                "company_id": current_user.company_id,
+                "deleted": False,
+            }
+        ).to_list(),
+        CRMProposal.find(
+            {
+                "company_id": current_user.company_id,
+                "archived": False,
+            }
+        ).to_list(),
+    )
     contact_count = await SalesContact.find(
         {
             "company_id": current_user.company_id,
@@ -376,6 +393,32 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
         except Exception:
             max_owner = max_owner_id
 
+    # ── Sales journey overview metrics (Overview page) ────────────────────────
+    active_prospects = [p for p in prospects if p.status == ProspectStatus.ACTIVE]
+    today_leads = [p for p in prospects if p.created_at and _in_range(p.created_at, today_start, tomorrow_start)]
+    today_calls = [
+        a for a in activities
+        if a.activity_type == "call" and a.created_at and _in_range(a.created_at, today_start, tomorrow_start)
+    ]
+    today_meetings = [
+        a for a in activities
+        if a.activity_type == "meeting" and a.created_at and _in_range(a.created_at, today_start, tomorrow_start)
+    ]
+    # Follow-ups due today: lead-level next_follow_up_at plus follow-up/reminder activities due today.
+    follow_up_leads = [p for p in prospects if p.next_follow_up_at and _in_range(p.next_follow_up_at, today_start, tomorrow_start)]
+    follow_up_activities = [
+        a for a in activities
+        if a.activity_type in ("follow_up", "reminder") and a.due_date and _in_range(a.due_date, today_start, tomorrow_start)
+    ]
+    proposals_pending = [p for p in proposals if p.status in ("sent", "viewed")]
+    this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    proposals_accepted_month = [
+        p for p in proposals
+        if p.status == "accepted" and p.accepted_at and _in_range(p.accepted_at, this_month_start, tomorrow_start)
+    ]
+    conversion_rate = round((len([p for p in prospects if p.status == ProspectStatus.WON]) / len(prospects)) * 100, 2) if prospects else 0.0
+    active_pipeline_value = sum(_prospect_product_value(p, product_map) for p in active_prospects)
+
     return {
         "sales_breakup": [],
         "closed_vs_target": {
@@ -390,6 +433,19 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
             "contact_count": contact_count,
             "prospect_count": len(prospects),
             "pipeline_value": total_active_value,
+        },
+        "overview": {
+            "today_leads": len(today_leads),
+            "today_calls": len(today_calls),
+            "today_meetings": len(today_meetings),
+            "today_follow_ups": len(follow_up_leads) + len(follow_up_activities),
+            "proposals_pending": len(proposals_pending),
+            "proposals_accepted_this_month": len(proposals_accepted_month),
+            "revenue_closed_this_month": this_month_closed,
+            "conversion_rate": conversion_rate,
+            "monthly_target": target_amounts[-1] if target_amounts else 0.0,
+            "pipeline_value": active_pipeline_value,
+            "today": today_start.isoformat(),
         },
         "pipeline": {
             "stage_breakdown": _pipeline_breakdown(prospects, product_map),

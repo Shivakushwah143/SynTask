@@ -85,6 +85,52 @@ class SalesProspect(Document):
     stage_last_changed_at: Optional[datetime] = None
     days_in_stage: int = 0
 
+    # ── Sales journey: contact cadence ────────────────────────────────────────
+    first_contact_at: Optional[datetime] = None  # First contact attempt recorded
+    last_contacted_at: Optional[datetime] = None
+    next_action: Optional[str] = None  # Suggested / required next step
+    next_follow_up_at: Optional[datetime] = None
+
+    # ── Qualify stage data ────────────────────────────────────────────────────
+    qualify_status: Optional[str] = None  # not_contacted, contacted, busy, call_back, wrong_number, no_response, interested, not_interested, spam, qualified
+    industry: Optional[str] = None
+    requirement: Optional[str] = None
+    budget: Optional[float] = None
+    timeline: Optional[str] = None
+    decision_maker: Optional[str] = None
+    location: Optional[str] = None
+    pain_points: Optional[str] = None
+    current_agency: Optional[str] = None
+    num_employees: Optional[str] = None
+
+    # ── Discovery stage data ──────────────────────────────────────────────────
+    discovery_outcome: Optional[str] = None  # need_proposal, need_audit, need_second_meeting, follow_up_required, not_interested, lost
+    discovery_notes: Optional[str] = None
+
+    # ── Proposal stage (mirror of the authoritative CRMProposal status) ──────
+    proposal_status: Optional[str] = None  # draft, generated, sent, viewed, accepted, rejected, revision_requested, expired
+
+    # ── Negotiation stage data ────────────────────────────────────────────────
+    negotiation_status: Optional[str] = None  # negotiation_started, waiting_client, waiting_internal, discount_approval, final_offer, accepted, rejected
+    negotiation_notes: Optional[str] = None
+
+    # ── Agreement stage data ──────────────────────────────────────────────────
+    agreement_status: Optional[str] = None  # draft, sent, viewed, signed, rejected, expired
+    agreement_expiry_date: Optional[datetime] = None
+    agreement_signed_at: Optional[datetime] = None
+
+    # ── Won / conversion ──────────────────────────────────────────────────────
+    won_status: Optional[str] = None  # payment_pending, payment_received, onboarding_started, ready, transferred
+    client_id: Optional[str] = None  # Created Client ref (idempotent conversion)
+    project_id: Optional[str] = None  # Created Project ref
+    invoice_id: Optional[str] = None  # Created Invoice ref
+    account_manager_id: Optional[str] = None
+    welcome_email_sent_at: Optional[datetime] = None
+    ops_notified_at: Optional[datetime] = None
+    converted_at: Optional[datetime] = None
+    transferred_at: Optional[datetime] = None  # Set when transferred to the Clients module
+    transferred_by: Optional[str] = None
+
     # Metadata
     company_id: Optional[str] = None
     created_by: Optional[str] = None

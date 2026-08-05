@@ -85,16 +85,34 @@ const ADMIN_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN];
 // Roles allowed in CRM settings (mirrors CRMSettingsGuard: company admin + manager).
 const CRM_SETTINGS_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER];
 
+// Guided sales journey stages (Overview | Acquire | Qualify | Discovery | Proposal |
+// Negotiation | Agreement | Won). The in-page Sales section tabs render exactly these
+// stages (SectionTabs prepends Overview); the sidebar keeps its unchanged section links.
 export const CRM_PIPELINE_STAGE_ITEMS = [
-  { name: "New", href: "/crm/pipeline/new", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
-  { name: "Contacted", href: "/crm/pipeline/contacted", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
-  { name: "Qualified", href: "/crm/pipeline/qualified", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Acquire", href: "/crm/pipeline/acquire", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Qualify", href: "/crm/pipeline/qualify", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
   { name: "Discovery", href: "/crm/pipeline/discovery", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
   { name: "Proposal", href: "/crm/pipeline/proposal", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
   { name: "Negotiation", href: "/crm/pipeline/negotiation", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Agreement", href: "/crm/pipeline/agreement", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
   { name: "Won", href: "/crm/pipeline/won", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
   { name: "Lost", href: "/crm/pipeline/lost", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
 ];
+
+// Exactly the journey tabs shown in the in-page Sales section bar (Overview is
+// prepended by SectionTabs). "Clients" remains the destination after a Won lead
+// is transferred to the existing Clients module.
+export const SALES_JOURNEY_TAB_ITEMS = ["Acquire", "Qualify", "Discovery", "Proposal", "Negotiation", "Agreement", "Won"];
+
+// Legacy routes kept inside the sales section so /crm/pipeline and /crm/leads
+// still resolve to the Sales section (tab bar + sidebar highlight). SectionTabs
+// hides them from the in-page bar, so the visible tabs stay exactly the journey.
+// Import Leads stays in the sidebar config (favorites/landing) but is hidden from
+// the tab bar too — it is not part of the guided journey.
+export const SALES_HIDDEN_TAB_ITEMS = ["Leads", "All Leads", "Pipeline", "Import Leads"];
+
+// Route for the dedicated Sales Overview dashboard (per-section Overview tab).
+export const SALES_OVERVIEW_HREF = "/sales-overview";
 
 // ── Top-level section structure (spec §2 + §8). Items are resolved by name. ──
 // Items listed here but with no existing route are intentionally omitted (hidden until the page
@@ -102,7 +120,15 @@ export const CRM_PIPELINE_STAGE_ITEMS = [
 // A section renders iff at least one of its items passes canAccessNavItem().
 export const SECTIONS = [
   { key: "home", label: "Home", items: ["Home", "Calendar"] },
-  { key: "sales", label: "Sales", items: ["Leads", "All Leads", ...CRM_PIPELINE_STAGE_ITEMS.map((item) => item.name), "Pipeline", "Import Leads"] },
+  {
+    key: "sales",
+    label: "Sales",
+    // In-page Sales section tabs: the guided journey. The main sidebar only renders
+    // section links, so these items power the horizontal tab bar + section landing
+    // cards, not a vertical stage menu.
+    items: [...SALES_JOURNEY_TAB_ITEMS, ...SALES_HIDDEN_TAB_ITEMS],
+    overviewHref: SALES_OVERVIEW_HREF,
+  },
   { key: "clients", label: "Clients", items: ["All Clients", "Companies", "Contacts", "Client Calendar", "Client Insights"] },
   { key: "work", label: "Work", items: ["Projects", "Tasks", "Requests", "Scheduled Work", "Time Tracking"] },
   { key: "content", label: "Content", items: ["Content Calendar", "Content Studio"] },
@@ -233,12 +259,12 @@ export const ITEM_COLORS = {
 
   Leads: "text-sky-400",
   "All Leads": "text-indigo-400",
-  New: "text-sky-400",
-  Contacted: "text-amber-400",
-  Qualified: "text-emerald-400",
+  Acquire: "text-sky-400",
+  Qualify: "text-amber-400",
   Discovery: "text-violet-400",
   Proposal: "text-indigo-400",
   Negotiation: "text-orange-400",
+  Agreement: "text-purple-400",
   Won: "text-green-400",
   Lost: "text-rose-400",
   Pipeline: "text-cyan-300",

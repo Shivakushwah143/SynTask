@@ -105,24 +105,48 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Projects$/i })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('shows the Sales tabs with All Leads and hides Import Leads from the bar', () => {
+  it('shows exactly the Sales journey tabs (Overview first) on legacy Sales routes', () => {
     renderTabs('/crm/leads/all')
 
-    expect(screen.getByRole('tab', { name: /^All Leads$/i })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: /^Leads$/i })).toBeTruthy()
-    expect(screen.getByRole('tab', { name: /^New$/i })).toBeTruthy()
-    expect(screen.getByRole('tab', { name: /^Qualified$/i })).toBeTruthy()
-    expect(screen.getByRole('tab', { name: /^Pipeline$/i })).toBeTruthy()
-    expect(screen.getAllByRole('tab').at(-1).textContent).toContain('Pipeline')
-    // Import Leads stays in the sidebar config but is hidden from the tab bar.
+    // Legacy routes resolve to the Sales section; no stage tab applies, so Overview is active.
+    expect(screen.getByRole('tab', { name: /^Overview$/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^Acquire$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Qualify$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Discovery$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Proposal$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Negotiation$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Agreement$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Won$/i })).toBeTruthy()
+    // The tab order is Overview first, journey stages next (exact order).
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent.trim())).toEqual([
+      'Overview',
+      'Acquire',
+      'Qualify',
+      'Discovery',
+      'Proposal',
+      'Negotiation',
+      'Agreement',
+      'Won',
+    ])
+    // Legacy browsing + import items stay in the sidebar config but are hidden from the bar.
+    expect(screen.queryByRole('tab', { name: /^Leads$/i })).toBeNull()
+    expect(screen.queryByRole('tab', { name: /^All Leads$/i })).toBeNull()
+    expect(screen.queryByRole('tab', { name: /^Pipeline$/i })).toBeNull()
     expect(screen.queryByRole('tab', { name: /^Import Leads$/i })).toBeNull()
   })
 
-  it('keeps a stage-specific pipeline page on the matching tab', () => {
-    renderTabs('/crm/pipeline/qualified')
+  it('keeps a stage-specific pipeline page on the matching journey tab', () => {
+    renderTabs('/crm/pipeline/qualify')
 
-    expect(screen.getByRole('tab', { name: /^Qualified$/i })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: /^Pipeline$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Qualify$/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^Acquire$/i })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('activates the Overview tab on the dedicated Sales Overview dashboard', () => {
+    renderTabs('/sales-overview')
+
+    expect(screen.getByRole('tab', { name: /^Overview$/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^Acquire$/i })).toBeTruthy()
   })
 
   it('renders nothing for non-section pages (chat)', () => {

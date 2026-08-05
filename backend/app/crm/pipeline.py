@@ -23,13 +23,13 @@ from app.core.clock import utc_now
 
 
 APPROVED_PIPELINE_STAGES: List[Dict[str, Any]] = [
-    {"name": "New", "order": 0, "category": "intake", "description": "Fresh lead awaiting outreach.", "aliases": ["lead", "new"]},
-    {"name": "Contacted", "order": 1, "category": "qualification", "description": "Initial contact has been made.", "aliases": ["contacted", "follow up", "follow up call"]},
-    {"name": "Qualified", "order": 2, "category": "qualification", "description": "Lead fits the target criteria.", "aliases": ["qualified"]},
-    {"name": "Discovery", "order": 3, "category": "evaluation", "description": "Needs analysis or discovery is underway.", "aliases": ["discovery", "discovery scheduled", "discovery completed", "discovery done", "meeting completed"]},
-    {"name": "Proposal", "order": 4, "category": "proposal", "description": "Proposal or quote has been delivered.", "aliases": ["proposal", "proposal sent"]},
-    {"name": "Negotiation", "order": 5, "category": "proposal", "description": "Commercial terms are under discussion.", "aliases": ["negotiation"]},
-    {"name": "Won", "order": 6, "category": "closed", "description": "Opportunity closed successfully.", "aliases": ["won", "closed won"], "is_terminal": True},
+    {"name": "Acquire", "order": 0, "category": "intake", "description": "Collect new leads from all sources and verify them.", "aliases": ["lead", "new"]},
+    {"name": "Qualify", "order": 1, "category": "qualification", "description": "Determine whether the lead is worth pursuing.", "aliases": ["contacted", "follow up", "follow up call", "qualified"]},
+    {"name": "Discovery", "order": 2, "category": "evaluation", "description": "Business discussion and requirements capture.", "aliases": ["discovery", "discovery scheduled", "discovery completed", "discovery done", "meeting completed"]},
+    {"name": "Proposal", "order": 3, "category": "proposal", "description": "Solution presentation including pricing details.", "aliases": ["proposal", "proposal sent"]},
+    {"name": "Negotiation", "order": 4, "category": "proposal", "description": "Commercial discussions on price, scope, and terms.", "aliases": ["negotiation"]},
+    {"name": "Agreement", "order": 5, "category": "contract", "description": "Legal and contractual formalities (MSA, NDA, SOW).", "aliases": ["agreement"]},
+    {"name": "Won", "order": 6, "category": "closed", "description": "Deal closed; preparing onboarding and transfer to Clients.", "aliases": ["won", "closed won"], "is_terminal": True},
     {"name": "Lost", "order": 7, "category": "closed", "description": "Opportunity closed without conversion.", "aliases": ["lost", "closed lost"], "is_terminal": True},
 ]
 
@@ -37,12 +37,12 @@ APPROVED_PIPELINE_STAGES: List[Dict[str, Any]] = [
 DEFAULT_PIPELINE_STAGES = APPROVED_PIPELINE_STAGES
 
 DEFAULT_STAGE_LOOKUP: Dict[str, str] = {
-    "new": "New",
-    "lead": "New",
-    "contacted": "Contacted",
-    "follow up": "Contacted",
-    "follow up call": "Contacted",
-    "qualified": "Qualified",
+    "new": "Acquire",
+    "lead": "Acquire",
+    "contacted": "Qualify",
+    "follow up": "Qualify",
+    "follow up call": "Qualify",
+    "qualified": "Qualify",
     "discovery": "Discovery",
     "discovery scheduled": "Discovery",
     "discovery completed": "Discovery",
@@ -51,6 +51,7 @@ DEFAULT_STAGE_LOOKUP: Dict[str, str] = {
     "proposal": "Proposal",
     "proposal sent": "Proposal",
     "negotiation": "Negotiation",
+    "agreement": "Agreement",
     "won": "Won",
     "closed won": "Won",
     "lost": "Lost",
@@ -59,26 +60,123 @@ DEFAULT_STAGE_LOOKUP: Dict[str, str] = {
 
 
 class PipelineStage(str, Enum):
-    NEW = "New"
-    CONTACTED = "Contacted"
-    QUALIFIED = "Qualified"
+    ACQUIRE = "Acquire"
+    QUALIFY = "Qualify"
     DISCOVERY = "Discovery"
     PROPOSAL = "Proposal"
     NEGOTIATION = "Negotiation"
+    AGREEMENT = "Agreement"
     WON = "Won"
     LOST = "Lost"
 
 
 ALLOWED_TRANSITIONS: Dict[PipelineStage, set[PipelineStage]] = {
-    PipelineStage.NEW: {PipelineStage.CONTACTED, PipelineStage.QUALIFIED, PipelineStage.LOST},
-    PipelineStage.CONTACTED: {PipelineStage.QUALIFIED, PipelineStage.LOST},
-    PipelineStage.QUALIFIED: {PipelineStage.DISCOVERY, PipelineStage.LOST},
+    PipelineStage.ACQUIRE: {PipelineStage.QUALIFY, PipelineStage.LOST},
+    PipelineStage.QUALIFY: {PipelineStage.DISCOVERY, PipelineStage.LOST},
     PipelineStage.DISCOVERY: {PipelineStage.PROPOSAL, PipelineStage.LOST},
     PipelineStage.PROPOSAL: {PipelineStage.NEGOTIATION, PipelineStage.LOST},
-    PipelineStage.NEGOTIATION: {PipelineStage.WON, PipelineStage.LOST},
+    PipelineStage.NEGOTIATION: {PipelineStage.AGREEMENT, PipelineStage.LOST},
+    PipelineStage.AGREEMENT: {PipelineStage.WON, PipelineStage.LOST},
     PipelineStage.WON: set(),
-    PipelineStage.LOST: {PipelineStage.NEW},
+    PipelineStage.LOST: {PipelineStage.ACQUIRE},
 }
+
+
+# ── Stage entry gates (sequential journey rules) ────────────────────────────────────
+# A normal user may only move a lead to the immediately next stage when the recorded
+# conditions for that stage have been met. Managers/admins may force a transition past
+# the gate (but never skip stages) via the `force` flag.
+STAGE_ENTRY_REQUIREMENTS: Dict[PipelineStage, Dict[str, Any]] = {
+    PipelineStage.QUALIFY: {
+        "field": "first_contact_at",
+        "message": "Record a first contact attempt before moving this lead to Qualify.",
+    },
+    PipelineStage.DISCOVERY: {
+        "fields": ["qualify_status", "budget", "decision_maker"],
+        "message": "This lead must be interested, with budget and a decision maker recorded, before moving to Discovery.",
+    },
+    PipelineStage.PROPOSAL: {
+        "field": "discovery_outcome",
+        "expected": "need_proposal",
+        "message": "The Discovery outcome must be 'Need Proposal' before moving to Proposal.",
+    },
+    PipelineStage.NEGOTIATION: {
+        "proposal_accepted": True,
+        "message": "The proposal must be accepted before moving to Negotiation.",
+    },
+    PipelineStage.AGREEMENT: {
+        "field": "negotiation_status",
+        "expected": "accepted",
+        "message": "Final commercial terms must be accepted before moving to Agreement.",
+    },
+    PipelineStage.WON: {
+        "field": "agreement_status",
+        "expected": "signed",
+        "message": "The agreement must be signed before marking this lead Won.",
+    },
+}
+
+QUALIFY_READY_STATUSES = {"interested", "qualified"}
+QUALIFY_STATUSES = {"not_contacted", "contacted", "busy", "call_back", "wrong_number", "no_response", "interested", "not_interested", "spam", "qualified"}
+DISCOVERY_OUTCOMES = {"need_proposal", "need_audit", "need_second_meeting", "follow_up_required", "not_interested", "lost"}
+NEGOTIATION_STATUSES = {"negotiation_started", "waiting_client", "waiting_internal", "discount_approval", "final_offer", "accepted", "rejected"}
+AGREEMENT_STATUSES = {"draft", "sent", "viewed", "signed", "rejected", "expired"}
+WON_STATUSES = ["payment_pending", "payment_received", "onboarding_started", "ready", "transferred"]
+
+
+def _is_override_role(current_user: User) -> bool:
+    return current_user.role in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN]
+
+
+async def _validate_stage_entry(current_user: User, prospect: SalesProspect, target_stage: PipelineStage) -> None:
+    """Enforce the sequential journey gates for a normal user moving to `target_stage`."""
+    requirements = STAGE_ENTRY_REQUIREMENTS.get(target_stage)
+    if not requirements:
+        return
+    if "field" in requirements:
+        field_value = getattr(prospect, requirements["field"], None)
+        expected = requirements.get("expected")
+        if expected is not None:
+            if _normalize_stage_value(field_value) != expected:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=requirements["message"])
+        elif not field_value:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=requirements["message"])
+        return
+    if "fields" in requirements:
+        interest_ok = _normalize_stage_value(getattr(prospect, "qualify_status", None)) in QUALIFY_READY_STATUSES
+        budget_ok = getattr(prospect, "budget", None) not in (None, "", 0)
+        decision_ok = bool(getattr(prospect, "decision_maker", None))
+        missing = []
+        if not interest_ok:
+            missing.append("an Interested/Qualified status")
+        if not budget_ok:
+            missing.append("a recorded budget")
+        if not decision_ok:
+            missing.append("an identified decision maker")
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot move to Discovery — missing {', '.join(missing)}.",
+            )
+        return
+    if requirements.get("proposal_accepted"):
+        accepted = _normalize_stage_value(getattr(prospect, "proposal_status", None)) == "accepted"
+        if not accepted:
+            try:
+                proposal = await CRMProposal.find_one(
+                    {
+                        "company_id": str(prospect.company_id),
+                        "lead_id": str(prospect.id),
+                        "archived": False,
+                        "status": "accepted",
+                    }
+                )
+                accepted = proposal is not None
+            except Exception:
+                accepted = False
+        if not accepted:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=requirements["message"])
+        return
 
 
 def _normalize_stage_value(value: Optional[str]) -> str:
@@ -87,6 +185,20 @@ def _normalize_stage_value(value: Optional[str]) -> str:
 
 def _slugify_stage_name(name: str) -> str:
     return _normalize_stage_value(name).replace(" ", "-")
+
+
+def normalize_stage_display(value: Optional[str]) -> str:
+    """Return the canonical display name for a stored/legacy stage value."""
+    normalized = _normalize_stage_value(value)
+    if not normalized:
+        return ""
+    for stage in PipelineStage:
+        if normalized in {_normalize_stage_value(stage.value), _slugify_stage_name(stage.value)}:
+            return stage.value
+    canonical = DEFAULT_STAGE_LOOKUP.get(normalized)
+    if canonical:
+        return canonical
+    return str(value or "")
 
 
 def _user_company_id(current_user: User) -> str:
@@ -231,6 +343,26 @@ async def _resolve_won_amount(company_id: str, prospect: SalesProspect) -> float
     return 0.0
 
 
+async def _run_won_automation(current_user: User, prospect: SalesProspect, company_id: str) -> Dict[str, Any]:
+    """Run the existing idempotent won-deal automation and return the created refs."""
+    deal = await CRMDeal.find_one({"company_id": company_id, "lead_id": str(prospect.id)})
+    try:
+        result = await handle_won_deal_automation(current_user, prospect, deal)
+    except Exception as exc:
+        return {"status": "failed", "error": str(exc)}
+    client = result.get("client")
+    project = result.get("project")
+    meeting = result.get("meeting")
+    return {
+        "status": result.get("status", "completed"),
+        "client_id": str(client.id) if client else None,
+        "project_id": str(project.id) if project else None,
+        "meeting_id": str(meeting.id) if meeting else None,
+        "template": result.get("template"),
+        "steps": result.get("steps"),
+    }
+
+
 def _serialize_lead(
     prospect: SalesProspect,
     resolved_stage: str,
@@ -288,6 +420,40 @@ def _serialize_lead(
         "meta_created_time": getattr(prospect, "meta_created_time", None),
         "meta_consent": getattr(prospect, "meta_consent", None),
         "meta_attribution": getattr(prospect, "meta_attribution", None) or {},
+        # ── Sales journey fields ──
+        "source": getattr(prospect, "source", None),
+        "first_contact_at": getattr(prospect, "first_contact_at", None),
+        "last_contacted_at": getattr(prospect, "last_contacted_at", None),
+        "next_action": getattr(prospect, "next_action", None),
+        "next_follow_up_at": getattr(prospect, "next_follow_up_at", None),
+        "qualify_status": getattr(prospect, "qualify_status", None),
+        "industry": getattr(prospect, "industry", None),
+        "requirement": getattr(prospect, "requirement", None),
+        "budget": getattr(prospect, "budget", None),
+        "timeline": getattr(prospect, "timeline", None),
+        "decision_maker": getattr(prospect, "decision_maker", None),
+        "location": getattr(prospect, "location", None),
+        "pain_points": getattr(prospect, "pain_points", None),
+        "current_agency": getattr(prospect, "current_agency", None),
+        "num_employees": getattr(prospect, "num_employees", None),
+        "discovery_outcome": getattr(prospect, "discovery_outcome", None),
+        "discovery_notes": getattr(prospect, "discovery_notes", None),
+        "proposal_status": getattr(prospect, "proposal_status", None),
+        "negotiation_status": getattr(prospect, "negotiation_status", None),
+        "negotiation_notes": getattr(prospect, "negotiation_notes", None),
+        "agreement_status": getattr(prospect, "agreement_status", None),
+        "agreement_expiry_date": getattr(prospect, "agreement_expiry_date", None),
+        "agreement_signed_at": getattr(prospect, "agreement_signed_at", None),
+        "won_status": getattr(prospect, "won_status", None),
+        "client_id": getattr(prospect, "client_id", None),
+        "project_id": getattr(prospect, "project_id", None),
+        "invoice_id": getattr(prospect, "invoice_id", None),
+        "account_manager_id": getattr(prospect, "account_manager_id", None),
+        "welcome_email_sent_at": getattr(prospect, "welcome_email_sent_at", None),
+        "ops_notified_at": getattr(prospect, "ops_notified_at", None),
+        "converted_at": getattr(prospect, "converted_at", None),
+        "transferred_at": getattr(prospect, "transferred_at", None),
+        "transferred_by": getattr(prospect, "transferred_by", None),
     }
 
 
@@ -334,6 +500,8 @@ class CRMPipelineService:
         query: Dict[str, Any] = {
             "company_id": company_id,
             "deleted": False,
+            # Transferred leads leave the active sales stage lists (they live in Clients).
+            "transferred_at": None,
         }
         if current_user.role == UserRole.EMPLOYEE:
             current_user_id = str(getattr(current_user, "id", ""))
@@ -435,7 +603,13 @@ class CRMPipelineService:
         }
 
     @staticmethod
-    async def move_lead(current_user: User, lead_id: str, target_stage: str, reason: Optional[str] = None) -> Dict[str, Any]:
+    async def move_lead(
+        current_user: User,
+        lead_id: str,
+        target_stage: str,
+        reason: Optional[str] = None,
+        force: bool = False,
+    ) -> Dict[str, Any]:
         company_id = _user_company_id(current_user)
         prospect = await SalesProspect.get(lead_id)
         if not prospect or prospect.deleted:
@@ -462,6 +636,18 @@ class CRMPipelineService:
                 detail=f"Illegal transition {current_stage} -> {resolved_stage}",
             )
 
+        # A transferred lead can no longer move through sales stages.
+        if getattr(prospect, "transferred_at", None):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This lead has been transferred to Clients and cannot move through sales stages anymore.",
+            )
+
+        # Sequential journey gates: only managers/admins may force past them (never skip stages).
+        target_enum = _resolve_pipeline_stage(resolved_stage)
+        if target_enum and not (force and _is_override_role(current_user)):
+            await _validate_stage_entry(current_user, prospect, target_enum)
+
         now = utc_now()
         previous_entered_at = prospect.stage_entered_at or prospect.created_at or now
         days_in_previous_stage = max((now - previous_entered_at).days, 0)
@@ -474,12 +660,20 @@ class CRMPipelineService:
 
         normalized_stage = _normalize_stage_value(resolved_stage)
         lost_result: Optional[Dict[str, Any]] = None
+        automation_result: Dict[str, Any] = {"status": "skipped"}
         if normalized_stage == "won":
             prospect.status = ProspectStatus.WON
             prospect.closed_date = now
             prospect.closed_by = str(getattr(current_user, "id", ""))
             prospect.reason_for_lost = None
             prospect.won_amount = await _resolve_won_amount(company_id, prospect)
+            prospect.won_status = getattr(prospect, "won_status", None) or "payment_pending"
+            prospect.converted_at = getattr(prospect, "converted_at", None) or now
+            automation_result = await _run_won_automation(current_user, prospect, company_id)
+            if automation_result.get("client_id"):
+                prospect.client_id = automation_result["client_id"]
+            if automation_result.get("project_id"):
+                prospect.project_id = automation_result["project_id"]
         elif normalized_stage == "lost":
             lost_result = await handle_lost_workflow(current_user, prospect, reason)
             prospect = lost_result["lead"]
@@ -487,6 +681,9 @@ class CRMPipelineService:
             prospect.status = ProspectStatus.ACTIVE
             prospect.closed_date = None
             prospect.closed_by = None
+            prospect.won_status = None
+            prospect.client_id = None
+            prospect.project_id = None
 
         await prospect.save()
 
@@ -558,7 +755,6 @@ class CRMPipelineService:
                     "lead_id": str(prospect.id),
                 }
             )
-            automation_result: Dict[str, Any] = {"status": "skipped"}
             try:
                 if deal:
                     now = utc_now()
@@ -567,7 +763,6 @@ class CRMPipelineService:
                     deal.updated_by_name = _user_display_name(current_user)
                     deal.updated_at = now
                     await deal.save()
-                automation_result = await handle_won_deal_automation(current_user, prospect, deal)
             except Exception as exc:
                 automation_result = {
                     "status": "failed",
