@@ -80,9 +80,11 @@ const STAGE_GATE = {
     nextKey: 'proposal',
     nextLabel: 'Proposal',
     requirements: (lead) => [
-      { label: 'Outcome requires a proposal', met: String(lead?.discovery_outcome || '').toLowerCase() === 'need_proposal' },
+      // Mirrors the backend gate: a Discovery outcome of “Need Proposal” or
+      // “Qualified” both earn a proposal (see STAGE_ENTRY_REQUIREMENTS).
+      { label: 'Outcome requires a proposal', met: ['need_proposal', 'qualified'].includes(String(lead?.discovery_outcome || '').toLowerCase()) },
     ],
-    hint: 'Set the Discovery outcome to “Need Proposal”.',
+    hint: 'Set the Discovery outcome to “Need Proposal” or “Qualified”.',
   },
   proposal: {
     nextKey: 'negotiation',

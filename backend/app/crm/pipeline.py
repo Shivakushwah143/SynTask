@@ -92,7 +92,7 @@ ALLOWED_TRANSITIONS: Dict[PipelineStage, set[PipelineStage]] = {
 STAGE_ENTRY_REQUIREMENTS: Dict[PipelineStage, Dict[str, Any]] = {
     PipelineStage.QUALIFY: {
         "field": "first_contact_at",
-        "message": "Record a first contact attempt before moving this lead to Qualify.",
+        "message": "Add a mobile number or record the first contact attempt before moving this lead to Qualify.",
     },
     PipelineStage.DISCOVERY: {
         "fields": ["qualify_status", "budget", "decision_maker"],
@@ -101,7 +101,12 @@ STAGE_ENTRY_REQUIREMENTS: Dict[PipelineStage, Dict[str, Any]] = {
     PipelineStage.PROPOSAL: {
         "field": "discovery_outcome",
         "expected": "need_proposal",
-        "message": "The Discovery outcome must be 'Need Proposal' before moving to Proposal.",
+        # A lead whose discovery meeting outcome is "qualified" has also earned a
+        # proposal — both outcomes satisfy the Discovery -> Proposal gate.
+        # Entries are compared after _normalize_status_value, so they must stay
+        # normalized slugs ("need_proposal", never "Need Proposal").
+        "allowed": ["need_proposal", "qualified"],
+        "message": "The Discovery outcome must be 'Need Proposal' or 'Qualified' before moving to Proposal.",
     },
     PipelineStage.NEGOTIATION: {
         "proposal_accepted": True,
@@ -196,6 +201,7 @@ STAGE_GATE_FIELD_META: Dict[str, Dict[str, str]] = {
     "budget": {"label": "Budget", "type": "currency"},
     "decision_maker": {"label": "Decision Maker", "type": "text"},
     "timeline": {"label": "Timeline", "type": "text"},
+    "phone": {"label": "Mobile Number", "type": "text"},
     "discovery_outcome": {"label": "Discovery Outcome", "type": "select"},
     "qualify_status": {"label": "Qualification Status", "type": "select"},
     "proposal_status": {"label": "Proposal Status", "type": "select"},
@@ -290,6 +296,12 @@ async def _validate_stage_entry(
         # blocked by the missing gate field.
         if field == "first_contact_at":
             contact_ok = bool(field_value) or bool(getattr(prospect, "last_contacted_at", None))
+            # A lead that already carries a mobile number is contactable — a
+            # recorded phone is enough to move Acquire -> Qualify (CSV/imported
+            # leads usually have a number but no contact activity yet). Checked
+            # first because it is the cheapest and most common pass condition.
+            if not contact_ok:
+                contact_ok = bool(getattr(prospect, "phone", None))
             if not contact_ok:
                 try:
                     activity_ok = await CRMActivity.find_one(
@@ -308,17 +320,22 @@ async def _validate_stage_entry(
                 raise _transition_blocked(
                     current_stage=current_stage_name,
                     target_stage=target_stage_name,
-                    message=requirements["message"],
+                    message="Add a mobile number or record the first contact attempt before moving this lead to Qualify.",
+                    missing_fields=[_field_meta("phone")],
                     action_requirement={
                         "field": "first_contact",
                         "label": "First Contact",
-                        "message": "Record a call, email, WhatsApp attempt, or other supported contact activity before moving this lead to Qualify.",
+                        "message": "Add the lead's mobile number, or record a call, email, WhatsApp attempt before moving this lead to Qualify.",
                     },
                 )
             return
         if expected is not None:
-            status_ok = _normalize_status_value(field_value) == expected
-            status_ok = status_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) == expected
+            # Some gates accept more than one outcome (e.g. Discovery -> Proposal
+            # passes with "need_proposal" OR "qualified"). `allowed` extends the
+            # single-value `expected` default; both are normalized slugs.
+            allowed_values = requirements.get("allowed") or [expected]
+            status_ok = _normalize_status_value(field_value) in allowed_values
+            status_ok = status_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) in allowed_values
             if not status_ok:
                 if not field_value:
                     raise _transition_blocked(
@@ -334,7 +351,7 @@ async def _validate_stage_entry(
                     status_requirement={
                         "field": field,
                         "label": _LAST_MISSING_STATUS_LABELS.get(field, _field_meta(field)["label"]),
-                        "allowed_values": [expected],
+                        "allowed_values": allowed_values,
                         "current_value": field_value or getattr(prospect, "current_stage_status", None) or "",
                     },
                 )

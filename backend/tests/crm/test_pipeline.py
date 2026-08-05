@@ -780,6 +780,47 @@ async def test_acquire_moves_to_qualify_with_last_contacted_evidence(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_acquire_moves_to_qualify_with_phone_number_only(monkeypatch):
+    # The reported bug: a lead that already carries a mobile number (e.g. a CSV
+    # import) but has no contact timestamps/activity was still blocked by the
+    # first-contact gate. A recorded phone is contact evidence — the gate passes.
+    lead = _journey_lead(first_contact_at=None, last_contacted_at=None, phone="9999999999")
+    await _acquire_gate_mocks(monkeypatch, lead)
+
+    async def fake_find_one(query=None):
+        return None  # no recorded activity
+
+    monkeypatch.setattr("app.crm.pipeline.CRMActivity.find_one", fake_find_one)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.EMPLOYEE)
+    result = await CRMPipelineService.move_lead(user, "lead-1", "Qualify")
+    assert result["lead"]["current_stage"] == "Qualify"
+
+
+@pytest.mark.asyncio
+async def test_acquire_blocked_without_phone_returns_phone_missing_field(monkeypatch):
+    # No phone, no timestamps, no activity: the blocker must list the phone as a
+    # missing editable field so the frontend opens the popup asking for the
+    # mobile number (alongside the first-contact action requirement).
+    lead = _journey_lead(first_contact_at=None, last_contacted_at=None)
+    await _acquire_gate_mocks(monkeypatch, lead)
+
+    async def fake_find_one(query=None):
+        return None
+
+    monkeypatch.setattr("app.crm.pipeline.CRMActivity.find_one", fake_find_one)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.EMPLOYEE)
+    with pytest.raises(HTTPException) as exc_info:
+        await CRMPipelineService.move_lead(user, "lead-1", "Qualify")
+    assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+    assert detail["code"] == "STAGE_TRANSITION_BLOCKED"
+    assert {item["field"] for item in detail["missing_fields"]} == {"phone"}
+    assert detail["action_requirement"]["field"] == "first_contact"
+
+
+@pytest.mark.asyncio
 async def test_acquire_moves_to_qualify_with_recorded_call_activity(monkeypatch):
     # A lead with a recorded call activity (no timestamps on the lead itself)
     # also satisfies the first-contact requirement.
@@ -814,6 +855,10 @@ async def test_acquire_still_blocked_without_any_contact_evidence(monkeypatch):
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail["code"] == "STAGE_TRANSITION_BLOCKED"
     assert exc_info.value.detail["action_requirement"]["field"] == "first_contact"
+    # The popup-triggering contract: a phone-less lead is told exactly what to
+    # add (the mobile number), not just that a contact attempt is missing.
+    assert {item["field"] for item in exc_info.value.detail["missing_fields"]} == {"phone"}
+    assert exc_info.value.detail["missing_fields"][0]["label"] == "Mobile Number"
 
 
 @pytest.mark.asyncio
@@ -857,6 +902,97 @@ async def test_qualify_cannot_move_to_discovery_without_interest_budget_decision
     monkeypatch.setattr("app.crm.pipeline.publish_crm_timeline_event", fake_publish)
     result = await CRMPipelineService.move_lead(user, "lead-1", "Discovery")
     assert result["lead"]["current_stage"] == "Discovery"
+
+
+@pytest.mark.asyncio
+async def test_discovery_moves_to_proposal_with_need_proposal_outcome(monkeypatch):
+    # Canonical path: a "need_proposal" Discovery outcome still passes the gate.
+    lead = _journey_lead(current_stage="Discovery", discovery_outcome="need_proposal")
+
+    async def fake_stage_documents(current_user):
+        return [
+            {"name": "Discovery", "order": 2, "is_default": False},
+            {"name": "Proposal", "order": 3, "is_default": False},
+        ]
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_insert(self):
+        return self
+
+    async def fake_publish(**kwargs):
+        return SimpleNamespace(event_name=kwargs["event_name"])
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.pipeline.SalesPipelineHistory.insert", fake_insert)
+    monkeypatch.setattr("app.crm.pipeline.publish_crm_timeline_event", fake_publish)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.EMPLOYEE)
+    result = await CRMPipelineService.move_lead(user, "lead-1", "Proposal")
+    assert result["lead"]["current_stage"] == "Proposal"
+
+
+@pytest.mark.asyncio
+async def test_discovery_moves_to_proposal_with_qualified_outcome(monkeypatch):
+    # The reported bug: a lead whose Discovery outcome is "qualified" (a valid
+    # Discovery inner status) was still blocked from moving to Proposal, which
+    # only accepted "need_proposal". A qualified discovery also earns a proposal.
+    lead = _journey_lead(current_stage="Discovery", discovery_outcome="qualified")
+
+    async def fake_stage_documents(current_user):
+        return [
+            {"name": "Discovery", "order": 2, "is_default": False},
+            {"name": "Proposal", "order": 3, "is_default": False},
+        ]
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_insert(self):
+        return self
+
+    async def fake_publish(**kwargs):
+        return SimpleNamespace(event_name=kwargs["event_name"])
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.pipeline.SalesPipelineHistory.insert", fake_insert)
+    monkeypatch.setattr("app.crm.pipeline.publish_crm_timeline_event", fake_publish)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.EMPLOYEE)
+    result = await CRMPipelineService.move_lead(user, "lead-1", "Proposal")
+    assert result["lead"]["current_stage"] == "Proposal"
+
+
+@pytest.mark.asyncio
+async def test_discovery_blocked_to_proposal_without_ready_outcome(monkeypatch):
+    # A non-ready Discovery outcome blocks the move and the status requirement
+    # advertises BOTH accepted outcomes so the frontend warning lists them.
+    lead = _journey_lead(current_stage="Discovery", discovery_outcome="need_audit")
+
+    async def fake_stage_documents(current_user):
+        return [
+            {"name": "Discovery", "order": 2, "is_default": False},
+            {"name": "Proposal", "order": 3, "is_default": False},
+        ]
+
+    async def fake_get(lead_id):
+        return lead
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.EMPLOYEE)
+    with pytest.raises(HTTPException) as exc_info:
+        await CRMPipelineService.move_lead(user, "lead-1", "Proposal")
+    assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+    assert detail["code"] == "STAGE_TRANSITION_BLOCKED"
+    assert detail["status_requirement"]["field"] == "discovery_outcome"
+    assert detail["status_requirement"]["allowed_values"] == ["need_proposal", "qualified"]
+    assert detail["status_requirement"]["current_value"] == "need_audit"
 
 
 @pytest.mark.asyncio

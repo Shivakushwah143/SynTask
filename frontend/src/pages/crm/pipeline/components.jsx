@@ -513,7 +513,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex flex-wrap gap-2">
-                      {getStageKey(stage) === 'acquire' && !lead.first_contact_at && !lead.last_contacted_at ? (
+                      {getStageKey(stage) === 'acquire' && !lead.phone && !lead.first_contact_at && !lead.last_contacted_at ? (
                         <Button
                           type="button"
                           variant="ghost"
@@ -805,7 +805,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           setMenuOpen(false)
         }}
       />
-      {getStageKey(stage) === 'acquire' && !lead.first_contact_at && !lead.last_contacted_at ? (
+      {getStageKey(stage) === 'acquire' && !lead.phone && !lead.first_contact_at && !lead.last_contacted_at ? (
         <ActionItem
           label="Record contact attempt"
           onClick={() => {
@@ -930,7 +930,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
       ) : null}
 
       <div className={pipelineLeadCardClassNames.actions}>
-        {getStageKey(stage) === 'acquire' && !lead.first_contact_at && !lead.last_contacted_at ? (
+        {getStageKey(stage) === 'acquire' && !lead.phone && !lead.first_contact_at && !lead.last_contacted_at ? (
           <Button
             type="button"
             variant="secondary"

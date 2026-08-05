@@ -4,12 +4,24 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { inputClassName } from '../ui'
 import { getStageStatusOptions } from '../../pages/crm/pipeline/utils'
+import { parsePhonePaste } from '../ui/phoneUtils'
 import {
   TRANSITION_FIELD_REGISTRY,
   buildStatusWarningMessage,
   formatAllowedValues,
   statusRequirementFieldLabel,
 } from '../../utils/salesTransition'
+
+const COUNTRY_CODES = Object.freeze([
+  { value: '+91', label: 'India (+91)' },
+  { value: '+1', label: 'US/Canada (+1)' },
+  { value: '+44', label: 'UK (+44)' },
+  { value: '+61', label: 'Australia (+61)' },
+  { value: '+65', label: 'Singapore (+65)' },
+  { value: '+971', label: 'UAE (+971)' },
+  { value: '+81', label: 'Japan (+81)' },
+  { value: '+86', label: 'China (+86)' },
+])
 
 // Shared required-details popup for blocked Sales stage transitions.
 //
@@ -37,6 +49,7 @@ export function StageRequirementsDialog({
 }) {
   const [values, setValues] = useState({})
   const [localSaving, setLocalSaving] = useState(false)
+  const [validationError, setValidationError] = useState('')
 
   const fields = useMemo(() => {
     if (!open) return []
@@ -69,6 +82,7 @@ export function StageRequirementsDialog({
       if (current !== undefined && current !== null && current !== '') next[field.field] = current
     })
     setValues(next)
+    setValidationError('')
   }, [open, fields, lead])
 
   if (!open) return null
@@ -79,13 +93,61 @@ export function StageRequirementsDialog({
 
   const handleFieldChange = (field, value) => {
     setValues((state) => ({ ...state, [field]: value }))
+    if (validationError) setValidationError('')
+  }
+
+  // A phone number is the one required-details field that cannot be saved
+  // empty: the Acquire -> Qualify gate only opens this popup because the lead
+  // has no contactable number, so saving without one would produce a misleading
+  // "Details saved" toast while the lead stays blocked.
+  const validatePhone = () => {
+    if (!fields.some((field) => field.field === 'phone')) return ''
+    const phone = String(values.phone || '').replace(/\D/g, '')
+    if (!phone) return 'Enter a mobile number before saving.'
+    // The canonical rule is a 10-digit local number; non-+91 codes accept a
+    // slightly wider range so valid international numbers are not blocked.
+    const code = values.country_code || lead.country_code || '+91'
+    const min = code === '+91' ? 10 : 7
+    const max = code === '+91' ? 10 : 12
+    if (phone.length < min || phone.length > max) {
+      return code === '+91'
+        ? `Mobile number must be exactly 10 digits (${phone.length} entered).`
+        : `Mobile number must be ${min}-${max} digits (${phone.length} entered).`
+    }
+    return ''
+  }
+
+  const handlePhonePaste = (event) => {
+    event.preventDefault()
+    const pasted = event.clipboardData?.getData('text') || ''
+    const { countryCode: detected, phoneNumber: clean } = parsePhonePaste(pasted, COUNTRY_CODES.map((c) => c.value))
+    if (detected && COUNTRY_CODES.some((c) => c.value === detected)) handleFieldChange('country_code', detected)
+    // The input itself is clamped to 10 digits (project rule); validation later
+    // widens the accepted range for non-+91 codes so this stays safe.
+    handleFieldChange('phone', String(clean || '').replace(/\D/g, '').slice(0, 10))
+  }
+
+  // When the popup saves a phone, always send the effective country code too
+  // (defaulting to +91) so a lead without one still stores a dialable number.
+  const buildPayload = () => {
+    const payload = { ...values }
+    if (fields.some((field) => field.field === 'phone')) {
+      const code = values.country_code || lead.country_code || '+91'
+      if (!payload.country_code) payload.country_code = code
+    }
+    return payload
   }
 
   const handleSave = async () => {
     if (!canSave || effectiveSaving) return
+    const error = validatePhone()
+    if (error) {
+      setValidationError(error)
+      return
+    }
     setLocalSaving(true)
     try {
-      await onSaveFields?.(values)
+      await onSaveFields?.(buildPayload())
     } finally {
       setLocalSaving(false)
     }
@@ -93,9 +155,14 @@ export function StageRequirementsDialog({
 
   const handleSaveAndMove = async () => {
     if (!canMove || effectiveSaving || moving) return
+    const error = validatePhone()
+    if (error) {
+      setValidationError(error)
+      return
+    }
     setLocalSaving(true)
     try {
-      await onSaveAndMove?.(values)
+      await onSaveAndMove?.(buildPayload())
     } finally {
       setLocalSaving(false)
     }
@@ -149,6 +216,43 @@ export function StageRequirementsDialog({
           onChange={(event) => handleFieldChange(field.field, event.target.value)}
           placeholder="0"
         />
+      )
+    }
+    if (field.type === 'phone') {
+      const selectedCode = values.country_code || lead.country_code || '+91'
+      const codes = COUNTRY_CODES.some((c) => c.value === selectedCode)
+        ? COUNTRY_CODES
+        : [...COUNTRY_CODES, { value: selectedCode, label: selectedCode }]
+      return (
+        <div className="mt-1.5 space-y-2">
+          <div className="flex items-stretch gap-2">
+            <select
+              className={`${inputClassName} w-28 shrink-0`}
+              value={selectedCode}
+              onChange={(event) => handleFieldChange('country_code', event.target.value)}
+              aria-label="Country code"
+            >
+              {codes.map((code) => (
+                <option key={code.value} value={code.value}>{code.label}</option>
+              ))}
+            </select>
+            <input
+              id={fieldId}
+              className={`${inputClassName} min-w-0 flex-1`}
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              value={values.phone ?? ''}
+              onChange={(event) => handleFieldChange('phone', event.target.value.replace(/\D/g, '').slice(0, 10))}
+              onPaste={handlePhonePaste}
+              placeholder={selectedCode === '+91' ? 'Enter 10-digit mobile number' : 'Enter mobile number'}
+              aria-label="Mobile number"
+            />
+          </div>
+          {validationError ? (
+            <p className="text-xs font-medium text-rose-600 dark:text-rose-400">{validationError}</p>
+          ) : null}
+        </div>
       )
     }
     if (field.type === 'textarea') {

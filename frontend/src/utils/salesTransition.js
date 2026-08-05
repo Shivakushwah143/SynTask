@@ -36,6 +36,10 @@ export const TRANSITION_FIELD_REGISTRY = Object.freeze({
   budget: { label: 'Budget', type: 'currency', field: 'budget' },
   decision_maker: { label: 'Decision Maker', type: 'text', field: 'decision_maker' },
   timeline: { label: 'Timeline', type: 'text', field: 'timeline' },
+  // The phone field renders a country-code input + tel input together inside
+  // the dialog (see StageRequirementsDialog); country_code itself is never a
+  // standalone missing field.
+  phone: { label: 'Mobile Number', type: 'phone', field: 'phone' },
   discovery_outcome: { label: 'Discovery Outcome', type: 'select', field: 'discovery_outcome', optionsKey: 'discovery' },
   qualify_status: { label: 'Qualification Status', type: 'select', field: 'qualify_status', optionsKey: 'qualify' },
   negotiation_status: { label: 'Negotiation Status', type: 'select', field: 'negotiation_status', optionsKey: 'negotiation' },

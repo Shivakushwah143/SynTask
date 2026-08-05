@@ -129,6 +129,135 @@ describe('StageRequirementsDialog', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 
+  it('renders a mobile-number field with a separate country-code selector for the Acquire gate', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          message: 'Add a mobile number or record the first contact attempt before moving this lead to Qualify.',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Mobile number')).toBeTruthy()
+    expect(screen.getByLabelText('Country code')).toBeTruthy()
+    expect(screen.getByLabelText('Country code').value).toBe('+91')
+    // Country code is a select (not a free-text input) so digits can never be
+    // typed into it by mistake — that is what previously swallowed the number.
+    expect(screen.getByLabelText('Country code').tagName).toBe('SELECT')
+  })
+
+  it('saves the entered phone with its country code', () => {
+    const onSaveFields = vi.fn().mockResolvedValue(undefined)
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '' }}
+        onClose={vi.fn()}
+        onSaveFields={onSaveFields}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    fireEvent.change(screen.getByLabelText('Mobile number'), { target: { value: '9999999999' } })
+    fireEvent.click(screen.getByText('Save Details'))
+    expect(onSaveFields).toHaveBeenCalledWith({ phone: '9999999999', country_code: '+91' })
+  })
+
+  it('limits the mobile number input to 10 digits', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    const phoneInput = screen.getByLabelText('Mobile number')
+    fireEvent.change(phoneInput, { target: { value: '987654321012345' } })
+    expect(phoneInput.value).toBe('9876543210')
+  })
+
+  it('blocks save with an inline error when the phone is empty (no false success toast)', () => {
+    const onSaveFields = vi.fn().mockResolvedValue(undefined)
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={onSaveFields}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    fireEvent.click(screen.getByText('Save Details'))
+    expect(onSaveFields).not.toHaveBeenCalled()
+    expect(screen.getByText(/Enter a mobile number before saving/)).toBeTruthy()
+  })
+
+  it('blocks save-and-move with an inline error when the phone is empty', () => {
+    const onSaveAndMove = vi.fn().mockResolvedValue(undefined)
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={onSaveAndMove}
+      />
+    )
+    fireEvent.click(screen.getByText('Save and Move Forward'))
+    expect(onSaveAndMove).not.toHaveBeenCalled()
+    expect(screen.getByText(/Enter a mobile number before saving/)).toBeTruthy()
+  })
+
+  it('splits a pasted number with a country prefix into code + local number', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    const phoneInput = screen.getByLabelText('Mobile number')
+    fireEvent.paste(phoneInput, {
+      clipboardData: { getData: () => '+91 9876543210' },
+    })
+    expect(phoneInput.value).toBe('9876543210')
+  })
+
   it('keeps the lead on its current stage (no status auto-change)', () => {
     render(
       <StageRequirementsDialog
