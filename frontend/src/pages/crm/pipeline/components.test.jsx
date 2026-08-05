@@ -66,4 +66,51 @@ describe('pipeline stage list view', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /Move to Discovery/i })[0])
     expect(onMoveLeadToStage).toHaveBeenCalledWith(expect.objectContaining({ id: 'lead-1' }), 'discovery')
   })
+
+  it('resolves the Owner column from the users list by assigned id, never a stale serialized name', () => {
+    // The board cards already resolve owners via the live users list; the table
+    // must do the same so a stale owner_name (or an id-shaped value) can never
+    // surface as wrong Owner detail.
+    render(
+      <PipelineStageListView
+        stage={{ key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' }}
+        stages={[
+          { key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' },
+          { key: 'qualify', name: 'Qualify' },
+        ]}
+        users={[{ id: 'user-9', first_name: 'Riya', last_name: 'Shah' }]}
+        leads={[
+          { id: 'lead-1', company_name: 'Acme Pvt Ltd', assigned_to: 'user-9', owner_name: 'Stale Legacy Name' },
+        ]}
+        onLeadSelect={vi.fn()}
+        onMoveLeadToStage={vi.fn()}
+        onResetFilters={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Riya Shah')).toBeTruthy()
+    expect(screen.queryByText('Stale Legacy Name')).toBeNull()
+  })
+
+  it('shows Assigned as the inner status for an owned Acquire lead', () => {
+    // The backend serializes current_stage_status as "assigned" for owned
+    // Acquire leads (creation, import, reassignment and read-time resolution);
+    // the stage list Status column must surface that value in the select.
+    render(
+      <PipelineStageListView
+        stage={{ key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' }}
+        stages={[
+          { key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' },
+          { key: 'qualify', name: 'Qualify' },
+        ]}
+        users={[{ id: 'user-9', first_name: 'Riya', last_name: 'Shah' }]}
+        leads={[
+          { id: 'lead-1', company_name: 'Acme Pvt Ltd', assigned_to: 'user-9', current_stage_status: 'assigned' },
+        ]}
+        onLeadSelect={vi.fn()}
+        onMoveLeadToStage={vi.fn()}
+        onResetFilters={vi.fn()}
+      />,
+    )
+    expect(screen.getByLabelText('Update inner status').value).toBe('assigned')
+  })
 })

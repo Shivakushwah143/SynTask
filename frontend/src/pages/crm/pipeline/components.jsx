@@ -402,6 +402,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   currency = 'INR',
   movingLeadId = null,
   statusUpdatingId = null,
+  users = [],
   onMoveLeadToStage,
   onUpdateStageStatus,
   onRecordContact,
@@ -422,6 +423,18 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   }
 
   const nextStage = stages.find((candidate) => candidate.key === stage.nextStageKey)
+  // Same owner resolution as the board cards: the assigned user id is looked up
+  // in the live users list first, so a stale serialized owner_name (or a raw id)
+  // can never surface as wrong Owner detail in the table.
+  const ownerLookup = useMemo(() => {
+    const values = new Map()
+    ;(users || []).forEach((user) => {
+      const id = String(user?.id || user?._id || user?.user_id || '').trim()
+      const label = getUserDisplayName(user)
+      if (id && label) values.set(id, label)
+    })
+    return values
+  }, [users])
 
   return (
     <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-surface/95 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -444,7 +457,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
               const leadTitle = lead.company_name || lead.prospect_name || getLeadContactLabel(lead) || 'Lead'
               const phoneLabel = [lead.country_code, lead.phone].filter(Boolean).join(' ')
               const leadSubtitle = [phoneLabel, lead.email].filter(Boolean).join(' · ') || 'No contact info'
-              const ownerLabel = getLeadOwnerLabel(lead)
+              const ownerLabel = ownerLookup.get(String(lead.assigned_to || lead.owner_id || lead.ownerId || '').trim()) || getLeadOwnerLabel(lead)
               const priority = getLeadPriority(lead)
               const tags = getLeadTags(lead)
               const stageStatus = getLeadStageStatus(lead)

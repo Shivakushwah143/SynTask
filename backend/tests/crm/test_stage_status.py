@@ -104,7 +104,7 @@ def _patch_status_service(monkeypatch, lead, events=None):
 
 @pytest.mark.asyncio
 async def test_acquire_accepts_new(monkeypatch):
-    lead = _lead(current_stage="Acquire")
+    lead = _lead(current_stage="Acquire", assigned_to=None)
     _patch_status_service(monkeypatch, lead)
 
     result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "New")
@@ -112,6 +112,40 @@ async def test_acquire_accepts_new(monkeypatch):
     assert result["changed"] is True
     assert lead.current_stage_status == "new"
     assert len(lead.stage_status_history) == 1
+
+
+@pytest.mark.asyncio
+async def test_owned_acquire_lead_resolves_to_assigned_even_after_new_selected(monkeypatch):
+    # An assigned lead is Assigned: even when "New" is persisted through the
+    # status API, every read resolves the inner status to "assigned" (the
+    # reported bug: assigned Acquire leads showing "New" in the stage list).
+    lead = _lead(current_stage="Acquire", assigned_to="user-1")
+    _patch_status_service(monkeypatch, lead)
+
+    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "New")
+    assert result["changed"] is True
+    # Persisted value stays the user's choice; the resolved read is "assigned".
+    assert lead.current_stage_status == "new"
+    assert result["status"] == "assigned"
+
+
+@pytest.mark.asyncio
+async def test_acquire_accepts_contacted_and_not_contacted(monkeypatch):
+    # The Acquire stage exposes the same contact progression as Qualify:
+    # Not Contacted / Contacted (reported feedback — those two options were
+    # missing from the Acquire status select).
+    lead = _lead(current_stage="Acquire", assigned_to=None)
+    _patch_status_service(monkeypatch, lead)
+
+    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "Not Contacted")
+    assert result["changed"] is True
+    assert lead.current_stage_status == "not_contacted"
+    assert result["status"] == "not_contacted"
+
+    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "Contacted")
+    assert result["changed"] is True
+    assert lead.current_stage_status == "contacted"
+    assert result["status"] == "contacted"
 
 
 @pytest.mark.asyncio
@@ -615,7 +649,9 @@ async def test_create_client_reuses_existing_client_without_running_automation(m
 
 
 def test_canonical_stage_status_config_covers_all_stages():
-    assert STAGE_INNER_STATUSES["acquire"] == ["new", "imported", "assigned", "duplicate", "spam"]
+    # Acquire shares the contact progression with Qualify (reported feedback:
+    # Not Contacted / Contacted were missing from the Acquire status select).
+    assert STAGE_INNER_STATUSES["acquire"] == ["new", "imported", "assigned", "not_contacted", "contacted", "duplicate", "spam"]
     assert "interested" in STAGE_INNER_STATUSES["qualify"]
     assert "qualified" in STAGE_INNER_STATUSES["qualify"]
     assert "need_proposal" in STAGE_INNER_STATUSES["discovery"]

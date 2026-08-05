@@ -139,6 +139,8 @@ export const STAGE_INNER_STATUSES = {
     { value: 'new', label: 'New' },
     { value: 'imported', label: 'Imported' },
     { value: 'assigned', label: 'Assigned' },
+    { value: 'not_contacted', label: 'Not Contacted' },
+    { value: 'contacted', label: 'Contacted' },
     { value: 'duplicate', label: 'Duplicate' },
     { value: 'spam', label: 'Spam' },
   ],

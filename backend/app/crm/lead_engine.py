@@ -95,6 +95,23 @@ def _initial_stage_status(stage_value: Optional[str], source_value: Optional[str
     return STAGE_DEFAULT_STATUS.get(stage_key)
 
 
+def _promote_assignment_status(stage_value: Optional[str], assigned_to: Optional[str], current_status: Optional[str]) -> Optional[str]:
+    """In Acquire, an owned lead is Assigned — never left on the intake defaults.
+
+    `new`/`imported` describe un-owned intake; the moment a lead has an owner the
+    inner status must read `assigned` (mirrors the reassignment rule in the lead
+    update path and the read-time rule in `resolved_stage_status`). Explicit
+    non-default statuses (duplicate, spam, ...) are preserved.
+    """
+    from app.crm.pipeline import stage_status_key
+
+    if stage_status_key(stage_value) == "acquire" and assigned_to:
+        current = _normalize_text(current_status or "").lower()
+        if current in ("", "new", "imported"):
+            return "assigned"
+    return current_status
+
+
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
     if not user:
         return fallback
@@ -723,6 +740,13 @@ class LeadEngine:
                     assignable_users,
                     assignment_counts={str(user.id): 0 for user in assignable_users},
                 )
+        # An owned Acquire lead starts as Assigned, never the new/imported intake
+        # defaults (the reported pipeline bug: assigned leads showing "New").
+        normalized["current_stage_status"] = _promote_assignment_status(
+            normalized.get("current_stage"),
+            normalized.get("assigned_to"),
+            normalized.get("current_stage_status"),
+        )
 
         # Handle partial data - ensure prospect_name is set properly
         first_name = normalized.get("first_name") or ""
@@ -1167,8 +1191,14 @@ class LeadEngine:
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
                     custom_fields=dict(row.get("custom_fields") or {}),
-                    current_stage_status=_initial_stage_status(
-                        row.get("current_stage"), row.get("source") or source_label, None
+                    # Imported rows are auto-assigned, so owned Acquire leads
+                    # persist as Assigned (never the imported intake default).
+                    current_stage_status=_promote_assignment_status(
+                        row.get("current_stage"),
+                        row.get("assigned_to"),
+                        _initial_stage_status(
+                            row.get("current_stage"), row.get("source") or source_label, None
+                        ),
                     ),
                 )
             except (ValidationError, ValueError) as exc:

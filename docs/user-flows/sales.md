@@ -98,6 +98,15 @@ flowchart TD
 - Timeline events created: the activity record and the pipeline history entry on the eventual move.
 - Related modules updated: Pipeline, Activities, Lead Workspace.
 
+## Acquire inner status: an assigned lead is Assigned
+- How the user sees it: the Acquire stage list / board Status column (and the lead-detail "Inner status" pill) must read `Assigned` whenever the lead has an owner — never the generic `New`/`Imported` intake defaults (the reported bug: assigned leads showing "New").
+- What enforces it:
+  - Read-time: `resolved_stage_status` (`backend/app/crm/pipeline.py`) resolves an owned Acquire lead whose stored status is empty, `new`, or `imported` to `assigned` — covering pre-existing leads without a migration.
+  - Write-time: `LeadEngine._promote_assignment_status` (`backend/app/crm/lead_engine.py`) persists `assigned` when a lead is created or CSV/Excel-imported with an owner (creation always assigns through the least-loaded strategy); the existing lead-update path already promotes on owner reassignment.
+- Explicit non-default statuses (`duplicate`, `spam`) are preserved — ownership never overrides a deliberate flag.
+- Acquire also exposes the same contact progression as Qualify — `Not Contacted` and `Contacted` (`STAGE_INNER_STATUSES["acquire"]` in `backend/app/crm/pipeline.py`, mirrored in `frontend/src/pages/crm/pipeline/utils.js`) — so intake leads can be marked contacted without moving them to Qualify first.
+- The stage list Owner column resolves the assigned user from the live users list by id (same as the board cards), so a stale serialized `owner_name` or an id-shaped value can never surface as wrong Owner detail.
+
 ## Won → Clients Inline Completion
 - How the user reaches it: attempting to transfer a Won lead without all handoff records opens the required-details popup with a "Create Client" one-click action (plus the Account Manager selector) instead of only a warning list.
 - What they can do: complete the handoff inline — `create_client` re-runs the idempotent won-deal automation (existing Client/Project refs are reused, never duplicated), then the transfer is re-attempted automatically; the popup closes only when every rule passes. Non-manager transfers still require `won_status = Ready`.

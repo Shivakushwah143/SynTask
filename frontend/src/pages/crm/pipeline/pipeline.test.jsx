@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEAL_VALUE_FIELDS, buildPipelineBoard, filterPipelineLeads, getLeadDealValue, moveLeadInBoard } from './utils'
+import { DEAL_VALUE_FIELDS, buildPipelineBoard, filterPipelineLeads, getLeadDealValue, getStageStatusOptions, moveLeadInBoard } from './utils'
 
 const pipelineResponse = {
   meta: { currency: 'INR' },
@@ -67,6 +67,14 @@ describe('crm pipeline helpers', () => {
 
   it('keeps won_amount authoritative for closed leads', () => {
     expect(getLeadDealValue({ budget: 500000, won_amount: 450000 })).toBe(450000)
+  })
+
+  it('exposes Not Contacted / Contacted in the Acquire stage status options', () => {
+    // Reported feedback: the Qualify select offered Contacted / Not Contacted
+    // but the Acquire stage did not. Both stages share the contact progression.
+    const values = getStageStatusOptions('acquire').map((option) => option.value)
+    expect(values).toContain('not_contacted')
+    expect(values).toContain('contacted')
   })
 
   it('moves a lead into another stage and updates counts', () => {

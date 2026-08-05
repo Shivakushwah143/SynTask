@@ -918,6 +918,7 @@ export default function CRMPipelinePage() {
               stage={selectedStageView}
               stages={interactiveStages}
               currency={currency}
+              users={users}
               movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
               statusUpdatingId={updateStatusMutation.isLoading ? updateStatusMutation.variables?.leadId : null}
               onMoveLeadToStage={handleLeadMove}

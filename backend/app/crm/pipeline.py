@@ -130,7 +130,7 @@ STAGE_ENTRY_REQUIREMENTS: Dict[PipelineStage, Dict[str, Any]] = {
 # Repeated labels (Draft / Sent / Viewed / Accepted / Rejected / Expired / Spam)
 # are always scoped by the stage the lead is currently in.
 STAGE_INNER_STATUSES: Dict[str, List[str]] = {
-    "acquire": ["new", "imported", "assigned", "duplicate", "spam"],
+    "acquire": ["new", "imported", "assigned", "not_contacted", "contacted", "duplicate", "spam"],
     "qualify": ["not_contacted", "contacted", "busy", "call_back", "wrong_number", "no_response", "interested", "not_interested", "spam", "qualified"],
     "discovery": ["need_proposal", "need_audit", "need_second_meeting", "follow_up_required", "not_interested", "lost", "qualified"],
     "proposal": ["draft", "generated", "sent", "viewed", "accepted", "rejected", "revision_requested", "expired"],
@@ -484,9 +484,19 @@ def resolved_stage_status(prospect: SalesProspect) -> Optional[str]:
         if value:
             return value
     value = _normalize_status_value(getattr(prospect, "current_stage_status", None))
-    if value:
-        return value
-    return STAGE_DEFAULT_STATUS.get(stage_key)
+    if not value:
+        value = STAGE_DEFAULT_STATUS.get(stage_key) or ""
+    # In Acquire, a lead with an owner is Assigned — the generic new/imported
+    # intake defaults only describe un-owned leads. Creation/import and owner
+    # reassignment persist "assigned" too; this read-time rule also keeps
+    # pre-existing assigned leads consistent without a data migration.
+    if (
+        stage_key == "acquire"
+        and getattr(prospect, "assigned_to", None)
+        and value in ("", "new", "imported")
+    ):
+        value = "assigned"
+    return value or None
 
 
 def _append_stage_status_history(

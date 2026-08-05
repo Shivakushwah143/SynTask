@@ -7,7 +7,7 @@ import pytest
 from bson import ObjectId
 from fastapi import HTTPException
 
-from app.crm.pipeline import CRMPipelineService
+from app.crm.pipeline import CRMPipelineService, _serialize_lead, resolved_stage_status
 from app.models.sales_prospect import ProspectStatus, SalesProspect
 from app.models.user import UserRole
 
@@ -1181,3 +1181,89 @@ async def test_get_history_returns_transition_records(monkeypatch):
     assert result["lead_id"] == "lead-1"
     assert result["history"][0]["new_stage"] == "Qualified"
 
+
+
+# ── Acquire inner status: an owned lead is Assigned ───────────────────────────
+
+
+def test_resolved_stage_status_marks_owned_acquire_lead_assigned():
+    # Reported bug: leads in the Acquire stage list showed "New" (the intake
+    # default) even though they were assigned to someone. Any owned Acquire lead
+    # must resolve to "assigned" so every surface (stage list, board, lead
+    # detail, status API) reads the same value.
+    owned = _journey_lead(current_stage="Acquire", assigned_to="user-1", current_stage_status="new")
+    assert resolved_stage_status(owned) == "assigned"
+    owned.current_stage_status = "imported"
+    assert resolved_stage_status(owned) == "assigned"
+    owned.current_stage_status = None
+    assert resolved_stage_status(owned) == "assigned"
+    # Explicit non-default statuses are preserved.
+    owned.current_stage_status = "duplicate"
+    assert resolved_stage_status(owned) == "duplicate"
+    owned.current_stage_status = "spam"
+    assert resolved_stage_status(owned) == "spam"
+    # Un-owned leads keep their intake default.
+    unowned = _journey_lead(current_stage="Acquire", assigned_to=None, current_stage_status="new")
+    assert resolved_stage_status(unowned) == "new"
+
+
+def test_serialize_lead_surfaces_assigned_status_for_owned_acquire_lead():
+    lead = _journey_lead(current_stage="Acquire", assigned_to="user-1", current_stage_status="new")
+    serialized = _serialize_lead(lead, "Acquire")
+    assert serialized["current_stage_status"] == "assigned"
+
+
+@pytest.mark.asyncio
+async def test_load_pipeline_serializes_owned_acquire_leads_as_assigned(monkeypatch):
+    # End-to-end: the stage list Status column reads the serialized
+    # current_stage_status, so the pipeline response itself must say "assigned"
+    # for an owned Acquire lead that still carries the old "new" snapshot.
+    stages = [
+        SimpleNamespace(id="stage-1", name="Acquire", order=0, is_default=True),
+        SimpleNamespace(id="stage-2", name="Qualify", order=1, is_default=False),
+    ]
+    prospects = [
+        SimpleNamespace(
+            id="lead-1",
+            prospect_name="Alpha Co",
+            company_name="Alpha",
+            contact_id=None,
+            assigned_to="user-1",
+            assigned_by="user-2",
+            current_stage="Acquire",
+            status=ProspectStatus.ACTIVE,
+            phone=None,
+            country_code=None,
+            email=None,
+            tag=[],
+            remark=None,
+            won_amount=None,
+            reason_for_lost=None,
+            created_at=datetime.utcnow() - timedelta(days=5),
+            updated_at=datetime.utcnow() - timedelta(days=1),
+            stage_entered_at=datetime.utcnow() - timedelta(days=3),
+            stage_last_changed_at=datetime.utcnow() - timedelta(days=3),
+            days_in_stage=3,
+            current_stage_status="new",
+            stage_status_history=[],
+        ),
+    ]
+
+    class FakePipelineQuery(FakeQuery):
+        pass
+
+    def fake_find(query):
+        return FakePipelineQuery(prospects)
+
+    async def fake_stage_documents(current_user):
+        return stages
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.find", fake_find)
+    monkeypatch.setattr("app.crm.pipeline.User.find", lambda query: FakeBeanieQuery([]))
+    monkeypatch.setattr("app.crm.pipeline.CRMCompany.find", lambda query: FakeBeanieQuery([]))
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.ADMIN)
+    result = await CRMPipelineService.load_pipeline(user)
+    acquire_leads = result["leads_by_stage"]["Acquire"]
+    assert acquire_leads[0]["current_stage_status"] == "assigned"
