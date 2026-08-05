@@ -920,19 +920,19 @@ export default function CRMPipelinePage() {
       {/* PIPELINE BOARD - Main Content */}
       {/* ============================================================ */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-              <LayoutDashboard className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white px-4 py-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+              <LayoutDashboard className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">
                 {selectedStageLabel ? `${selectedStageLabel} Leads` : 'Pipeline Board'}
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
                 {selectedStageLabel
-                  ? 'Use the filters to narrow this stage or switch to another stage from the Sales tabs.'
-                  : 'Drag leads between stages, or use the quick actions menu to move them with a single click.'}
+                  ? 'Narrow this stage with filters, or switch stages from the Sales tabs.'
+                  : 'Drag leads between stages, or use the quick actions menu to move them.'}
               </p>
             </div>
           </div>
@@ -969,7 +969,6 @@ export default function CRMPipelinePage() {
               onMoveLeadToStage={handleLeadMove}
               onUpdateStageStatus={handleStageStatusChange}
               onRecordContact={handleRecordContact}
-              onCopyLeadId={handleCopyLeadId}
               onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
               onResetFilters={clearFilters}
               leads={visibleLeads}
@@ -1027,14 +1026,14 @@ export default function CRMPipelinePage() {
       {/* INSIGHT RAIL - Sidebar Analytics */}
       {/* ============================================================ */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-              <BarChart3 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white px-4 py-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+              <BarChart3 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Pipeline Insights</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Key metrics and analytics</p>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Pipeline Insights</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Key metrics and analytics</p>
             </div>
           </div>
         </div>

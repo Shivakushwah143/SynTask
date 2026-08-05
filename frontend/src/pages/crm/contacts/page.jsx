@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Building2, Search, Users, Plus, Mail, Phone, Briefcase, Award, UserCheck, UserPlus, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
-import { Badge, Button, ConfirmDialog, EmptyState, SkeletonTable, Table, inputClassName } from '../../../components/ui'
+import { Badge, Button, ConfirmDialog, EmptyState, SkeletonTable, Table } from '../../../components/ui'
 import { CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { ContactFormModal } from './components'
 
@@ -255,10 +255,10 @@ export default function CRMContactsPage() {
         </div>
 
         <div className="p-4">
-          <div className="relative mb-4">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <div className="relative mb-3">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
-              className={`${inputClassName} pl-10 bg-gray-50 dark:bg-gray-900/50`}
+              className="input input-sm pl-8"
               placeholder="Search contacts by name, company, email, or phone..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}

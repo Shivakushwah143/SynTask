@@ -117,8 +117,8 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
 
   return (
     <div className="rounded-xl border border-surface-border/80 bg-surface/95 p-2.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[minmax(190px,1.5fr)_repeat(7,minmax(0,1fr))]">
-        <label className="relative col-span-2 block min-w-0 sm:col-span-1">
+      <div className="grid grid-cols-2 items-center gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[minmax(200px,1.6fr)_repeat(4,minmax(0,1fr))_minmax(220px,1.5fr)]">
+        <label className="relative col-span-2 block min-w-0 sm:col-span-3 lg:col-span-1">
           <span className="sr-only">Search</span>
           <Sparkles className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
           <input
@@ -234,16 +234,16 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
             />
           </label>
         </div>
-        <div className="col-span-2 flex items-end justify-end sm:col-span-1">
-          <button
-            type="button"
-            onClick={handleReset}
-            className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[11px] font-semibold text-text-secondary transition hover:bg-surface-muted dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            <Filter className="h-3.5 w-3.5" />
-            Reset
-          </button>
-        </div>
+      </div>
+      <div className="mt-2 flex justify-end border-t border-surface-border/60 pt-1.5 dark:border-gray-800">
+        <button
+          type="button"
+          onClick={handleReset}
+          className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[11px] font-semibold text-text-secondary transition hover:bg-surface-muted dark:text-gray-300 dark:hover:bg-gray-800"
+        >
+          <Filter className="h-3.5 w-3.5" />
+          Reset filters
+        </button>
       </div>
     </div>
   )
@@ -405,7 +405,6 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   onMoveLeadToStage,
   onUpdateStageStatus,
   onRecordContact,
-  onCopyLeadId,
   onLeadSelect,
   onResetFilters,
   hasActiveFilters = false,
@@ -430,21 +429,21 @@ export const PipelineStageListView = memo(function PipelineStageListView({
         <table className="min-w-full divide-y divide-surface-border/80 text-sm">
           <thead className="bg-surface-muted/80 text-text-secondary dark:bg-gray-950/50 dark:text-gray-300">
             <tr>
-              <th className="px-4 py-3 text-left font-semibold">Lead</th>
-              <th className="px-4 py-3 text-left font-semibold">Owner</th>
-              <th className="px-4 py-3 text-left font-semibold">Contact</th>
-              <th className="px-4 py-3 text-left font-semibold">Priority</th>
-              <th className="px-4 py-3 text-left font-semibold">Status</th>
-              <th className="px-4 py-3 text-left font-semibold">Value</th>
-              <th className="px-4 py-3 text-left font-semibold">Created</th>
-              <th className="px-4 py-3 text-left font-semibold">Actions</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Lead</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Owner</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Priority</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Status</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Value</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Created</th>
+              <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em]">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-border/80 dark:divide-gray-800">
             {leads.map((lead, index) => {
               const leadId = lead.id || lead._id || `${stage.key}-${index}`
               const leadTitle = lead.company_name || lead.prospect_name || getLeadContactLabel(lead) || 'Lead'
-              const leadSubtitle = lead.email || [lead.country_code, lead.phone].filter(Boolean).join(' ') || 'No contact info'
+              const phoneLabel = [lead.country_code, lead.phone].filter(Boolean).join(' ')
+              const leadSubtitle = [phoneLabel, lead.email].filter(Boolean).join(' · ') || 'No contact info'
               const ownerLabel = getLeadOwnerLabel(lead)
               const priority = getLeadPriority(lead)
               const tags = getLeadTags(lead)
@@ -453,40 +452,41 @@ export const PipelineStageListView = memo(function PipelineStageListView({
               const isStatusUpdating = Boolean(statusUpdatingId && leadId === statusUpdatingId)
 
               return (
-                <tr key={leadId} className="hover:bg-surface-muted/60 dark:hover:bg-gray-800/50">
-                  <td className="px-4 py-4">
+                <tr key={leadId} className="group hover:bg-surface-muted/60 dark:hover:bg-gray-800/50">
+                  <td className="px-3 py-2.5">
                     <button
                       type="button"
                       onClick={() => onLeadSelect?.(lead)}
-                      className="block text-left focus-visible:outline-none"
+                      className="block max-w-[280px] text-left focus-visible:outline-none"
+                      aria-label={`Open ${leadTitle}`}
                     >
-                      <div className="font-semibold text-text-primary dark:text-gray-100">{leadTitle}</div>
-                      <div className="mt-1 text-xs text-text-secondary dark:text-gray-400">{leadSubtitle}</div>
-                      {tags.length ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {tags.slice(0, 4).map((tag) => (
-                            <Badge key={tag} label={tag} colorKey="draft" className="text-[10px]" />
-                          ))}
-                          {tags.length > 4 ? (
-                            <span className="inline-flex items-center rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-text-muted dark:bg-gray-800 dark:text-gray-400">
-                              +{tags.length - 4}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
+                      <div className="truncate text-sm font-semibold text-text-primary transition-colors group-hover:text-primary-700 dark:text-gray-100 dark:group-hover:text-primary-300">
+                        {leadTitle}
+                      </div>
+                      <div className="mt-0.5 truncate text-xs text-text-secondary dark:text-gray-400">{leadSubtitle}</div>
                     </button>
+                    {tags.length ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {tags.slice(0, 2).map((tag) => (
+                          <Badge key={tag} label={tag} colorKey="draft" className="text-[10px]" />
+                        ))}
+                        {tags.length > 2 ? (
+                          <span className="inline-flex items-center rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium text-text-muted dark:bg-gray-800 dark:text-gray-400">
+                            +{tags.length - 2}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </td>
-                  <td className="px-4 py-4 text-text-primary dark:text-gray-100">{ownerLabel}</td>
-                  <td className="px-4 py-4 text-text-secondary dark:text-gray-300">
-                    <div className="space-y-1">
-                      <div>{lead.phone ? [lead.country_code, lead.phone].filter(Boolean).join(' ') : 'No phone'}</div>
-                      <div>{lead.email || 'No email'}</div>
-                    </div>
+                  <td className="px-3 py-2.5">
+                    <span className="block max-w-[140px] truncate text-xs font-medium text-text-primary dark:text-gray-100">
+                      {ownerLabel || '—'}
+                    </span>
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-3 py-2.5">
                     <Badge label={priority} colorKey={priority} className="text-[10px] uppercase tracking-[0.12em]" />
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-3 py-2.5">
                     {isStatusUpdating ? (
                       <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-700 dark:text-primary-300">
                         <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -498,18 +498,18 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                         lead={lead}
                         disabled={isMovePending}
                         onStatusChange={(nextStatus) => nextStatus !== stageStatus && onUpdateStageStatus?.(lead, nextStatus)}
-                        className="min-w-32"
+                        className="min-w-24"
                       />
                     )}
                   </td>
-                  <td className="px-4 py-4 font-semibold text-text-primary dark:text-gray-100">
+                  <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-text-primary dark:text-gray-100">
                     {formatCurrency(getLeadDealValue(lead), currency)}
                   </td>
-                  <td className="px-4 py-4 text-text-secondary dark:text-gray-300">
+                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-text-secondary dark:text-gray-300">
                     {formatShortDate(lead.created_at || lead.createdAt || lead.created_date)}
                   </td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-wrap gap-2">
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                       {getStageKey(stage) === 'acquire' && !lead.phone && !lead.first_contact_at && !lead.last_contacted_at ? (
                         <Button
                           type="button"
@@ -517,18 +517,10 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                           size="sm"
                           onClick={() => onRecordContact?.(lead)}
                         >
-                          <Phone className="h-4 w-4" />
+                          <Phone className="h-3.5 w-3.5" />
                           Record contact
                         </Button>
                       ) : null}
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => onLeadSelect?.(lead)}
-                      >
-                        Open lead
-                      </Button>
                       <Button
                         type="button"
                         variant="primary"
@@ -538,15 +530,8 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                         onClick={() => nextStage && onMoveLeadToStage?.(lead, stage.nextStageKey)}
                         disabled={!nextStage}
                       >
+                        <MoveRight className="h-3.5 w-3.5" />
                         {nextStage ? `Move to ${nextStage.name}` : 'Final stage'}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onCopyLeadId?.(lead)}
-                      >
-                        Copy ID
                       </Button>
                     </div>
                   </td>

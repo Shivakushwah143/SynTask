@@ -667,24 +667,24 @@ export default function CRMLeadsPage() {
           )}
         >
           {/* Search & Filter Bar */}
-          <div className="mb-4 rounded-[24px] border border-primary-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-[#5a4635] dark:bg-black/60">
-            <div className="grid gap-3 lg:grid-cols-[1fr,160px,160px,auto]">
+          <div className="mb-4 rounded-2xl border border-primary-200/70 bg-white/80 p-2.5 shadow-sm backdrop-blur dark:border-[#5a4635] dark:bg-black/60">
+            <div className="grid items-center gap-2 lg:grid-cols-[1fr,160px,160px,auto]">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
                 <input
-                  className="input min-h-10 pl-10 w-full"
+                  className="input input-sm pl-8 w-full"
                   value={leadSearch}
                   onChange={(event) => setLeadSearch(event.target.value)}
                   placeholder="Search leads, contacts, owner..."
                 />
               </div>
-              <select className="input min-h-10" value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}>
+              <select className="input input-sm" value={stageFilter} onChange={(event) => setStageFilter(event.target.value)}>
                 <option value="">All stages</option>
                 {stageOptions.map((stage) => (
                   <option key={stage.value} value={stage.value}>{stage.label}</option>
                 ))}
               </select>
-              <select className="input min-h-10" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+              <select className="input input-sm" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
                 <option value="">All priorities</option>
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
@@ -696,6 +696,7 @@ export default function CRMLeadsPage() {
               </select>
               <Button
                 variant="secondary"
+                size="sm"
                 onClick={() => {
                   setLeadSearch('')
                   setStageFilter('')

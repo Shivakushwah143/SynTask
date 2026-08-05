@@ -12,10 +12,9 @@ describe('pipeline lead card styles', () => {
 })
 
 describe('pipeline stage list view', () => {
-  it('renders a full-page lead list with row actions for stage routes', () => {
+  it('renders a compact lead list where the title opens the lead and only essential actions remain', () => {
     const onLeadSelect = vi.fn()
     const onMoveLeadToStage = vi.fn()
-    const onCopyLeadId = vi.fn()
 
     render(
       <PipelineStageListView
@@ -48,7 +47,6 @@ describe('pipeline stage list view', () => {
         currency="INR"
         onLeadSelect={onLeadSelect}
         onMoveLeadToStage={onMoveLeadToStage}
-        onCopyLeadId={onCopyLeadId}
         onResetFilters={vi.fn()}
       />,
     )
@@ -56,15 +54,16 @@ describe('pipeline stage list view', () => {
     expect(screen.getByRole('columnheader', { name: /^Lead$/i })).toBeTruthy()
     expect(screen.getByText('Acme Pvt Ltd')).toBeTruthy()
     expect(screen.getByText('Beta Labs')).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: /^Open lead$/i })).toHaveLength(2)
+
+    // Compact redesign: the lead title itself opens the lead, and the only
+    // redundant helper buttons (Open lead / Copy ID) are gone.
+    expect(screen.queryByRole('button', { name: /^Open lead$/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Copy ID$/i })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Open Acme Pvt Ltd$/i }))
+    expect(onLeadSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'lead-1' }))
 
     fireEvent.click(screen.getAllByRole('button', { name: /Move to Discovery/i })[0])
     expect(onMoveLeadToStage).toHaveBeenCalledWith(expect.objectContaining({ id: 'lead-1' }), 'discovery')
-
-    fireEvent.click(screen.getAllByRole('button', { name: /^Copy ID$/i })[0])
-    expect(onCopyLeadId).toHaveBeenCalledWith(expect.objectContaining({ id: 'lead-1' }))
-
-    fireEvent.click(screen.getAllByRole('button', { name: /^Open lead$/i })[0])
-    expect(onLeadSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'lead-1' }))
   })
 })
