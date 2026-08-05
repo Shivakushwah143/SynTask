@@ -3,7 +3,7 @@ Invoice Management Endpoints
 """
 from fastapi import APIRouter, HTTPException, status, Depends, Form, Query
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import logging
@@ -14,7 +14,7 @@ from app.models.company import Company
 from app.models.user import User, UserRole
 from app.api.dependencies import get_current_user, get_current_company_admin_or_lead, check_company_access
 from app.core.config import settings
-from app.services.invoice_pdf import generate_invoice_pdf
+from app.services.invoice_pdf import generate_invoice_pdf, safe_invoice_filename
 from app.core.clock import utc_now
 
 router = APIRouter()
@@ -713,27 +713,58 @@ async def download_invoice_pdf(
     current_user: User = Depends(get_current_company_admin_or_lead),
 ):
     """Download invoice as PDF"""
+    # Secure lookup: 404 on missing/malformed id, 403 on cross-company access.
+    invoice = await _get_invoice_for_user(invoice_id, current_user)
+
+    # Company data is optional on the PDF. A deleted company, stale reference or
+    # malformed legacy id must not block an existing invoice from being downloaded.
+    company = None
+    if getattr(invoice, "company_id", None):
+        try:
+            company = await Company.get(invoice.company_id)
+        except Exception:
+            company = None
+            logger.warning(
+                "Invoice %s references company %s that could not be loaded; using snapshot data",
+                invoice.invoice_number,
+                invoice.company_id,
+            )
+
+    # NOTE: the client document is intentionally NOT loaded. The invoice carries a
+    # billing/client snapshot, so a deleted client or stale client_id cannot break PDFs.
+
     try:
-        invoice = await Invoice.get(invoice_id)
-    except:
+        pdf_bytes = generate_invoice_pdf(invoice, company)
+    except Exception:
+        logger.exception(
+            "Invoice PDF generation failed | invoice_id=%s invoice_number=%s company_id=%s",
+            invoice_id,
+            getattr(invoice, "invoice_number", None),
+            getattr(invoice, "company_id", None),
+        )
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invoice not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invoice PDF could not be generated",
         )
 
-    check_company_access(current_user, invoice.company_id)
+    if not pdf_bytes or not isinstance(pdf_bytes, (bytes, bytearray)) or not pdf_bytes.startswith(b"%PDF-"):
+        logger.error(
+            "Invoice PDF generator produced invalid output | invoice_id=%s invoice_number=%s",
+            invoice_id,
+            getattr(invoice, "invoice_number", None),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invoice PDF could not be generated",
+        )
 
-    company = await Company.get(invoice.company_id) if invoice.company_id else None
-    client = await Client.get(invoice.client_id) if invoice.client_id else None
-
-    pdf_bytes = generate_invoice_pdf(invoice, company, client)
-
-    filename = f"{invoice.invoice_number or 'invoice'}.pdf"
-    return StreamingResponse(
-        iter([pdf_bytes]),
+    filename = safe_invoice_filename(invoice.invoice_number)
+    return Response(
+        content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"'
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(pdf_bytes)),
         },
     )
 
