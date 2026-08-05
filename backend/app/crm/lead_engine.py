@@ -75,6 +75,26 @@ def _now() -> datetime:
     return utc_now()
 
 
+def _initial_stage_status(stage_value: Optional[str], source_value: Optional[str], provided: Optional[str] = None) -> Optional[str]:
+    """Source-aware inner status for a newly created lead.
+
+    Manual/integration leads in Acquire begin as `new`; CSV/bulk-imported leads
+    begin as `imported`. Other stages use their documented default (Discovery
+    stays unset). An explicitly provided status always wins.
+    """
+    from app.crm.pipeline import STAGE_DEFAULT_STATUS, stage_status_key
+
+    if provided:
+        return _normalize_text(provided)
+    stage_key = stage_status_key(stage_value)
+    if not stage_key:
+        return None
+    if stage_key == "acquire":
+        source_key = str(source_value or "").lower()
+        return "imported" if ("csv" in source_key or "excel" in source_key) else "new"
+    return STAGE_DEFAULT_STATUS.get(stage_key)
+
+
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
     if not user:
         return fallback
@@ -323,7 +343,7 @@ class LeadNormalizer:
             "pain_points", "current_agency", "num_employees",
             "qualify_status", "discovery_outcome", "discovery_notes",
             "proposal_status", "negotiation_status", "negotiation_notes",
-            "agreement_status", "next_action",
+            "agreement_status", "next_action", "current_stage_status",
         ]:
             value = normalized.get(key)
             normalized[key] = _normalize_text(value) if value is not None else None
@@ -646,6 +666,12 @@ class LeadEngine:
             normalized.get("current_stage") or "new",
             _parse_stage_lookup([]),
         )
+        # Source-aware inner status for the lead's starting stage.
+        normalized["current_stage_status"] = _initial_stage_status(
+            normalized.get("current_stage"),
+            normalized.get("source") or source,
+            normalized.get("current_stage_status"),
+        )
         normalized["company_id"] = normalized.get("company_id") or current_user.company_id
         normalized["created_by"] = str(getattr(current_user, "id", ""))
         normalized["assigned_by"] = str(getattr(current_user, "id", ""))
@@ -764,6 +790,7 @@ class LeadEngine:
             negotiation_notes=normalized.get("negotiation_notes"),
             agreement_status=normalized.get("agreement_status"),
             next_action=normalized.get("next_action"),
+            current_stage_status=normalized.get("current_stage_status"),
         )
         await prospect.insert()
 
@@ -816,6 +843,8 @@ class LeadEngine:
             "stage_entered_at": prospect.stage_entered_at,
             "stage_last_changed_at": prospect.stage_last_changed_at,
             "days_in_stage": prospect.days_in_stage,
+            "current_stage_status": getattr(prospect, "current_stage_status", None),
+            "stage_status_history": list(getattr(prospect, "stage_status_history", None) or []),
             "department_id": getattr(prospect, "department_id", None),
             "meta_lead_id": getattr(prospect, "meta_lead_id", None),
             "meta_campaign_id": getattr(prospect, "meta_campaign_id", None),
@@ -832,6 +861,7 @@ class LeadEngine:
         prospect = await SalesProspect.get(lead_id)
         if not prospect or prospect.deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prospect not found")
+        assigned_before = getattr(prospect, "assigned_to", None)
         await require_owned_record_access(
             current_user,
             prospect,
@@ -959,6 +989,28 @@ class LeadEngine:
         # Recording any contact auto-fills the first-contact gate used by Acquire -> Qualify.
         if prospect.last_contacted_at and not prospect.first_contact_at:
             prospect.first_contact_at = prospect.last_contacted_at
+
+        # ── Stage inner-status sync (single write path keeps snapshot + domain in lockstep) ──
+        from app.crm.pipeline import STAGE_STATUS_DOMAIN_FIELD, apply_stage_status_change, stage_status_key
+
+        stage_key = stage_status_key(prospect.current_stage)
+        if stage_key:
+            if stage_key == "acquire":
+                # A real owner reassignment marks the lead Assigned (Acquire flow).
+                if prospect.assigned_to and prospect.assigned_to != assigned_before:
+                    current = _normalize_text(getattr(prospect, "current_stage_status", "") or "").lower()
+                    if current in ("", "new", "imported"):
+                        apply_stage_status_change(
+                            prospect, stage_key=stage_key, new_status="assigned", user=current_user, now=now
+                        )
+            elif STAGE_STATUS_DOMAIN_FIELD.get(stage_key):
+                domain_value = getattr(prospect, STAGE_STATUS_DOMAIN_FIELD[stage_key], None)
+                normalized_domain = _normalize_text(domain_value or "").lower()
+                current = _normalize_text(getattr(prospect, "current_stage_status", "") or "").lower()
+                if normalized_domain and normalized_domain != current:
+                    apply_stage_status_change(
+                        prospect, stage_key=stage_key, new_status=normalized_domain, user=current_user, now=now
+                    )
 
         prospect.updated_at = now
         await prospect.save()
@@ -1111,6 +1163,9 @@ class LeadEngine:
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
                     custom_fields=dict(row.get("custom_fields") or {}),
+                    current_stage_status=_initial_stage_status(
+                        row.get("current_stage"), row.get("source") or source_label, None
+                    ),
                 )
             except (ValidationError, ValueError) as exc:
                 if isinstance(exc, ValidationError) and exc.errors():

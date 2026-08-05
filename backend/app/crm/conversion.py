@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 from fastapi import HTTPException, status
 
 from app.timeline.publisher import publish_crm_timeline_event
-from app.crm.pipeline import WON_STATUSES, normalize_stage_display, _serialize_lead, _user_display_name
+from app.crm.pipeline import WON_STATUSES, apply_stage_status_change, normalize_stage_display, _serialize_lead, _user_display_name
 from app.crm.models import SalesProspect
 from app.models.client import Client
 from app.models.invoice import Invoice, InvoiceStatus, InvoiceType
@@ -124,6 +124,7 @@ class LeadConversionService:
 
         now = utc_now()
         prospect.won_status = normalized
+        apply_stage_status_change(prospect, stage_key="won", new_status=normalized, user=current_user, now=now)
         prospect.updated_at = now
         await prospect.save()
         await _publish_event(
@@ -381,6 +382,7 @@ class LeadConversionService:
         prospect.won_status = "transferred"
         prospect.transferred_at = now
         prospect.transferred_by = str(getattr(current_user, "id", ""))
+        apply_stage_status_change(prospect, stage_key="won", new_status="transferred", user=current_user, now=now)
         prospect.updated_at = now
         await prospect.save()
 

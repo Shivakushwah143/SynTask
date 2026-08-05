@@ -9,7 +9,7 @@ import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, EmptyState, LoadingSpinner, inputClassName } from '../../../components/ui'
-import { formatCurrency, formatShortDate, getCanonicalPipelineStageKey, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
+import { formatCurrency, formatShortDate, getCanonicalPipelineStageKey, getLeadContactLabel, getLeadOwnerLabel, getLeadStageStatus, getLeadTags, getStageStatusLabel, getStageStatusOptions } from '../pipeline/utils'
 import { asArray } from '../../phase4Utils'
 import { LeadFilesTab } from './files'
 
@@ -45,14 +45,6 @@ const LEAD_PRIORITY_OPTIONS = [
   { value: 'cold', label: 'Cold' },
   { value: 'warm', label: 'Warm' },
   { value: 'hot', label: 'Hot' },
-]
-
-const WON_STATUS_OPTIONS = [
-  { value: 'payment_pending', label: 'Payment Pending' },
-  { value: 'payment_received', label: 'Payment Received' },
-  { value: 'onboarding_started', label: 'Onboarding Started' },
-  { value: 'ready', label: 'Ready' },
-  { value: 'transferred', label: 'Transferred' },
 ]
 
 // Stage-gate checklist shown in the lead sidebar. Mirrors the backend
@@ -146,6 +138,7 @@ export const buildLeadOverviewSections = (lead = {}) => {
   ]
   const pipelineItems = [
     { label: 'Source', value: lead?.channel || '-' },
+    { label: 'Inner status', value: getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead)) || '-' },
     { label: 'Estimated close', value: formatShortDate(lead?.estimated_close_date) },
     { label: 'Days in stage', value: String(Math.max(Number(lead?.days_in_stage || 0), 0)) },
   ]
@@ -305,6 +298,7 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
   const stage = lead?.current_stage || 'Unassigned'
   const priority = lead?.priority || lead?.interest_level || 'medium'
   const status = lead?.status || 'active'
+  const stageStatusLabel = getStageStatusLabel(stage, getLeadStageStatus(lead))
   const createdDate = formatShortDate(lead?.created_at || lead?.createdAt || lead?.created_date)
   const phoneLabel = [lead?.country_code, lead?.phone].filter(Boolean).join(' ') || '-'
 
@@ -423,6 +417,7 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <LeadPill label="Stage" value={stage} />
+              {stageStatusLabel ? <LeadPill label="Inner status" value={stageStatusLabel} /> : null}
               <LeadPill label="Priority" value={priority} />
               <LeadPill label="Status" value={status} />
             </div>
@@ -785,7 +780,9 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
   const gateRequirements = gate ? gate.requirements(lead) : []
   const gateReady = gate ? gateRequirements.every((req) => req.met) : false
   const isWonStage = currentStageKey === 'won'
-  const [wonStatus, setWonStatus] = useState(lead?.won_status || '')
+  const stageStatusOptions = getStageStatusOptions(currentStageKey)
+  const stageStatusLabel = getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead))
+  const [stageStatus, setStageStatus] = useState(() => getLeadStageStatus(lead))
   const [accountManagerId, setAccountManagerId] = useState(lead?.account_manager_id || '')
   const queryClient = useQueryClient()
   const refreshWorkspace = () => {
@@ -804,6 +801,7 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       tag: Array.isArray(lead?.tag) ? lead.tag.join('|') : (lead?.tag || ''),
     })
     setCustomFields(JSON.stringify(custom, null, 2))
+    setStageStatus(getLeadStageStatus(lead))
   }, [lead])
 
   const stageMutation = useMutation((stage) => crmApi.updatePipelineStage(lead?.id, { stage }), {
@@ -837,6 +835,23 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     },
     onError: (error) => toast.error(error?.response?.data?.detail || 'Transfer failed'),
   })
+
+  const statusMutation = useMutation((status) => crmApi.updateStageStatus(lead?.id, status), {
+    onSuccess: () => {
+      toast.success('Stage status updated')
+      refreshWorkspace()
+    },
+    onError: (error) => toast.error(error?.response?.data?.detail || 'Status update failed'),
+  })
+
+  const saveStageStatus = () => {
+    const value = String(stageStatus || '').trim()
+    if (!value || value === getLeadStageStatus(lead)) {
+      toast('No change to stage status')
+      return
+    }
+    statusMutation.mutate(value)
+  }
 
   const saveLead = () => {
     const payload = new FormData()
@@ -878,6 +893,43 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
           ))}
         </div>
       </div>
+
+      <LeadSidebarPanel
+        title="Stage status"
+        description={currentStageKey === 'discovery' ? 'Meeting outcome for this lead.' : 'Current condition inside this stage.'}
+      >
+        {stageStatusOptions.length ? (
+          <div className="space-y-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                {currentStageKey === 'discovery' ? 'Discovery Outcome' : `${stageStatusLabel || lead?.current_stage || 'Stage'} status`}
+              </span>
+              <select className={inputClassName} value={stageStatus} onChange={(event) => setStageStatus(event.target.value)}>
+                <option value="">
+                  {currentStageKey === 'discovery' ? 'Outcome not selected' : 'Not set'}
+                </option>
+                {stageStatusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="w-full justify-center"
+              onClick={saveStageStatus}
+              loading={statusMutation.isLoading}
+              disabled={!stageStatus || stageStatus === getLeadStageStatus(lead)}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Save status
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400">This stage has no inner statuses.</p>
+        )}
+      </LeadSidebarPanel>
 
       <LeadSidebarPanel title="Stage checklist" description="Requirements before the lead can move to the next stage.">
         {gate ? (
@@ -944,28 +996,8 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       </LeadSidebarPanel>
 
       {isWonStage ? (
-        <LeadSidebarPanel title="Won conversion" description="Idempotent actions — retrying never creates duplicates.">
+        <LeadSidebarPanel title="Won conversion" description="Idempotent actions — retrying never creates duplicates. Won status is managed by the Stage status control above.">
           <div className="space-y-3">
-            <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Won status</span>
-              <select className={inputClassName} value={wonStatus} onChange={(event) => setWonStatus(event.target.value)}>
-                <option value="">Select status</option>
-                {WON_STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="w-full justify-center"
-              onClick={() => conversionMutation.mutate({ action: 'won_status', payload: { won_status: wonStatus } })}
-              disabled={!wonStatus || wonStatus === (lead?.won_status || '')}
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Save status
-            </Button>
             <div className="grid gap-2">
               {lead?.invoice_id ? (
                 <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/60 px-3 py-2 text-xs font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
@@ -1298,10 +1330,12 @@ export const LeadProposalTab = memo(function LeadProposalTab({
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Status</span>
             <select className={inputClassName} value={form.status} onChange={(event) => onChange('status', event.target.value)}>
               <option value="draft">Draft</option>
+              <option value="generated">Generated</option>
               <option value="sent">Sent</option>
               <option value="viewed">Viewed</option>
               <option value="accepted">Accepted</option>
               <option value="rejected">Rejected</option>
+              <option value="revision_requested">Revision Requested</option>
               <option value="expired">Expired</option>
             </select>
           </label>

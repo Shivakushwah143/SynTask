@@ -1,6 +1,6 @@
 import { timeService } from '@/services/timeService'
 
-export const PIPELINE_FILTER_KEYS = ['q', 'owner', 'priority', 'tags', 'minValue', 'maxValue', 'createdFrom', 'createdTo', 'stage']
+export const PIPELINE_FILTER_KEYS = ['q', 'owner', 'priority', 'tags', 'minValue', 'maxValue', 'createdFrom', 'createdTo', 'stage', 'status']
 
 export const PIPELINE_FILTER_DEFAULTS = {
   q: '',
@@ -12,6 +12,7 @@ export const PIPELINE_FILTER_DEFAULTS = {
   createdFrom: '',
   createdTo: '',
   stage: '',
+  status: '',
 }
 
 export const DEAL_VALUE_FIELDS = ['deal_value', 'dealValue', 'value', 'won_amount', 'amount']
@@ -126,6 +127,105 @@ export const getStageKey = (stage) => normalizeText(stage?.key || stage?.name ||
 
 export const getStageLabel = (stage) => stage?.name || stage?.label || stage?.title || stage?.key || stage?.id || 'Stage'
 
+// ── Stage inner-status configuration (mirrors backend STAGE_INNER_STATUSES) ──
+// The ONLY allowed statuses per stage, kept in sync with app/crm/pipeline.py.
+// Repeated labels (Draft / Sent / Accepted / ...) are always scoped by the stage.
+export const STAGE_INNER_STATUSES = {
+  acquire: [
+    { value: 'new', label: 'New' },
+    { value: 'imported', label: 'Imported' },
+    { value: 'assigned', label: 'Assigned' },
+    { value: 'duplicate', label: 'Duplicate' },
+    { value: 'spam', label: 'Spam' },
+  ],
+  qualify: [
+    { value: 'not_contacted', label: 'Not Contacted' },
+    { value: 'contacted', label: 'Contacted' },
+    { value: 'busy', label: 'Busy' },
+    { value: 'call_back', label: 'Call Back' },
+    { value: 'wrong_number', label: 'Wrong Number' },
+    { value: 'no_response', label: 'No Response' },
+    { value: 'interested', label: 'Interested' },
+    { value: 'not_interested', label: 'Not Interested' },
+    { value: 'spam', label: 'Spam' },
+    { value: 'qualified', label: 'Qualified' },
+  ],
+  discovery: [
+    { value: 'need_proposal', label: 'Need Proposal' },
+    { value: 'need_audit', label: 'Need Audit' },
+    { value: 'need_second_meeting', label: 'Need Second Meeting' },
+    { value: 'follow_up_required', label: 'Follow-up Required' },
+    { value: 'not_interested', label: 'Not Interested' },
+    { value: 'lost', label: 'Lost' },
+    { value: 'qualified', label: 'Qualified' },
+  ],
+  proposal: [
+    { value: 'draft', label: 'Draft' },
+    { value: 'generated', label: 'Generated' },
+    { value: 'sent', label: 'Sent' },
+    { value: 'viewed', label: 'Viewed' },
+    { value: 'accepted', label: 'Accepted' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'revision_requested', label: 'Revision Requested' },
+    { value: 'expired', label: 'Expired' },
+  ],
+  negotiation: [
+    { value: 'negotiation_started', label: 'Negotiation Started' },
+    { value: 'waiting_client', label: 'Waiting Client' },
+    { value: 'waiting_internal', label: 'Waiting Internal' },
+    { value: 'discount_approval', label: 'Discount Approval' },
+    { value: 'final_offer', label: 'Final Offer' },
+    { value: 'accepted', label: 'Accepted' },
+    { value: 'rejected', label: 'Rejected' },
+  ],
+  agreement: [
+    { value: 'draft', label: 'Draft' },
+    { value: 'sent', label: 'Sent' },
+    { value: 'viewed', label: 'Viewed' },
+    { value: 'signed', label: 'Signed' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'expired', label: 'Expired' },
+  ],
+  won: [
+    { value: 'payment_pending', label: 'Payment Pending' },
+    { value: 'payment_received', label: 'Payment Received' },
+    { value: 'onboarding_started', label: 'Onboarding Started' },
+    { value: 'ready', label: 'Ready' },
+    { value: 'transferred', label: 'Transferred' },
+  ],
+}
+
+// Per-stage domain field that owns the canonical status on the lead record
+// (mirrors backend STAGE_STATUS_DOMAIN_FIELD) — used for backward-compatible reads.
+const STAGE_STATUS_DOMAIN_FIELD = {
+  acquire: null,
+  qualify: 'qualify_status',
+  discovery: 'discovery_outcome',
+  proposal: 'proposal_status',
+  negotiation: 'negotiation_status',
+  agreement: 'agreement_status',
+  won: 'won_status',
+}
+
+export const getStageStatusOptions = (stageKey) =>
+  STAGE_INNER_STATUSES[getCanonicalPipelineStageKey(stageKey)] || []
+
+export const getLeadStageStatus = (lead) => {
+  const snapshot = String(lead?.current_stage_status || '').toLowerCase().replace(/\s+/g, '_')
+  if (snapshot) return snapshot
+  const stageKey = getCanonicalPipelineStageKey(lead?.current_stage || '')
+  const domainField = STAGE_STATUS_DOMAIN_FIELD[stageKey]
+  const domainValue = domainField ? lead?.[domainField] : null
+  return domainValue ? String(domainValue).toLowerCase().replace(/\s+/g, '_') : ''
+}
+
+export const getStageStatusLabel = (stageKey, statusKey) => {
+  const status = normalizeText(statusKey)
+  if (!status) return ''
+  const option = getStageStatusOptions(stageKey).find((item) => item.value === status)
+  return option?.label || status
+}
+
 // Guided sales journey stages. Legacy values (new/contacted/qualified) map onto the
 // canonical Acquire/Qualify stages so existing leads keep their meaning.
 const PIPELINE_STAGE_ALIASES = {
@@ -205,6 +305,7 @@ export const filterPipelineLeads = (leads = [], filters = PIPELINE_FILTER_DEFAUL
   const priority = normalizeText(filters.priority)
   const tags = normalizeText(filters.tags)
   const stage = normalizeText(filters.stage)
+  const status = normalizeText(filters.status)
   const minValue = filters.minValue !== '' ? normalizeNumber(filters.minValue) : null
   const maxValue = filters.maxValue !== '' ? normalizeNumber(filters.maxValue) : null
   const createdFrom = filters.createdFrom ? timeService.instant(filters.createdFrom) : null
@@ -229,6 +330,9 @@ export const filterPipelineLeads = (leads = [], filters = PIPELINE_FILTER_DEFAUL
       if (tokens.length && !tokens.some((tag) => tagLabels.includes(normalizeText(tag)))) return false
     }
     if (stage && leadStage !== stage) return false
+    // Inner status is always scoped by the current stage (repeated labels like
+    // Draft / Accepted / Sent appear in several stages).
+    if (status && getLeadStageStatus(lead) !== status) return false
     if (minValue !== null && dealValue < minValue) return false
     if (maxValue !== null && dealValue > maxValue) return false
     if (createdFrom && createdDate && createdDate < createdFrom) return false

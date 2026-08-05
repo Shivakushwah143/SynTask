@@ -29,6 +29,11 @@ class ConversionUpdateRequest(BaseModel):
     user_id: Optional[str] = None
 
 
+class PipelineStatusUpdateRequest(BaseModel):
+    """Stage-scoped inner-status update (stage is read from the database)."""
+    stage_status: str = Field(..., min_length=1)
+
+
 class PipelineReopenRequest(BaseModel):
     reason: Optional[str] = None
 
@@ -54,6 +59,11 @@ async def get_pipeline(
 @router.patch("/{lead_id}/stage")
 async def update_stage(lead_id: str, payload: PipelineStageUpdateRequest, current_user: User = Depends(get_current_user)):
     return await CRMPipelineService.move_lead(current_user, lead_id, payload.stage, payload.reason, force=payload.force)
+
+
+@router.patch("/{lead_id}/status")
+async def update_stage_status(lead_id: str, payload: PipelineStatusUpdateRequest, current_user: User = Depends(get_current_user)):
+    return await CRMPipelineService.update_stage_status(current_user, lead_id, payload.stage_status)
 
 
 @router.patch("/{lead_id}/conversion")

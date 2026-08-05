@@ -56,6 +56,7 @@ import {
   getAllowedPipelineStageKeys,
   getCanonicalPipelineStageKey,
   getLeadPriority,
+  getStageStatusOptions,
   isAllowedPipelineTransition,
   moveLeadInBoard,
   ownerOptionsFromBoard,
@@ -396,6 +397,32 @@ export default function CRMPipelinePage() {
     return moveLeadMutation.mutateAsync({ leadId, stageKey: nextStageKey, lead })
   }, [interactiveStages, moveLeadMutation])
 
+  const updateStatusMutation = useMutation(
+    ({ leadId, stageStatus }) => crmApi.updateStageStatus(leadId, stageStatus),
+    {
+      onSuccess: (response, variables) => {
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+        if (variables?.leadId) {
+          queryClient.invalidateQueries(['crm-pipeline-history', variables.leadId], { exact: true })
+        }
+        const message = response?.message || 'Stage status updated successfully'
+        toast.success(message)
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to update stage status')
+      },
+    }
+  )
+
+  const handleStageStatusChange = useCallback((lead, nextStatus) => {
+    const leadId = lead?.id || lead?._id
+    if (!leadId || !nextStatus) return
+    if (updateStatusMutation.isLoading) return
+    updateStatusMutation.mutate({ leadId, stageStatus: nextStatus })
+  }, [updateStatusMutation])
+
   const handleCopyLeadId = useCallback(async (lead) => {
     const value = lead?.id || lead?._id
     if (!value) return
@@ -678,6 +705,55 @@ export default function CRMPipelinePage() {
             onSearchChange={handleSearchChange}
             currency={currency}
           />
+          {selectedStageKey ? (
+            <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                  {selectedStageKey === 'discovery' ? 'Discovery Outcome' : `${selectedStageLabel} Status`}
+                </span>
+                {filters.status ? (
+                  <button
+                    type="button"
+                    onClick={() => updateFilters({ status: '' })}
+                    className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300"
+                  >
+                    <X className="h-3 w-3" />
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  onClick={() => updateFilters({ status: '' })}
+                  className={`inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    !filters.status
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  All
+                </button>
+                {getStageStatusOptions(selectedStageKey).map((option) => {
+                  const active = filters.status === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => updateFilters({ status: option.value })}
+                      className={`inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        active
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -739,7 +815,9 @@ export default function CRMPipelinePage() {
               stages={interactiveStages}
               currency={currency}
               movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
+              statusUpdatingId={updateStatusMutation.isLoading ? updateStatusMutation.variables?.leadId : null}
               onMoveLeadToStage={handleLeadMove}
+              onUpdateStageStatus={handleStageStatusChange}
               onCopyLeadId={handleCopyLeadId}
               onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
               onResetFilters={clearFilters}
@@ -758,8 +836,10 @@ export default function CRMPipelinePage() {
                 currency={currency}
                 activeLeadId={activeLeadId}
                 movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
+                statusUpdatingId={updateStatusMutation.isLoading ? updateStatusMutation.variables?.leadId : null}
                 users={users}
                 onMoveLeadToStage={handleLeadMove}
+                onUpdateStageStatus={handleStageStatusChange}
                 getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, interactiveStages)}
                 onCopyLeadId={handleCopyLeadId}
                 onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}

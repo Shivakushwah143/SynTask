@@ -13,7 +13,7 @@ from app.crm.application import build_crm_dashboard
 from app.crm.lead_timeline import CRMLeadTimelineService
 from app.api.v1.endpoints.sales_prospects import _get_company_prospects, _lead_identity_score, _serialize_prospect_identity
 from app.crm.models import SalesProspect
-from app.crm.pipeline import normalize_stage_display
+from app.crm.pipeline import normalize_stage_display, resolved_stage_status
 from app.models.user import User
 from app.api.deps import Pagination50, PaginationParams
 
@@ -89,6 +89,7 @@ async def crm_leads(
                 "last_contacted_at": getattr(p, "last_contacted_at", None),
                 "won_status": getattr(p, "won_status", None),
                 "transferred_at": getattr(p, "transferred_at", None),
+                "current_stage_status": resolved_stage_status(p),
             }
             for p in prospects
         ],

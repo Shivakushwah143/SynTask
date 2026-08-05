@@ -10,6 +10,7 @@ export const crmApi = {
   getPipeline: (params) => api.get('/crm/pipeline', { params }),
   getLeads: (params) => api.get('/crm/leads', { params }),
   updatePipelineStage: (leadId, payload) => api.patch(`/crm/pipeline/${leadId}/stage`, payload),
+  updateStageStatus: (leadId, stageStatus) => api.patch(`/crm/pipeline/${leadId}/status`, { stage_status: stageStatus }),
   updateLeadConversion: (leadId, payload) => api.patch(`/crm/pipeline/${leadId}/conversion`, payload),
   transferLeadToClients: (leadId) => api.post(`/crm/pipeline/${leadId}/transfer`),
   getPipelineHistory: (leadId) => api.get(`/crm/pipeline/history/${leadId}`),

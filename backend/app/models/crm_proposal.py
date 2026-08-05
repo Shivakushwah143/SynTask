@@ -11,10 +11,12 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 
 class CRMProposalStatus(str, Enum):
     DRAFT = "draft"
+    GENERATED = "generated"
     SENT = "sent"
     VIEWED = "viewed"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+    REVISION_REQUESTED = "revision_requested"
     EXPIRED = "expired"
     ARCHIVED = "archived"
 
@@ -30,10 +32,12 @@ class CRMProposal(Document):
     status: CRMProposalStatus = CRMProposalStatus.DRAFT
 
     draft_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: Optional[datetime] = None
     sent_at: Optional[datetime] = None
     viewed_at: Optional[datetime] = None
     accepted_at: Optional[datetime] = None
     rejected_at: Optional[datetime] = None
+    revision_requested_at: Optional[datetime] = None
     expired_at: Optional[datetime] = None
 
     deal_value: float = 0.0

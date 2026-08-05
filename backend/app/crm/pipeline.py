@@ -116,12 +116,71 @@ STAGE_ENTRY_REQUIREMENTS: Dict[PipelineStage, Dict[str, Any]] = {
     },
 }
 
+# ── Stage inner-status configuration (single canonical source) ──────────────────
+# Keys are the canonical stage slugs; values are the ONLY allowed inner statuses
+# for that stage. Both the status API and the frontend consume exactly this shape.
+# Repeated labels (Draft / Sent / Viewed / Accepted / Rejected / Expired / Spam)
+# are always scoped by the stage the lead is currently in.
+STAGE_INNER_STATUSES: Dict[str, List[str]] = {
+    "acquire": ["new", "imported", "assigned", "duplicate", "spam"],
+    "qualify": ["not_contacted", "contacted", "busy", "call_back", "wrong_number", "no_response", "interested", "not_interested", "spam", "qualified"],
+    "discovery": ["need_proposal", "need_audit", "need_second_meeting", "follow_up_required", "not_interested", "lost", "qualified"],
+    "proposal": ["draft", "generated", "sent", "viewed", "accepted", "rejected", "revision_requested", "expired"],
+    "negotiation": ["negotiation_started", "waiting_client", "waiting_internal", "discount_approval", "final_offer", "accepted", "rejected"],
+    "agreement": ["draft", "sent", "viewed", "signed", "rejected", "expired"],
+    "won": ["payment_pending", "payment_received", "onboarding_started", "ready", "transferred"],
+}
+
+# Default inner status applied when a lead enters a stage. Discovery intentionally
+# starts UNSET until the salesperson records a valid meeting outcome.
+STAGE_DEFAULT_STATUS: Dict[str, Optional[str]] = {
+    "acquire": "new",
+    "qualify": "not_contacted",
+    "discovery": None,
+    "proposal": "draft",
+    "negotiation": "negotiation_started",
+    "agreement": "draft",
+    "won": "payment_pending",
+}
+
+# The existing per-stage domain field that owns the canonical status (Proposal is
+# synced from CRMProposal, Won from the conversion lifecycle, ...). The lead's
+# current_stage_status is a synchronized snapshot of this field for the current
+# stage — one write path (apply_stage_status_change) keeps both consistent.
+STAGE_STATUS_DOMAIN_FIELD: Dict[str, Optional[str]] = {
+    "acquire": None,
+    "qualify": "qualify_status",
+    "discovery": "discovery_outcome",
+    "proposal": "proposal_status",
+    "negotiation": "negotiation_status",
+    "agreement": "agreement_status",
+    "won": "won_status",
+}
+
+# Human-readable labels used in activity text and error messages.
+STAGE_STATUS_LABELS: Dict[str, str] = {
+    "new": "New", "imported": "Imported", "assigned": "Assigned", "duplicate": "Duplicate", "spam": "Spam",
+    "not_contacted": "Not Contacted", "contacted": "Contacted", "busy": "Busy", "call_back": "Call Back",
+    "wrong_number": "Wrong Number", "no_response": "No Response", "interested": "Interested",
+    "not_interested": "Not Interested", "qualified": "Qualified",
+    "need_proposal": "Need Proposal", "need_audit": "Need Audit", "need_second_meeting": "Need Second Meeting",
+    "follow_up_required": "Follow-up Required", "lost": "Lost",
+    "draft": "Draft", "generated": "Generated", "sent": "Sent", "viewed": "Viewed", "accepted": "Accepted",
+    "rejected": "Rejected", "revision_requested": "Revision Requested", "expired": "Expired",
+    "negotiation_started": "Negotiation Started", "waiting_client": "Waiting Client",
+    "waiting_internal": "Waiting Internal", "discount_approval": "Discount Approval", "final_offer": "Final Offer",
+    "signed": "Signed",
+    "payment_pending": "Payment Pending", "payment_received": "Payment Received",
+    "onboarding_started": "Onboarding Started", "ready": "Ready", "transferred": "Transferred",
+}
+
+# Legacy per-stage sets/orders derived from the canonical map (existing callers).
 QUALIFY_READY_STATUSES = {"interested", "qualified"}
-QUALIFY_STATUSES = {"not_contacted", "contacted", "busy", "call_back", "wrong_number", "no_response", "interested", "not_interested", "spam", "qualified"}
-DISCOVERY_OUTCOMES = {"need_proposal", "need_audit", "need_second_meeting", "follow_up_required", "not_interested", "lost"}
-NEGOTIATION_STATUSES = {"negotiation_started", "waiting_client", "waiting_internal", "discount_approval", "final_offer", "accepted", "rejected"}
-AGREEMENT_STATUSES = {"draft", "sent", "viewed", "signed", "rejected", "expired"}
-WON_STATUSES = ["payment_pending", "payment_received", "onboarding_started", "ready", "transferred"]
+QUALIFY_STATUSES = set(STAGE_INNER_STATUSES["qualify"])
+DISCOVERY_OUTCOMES = set(STAGE_INNER_STATUSES["discovery"])
+NEGOTIATION_STATUSES = set(STAGE_INNER_STATUSES["negotiation"])
+AGREEMENT_STATUSES = set(STAGE_INNER_STATUSES["agreement"])
+WON_STATUSES = list(STAGE_INNER_STATUSES["won"])
 
 
 def _is_override_role(current_user: User) -> bool:
@@ -133,17 +192,23 @@ async def _validate_stage_entry(current_user: User, prospect: SalesProspect, tar
     requirements = STAGE_ENTRY_REQUIREMENTS.get(target_stage)
     if not requirements:
         return
+    # The unified stage-status snapshot (current_stage_status) is accepted as a
+    # source for the gates alongside the per-stage domain field — the two are kept
+    # in sync by apply_stage_status_change.
     if "field" in requirements:
         field_value = getattr(prospect, requirements["field"], None)
         expected = requirements.get("expected")
         if expected is not None:
-            if _normalize_stage_value(field_value) != expected:
+            status_ok = _normalize_status_value(field_value) == expected
+            status_ok = status_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) == expected
+            if not status_ok:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=requirements["message"])
         elif not field_value:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=requirements["message"])
         return
     if "fields" in requirements:
-        interest_ok = _normalize_stage_value(getattr(prospect, "qualify_status", None)) in QUALIFY_READY_STATUSES
+        interest_ok = _normalize_status_value(getattr(prospect, "qualify_status", None)) in QUALIFY_READY_STATUSES
+        interest_ok = interest_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) in QUALIFY_READY_STATUSES
         budget_ok = getattr(prospect, "budget", None) not in (None, "", 0)
         decision_ok = bool(getattr(prospect, "decision_maker", None))
         missing = []
@@ -160,7 +225,8 @@ async def _validate_stage_entry(current_user: User, prospect: SalesProspect, tar
             )
         return
     if requirements.get("proposal_accepted"):
-        accepted = _normalize_stage_value(getattr(prospect, "proposal_status", None)) == "accepted"
+        accepted = _normalize_status_value(getattr(prospect, "proposal_status", None)) == "accepted"
+        accepted = accepted or _normalize_status_value(getattr(prospect, "current_stage_status", None)) == "accepted"
         if not accepted:
             try:
                 proposal = await CRMProposal.find_one(
@@ -183,8 +249,149 @@ def _normalize_stage_value(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip()).lower()
 
 
+def _normalize_status_value(value: Optional[str]) -> str:
+    """Canonical inner-status slug: lowercase, spaces -> underscores.
+
+    Accepts both display labels ("Need Proposal") and stored slugs
+    ("need_proposal") so the status API and gate comparisons are robust to
+    either form.
+    """
+    return re.sub(r"\s+", "_", str(value or "").strip().lower())
+
+
 def _slugify_stage_name(name: str) -> str:
     return _normalize_stage_value(name).replace(" ", "-")
+
+
+# ── Stage inner-status helpers (canonical config lives above) ─────────────────
+def stage_status_key(stage_value: Optional[str]) -> Optional[str]:
+    """Canonical slug of the stage that owns an inner status (e.g. 'qualify')."""
+    stage = _resolve_pipeline_stage(stage_value)
+    if not stage:
+        return None
+    if stage == PipelineStage.LOST:
+        return "lost"
+    return _slugify_stage_name(stage.value)
+
+
+def stage_status_display(stage_value: Optional[str]) -> str:
+    return normalize_stage_display(stage_value) or str(stage_value or "")
+
+
+def stage_status_label(status_key: Optional[str]) -> str:
+    return STAGE_STATUS_LABELS.get(_normalize_status_value(status_key), status_key) if status_key else ""
+
+
+def resolved_stage_status(prospect: SalesProspect) -> Optional[str]:
+    """Canonical inner status for the lead's current stage (display/query value).
+
+    Domain field wins (it is the authoritative source, e.g. CRMProposal status);
+    falls back to the stored snapshot, then the stage default. Existing leads
+    without the new field therefore resolve correctly without a migration.
+    """
+    stage_key = stage_status_key(getattr(prospect, "current_stage", None))
+    if not stage_key or stage_key == "lost":
+        return getattr(prospect, "current_stage_status", None)
+    domain_field = STAGE_STATUS_DOMAIN_FIELD.get(stage_key)
+    if domain_field:
+        value = _normalize_status_value(getattr(prospect, domain_field, None))
+        if value:
+            return value
+    value = _normalize_status_value(getattr(prospect, "current_stage_status", None))
+    if value:
+        return value
+    return STAGE_DEFAULT_STATUS.get(stage_key)
+
+
+def _append_stage_status_history(
+    prospect: SalesProspect,
+    *,
+    stage: str,
+    from_status: Optional[str],
+    to_status: Optional[str],
+    user: Optional[User],
+    now: Optional[datetime] = None,
+) -> None:
+    history = list(getattr(prospect, "stage_status_history", None) or [])
+    history.append(
+        {
+            "stage": stage,
+            "from_status": from_status or None,
+            "to_status": to_status or None,
+            "changed_by": str(getattr(user, "id", "")) if user else None,
+            "changed_by_name": _user_display_name(user) if user else "System",
+            "changed_at": (now or utc_now()).isoformat(),
+        }
+    )
+    # Cap the embedded history to avoid unbounded document growth.
+    prospect.stage_status_history = history[-200:]
+
+
+def apply_stage_status_change(
+    prospect: SalesProspect,
+    *,
+    stage_key: str,
+    new_status: Optional[str],
+    user: Optional[User],
+    now: Optional[datetime] = None,
+) -> bool:
+    """Write an inner-status change: domain field + snapshot + history (one path).
+
+    Returns True when the lead's current-stage snapshot actually changed; False
+    for no-op updates (the selected status is already the current one).
+    """
+    now = now or utc_now()
+    domain_field = STAGE_STATUS_DOMAIN_FIELD.get(stage_key)
+    normalized = _normalize_status_value(new_status) if new_status else None
+    if domain_field:
+        setattr(prospect, domain_field, normalized)
+    if stage_status_key(getattr(prospect, "current_stage", None)) != stage_key:
+        # Only the domain field is kept in sync when the lead is elsewhere.
+        return False
+    previous = _normalize_status_value(getattr(prospect, "current_stage_status", None)) or None
+    if previous == normalized:
+        return False
+    prospect.current_stage_status = normalized
+    _append_stage_status_history(
+        prospect,
+        stage=stage_status_display(getattr(prospect, "current_stage", "")),
+        from_status=previous,
+        to_status=normalized,
+        user=user,
+        now=now,
+    )
+    return True
+
+
+def initialize_stage_status(prospect: SalesProspect, user: Optional[User], now: Optional[datetime] = None) -> None:
+    """Initialize the current stage's default inner status after a stage entry.
+
+    Existing domain values are preserved (safe initialization); otherwise the
+    stage default is applied. Discovery stays unset until an outcome is recorded.
+    """
+    stage_key = stage_status_key(getattr(prospect, "current_stage", None))
+    if not stage_key or stage_key == "lost":
+        return
+    domain_field = STAGE_STATUS_DOMAIN_FIELD.get(stage_key)
+    domain_value = _normalize_status_value(getattr(prospect, domain_field, None)) if domain_field else None
+    target = domain_value or STAGE_DEFAULT_STATUS.get(stage_key)
+    previous = _normalize_status_value(getattr(prospect, "current_stage_status", None)) or None
+    if previous == target:
+        return
+    if target:
+        prospect.current_stage_status = target
+        if domain_field:
+            setattr(prospect, domain_field, target)
+    else:
+        prospect.current_stage_status = None
+    _append_stage_status_history(
+        prospect,
+        stage=stage_status_display(getattr(prospect, "current_stage", "")),
+        from_status=None,
+        to_status=target,
+        user=user,
+        now=now,
+    )
 
 
 def normalize_stage_display(value: Optional[str]) -> str:
@@ -454,6 +661,8 @@ def _serialize_lead(
         "converted_at": getattr(prospect, "converted_at", None),
         "transferred_at": getattr(prospect, "transferred_at", None),
         "transferred_by": getattr(prospect, "transferred_by", None),
+        "current_stage_status": resolved_stage_status(prospect),
+        "stage_status_history": list(getattr(prospect, "stage_status_history", None) or []),
     }
 
 
@@ -685,6 +894,9 @@ class CRMPipelineService:
             prospect.client_id = None
             prospect.project_id = None
 
+        # Initialize the next stage's default inner status (Discovery stays unset).
+        initialize_stage_status(prospect, current_user, now)
+
         await prospect.save()
 
         stage_catalog_map = {_stage_name(stage): stage for stage in stage_catalog}
@@ -787,6 +999,111 @@ class CRMPipelineService:
         }
 
     @staticmethod
+    async def update_stage_status(current_user: User, lead_id: str, stage_status: str) -> Dict[str, Any]:
+        """Stage-scoped inner-status update — the single write path for stage statuses.
+
+        The stage is always read from the database (never trusted from the client),
+        so a Proposal status can never be applied while the lead is in Qualify.
+        """
+        company_id = _user_company_id(current_user)
+        prospect = await SalesProspect.get(lead_id)
+        if not prospect or prospect.deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+        if prospect.company_id != company_id and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this company")
+        if not _can_write_pipeline(current_user, prospect):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to update this lead")
+
+        stage_key = stage_status_key(prospect.current_stage)
+        if not stage_key or stage_key == "lost":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This lead is not in a stage that has inner statuses.",
+            )
+
+        normalized = _normalize_status_value(stage_status)
+        allowed = STAGE_INNER_STATUSES.get(stage_key, [])
+        if normalized not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{stage_status}' is not a valid status for the {stage_status_display(prospect.current_stage)} stage.",
+            )
+
+        # ── Stage-specific rules ──
+        if stage_key == "qualify" and normalized == "qualified":
+            interest_ok = _normalize_status_value(getattr(prospect, "qualify_status", None)) in QUALIFY_READY_STATUSES
+            interest_ok = interest_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) in QUALIFY_READY_STATUSES
+            budget_ok = getattr(prospect, "budget", None) not in (None, "", 0)
+            decision_ok = bool(getattr(prospect, "decision_maker", None))
+            missing = []
+            if not budget_ok:
+                missing.append("budget")
+            if not decision_ok:
+                missing.append("decision-maker information")
+            if missing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Qualified cannot be selected until {' and '.join(missing)} are completed.",
+                )
+            if not interest_ok:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="The lead must be marked Interested before it can be Qualified.",
+                )
+        if stage_key == "won":
+            if normalized == "transferred":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="The lead cannot be marked Transferred because the client handoff has not completed. Use the Transfer action.",
+                )
+            # Won lifecycle moves forward only (mirrors the conversion service).
+            current_won = _normalize_status_value(getattr(prospect, "won_status", None)) or None
+            if current_won and current_won in STAGE_INNER_STATUSES["won"] and normalized != current_won:
+                current_index = STAGE_INNER_STATUSES["won"].index(current_won)
+                target_index = STAGE_INNER_STATUSES["won"].index(normalized)
+                if target_index < current_index:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Cannot move Won status backward from '{current_won}' to '{normalized}'.",
+                    )
+
+        current = _normalize_status_value(getattr(prospect, "current_stage_status", None)) or None
+        now = utc_now()
+        changed = apply_stage_status_change(
+            prospect, stage_key=stage_key, new_status=normalized, user=current_user, now=now
+        )
+        prospect.updated_at = now
+        await prospect.save()
+
+        if changed:
+            await publish_crm_timeline_event(
+                event_name="LeadStageStatusChanged",
+                aggregate_type="sales_prospect",
+                aggregate_id=str(prospect.id),
+                company_id=company_id,
+                actor_id=str(getattr(current_user, "id", "")),
+                payload={
+                    "lead_id": str(prospect.id),
+                    "lead_name": prospect.prospect_name,
+                    "company_id": company_id,
+                    "stage": stage_status_display(prospect.current_stage),
+                    "stage_key": stage_key,
+                    "previous_status": current,
+                    "new_status": normalized,
+                    "updated_at": now.isoformat(),
+                },
+                metadata={"surface": "crm", "workflow": "pipeline_status"},
+            )
+
+        return {
+            "lead": _serialize_lead(prospect, normalize_stage_display(prospect.current_stage)),
+            "status": resolved_stage_status(prospect),
+            "previous_status": current,
+            "changed": changed,
+            "message": "Stage status updated successfully" if changed else "Stage status unchanged",
+        }
+
+    @staticmethod
     async def reopen_lost_lead(current_user: User, lead_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
         company_id = _user_company_id(current_user)
         prospect = await SalesProspect.get(lead_id)
@@ -819,6 +1136,8 @@ class CRMPipelineService:
         prospect.stage_entered_at = now
         prospect.days_in_stage = 0
         prospect.updated_at = now
+        # Reopened leads start at the Acquire stage default inner status.
+        initialize_stage_status(prospect, current_user, now)
         await prospect.save()
 
         stage_catalog_map = {_stage_name(stage): stage for stage in stage_catalog}

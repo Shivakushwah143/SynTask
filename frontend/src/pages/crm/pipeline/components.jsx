@@ -6,7 +6,7 @@ import { AlertCircle, ChevronDown, Filter, MoreHorizontal, MoveRight, RefreshCw,
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
-import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadTags, getStageDealValue, getStageKey } from './utils'
+import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageStatus, getLeadTags, getStageDealValue, getStageKey, getStageStatusOptions } from './utils'
 
 const leadColumnStyle = 'w-[300px] flex-none snap-start'
 export const pipelineLeadCardClassNames = {
@@ -29,6 +29,45 @@ const getUserDisplayName = (user) => {
   const name = user.full_name || user.fullName || user.name || [user.first_name || user.firstName, user.last_name || user.lastName].filter(Boolean).join(' ')
   return String(name || user.email || '').trim()
 }
+
+// Stage-scoped inner-status selector. Only the current stage's statuses are
+// offered (repeated labels like Draft / Accepted / Sent are never mixed across
+// stages). Fully controlled: the parent persists via the status API and refetches,
+// so a failed save leaves the lead's displayed status untouched.
+export const StageStatusSelect = memo(function StageStatusSelect({
+  stageKey,
+  lead,
+  disabled = false,
+  onStatusChange,
+  className = '',
+  compact = false,
+}) {
+  const options = getStageStatusOptions(stageKey)
+  const currentStatus = getLeadStageStatus(lead)
+
+  if (!options.length) {
+    return <span className="text-xs italic text-text-muted dark:text-gray-500">Not set</span>
+  }
+
+  return (
+    <select
+      value={currentStatus}
+      onChange={(event) => onStatusChange?.(event.target.value)}
+      disabled={disabled}
+      aria-label="Update inner status"
+      className={`cursor-pointer rounded-lg border border-surface-border/80 bg-surface px-2 font-semibold text-text-primary transition hover:border-primary-300 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:cursor-wait disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 ${compact ? 'py-1 text-[11px]' : 'py-1.5 text-xs'} ${className}`}
+    >
+      {!currentStatus ? (
+        <option value="" disabled className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white">Not set</option>
+      ) : null}
+      {options.map((option) => (
+        <option key={option.value} value={option.value} className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white">
+          {option.label}
+        </option>
+      ))}
+    </select>
+  )
+})
 
 export const PipelineBoardShell = ({ title, description, actions, children }) => (
   <div className="space-y-4">
@@ -303,8 +342,10 @@ export const PipelineBoard = memo(function PipelineBoard({
   currency = 'INR',
   activeLeadId = null,
   movingLeadId = null,
+  statusUpdatingId = null,
   users = [],
   onMoveLeadToStage,
+  onUpdateStageStatus,
   getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
@@ -340,8 +381,10 @@ export const PipelineBoard = memo(function PipelineBoard({
               currency={currency}
               activeLeadId={activeLeadId}
               movingLeadId={movingLeadId}
+              statusUpdatingId={statusUpdatingId}
               users={users}
               onMoveLeadToStage={onMoveLeadToStage}
+              onUpdateStageStatus={onUpdateStageStatus}
               getAllowedStageKeys={getAllowedStageKeys}
               onCopyLeadId={onCopyLeadId}
               onLeadSelect={onLeadSelect}
@@ -359,7 +402,9 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   stages = [],
   currency = 'INR',
   movingLeadId = null,
+  statusUpdatingId = null,
   onMoveLeadToStage,
+  onUpdateStageStatus,
   onCopyLeadId,
   onLeadSelect,
   onResetFilters,
@@ -389,6 +434,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
               <th className="px-4 py-3 text-left font-semibold">Owner</th>
               <th className="px-4 py-3 text-left font-semibold">Contact</th>
               <th className="px-4 py-3 text-left font-semibold">Priority</th>
+              <th className="px-4 py-3 text-left font-semibold">Status</th>
               <th className="px-4 py-3 text-left font-semibold">Value</th>
               <th className="px-4 py-3 text-left font-semibold">Created</th>
               <th className="px-4 py-3 text-left font-semibold">Actions</th>
@@ -402,7 +448,9 @@ export const PipelineStageListView = memo(function PipelineStageListView({
               const ownerLabel = getLeadOwnerLabel(lead)
               const priority = getLeadPriority(lead)
               const tags = getLeadTags(lead)
+              const stageStatus = getLeadStageStatus(lead)
               const isMovePending = Boolean(movingLeadId && leadId === movingLeadId)
+              const isStatusUpdating = Boolean(statusUpdatingId && leadId === statusUpdatingId)
 
               return (
                 <tr key={leadId} className="hover:bg-surface-muted/60 dark:hover:bg-gray-800/50">
@@ -437,6 +485,22 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                   </td>
                   <td className="px-4 py-4">
                     <Badge label={priority} colorKey={priority} className="text-[10px] uppercase tracking-[0.12em]" />
+                  </td>
+                  <td className="px-4 py-4">
+                    {isStatusUpdating ? (
+                      <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-700 dark:text-primary-300">
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Saving
+                      </div>
+                    ) : (
+                      <StageStatusSelect
+                        stageKey={stage.key}
+                        lead={lead}
+                        disabled={isMovePending}
+                        onStatusChange={(nextStatus) => nextStatus !== stageStatus && onUpdateStageStatus?.(lead, nextStatus)}
+                        className="min-w-32"
+                      />
+                    )}
                   </td>
                   <td className="px-4 py-4 font-semibold text-text-primary dark:text-gray-100">
                     {formatCurrency(getLeadDealValue(lead), currency)}
@@ -492,8 +556,10 @@ export const PipelineColumn = memo(function PipelineColumn({
   currency = 'INR',
   activeLeadId = null,
   movingLeadId = null,
+  statusUpdatingId = null,
   users = [],
   onMoveLeadToStage,
+  onUpdateStageStatus,
   getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
@@ -542,8 +608,10 @@ export const PipelineColumn = memo(function PipelineColumn({
                 stages={stages}
                 currency={currency}
                 movingLeadId={movingLeadId}
+                statusUpdatingId={statusUpdatingId}
                 users={users}
                 onMoveLeadToStage={onMoveLeadToStage}
+                onUpdateStageStatus={onUpdateStageStatus}
                 allowedStageKeys={allowedStageKeys}
                 onCopyLeadId={onCopyLeadId}
                 onLeadSelect={onLeadSelect}
@@ -578,8 +646,10 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   stages = [],
   currency = 'INR',
   movingLeadId = null,
+  statusUpdatingId = null,
   users = [],
   onMoveLeadToStage,
+  onUpdateStageStatus,
   allowedStageKeys = new Set(),
   onCopyLeadId,
   onLeadSelect,
@@ -598,10 +668,12 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   const ownerLabel = ownerLookup.get(String(lead.assigned_to || lead.owner_id || lead.ownerId || '').trim()) || getLeadOwnerLabel(lead)
   const contactLabel = getLeadContactLabel(lead)
   const phoneLabel = [lead.country_code, lead.phone].filter(Boolean).join(' ') || 'No phone'
+  const stageStatus = getLeadStageStatus(lead)
   const leadTitle = lead.prospect_name || contactLabel || lead.company_name || 'Lead'
   const leadSubtitle = lead.company_name && lead.company_name !== leadTitle ? lead.company_name : (lead.email || phoneLabel)
   const sortableId = lead.id || lead._id
   const isMovePending = Boolean(movingLeadId && sortableId === movingLeadId)
+  const isStatusUpdating = Boolean(statusUpdatingId && sortableId === statusUpdatingId)
   const [menuOpen, setMenuOpen] = useState(false)
   const actionButtonRef = useRef(null)
   const menuRef = useRef(null)
@@ -790,6 +862,24 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
         <LeadMetaRow label="Phone" value={phoneLabel} strong />
         <LeadMetaRow label="Email" value={lead.email || 'No email'} />
         <LeadMetaRow label="Interest" value={<Badge label={priority} colorKey={priority} className="text-[10px]" />} />
+        <LeadMetaRow
+          label="Status"
+          value={isStatusUpdating ? (
+            <span className="inline-flex items-center gap-1.5 font-semibold text-primary-700 dark:text-primary-300">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              Saving
+            </span>
+          ) : (
+            <StageStatusSelect
+              stageKey={getStageKey(stage)}
+              lead={lead}
+              compact
+              disabled={isMovePending}
+              onStatusChange={(nextStatus) => nextStatus !== stageStatus && onUpdateStageStatus?.(lead, nextStatus)}
+              className="w-full"
+            />
+          )}
+        />
         <LeadMetaRow label="Created" value={formatShortDate(lead.created_at || lead.createdAt || lead.created_date)} />
         <LeadMetaRow label="Stage" value={stage.name} />
       </div>

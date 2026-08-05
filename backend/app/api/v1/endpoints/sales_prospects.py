@@ -23,7 +23,7 @@ from app.models.sales_product import SalesProduct
 from app.models.sales_masters import SalesStage
 from app.models.sales_import_job import SalesImportJob
 from app.crm.lead_engine import LeadEngine
-from app.crm.pipeline import normalize_stage_display
+from app.crm.pipeline import normalize_stage_display, resolved_stage_status
 from app.core.clock import utc_now
 
 
@@ -356,6 +356,7 @@ async def list_prospects(
                 "qualify_status": getattr(p, "qualify_status", None),
                 "next_action": getattr(p, "next_action", None),
                 "next_follow_up_at": getattr(p, "next_follow_up_at", None),
+                "current_stage_status": resolved_stage_status(p),
                 "created_at": p.created_at.isoformat() if p.created_at else None,
             }
             for p in prospects
@@ -544,6 +545,8 @@ async def get_prospect(
         "converted_at": prospect.converted_at.isoformat() if getattr(prospect, "converted_at", None) else None,
         "transferred_at": prospect.transferred_at.isoformat() if getattr(prospect, "transferred_at", None) else None,
         "transferred_by": prospect.transferred_by,
+        "current_stage_status": resolved_stage_status(prospect),
+        "stage_status_history": list(getattr(prospect, "stage_status_history", None) or []),
     }
 
 

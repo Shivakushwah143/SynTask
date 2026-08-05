@@ -131,6 +131,16 @@ class SalesProspect(Document):
     transferred_at: Optional[datetime] = None  # Set when transferred to the Clients module
     transferred_by: Optional[str] = None
 
+    # ── Stage inner status (canonical snapshot) ────────────────────────────────
+    # The single display/query value for the lead's condition INSIDE its current
+    # stage. Allowed values come from STAGE_INNER_STATUSES for the current stage.
+    # The per-stage domain fields (qualify_status, discovery_outcome, ...) stay in
+    # sync with this snapshot through one write path (apply_stage_status_change).
+    current_stage_status: Optional[str] = None
+    # Embedded status history: [{stage, from_status, to_status, changed_by,
+    # changed_by_name, changed_at}] — distinct from SalesPipelineHistory (stages).
+    stage_status_history: List[Dict[str, Any]] = Field(default_factory=list)
+
     # Metadata
     company_id: Optional[str] = None
     created_by: Optional[str] = None
