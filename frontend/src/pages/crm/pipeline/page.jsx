@@ -40,6 +40,7 @@ import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { isAssignableActiveUser } from '../../../utils/userFilters'
 import { useDebounce } from '../../../hooks/useDebounce'
+import { PhoneInput } from '../../../components/ui/PhoneInput'
 import {
   PipelineBoard,
   PipelineBoardShell,
@@ -63,7 +64,6 @@ import {
   parsePipelineFilters,
   stageOptionsFromBoard,
 } from './utils'
-import { sanitizeLocalPhone, parsePhonePaste } from '../../../components/ui/phoneUtils'
 import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
 import { ContactAttemptDialog } from '../../../components/sales/ContactAttemptDialog'
 import {
@@ -634,52 +634,6 @@ export default function CRMPipelinePage() {
   const hasMoreLeads = Boolean(rawPipeline?.meta?.has_more)
   const totalLeads = Number(rawPipeline?.meta?.total_leads || 0)
   const boardLimit = Number(rawPipeline?.meta?.limit || 0)
-
-  // ============================================================
-  // Phone Input Component
-  // ============================================================
-  const PhoneInput = ({ countryCode, phoneNumber, onCountryCodeChange, onPhoneNumberChange, required }) => {
-    const handlePaste = (e) => {
-      e.preventDefault()
-      const pasted = e.clipboardData?.getData('text') || ''
-      const { countryCode: detected, phoneNumber: clean } = parsePhonePaste(pasted)
-      if (detected) onCountryCodeChange(detected)
-      onPhoneNumberChange(clean)
-    }
-
-    const handleChange = (e) => {
-      const val = e.target.value
-      const { countryCode: detected, phoneNumber: clean } = parsePhonePaste(val)
-      if (detected) onCountryCodeChange(detected)
-      onPhoneNumberChange(clean)
-    }
-
-    return (
-      <div className="flex gap-2">
-        <select
-          value={countryCode}
-          onChange={(e) => onCountryCodeChange(e.target.value)}
-          className="w-24 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-        >
-          <option value="+91">+91</option>
-          <option value="+1">+1</option>
-          <option value="+44">+44</option>
-          <option value="+61">+61</option>
-          <option value="+81">+81</option>
-          <option value="+86">+86</option>
-        </select>
-        <input
-          type="tel"
-          value={phoneNumber}
-          onChange={handleChange}
-          onPaste={handlePaste}
-          className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-          placeholder="9876543210"
-          required={required}
-        />
-      </div>
-    )
-  }
 
   // ============================================================
   // Stat Card Component

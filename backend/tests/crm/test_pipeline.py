@@ -905,6 +905,44 @@ async def test_qualify_cannot_move_to_discovery_without_interest_budget_decision
 
 
 @pytest.mark.asyncio
+async def test_qualify_moves_to_discovery_when_budget_only_missing_but_has_deal_value(monkeypatch):
+    # The lead-detail header edit writes won_amount ("Deal value"), the overview
+    # writes budget. A lead carrying a recorded deal value must never be asked to
+    # fill a separate Budget field — the gate accepts both as budget evidence.
+    lead = _journey_lead(
+        current_stage="Qualify",
+        qualify_status="interested",
+        budget=None,
+        decision_maker="Priya Shah",
+        won_amount=450000,
+    )
+
+    async def fake_stage_documents(current_user):
+        return [
+            {"name": "Qualify", "order": 1, "is_default": False, "aliases": ["contacted"]},
+            {"name": "Discovery", "order": 2, "is_default": False},
+        ]
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_insert(self):
+        return self
+
+    async def fake_publish(**kwargs):
+        return SimpleNamespace(event_name=kwargs["event_name"])
+
+    monkeypatch.setattr("app.crm.pipeline._load_stage_documents", fake_stage_documents)
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.pipeline.SalesPipelineHistory.insert", fake_insert)
+    monkeypatch.setattr("app.crm.pipeline.publish_crm_timeline_event", fake_publish)
+
+    user = SimpleNamespace(id="user-1", company_id="company-1", role=UserRole.EMPLOYEE)
+    result = await CRMPipelineService.move_lead(user, "lead-1", "Discovery")
+    assert result["lead"]["current_stage"] == "Discovery"
+
+
+@pytest.mark.asyncio
 async def test_discovery_moves_to_proposal_with_need_proposal_outcome(monkeypatch):
     # Canonical path: a "need_proposal" Discovery outcome still passes the gate.
     lead = _journey_lead(current_stage="Discovery", discovery_outcome="need_proposal")

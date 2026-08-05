@@ -146,6 +146,10 @@ export default function CRMLeadWorkspacePage() {
         leadQuery.refetch().catch(() => {})
         queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'timeline'], { exact: true })
         queryClient.invalidateQueries([WORKSPACE_QUERY_KEY, leadId, 'history'], { exact: true })
+        // The pipeline board caches for 5 minutes; without this, a budget or
+        // owner edit made here would stay invisible on /crm/pipeline (stale
+        // Value column and a stale gate that re-asks for already-saved fields).
+        queryClient.invalidateQueries('crm-pipeline-board')
       },
       onError: (error) => {
         toast.error(error?.response?.data?.detail || 'Lead update failed')

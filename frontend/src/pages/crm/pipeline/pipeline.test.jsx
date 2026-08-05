@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPipelineBoard, filterPipelineLeads, moveLeadInBoard } from './utils'
+import { DEAL_VALUE_FIELDS, buildPipelineBoard, filterPipelineLeads, getLeadDealValue, moveLeadInBoard } from './utils'
 
 const pipelineResponse = {
   meta: { currency: 'INR' },
@@ -54,6 +54,19 @@ describe('crm pipeline helpers', () => {
       stage: 'new',
     })
     expect(filtered).toHaveLength(1)
+  })
+
+  it('reflects the lead-detail Budget in the pipeline Value column', () => {
+    // The lead detail overview edits `budget`; the pipeline Value column must
+    // show the same number. Previously budget was not in DEAL_VALUE_FIELDS, so
+    // a Qualify-stage lead with only a budget set displayed as Rs 0.
+    expect(DEAL_VALUE_FIELDS).toContain('budget')
+    expect(getLeadDealValue({ budget: 500000 })).toBe(500000)
+    expect(getLeadDealValue({ budget: 500000, won_amount: null })).toBe(500000)
+  })
+
+  it('keeps won_amount authoritative for closed leads', () => {
+    expect(getLeadDealValue({ budget: 500000, won_amount: 450000 })).toBe(450000)
   })
 
   it('moves a lead into another stage and updates counts', () => {

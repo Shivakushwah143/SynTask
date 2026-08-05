@@ -225,9 +225,13 @@ export function StageRequirementsDialog({
         : [...COUNTRY_CODES, { value: selectedCode, label: selectedCode }]
       return (
         <div className="mt-1.5 space-y-2">
+          {/* Country code must stay a fixed compact column: inputClassName
+              includes w-full, and w-full would override w-28 (same specificity,
+              later in the stylesheet), expanding the select to the whole row and
+              crushing the phone input to zero width. !w-28 pins it. */}
           <div className="flex items-stretch gap-2">
             <select
-              className={`${inputClassName} w-28 shrink-0`}
+              className={`${inputClassName} !w-28 shrink-0 px-2.5`}
               value={selectedCode}
               onChange={(event) => handleFieldChange('country_code', event.target.value)}
               aria-label="Country code"
@@ -238,7 +242,7 @@ export function StageRequirementsDialog({
             </select>
             <input
               id={fieldId}
-              className={`${inputClassName} min-w-0 flex-1`}
+              className={`${inputClassName} min-w-0 w-full flex-1`}
               type="tel"
               inputMode="numeric"
               maxLength={10}

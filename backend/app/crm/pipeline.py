@@ -366,7 +366,13 @@ async def _validate_stage_entry(
     if "fields" in requirements:
         interest_ok = _normalize_status_value(getattr(prospect, "qualify_status", None)) in QUALIFY_READY_STATUSES
         interest_ok = interest_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) in QUALIFY_READY_STATUSES
+        # A recorded deal value satisfies the budget gate too: the lead-detail
+        # header edit writes won_amount (labeled "Deal value") while the overview
+        # writes budget — both are real deal sizes, so a lead carrying either one
+        # must never be asked to fill a separate Budget field again.
         budget_ok = getattr(prospect, "budget", None) not in (None, "", 0)
+        budget_ok = budget_ok or getattr(prospect, "won_amount", None) not in (None, "", 0)
+        budget_ok = budget_ok or getattr(prospect, "deal_value", None) not in (None, "", 0)
         decision_ok = bool(getattr(prospect, "decision_maker", None))
         missing_fields = []
         if not budget_ok:
@@ -1273,7 +1279,11 @@ class CRMPipelineService:
         if stage_key == "qualify" and normalized == "qualified":
             interest_ok = _normalize_status_value(getattr(prospect, "qualify_status", None)) in QUALIFY_READY_STATUSES
             interest_ok = interest_ok or _normalize_status_value(getattr(prospect, "current_stage_status", None)) in QUALIFY_READY_STATUSES
+            # Same budget evidence as the Qualify -> Discovery gate: won_amount
+            # (header "Deal value") or deal_value also counts.
             budget_ok = getattr(prospect, "budget", None) not in (None, "", 0)
+            budget_ok = budget_ok or getattr(prospect, "won_amount", None) not in (None, "", 0)
+            budget_ok = budget_ok or getattr(prospect, "deal_value", None) not in (None, "", 0)
             decision_ok = bool(getattr(prospect, "decision_maker", None))
             missing = []
             if not budget_ok:

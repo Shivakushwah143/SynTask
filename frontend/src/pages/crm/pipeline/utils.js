@@ -15,7 +15,11 @@ export const PIPELINE_FILTER_DEFAULTS = {
   status: '',
 }
 
-export const DEAL_VALUE_FIELDS = ['deal_value', 'dealValue', 'value', 'won_amount', 'amount']
+// The pipeline Value column must match what the lead-detail page shows. For
+// open leads the Budget (edited in the lead overview) is the canonical value;
+// won_amount stays authoritative once a lead closes (the pipeline serializes
+// both fields, so the order between them is what decides the display).
+export const DEAL_VALUE_FIELDS = ['won_amount', 'budget', 'deal_value', 'dealValue', 'value', 'amount']
 export const OWNER_FIELDS = ['owner_name', 'ownerName', 'assigned_to_name', 'assignedToName', 'assigned_user_name', 'assignee_name', 'owner', 'assigned_user', 'assignee', 'assigned_to']
 export const OWNER_ID_FIELDS = ['owner_id', 'ownerId', 'assigned_to_id', 'assignedToId', 'assigned_to']
 export const CONTACT_FIELDS = ['primary_contact', 'primary_contact_name', 'contact_name', 'contact', 'prospect_name']

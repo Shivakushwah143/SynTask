@@ -151,6 +151,13 @@ describe('StageRequirementsDialog', () => {
     // Country code is a select (not a free-text input) so digits can never be
     // typed into it by mistake — that is what previously swallowed the number.
     expect(screen.getByLabelText('Country code').tagName).toBe('SELECT')
+    // Regression guard: the select must keep its compact pinned width. Plain
+    // w-28 loses to the w-full inside inputClassName (same specificity, later in
+    // the stylesheet) and would expand the select to the whole row, crushing the
+    // phone input to zero width — exactly the reported bug.
+    expect(screen.getByLabelText('Country code').className).toContain('!w-28')
+    expect(screen.getByLabelText('Mobile number').className).toContain('flex-1')
+    expect(screen.getByLabelText('Mobile number').className).toContain('min-w-0')
   })
 
   it('saves the entered phone with its country code', () => {
