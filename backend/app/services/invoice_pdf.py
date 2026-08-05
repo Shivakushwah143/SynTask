@@ -3,6 +3,7 @@ Invoice PDF generator using ReportLab.
 Builds a printable invoice layout with company, client, and item details.
 """
 from io import BytesIO
+from pathlib import Path
 from typing import Optional, List
 from datetime import datetime
 
@@ -11,6 +12,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
+    Image,
     SimpleDocTemplate,
     Paragraph,
     Spacer,
@@ -21,6 +23,15 @@ from reportlab.platypus import (
 from app.finance.models import Invoice, InvoiceType
 from app.models.company import Company
 from app.crm.models import Client
+
+# Backend-owned copy of the SynTask logo (source: frontend/public/logo.svg).
+# Resolved relative to this module so it works regardless of the working
+# directory or which container the backend runs in.
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+INVOICE_LOGO_PATH = ASSETS_DIR / "syntask-logo.png"
+# Native canvas size of the logo PNG (720 x 769) to preserve its aspect ratio.
+INVOICE_LOGO_WIDTH_MM = 26.0
+INVOICE_LOGO_HEIGHT_MM = INVOICE_LOGO_WIDTH_MM * 769.0 / 720.0
 
 
 def _format_date(value: Optional[datetime]) -> str:
@@ -39,6 +50,20 @@ def _format_currency(value: Optional[float]) -> str:
         return f"Rs. {float(value):,.2f}"
     except Exception:
         return "Rs. 0.00"
+
+
+def _to_float(value, default: float = 0.0) -> float:
+    """Coerce a value to float, falling back to ``default`` for None/invalid.
+
+    Item fields are sometimes stored as ``null`` in the database; treat those
+    as missing so invoice PDF generation never crashes on a None value.
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _build_address_block(title: str, lines: List[str], styles) -> List:
@@ -79,11 +104,34 @@ def generate_invoice_pdf(invoice: Invoice, company: Optional[Company], client: O
 
     elements: List = []
 
-    # Title and company name
+    # Header: logo on the left, title and company name on the right.
+    # Falls back to the previous header layout if the logo asset is missing.
     title_text = "TAX INVOICE" if invoice.invoice_type == InvoiceType.TAX else "PROFORMA INVOICE"
-    elements.append(Paragraph(title_text, styles["Heading2"]))
+    title_cell: List = [Paragraph(title_text, styles["Heading2"])]
     if company:
-        elements.append(Paragraph(company.name or "Company", styles["Heading3"]))
+        title_cell.append(Paragraph(company.name or "Company", styles["Heading3"]))
+
+    if INVOICE_LOGO_PATH.is_file():
+        logo = Image(
+            str(INVOICE_LOGO_PATH),
+            width=INVOICE_LOGO_WIDTH_MM * mm,
+            height=INVOICE_LOGO_HEIGHT_MM * mm,
+        )
+        header_table = Table([[logo, title_cell]], colWidths=[30 * mm, None])
+        header_table.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (0, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+        elements.append(header_table)
+    else:
+        elements.extend(title_cell)
+
+    if company:
         company_lines = [
             company.registration_number or "",
             company.address or "",
@@ -152,10 +200,10 @@ def generate_invoice_pdf(invoice: Invoice, company: Optional[Company], client: O
     ]
 
     for idx, item in enumerate(invoice.items or [], start=1):
-        qty = float(item.get("quantity", 1))
-        rate = float(item.get("unit_price", 0))
-        line_amount = float(item.get("amount", qty * rate))
-        line_tax = float(item.get("tax_amount", 0 if not invoice.include_tax else item.get("tax_amount", 0)))
+        qty = _to_float(item.get("quantity"), 1)
+        rate = _to_float(item.get("unit_price"), 0)
+        line_amount = _to_float(item.get("amount"), qty * rate)
+        line_tax = _to_float(item.get("tax_amount"), 0) if invoice.include_tax else 0.0
         taxable_value = line_amount - line_tax if invoice.include_tax else line_amount
         items_data.append(
             [
