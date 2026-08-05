@@ -103,7 +103,7 @@ def require_module(module_name: str):
         # Super Admin, Admin, and Sub Admin have full access to all modules
         if current_role == UserRole.SUPER_ADMIN or current_role == UserRole.ADMIN or current_role == UserRole.SUB_ADMIN:
             return current_user
-        if module_name in {"sales", "sales_crm", "tickets"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
+        if module_name in {"sales", "sales_crm", "tickets", "task", "tasks_projects"} and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user
         if module_name == "recruitment" and current_role in {UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE}:
             return current_user
@@ -125,7 +125,7 @@ def require_capability(capability: str):
             return current_user
         if current_role == UserRole.ADMIN:
             return current_user
-        if current_role == UserRole.SUB_ADMIN and _module_access_allowed("tasks_projects", getattr(current_user, "modules", []) or []):
+        if current_role == UserRole.SUB_ADMIN:
             return current_user
         department_id = getattr(current_user, "department_id", None)
         if not department_id:

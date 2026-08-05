@@ -13,8 +13,8 @@ EXPOSE 3000
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
 
 FROM base AS build
-ARG VITE_API_URL=https://task.synzent.ai/api/v1
-ARG VITE_LOGIN_URL=https://task.synzent.ai/login
+ARG VITE_API_URL=/api/v1
+ARG VITE_LOGIN_URL=/login
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_LOGIN_URL=${VITE_LOGIN_URL}
 RUN npm run build

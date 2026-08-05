@@ -32,7 +32,7 @@ async def get_project(
     if project_id and project_id not in (str(project.id), project_id_for_query):
         or_conditions.append({"project_id": project_id})
     task_query = {"$or": or_conditions, "company_id": project.company_id}
-    if current_user.role == UserRole.EMPLOYEE:
+    if current_user.role == UserRole.EMPLOYEE and not has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
         task_query["assigned_to"] = str(current_user.id)
     all_tasks = await Task.find(task_query).to_list()
     
@@ -59,13 +59,15 @@ async def get_project(
     assigned_tasks_by_user = {}
     
     for task in all_tasks:
+        task_status = enum_or_string_value(task.status)
+        task_priority = enum_or_string_value(task.priority)
         # Count by status
-        if task.status.value in tasks_by_status:
-            tasks_by_status[task.status.value] += 1
+        if task_status in tasks_by_status:
+            tasks_by_status[task_status] += 1
         
         # Count by priority
-        if task.priority.value in tasks_by_priority:
-            tasks_by_priority[task.priority.value] += 1
+        if task_priority in tasks_by_priority:
+            tasks_by_priority[task_priority] += 1
         
         # Group by assignee
         if task.assigned_to:
@@ -80,8 +82,8 @@ async def get_project(
                 assigned_tasks_by_user[task.assigned_to]["tasks"].append({
                     "id": str(task.id),
                     "title": task.title,
-                    "status": task.status.value,
-                    "priority": task.priority.value,
+                    "status": task_status,
+                    "priority": task_priority,
                 })
     
     # Get user names for assigned tasks
@@ -136,6 +138,7 @@ async def get_project(
         "assigned_tasks_by_user": list(assigned_tasks_by_user.values()),
         "created_at": project.created_at,
         "updated_at": project.updated_at,
+        **serialize_project_permissions(current_user, project),
     }
     
     # Include task list if requested
@@ -145,8 +148,8 @@ async def get_project(
                 "id": str(task.id),
                 "title": task.title,
                 "description": task.description,
-                "status": task.status.value,
-                "priority": task.priority.value,
+                "status": enum_or_string_value(task.status),
+                "priority": enum_or_string_value(task.priority),
                 "assigned_to": task.assigned_to,
                 "assigned_to_name": None,  # Will be filled below
                 "due_date": task.due_date,

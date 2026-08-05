@@ -18,13 +18,16 @@ const getUserDisplayName = (user) => (
 
 const getRoleOwnerLine = (project) => {
   const assignedUsers = Array.isArray(project.assigned_users) ? project.assigned_users : []
+  const activeOrUnknown = (user) => !user.status || user.status === 'active'
+  const hasRole = (user, role) => String(user.role || '').toLowerCase().replace(/\s+/g, '_') === role
   const managerNames = assignedUsers
-    // Show all active users as potential project owners (employees, managers, leads, sub admins)
-    .filter((user) => user.status === 'active')
+    .filter(activeOrUnknown)
+    .filter((user) => hasRole(user, 'manager'))
     .map(getUserDisplayName)
     .filter(Boolean)
   const leadNames = assignedUsers
-    .filter((user) => user.status === 'active')
+    .filter(activeOrUnknown)
+    .filter((user) => hasRole(user, 'lead'))
     .map(getUserDisplayName)
     .filter(Boolean)
   const parts = []
@@ -60,6 +63,9 @@ export function buildProjectGraphRows(projects, limit = 6) {
       name: project.name || 'Untitled project',
       key: project.key || project.project_id || '',
       created_at: project.created_at,
+      scheduled_run_at: project.scheduled_run_at,
+      is_scheduled_placeholder: Boolean(project.is_scheduled_placeholder),
+      current_user_project_role: project.current_user_project_role || project.effective_project_role || '',
       owner: getOwner(project),
       assigned_to: project.assigned_to || '',
       lead_id: project.lead_id || '',

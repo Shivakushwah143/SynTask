@@ -25,8 +25,8 @@ async def create_page(
             detail="Project not found"
         )
     
-    # Use centralized hierarchical access check
-    await ensure_project_access_for_user(project, current_user)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_PAGE):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage pages")
     
     # Validate status
     page_status = PageStatus.DRAFT
@@ -136,7 +136,7 @@ async def get_page(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    await ensure_project_access_for_user(project, current_user)
     
     page = await Page.get(page_id)
     
@@ -181,7 +181,8 @@ async def update_page(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_PAGE):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage pages")
     
     page = await Page.get(page_id)
     
@@ -216,7 +217,7 @@ async def update_page(
 async def delete_page(
     project_id: str,
     page_id: str,
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """Delete a page"""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
@@ -226,7 +227,8 @@ async def delete_page(
             detail="Project not found"
         )
     
-    check_company_access(current_user, project.company_id)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_PAGE):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage pages")
     
     page = await Page.get(page_id)
     

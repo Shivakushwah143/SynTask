@@ -2,11 +2,11 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, CalendarDays, ChevronDown, Filter, MoreHorizontal, MoveRight, RefreshCw, Sparkles, Target, TrendingUp, Users } from 'lucide-react'
+import { AlertCircle, ChevronDown, Filter, MoreHorizontal, MoveRight, RefreshCw, Sparkles } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
-import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadStageKey, getLeadTags, getStageDealValue, getStageKey } from './utils'
+import { formatCurrency, formatShortDate, getLeadContactLabel, getLeadDealValue, getLeadOwnerLabel, getLeadPriority, getLeadTags, getStageDealValue, getStageKey } from './utils'
 
 const leadColumnStyle = 'w-[300px] flex-none snap-start'
 export const pipelineLeadCardClassNames = {
@@ -24,6 +24,12 @@ const iconTileStyles = [
   'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
 ]
 
+const getUserDisplayName = (user) => {
+  if (!user) return ''
+  const name = user.full_name || user.fullName || user.name || [user.first_name || user.firstName, user.last_name || user.lastName].filter(Boolean).join(' ')
+  return String(name || user.email || '').trim()
+}
+
 export const PipelineBoardShell = ({ title, description, actions, children }) => (
   <div className="space-y-4">
     <CRMSection
@@ -36,42 +42,6 @@ export const PipelineBoardShell = ({ title, description, actions, children }) =>
     </CRMSection>
   </div>
 )
-
-export const PipelineTopMetrics = memo(function PipelineTopMetrics({ visibleLeads = [], stages = [], currency = 'INR' }) {
-  const metrics = useMemo(() => {
-    const totalLeads = visibleLeads.length
-    const totalValue = visibleLeads.reduce((sum, lead) => sum + getLeadDealValue(lead), 0)
-    const activeStages = stages.filter((stage) => stage.leads?.length).length
-    const wonLeads = visibleLeads.filter((lead) => getLeadStageKey(lead).includes('won')).length
-    const hotLeads = visibleLeads.filter((lead) => ['critical', 'high'].includes(getLeadPriority(lead))).length
-    return [
-      { label: 'Total Leads', value: totalLeads, helper: 'Visible after filters', icon: Users, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200' },
-      { label: 'Total Value', value: formatCurrency(totalValue, currency), helper: 'Pipeline value', icon: TrendingUp, tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' },
-      { label: 'Hot Leads', value: hotLeads, helper: 'Critical or high priority', icon: Target, tone: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-200' },
-      { label: 'Active Stages', value: activeStages, helper: 'With at least one lead', icon: Sparkles, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200' },
-      { label: 'Won', value: wonLeads, helper: 'Visible won leads', icon: CalendarDays, tone: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200' },
-    ]
-  }, [currency, stages, visibleLeads])
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      {metrics.map((metric) => (
-        <article key={metric.label} className="rounded-xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center gap-3">
-            <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${metric.tone}`}>
-              <metric.icon className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-text-secondary dark:text-gray-400">{metric.label}</p>
-              <p className="mt-1 truncate text-xl font-semibold tracking-tight text-text-primary dark:text-gray-100">{metric.value}</p>
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-text-secondary dark:text-gray-400">{metric.helper}</p>
-        </article>
-      ))}
-    </div>
-  )
-})
 
 export const PipelineFiltersBar = memo(function PipelineFiltersBar({
   filters,
@@ -332,6 +302,8 @@ export const PipelineBoard = memo(function PipelineBoard({
   stages = [],
   currency = 'INR',
   activeLeadId = null,
+  movingLeadId = null,
+  users = [],
   onMoveLeadToStage,
   getAllowedStageKeys,
   onCopyLeadId,
@@ -367,6 +339,8 @@ export const PipelineBoard = memo(function PipelineBoard({
               accent={stageAccents[index % stageAccents.length]}
               currency={currency}
               activeLeadId={activeLeadId}
+              movingLeadId={movingLeadId}
+              users={users}
               onMoveLeadToStage={onMoveLeadToStage}
               getAllowedStageKeys={getAllowedStageKeys}
               onCopyLeadId={onCopyLeadId}
@@ -385,6 +359,8 @@ export const PipelineColumn = memo(function PipelineColumn({
   accent = stageAccents[0],
   currency = 'INR',
   activeLeadId = null,
+  movingLeadId = null,
+  users = [],
   onMoveLeadToStage,
   getAllowedStageKeys,
   onCopyLeadId,
@@ -433,6 +409,8 @@ export const PipelineColumn = memo(function PipelineColumn({
                 stage={stage}
                 stages={stages}
                 currency={currency}
+                movingLeadId={movingLeadId}
+                users={users}
                 onMoveLeadToStage={onMoveLeadToStage}
                 allowedStageKeys={allowedStageKeys}
                 onCopyLeadId={onCopyLeadId}
@@ -467,6 +445,8 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   stage,
   stages = [],
   currency = 'INR',
+  movingLeadId = null,
+  users = [],
   onMoveLeadToStage,
   allowedStageKeys = new Set(),
   onCopyLeadId,
@@ -474,10 +454,22 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
 }) {
   const tags = getLeadTags(lead)
   const priority = getLeadPriority(lead)
-  const dealValue = getLeadDealValue(lead)
-  const ownerLabel = getLeadOwnerLabel(lead)
+  const ownerLookup = useMemo(() => {
+    const values = new Map()
+    ;(users || []).forEach((user) => {
+      const id = String(user?.id || user?._id || user?.user_id || '').trim()
+      const label = getUserDisplayName(user)
+      if (id && label) values.set(id, label)
+    })
+    return values
+  }, [users])
+  const ownerLabel = ownerLookup.get(String(lead.assigned_to || lead.owner_id || lead.ownerId || '').trim()) || getLeadOwnerLabel(lead)
   const contactLabel = getLeadContactLabel(lead)
+  const phoneLabel = [lead.country_code, lead.phone].filter(Boolean).join(' ') || 'No phone'
+  const leadTitle = lead.prospect_name || contactLabel || lead.company_name || 'Lead'
+  const leadSubtitle = lead.company_name && lead.company_name !== leadTitle ? lead.company_name : (lead.email || phoneLabel)
   const sortableId = lead.id || lead._id
+  const isMovePending = Boolean(movingLeadId && sortableId === movingLeadId)
   const [menuOpen, setMenuOpen] = useState(false)
   const actionButtonRef = useRef(null)
   const menuRef = useRef(null)
@@ -628,13 +620,13 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
       ref={setNodeRef}
       style={leadStyle}
       className="group rounded-xl border border-surface-border bg-surface p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md focus-within:ring-2 focus-within:ring-primary-500/30 dark:border-gray-800 dark:bg-gray-900"
-      aria-label={`${lead.company_name || contactLabel} lead card`}
+      aria-label={`${leadTitle} lead card`}
     >
       <div className="flex items-start gap-3">
         <button
           type="button"
           className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg ${iconTileStyles[Math.abs(String(sortableId || '').length) % iconTileStyles.length]} transition-colors focus-visible:ring-2 focus-visible:ring-primary-500/30`}
-          aria-label={`Drag ${lead.company_name || contactLabel}`}
+          aria-label={`Drag ${leadTitle}`}
           {...attributes}
           {...listeners}
         >
@@ -648,10 +640,10 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h4 className="truncate text-sm font-semibold text-text-primary dark:text-gray-100">
-                {lead.company_name || contactLabel}
+                {leadTitle}
               </h4>
               <p className="mt-1 truncate text-xs text-text-secondary dark:text-gray-400">
-                {contactLabel}
+                {leadSubtitle}
               </p>
             </div>
             <div className="inline-flex h-6 min-w-14 items-center justify-center rounded-full border border-dashed border-surface-border/80 px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted dark:border-gray-800 dark:text-gray-500">
@@ -663,13 +655,18 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
         <LeadMetaRow label="Owner" value={ownerLabel} />
-        <LeadMetaRow label="Value" value={formatCurrency(dealValue, currency)} strong />
-        <LeadMetaRow label="Priority" value={<Badge label={priority} colorKey={priority} className="text-[10px]" />} />
-        <LeadMetaRow label="Days" value={String(Math.max(Number(lead.days_in_stage || 0), 0))} />
+        <LeadMetaRow label="Phone" value={phoneLabel} strong />
+        <LeadMetaRow label="Email" value={lead.email || 'No email'} />
+        <LeadMetaRow label="Interest" value={<Badge label={priority} colorKey={priority} className="text-[10px]" />} />
         <LeadMetaRow label="Created" value={formatShortDate(lead.created_at || lead.createdAt || lead.created_date)} />
         <LeadMetaRow label="Stage" value={stage.name} />
       </div>
       <StageProgress stage={stage} stages={stages} />
+      {isMovePending ? (
+        <div className="mt-3 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700 dark:border-primary-900/60 dark:bg-primary-950/30 dark:text-primary-200">
+          Updating stage...
+        </div>
+      ) : null}
 
       {tags.length ? (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -692,6 +689,8 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
             size="sm"
             className={pipelineLeadCardClassNames.nextButton}
             aria-label={`Move ${lead.company_name || contactLabel} to ${nextStageLabel}`}
+            loading={isMovePending}
+            loadingText="Updating stage"
             onClick={() => onMoveLeadToStage?.(lead, stage.nextStageKey)}
           >
             Move to {nextStageLabel}
@@ -704,6 +703,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
             size="sm"
             className={pipelineLeadCardClassNames.actionButton}
             aria-label={`Open actions for ${lead.company_name || contactLabel}`}
+            disabled={isMovePending}
             onClick={() => setMenuOpen((open) => !open)}
           >
             <MoreHorizontal className="h-4 w-4" />

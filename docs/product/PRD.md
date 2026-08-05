@@ -124,8 +124,9 @@ For local acceptance testing, the `admin@demo.com` development fixture is assign
 | CORE-012 | Provider abstraction | AI business logic depends on provider contracts, not provider-specific SDK behavior |
 | CORE-013 | Job idempotency | Background and event jobs are deduplicated and retryable |
 | CORE-014 | Global time consistency | Timestamps are stored in UTC and displayed through saved user timezone and format settings |
+| CORE-015 | Sidebar overview navigation | Main module landing pages summarize authorized operational signals, filter locally, and link only to existing permitted routes without changing backend authorization |
 
-Existing module requirements from Phase 1 remain valid: identity, tenant administration, projects, tasks, CRM, clients, finance, attendance, leave, EOD, timesheets, recruitment, support, chat, meetings, notifications, AI and creative assistance continue to require tenant isolation, backend authorization, lifecycle validation, auditability and safe provider failure behavior. Chat is treated as global task-workspace communication: users with `chat`, `task`, or `tasks_projects` module access may use same-tenant chat and group APIs, while user search and group membership remain company-scoped.
+Existing module requirements from Phase 1 remain valid: identity, tenant administration, projects, tasks, CRM, clients, finance, attendance, leave, EOD, timesheets, recruitment, support, chat, meetings, notifications, AI and creative assistance continue to require tenant isolation, backend authorization, lifecycle validation, auditability and safe provider failure behavior. The Work module route group treats `task` and `tasks_projects` as aliases and allows Manager, Lead, and Employee users to reach task-management APIs, while endpoint-level company, hierarchy, assignment, membership, and project-scoped Lead checks constrain the records and actions. Chat is treated as global task-workspace communication: users with `chat`, `task`, or `tasks_projects` module access may use same-tenant chat and group APIs, while user search and group membership remain company-scoped.
 
 Global time acceptance: browser timezone is detected on first login when no preference exists; navbar clock exposes timezone, automatic/manual time, 12/24-hour format, and seconds display; Admin and Super Admin can edit these settings; non-admin users are read-only; backend business time uses `ClockService`; frontend display and UTC serialization use `timeService`; settings mutate only the authenticated user.
 
@@ -177,16 +178,17 @@ Out of scope: autonomous email sending from AI generation alone, cross-tenant or
 
 - Authorized users create projects, boards, sprints, epics, tasks and subtasks.
 - Project boards show separate Manager and Leader assignment fields; Company Admin assigns the Manager, and Company Admin or Manager can assign/change the Leader.
+- Employees assigned as a project Leader keep their global Employee role but receive the effective Lead permissions for that project only. They can see the project in list/dashboard widgets, view all project tasks, create/schedule tasks, manage task details/assignment/status, and use Lead-level project board workstream actions for that project. Replacing or clearing `lead_id` removes those project-scoped permissions immediately because every protected request recalculates the effective project role from the current project record.
 - Task details show the project Lead as read-only context and expose Employee assignment for permitted task reassignment.
 - Task details show a color-coded status indicator and status selector so task state is scannable without relying on text alone.
 - Workspace calendars show tasks only for the assigned employee in `my_calendar`, scheduled by task due date with creation date fallback. Task calendar entries resolve project names from logical project keys such as `PROJ-101` or MongoDB `_id` without exposing raw database IDs as the primary project reference.
-- Admin/Sub Admin/Manager users can schedule project creation; Admin/Sub Admin/Manager/Lead users can schedule task creation. Scheduled jobs are company-scoped, execute every minute, move through pending/running/completed/failed/cancelled states, and notify the scheduling user after completion, cancellation, or terminal failure.
+- Admin/Sub Admin/Manager users can schedule project creation; Admin/Sub Admin/Manager/Lead users can schedule task creation. Employee project Leads can see tasks they create even when the task is assigned to another employee. Scheduled jobs are company-scoped, execute every minute, move through pending/running/completed/failed/cancelled states, and notify the scheduling user after completion, cancellation, or terminal failure. Pending scheduled project and task placeholders appear only for the scheduling creator before publish with UTC-backed publish time/countdown display.
 - Workflow transitions are validated and recorded in history.
 - Assignment candidates are restricted by company, hierarchy, project membership and policy.
 - Comments, files, watchers, links, components, versions and time records remain tenant/resource bound.
 - Automation/webhooks are idempotent or safely retryable and expose terminal failures.
 
-Acceptance: create-to-close succeeds for each role; scheduled project/task creation runs once at the requested future time; invalid transitions and foreign-tenant access fail; concurrent board changes do not silently lose data.
+Acceptance: create-to-close succeeds for each role; Employee project Leads can perform Lead actions only in their assigned project; normal project members cannot perform Lead-only actions; old Leads lose permissions after replacement; employee task creators retain list visibility after assigning work to another employee; scheduled project/task creation runs once at the requested future time; pending scheduled project/task placeholders are visible only to their creator before publish with the publish time shown; invalid transitions and foreign-tenant access fail; concurrent board changes do not silently lose data.
 Agents extend Phase 1 and run through server-side authorization, tenant-safe retrieval, provider abstraction, structured audit, token budgets, timeouts, prompt versioning, and human approval for material actions.
 
 Each agent or subagent run includes tenant ID, authorized user ID, role/capability snapshot, project ID where applicable, task ID where applicable, prompt version, model, provider, allowed tools, context-source manifest, token budget, timeout, approval requirement, idempotency key, and audit record.
@@ -212,6 +214,7 @@ Every subagent inherits tenant ID, project ID, task ID, authorized user identity
 Hierarchy: Company/Tenant -> Project -> Project Agent -> Task -> Task-Specific Subagent -> Draft/Recommendation -> Human Review -> Approved Action.
 
 - Ticket/chat/meeting visibility is participant, team and tenant scoped.
+- Ticket creation is limited to Employees and Leads. Employees may assign a ticket to a Lead, Sub Admin, or Admin; Leads, Sub Admins, and Admins may assign to any same-company user. Cross-company assignment is rejected.
 - Meeting creation shows searchable selectable junior participants by creator role, stores participant IDs internally, rejects durations outside 1-60 minutes, and limits ordinary meeting visibility to hosts and invited participants.
 - Meeting records support host/admin update, reschedule, start, complete, cancel, and delete actions with meeting domain events.
 - Google Workspace pages reuse the authenticated Google account to show account state, Gmail activity, Calendar events, Meet links, Drive-linked files, and connection diagnostics without introducing a second login system.

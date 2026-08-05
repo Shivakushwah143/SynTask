@@ -30,6 +30,13 @@ def test_manager_can_manage_sales_masters():
     sales_masters._ensure_admin_permission(manager)
 
 
+def test_sub_admin_can_create_sales_products_and_categories():
+    sub_admin = SimpleNamespace(role=UserRole.SUB_ADMIN)
+
+    sales_products._ensure_create_permission(sub_admin)
+    sales_categories._ensure_create_permission(sub_admin)
+
+
 def test_manager_can_delete_sales_products_and_categories():
     manager = SimpleNamespace(role=UserRole.MANAGER)
 

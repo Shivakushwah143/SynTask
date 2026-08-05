@@ -194,25 +194,19 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
   const companyName = lead?.crm_company_name || lead?.company_name || lead?.prospect_name || 'Lead'
   const contactName = getLeadContactLabel(lead)
   const leadTags = getLeadTags(lead)
-  const dealValue = lead?.won_amount ?? lead?.deal_value ?? 0
   const stage = lead?.current_stage || 'Unassigned'
   const priority = lead?.priority || lead?.interest_level || 'medium'
   const status = lead?.status || 'active'
   const createdDate = formatShortDate(lead?.created_at || lead?.createdAt || lead?.created_date)
+  const phoneLabel = [lead?.country_code, lead?.phone].filter(Boolean).join(' ') || '-'
 
-  // Resolve owner name: use the users list when the raw value is a DB ObjectId
+  // Resolve owner by assigned id first; fallback labels can be stale or id-shaped.
   const ownerName = useMemo(() => {
+    const rawId = String(lead?.assigned_to || lead?.owner_id || lead?.ownerId || '').trim()
+    const found = users.find((user) => String(user.id || user._id || user.user_id || '').trim() === rawId)
+    if (found) return formatUserName(found) || found.email || '-'
     const rawOwner = getLeadOwnerLabel(lead)
-    // If it looks like a MongoDB ObjectId (24 hex chars), resolve from users list
-    if (/^[a-f\d]{24}$/i.test(rawOwner)) {
-      const rawId = lead?.assigned_to || lead?.owner_id || ''
-      const found = users.find((u) => {
-        const uid = String(u.id || u._id || u.user_id || '')
-        return uid === rawId || uid === rawOwner
-      })
-      if (found) return formatUserName(found) || rawOwner
-    }
-    return rawOwner
+    return rawOwner && rawOwner !== 'Unassigned' ? rawOwner : '-'
   }, [lead, users])
 
   const ownerOptions = useMemo(() => {
@@ -387,7 +381,7 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
           {/* Right side summary chips */}
           <div className="grid min-w-[240px] gap-3 sm:grid-cols-3 lg:grid-cols-1">
             <SummaryChip label="Owner" value={ownerName} compact />
-            <SummaryChip label="Deal value" value={formatCurrency(dealValue)} compact />
+            <SummaryChip label="Phone" value={phoneLabel} compact />
             <SummaryChip label="Created" value={createdDate} compact />
           </div>
         </div>

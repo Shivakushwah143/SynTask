@@ -32,9 +32,8 @@ import { asArray } from '../../phase4Utils'
 const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
 const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
 const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
-// Lead owners are sales staff (manager/lead/employee). Company admins (admin/sub_admin) are
-// excluded from lead owner/assignment lists so admin names never appear as assignable owners.
-export const isValidLeadOwner = (item) => isAssignableActiveUser(item) && ['manager', 'lead', 'employee'].includes(normalizeRole(item?.role))
+// Lead owners can be any active assignable company user returned by the backend.
+export const isValidLeadOwner = (item) => isAssignableActiveUser(item) && ['admin', 'sub_admin', 'manager', 'lead', 'employee'].includes(normalizeRole(item?.role))
 const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || '').trim())
 export const hasSalesCrmModule = (modules = []) => modules.includes('sales_crm') || modules.includes('sales')
 const PRODUCT_LOCATION_OPTIONS = [
@@ -1096,7 +1095,7 @@ export default function CRMLeadsPage() {
               <label className="space-y-1">
                   <span className="flex items-center justify-between gap-2 text-xs font-medium text-text-muted">
                   <span>Category</span>
-                  <button type="button" className={`text-primary-600 hover:underline ${canCreateCategory ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => { if (canCreateCategory) { toast.error('You do not have permission to create categories'); return } setCreateCategoryOpen(true) }} >+ New category</button>
+                  <button type="button" className={`text-primary-600 hover:underline ${!canCreateCategory ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => { if (!canCreateCategory) { toast.error('You do not have permission to create categories'); return } setCreateCategoryOpen(true) }} >+ New category</button>
                 </span>
                 <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
                   <option value="">Select category</option>

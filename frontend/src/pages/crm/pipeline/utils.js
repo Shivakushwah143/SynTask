@@ -16,7 +16,7 @@ export const PIPELINE_FILTER_DEFAULTS = {
 }
 
 export const DEAL_VALUE_FIELDS = ['deal_value', 'dealValue', 'value', 'won_amount', 'amount']
-export const OWNER_FIELDS = ['owner_name', 'owner', 'ownerName', 'assigned_to_name', 'assigned_to']
+export const OWNER_FIELDS = ['owner_name', 'ownerName', 'assigned_to_name', 'assignedToName', 'assigned_user_name', 'assignee_name', 'owner', 'assigned_user', 'assignee', 'assigned_to']
 export const OWNER_ID_FIELDS = ['owner_id', 'ownerId', 'assigned_to_id', 'assignedToId', 'assigned_to']
 export const CONTACT_FIELDS = ['primary_contact', 'primary_contact_name', 'contact_name', 'contact', 'prospect_name']
 export const TAG_FIELDS = ['tags', 'tag']
@@ -85,9 +85,26 @@ export const getLeadTags = (lead) => {
   return []
 }
 
+const LIKELY_ID_PATTERN = /^(?:[a-f\d]{24}|[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12})$/i
+
+const isLikelyIdentifier = (value) => LIKELY_ID_PATTERN.test(String(value || '').trim())
+
+const getDisplayName = (value) => {
+  if (!value) return ''
+  if (typeof value === 'object') {
+    const nameParts = [value.first_name || value.firstName, value.last_name || value.lastName].filter(Boolean)
+    const label = value.full_name || value.fullName || value.name || value.display_name || value.displayName || nameParts.join(' ')
+    return label && !isLikelyIdentifier(label) ? String(label) : ''
+  }
+  return isLikelyIdentifier(value) ? '' : String(value)
+}
+
 export const getLeadOwnerLabel = (lead) => {
-  const owner = lead?.owner_name || lead?.assigned_to_name || lead?.assigned_to
-  return owner ? String(owner) : 'Unassigned'
+  for (const field of OWNER_FIELDS) {
+    const owner = getDisplayName(lead?.[field])
+    if (owner) return owner
+  }
+  return 'Unassigned'
 }
 
 export const getLeadOwnerValue = (lead) => {
@@ -99,8 +116,9 @@ export const getLeadOwnerValue = (lead) => {
 }
 
 export const getLeadContactLabel = (lead) => {
-  const contact = lead?.crm_contact_name || lead?.primary_contact || lead?.primary_contact_name || lead?.contact_name || lead?.contact || lead?.prospect_name
-  return contact ? String(contact) : 'Unassigned contact'
+  const contact = lead?.crm_contact_name || lead?.primary_contact_name || lead?.contact_name || lead?.prospect_name || lead?.primary_contact || lead?.contact
+  const label = getDisplayName(contact)
+  return label || 'Unassigned contact'
 }
 
 export const getLeadStageKey = (lead) => normalizeText(lead?.current_stage || lead?.stage || lead?.stage_key)

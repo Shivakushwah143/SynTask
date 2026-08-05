@@ -47,13 +47,13 @@ import {
   PipelineFiltersBar,
   PipelineInsightRail,
   PipelineLoadingState,
-  PipelineTopMetrics,
 } from './components'
 import {
   buildPipelineBoard,
   filterPipelineLeads,
   getLeadOwnerLabel,
   getAllowedPipelineStageKeys,
+  getLeadPriority,
   isAllowedPipelineTransition,
   moveLeadInBoard,
   ownerOptionsFromBoard,
@@ -345,7 +345,7 @@ export default function CRMPipelinePage() {
       toast.error(`Move ${sourceStage.name} leads to ${targetStage.name} through the required workflow steps.`)
       return
     }
-    moveLeadMutation.mutate({ leadId, stageKey: nextStageKey, lead })
+    return moveLeadMutation.mutateAsync({ leadId, stageKey: nextStageKey, lead })
   }, [moveLeadMutation, visibleBoard.stages])
 
   const handleCopyLeadId = useCallback(async (lead) => {
@@ -403,13 +403,17 @@ export default function CRMPipelinePage() {
     const highValueLeads = allLeads.filter(lead =>
       parseFloat(lead.amount || lead.value || 0) > 100000
     ).length
+    const hotLeads = allLeads.filter(lead =>
+      ['critical', 'high'].includes(getLeadPriority(lead))
+    ).length
+    const activeStages = board.stages.filter(stage => (stage.leads || []).length > 0).length
     const totalValue = allLeads.reduce((sum, lead) =>
       sum + parseFloat(lead.amount || lead.value || 0), 0
     )
     const avgValue = total > 0 ? totalValue / total : 0
     const conversionRate = total > 0 ? (wonLeads / total) * 100 : 0
 
-    return { total, openLeads, wonLeads, highValueLeads, totalValue, avgValue, conversionRate }
+    return { total, openLeads, wonLeads, highValueLeads, hotLeads, activeStages, totalValue, avgValue, conversionRate }
   }, [board.stages])
 
   const currency = rawPipeline?.meta?.currency || 'INR'
@@ -550,9 +554,9 @@ export default function CRMPipelinePage() {
       </div>
 
       {/* ============================================================ */}
-      {/* STAT CARDS - 4 Cards with Gradients */}
+      {/* STAT CARDS - Merged Pipeline Metrics */}
       {/* ============================================================ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="Total Leads"
           value={pipelineStats.total}
@@ -570,11 +574,27 @@ export default function CRMPipelinePage() {
         />
 
         <StatCard
+          label="Hot Leads"
+          value={pipelineStats.hotLeads}
+          icon={Target}
+          color="rose"
+          subtitle="Critical or high priority"
+        />
+
+        <StatCard
           label="Won"
           value={pipelineStats.wonLeads}
           icon={Award}
           color="blue"
           subtitle={`${pipelineStats.conversionRate.toFixed(1)}% conversion`}
+        />
+
+        <StatCard
+          label="Active Stages"
+          value={pipelineStats.activeStages}
+          icon={Activity}
+          color="teal"
+          subtitle="Stages with leads"
         />
 
         <StatCard
@@ -614,11 +634,6 @@ export default function CRMPipelinePage() {
           />
         </div>
       </div>
-
-      {/* ============================================================ */}
-      {/* METRICS RAIL */}
-      {/* ============================================================ */}
-      <PipelineTopMetrics visibleLeads={visibleLeads} stages={visibleBoard.stages} currency={currency} />
 
       {/* Info Banner */}
       {hasMoreLeads && (
@@ -683,6 +698,8 @@ export default function CRMPipelinePage() {
                 stages={visibleBoard.stages}
                 currency={currency}
                 activeLeadId={activeLeadId}
+                movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
+                users={users}
                 onMoveLeadToStage={handleLeadMove}
                 getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, visibleBoard.stages)}
                 onCopyLeadId={handleCopyLeadId}

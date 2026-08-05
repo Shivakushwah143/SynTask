@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { format, formatDistanceToNow } from 'date-fns'
 import {
   Clock3, Plus, Receipt, Search, UserPlus,
   FolderKanban, LayoutGrid, BarChart3,
   Calendar, Users, Target, Award, TrendingUp,
   CheckCircle2, AlertCircle, Clock, ChevronRight,
-  Briefcase, Layers, GitBranch, Sparkles, Activity
+  Briefcase, Layers, GitBranch, Sparkles, Activity, Timer
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
@@ -66,6 +65,64 @@ const loadStoredProjectTypes = () => {
   } catch {
     return []
   }
+}
+
+const getScheduledCountdown = (value, nowMs = Date.now()) => {
+  if (!value) {
+    return { label: '--:--:--', publishLabel: 'Publish time not set' }
+  }
+  try {
+    const runAt = timeService.instant(value)
+    const targetMs = runAt.getTime()
+    if (Number.isNaN(targetMs)) throw new Error('Invalid scheduled time')
+
+    const remainingMs = Math.max(0, targetMs - nowMs)
+    const totalSeconds = Math.floor(remainingMs / 1000)
+    const days = Math.floor(totalSeconds / 86400)
+    const hours = Math.floor((totalSeconds % 86400) / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    const timeLabel = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+
+    return {
+      label: remainingMs === 0 ? 'Publishing soon' : `${days > 0 ? `${days}d ` : ''}${timeLabel}`,
+      publishLabel: `Publishes ${timeService.formatPattern(runAt, 'MMM d, h:mm a')}`,
+    }
+  } catch {
+    return { label: '--:--:--', publishLabel: 'Scheduled' }
+  }
+}
+
+function useCountdownNow() {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+  return now
+}
+
+function ScheduledPublishPanel({ runAt }) {
+  const now = useCountdownNow()
+  const countdown = getScheduledCountdown(runAt, now)
+  return (
+    <div className="mt-3 rounded-lg border border-cyan-200 bg-gradient-to-r from-cyan-50 via-white to-amber-50 p-3 shadow-sm dark:border-cyan-900 dark:from-cyan-950/30 dark:via-gray-900 dark:to-amber-950/20">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200">
+            <Timer className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Publishes in</p>
+            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{countdown.publishLabel}</p>
+          </div>
+        </div>
+        <span className="whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 font-mono text-xs font-bold tabular-nums text-white dark:bg-white dark:text-gray-900">
+          {countdown.label}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 // Stat Card Component
@@ -303,17 +360,32 @@ export default function Projects() {
     active: projects.filter((project) => ['active', 'in_progress'].includes((project.status || '').toLowerCase())).length,
     completed: projects.filter((project) => ['completed', 'archived'].includes((project.status || '').toLowerCase())).length,
     overdue: projects.filter((project) => (project.days_until_delivery ?? 999) < 0).length,
+    scheduled: projects.filter((project) => project.is_scheduled_placeholder || (project.status || '').toLowerCase() === 'scheduled').length,
   }), [projects])
 
-  const projectCards = useMemo(() => filteredProjects.map((project) => ({
-    ...project,
-    statusLabel: (project.status || 'active').replace(/_/g, ' '),
-    progress: typeof project.progress_percentage === 'number'
-      ? project.progress_percentage
-      : project.task_count
-        ? Math.min(100, Math.round(((project.completed_task_count || 0) / project.task_count) * 100))
-        : 0,
-  })), [filteredProjects])
+  const projectCards = useMemo(() => filteredProjects.map((project) => {
+    const currentUserId = String(user?.id || user?._id || '')
+    const memberIds = [
+      ...(Array.isArray(project.assigned_user_ids) ? project.assigned_user_ids : []),
+      ...(Array.isArray(project.team_member_ids) ? project.team_member_ids : []),
+      project.assigned_to,
+    ].filter(Boolean).map(String)
+    const fallbackRole = currentUserId && String(project.lead_id || '') === currentUserId
+      ? 'project_lead'
+      : currentUserId && memberIds.includes(currentUserId)
+        ? 'project_member'
+        : project.effective_project_role
+    return {
+      ...project,
+      current_user_project_role: project.effective_project_role || fallbackRole,
+      statusLabel: (project.status || 'active').replace(/_/g, ' '),
+      progress: typeof project.progress_percentage === 'number'
+        ? project.progress_percentage
+        : project.task_count
+          ? Math.min(100, Math.round(((project.completed_task_count || 0) / project.task_count) * 100))
+          : 0,
+    }
+  }), [filteredProjects, user?.id, user?._id])
 
   const visibleProjectCount = useMemo(
     () => getVisibleProjectCountForGrid({ columns: projectGridColumns, page: projectPage, total: projectCards.length }),
@@ -407,21 +479,22 @@ export default function Projects() {
           toast.error('Schedule time is required')
           return
         }
-        const runAt = timeService.instant(scheduleRunAt)
-        if (Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
+        const runAt = timeService.parseZonedInput(scheduleRunAt)
+        if (!runAt || Number.isNaN(runAt.getTime()) || runAt <= timeService.now()) {
           toast.error('Schedule time must be in the future')
           return
         }
         await scheduledJobsAPI.scheduleJob({
           action_type: 'CREATE_PROJECT',
           payload,
-          run_at: timeService.toUtcISOString(runAt),
+          run_at: runAt.toISOString(),
         })
         toast.success('Project scheduled successfully')
         setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', start_date: '', delivery_date: '' })
         setCreateMode('now')
         setScheduleRunAt('')
         setShowCreateModal(false)
+        await loadProjects()
         return
       }
 
@@ -533,6 +606,13 @@ export default function Projects() {
           color="rose"
           subtitle="Overdue"
         />
+        <StatCard
+          label="Scheduled"
+          value={summary.scheduled}
+          icon={Timer}
+          color="amber"
+          subtitle="Awaiting publish"
+        />
       </div>
 
       {/* Search & Filters */}
@@ -554,6 +634,7 @@ export default function Projects() {
               onChange={(event) => setFilters((state) => ({ ...state, status: event.target.value }))}
             >
               <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">All statuses</option>
+              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="scheduled">Scheduled</option>
               <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="active">Active</option>
               <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="in_progress">In progress</option>
               <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="on_hold">On hold</option>
@@ -589,12 +670,13 @@ export default function Projects() {
         pageSize={projectPageSize}
         onViewMore={() => setProjectPage((page) => page + 1)}
         onOpenProject={(project) => {
+          if (project.is_scheduled_placeholder) return
           const match = projectCards.find((item) => item.id === project.id)
           if (match) navigate(`/projects/${match.id}/board`)
         }}
         canAssignProject={(project) => {
           const match = projectCards.find((item) => item.id === project.id)
-          return Boolean(match && canManageProject(user?.role, match, user?.id))
+          return Boolean(match && !match.is_scheduled_placeholder && canManageProject(user?.role, match, user?.id))
         }}
         onAssignProject={(project) => {
           const match = projectCards.find((item) => item.id === project.id)
@@ -602,11 +684,11 @@ export default function Projects() {
         }}
         onEditProject={(project) => {
           const match = projectCards.find((item) => item.id === project.id)
-          if (match) openEditModal(match)
+          if (match && !match.is_scheduled_placeholder) openEditModal(match)
         }}
         onDeleteProject={(project) => {
           const match = projectCards.find((item) => item.id === project.id)
-          if (match) openDeleteConfirm(match)
+          if (match && !match.is_scheduled_placeholder) openDeleteConfirm(match)
         }}
       />
 
@@ -938,14 +1020,40 @@ function ProjectCard({ project, onOpen, canAssign, onAssign, canManage, onEdit, 
     on_hold: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
     completed: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
     archived: 'bg-gray-100 text-gray-700 dark:bg-gray-900/40 dark:text-gray-300',
+    scheduled: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
   }
-
+  const isScheduled = Boolean(project.is_scheduled_placeholder)
+  const roleBadge = (() => {
+    const role = String(project.current_user_project_role || project.effective_project_role || '').toLowerCase()
+    if (role === 'project_lead') {
+      return {
+        label: 'Project Lead',
+        className: 'border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
+        icon: Award,
+      }
+    }
+    if (role === 'project_member') {
+      return {
+        label: 'Member',
+        className: 'border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
+        icon: Users,
+      }
+    }
+    return null
+  })()
+  const RoleBadgeIcon = roleBadge?.icon
   return (
-    <article className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700">
-      <button type="button" onClick={onOpen} className="w-full text-left">
+    <article className={`group rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${
+      isScheduled
+        ? 'border-cyan-300 bg-gradient-to-br from-cyan-50 via-white to-amber-50 ring-1 ring-cyan-100 dark:border-cyan-800 dark:from-cyan-950/30 dark:via-gray-900 dark:to-amber-950/20 dark:ring-cyan-900/50'
+        : 'border-gray-200 bg-white hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700'
+    }`}>
+      <button type="button" onClick={onOpen} disabled={isScheduled} className={`w-full text-left ${isScheduled ? 'cursor-default' : ''}`}>
         <div className="flex items-start gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white font-bold text-sm shadow-lg shadow-indigo-500/20">
-            {project.name?.charAt(0)?.toUpperCase() || 'P'}
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white font-bold text-sm shadow-lg ${
+            isScheduled ? 'bg-gradient-to-br from-cyan-600 to-amber-500 shadow-cyan-500/20' : 'bg-gradient-to-br from-indigo-500 to-purple-500 shadow-indigo-500/20'
+          }`}>
+            {isScheduled ? <Timer className="h-5 w-5" /> : (project.name?.charAt(0)?.toUpperCase() || 'P')}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
@@ -953,6 +1061,12 @@ function ProjectCard({ project, onOpen, canAssign, onAssign, canManage, onEdit, 
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{project.owner || 'Unassigned'}</p>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {roleBadge && (
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${roleBadge.className}`}>
+                  <RoleBadgeIcon className="h-3 w-3" />
+                  {roleBadge.label}
+                </span>
+              )}
               {project.key && (
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-mono text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                   {project.key}
@@ -969,26 +1083,28 @@ function ProjectCard({ project, onOpen, canAssign, onAssign, canManage, onEdit, 
       {/* Progress */}
       <div className="mt-3">
         <div className="mb-1.5 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-          <span>Progress</span>
-          <span className="font-semibold text-gray-700 dark:text-gray-300">{project.progress}%</span>
+          <span>{isScheduled ? 'Publish status' : 'Progress'}</span>
+          <span className="font-semibold text-gray-700 dark:text-gray-300">{isScheduled ? 'Scheduled' : `${project.progress}%`}</span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500"
-            style={{ width: `${Math.min(project.progress, 100)}%` }}
+            className={`h-full rounded-full transition-all duration-500 ${isScheduled ? 'bg-gradient-to-r from-cyan-500 to-amber-400' : 'bg-gradient-to-r from-indigo-500 to-purple-500'}`}
+            style={{ width: `${isScheduled ? 100 : Math.min(project.progress, 100)}%` }}
           />
         </div>
       </div>
 
       {/* Task Stats */}
       <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-        <span>{project.completedTasks || 0}/{project.totalTasks || 0} tasks</span>
-        {project.days_until_delivery !== undefined && project.days_until_delivery !== null && (
+        <span>{isScheduled ? 'Not published yet' : `${project.completedTasks || 0}/${project.totalTasks || 0} tasks`}</span>
+        {!isScheduled && project.days_until_delivery !== undefined && project.days_until_delivery !== null && (
           <span className={project.days_until_delivery < 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : ''}>
             {project.days_until_delivery < 0 ? `${Math.abs(project.days_until_delivery)}d overdue` : `${project.days_until_delivery}d left`}
           </span>
         )}
       </div>
+
+      {isScheduled && <ScheduledPublishPanel runAt={project.scheduled_run_at} />}
 
       {/* Creation Time */}
       {(() => {
@@ -1014,13 +1130,18 @@ function ProjectCard({ project, onOpen, canAssign, onAssign, canManage, onEdit, 
 
       {/* Actions */}
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
-        {canAssign && (
+        {isScheduled ? (
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200">
+            <Clock className="h-3.5 w-3.5" />
+            Scheduled
+          </span>
+        ) : canAssign && (
           <Button variant="secondary" size="sm" onClick={onAssign} className="gap-1.5">
             <UserPlus className="h-3.5 w-3.5" />
             {project.lead_id ? 'Change lead' : 'Assign lead'}
           </Button>
         )}
-        {canManage && (
+        {!isScheduled && canManage && (
           <>
             <Button variant="secondary" size="sm" onClick={onEdit}>
               Edit
@@ -1030,10 +1151,12 @@ function ProjectCard({ project, onOpen, canAssign, onAssign, canManage, onEdit, 
             </Button>
           </>
         )}
-        <Button variant="secondary" size="sm" onClick={onOpen} className="ml-auto gap-1.5">
-          Open
-          <ChevronRight className="h-3.5 w-3.5" />
-        </Button>
+        {!isScheduled && (
+          <Button variant="secondary" size="sm" onClick={onOpen} className="ml-auto gap-1.5">
+            Open
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     </article>
   )

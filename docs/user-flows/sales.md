@@ -33,7 +33,7 @@ flowchart TD
 ## Sales Prospects
 - How the user reaches it: sales dashboard/sidebar or `/sales/prospects`.
 - What they can do: list prospects, create prospects, edit prospects, bulk upload, open detail.
-- What happens after every action: list updates, stage updates, and detail screens refresh the prospect record.
+- What happens after every action: list updates, stage updates, and detail screens refresh the prospect record. Manual create requires a phone number but allows duplicate phones so duplicate management can review and merge them later.
 - Backend APIs called: `GET/POST/PUT /api/v1/sales/prospects`, bulk upload, search/contact helpers.
 - Timeline events created: prospect lifecycle events should flow into CRM activity/timeline if backend emits them.
 - Notifications sent: none explicitly in the frontend.
@@ -59,13 +59,13 @@ flowchart TD
 
 ## Sales Settings
 - How the user reaches it: `/sales/settings`.
-- What they can do: manage stages, tags, channels, categories, products.
+- What they can do: manage stages, tags, channels, categories, products. Admin, Sub Admin, Manager, Lead, and Super Admin users with sales module access can create and update categories and products for their permitted tenant scope.
 - What happens after every action: configuration lists refresh after CRUD mutations.
 - Backend APIs called:
   - `GET/POST /api/v1/sales/masters/stages`
   - `GET/POST /api/v1/sales/masters/tags`
   - `GET/POST /api/v1/sales/masters/channels`
-  - `GET /api/v1/sales/categories`
+  - `GET/POST /api/v1/sales/categories`
   - `GET/POST /api/v1/sales/products`
 - Timeline events created: generally not yet consistent.
 - Notifications sent: none directly.

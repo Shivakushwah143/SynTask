@@ -34,7 +34,7 @@ async def get_project_summary(
         ],
         "company_id": project.company_id,
     }
-    if current_user.role == UserRole.EMPLOYEE:
+    if current_user.role == UserRole.EMPLOYEE and not has_project_permission(current_user, project, ProjectPermission.MANAGE_TASK):
         task_query["assigned_to"] = str(current_user.id)
     all_tasks = await Task.find(task_query).to_list()
     
@@ -75,14 +75,16 @@ async def get_project_summary(
     tasks_by_type = {}
     
     for task in all_tasks:
+        task_status = enum_or_string_value(task.status)
+        task_priority = enum_or_string_value(task.priority)
         # Status breakdown
-        status_key = task.status.value
+        status_key = task_status
         if status_key in tasks_by_status:
             tasks_by_status[status_key].append(task)
         
         # Priority breakdown
         if task.priority:
-            priority_key = task.priority.value
+            priority_key = task_priority
             if priority_key in tasks_by_priority:
                 tasks_by_priority[priority_key] += 1
         
@@ -106,9 +108,9 @@ async def get_project_summary(
                     "completed": 0,
                 }
             assigned_tasks_by_user[task.assigned_to]["task_count"] += 1
-            if task.status.value == "in_progress":
+            if task_status == "in_progress":
                 assigned_tasks_by_user[task.assigned_to]["in_progress"] += 1
-            if task.status.value == "completed":
+            if task_status == "completed":
                 assigned_tasks_by_user[task.assigned_to]["completed"] += 1
         
         # Types of work
@@ -176,6 +178,7 @@ async def get_project_summary(
             "key": project.key,
             "description": project.description,
             "status": project.status.value,
+            **serialize_project_permissions(current_user, project),
         },
         "activity_metrics": {
             "completed": completed_count,

@@ -19,6 +19,21 @@ from app.core.clock import utc_now
 router = APIRouter()
 
 
+# Roles an Employee is allowed to assign tickets to. Sub Admins manage tickets
+# alongside Admins (they can view and update all company tickets), so employees can
+# route requests to Leads, Sub Admins, or Admins.
+EMPLOYEE_ASSIGNABLE_ROLES = {UserRole.LEAD, UserRole.ADMIN, UserRole.SUB_ADMIN}
+
+
+def _employee_can_assign_to(assignee_role: UserRole) -> bool:
+    """Whether an Employee may assign a ticket to a user with the given role.
+
+    Employees can route requests to Leads, Sub Admins, and Admins (the roles that
+    manage tickets). All other roles are unrestricted; that path is handled by callers.
+    """
+    return assignee_role in EMPLOYEE_ASSIGNABLE_ROLES
+
+
 async def generate_ticket_number(company_id: str) -> str:
     """Generate unique ticket number: TKT-YYYY-XXXX"""
     year = utc_now().year
@@ -133,16 +148,14 @@ async def create_ticket(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Assigned user must be from the same company"
             )
-        # All users (Employees, Leads, Admins) can assign tickets
-        # Employees can assign to Leads and Admins only
-        # Leads and Admins can assign to anyone in the company
-        if current_user.role == UserRole.EMPLOYEE:
-            # Employees can only assign to Leads and Admins
-            if assigned_user.role not in [UserRole.LEAD, UserRole.ADMIN]:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Employees can only assign tickets to Leads and Admins"
-                )
+        # All users (Employees, Leads, Sub Admins, Admins) can assign tickets
+        # Employees can assign to Leads, Sub Admins, and Admins only
+        # Leads, Sub Admins, and Admins can assign to anyone in the company
+        if current_user.role == UserRole.EMPLOYEE and not _employee_can_assign_to(assigned_user.role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Employees can only assign tickets to Leads, Sub Admins, and Admins"
+            )
         # Leads and Admins can assign to anyone in the company
         assigned_by = str(current_user.id)
         assigned_at = utc_now()
@@ -444,14 +457,12 @@ async def assign_ticket(
             )
         
         # Role-based assignment restrictions
-        if current_user.role == UserRole.EMPLOYEE:
-            # Employees can only assign to Leads and Admins
-            if assigned_user.role not in [UserRole.LEAD, UserRole.ADMIN]:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Employees can only assign tickets to Leads and Admins"
-                )
-        # Leads and Admins can assign to anyone in the company (no restriction)
+        if current_user.role == UserRole.EMPLOYEE and not _employee_can_assign_to(assigned_user.role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Employees can only assign tickets to Leads, Sub Admins, and Admins"
+            )
+        # Leads, Sub Admins, and Admins can assign to anyone in the company (no restriction)
     else:
         # Unassign ticket
         assigned_to = None

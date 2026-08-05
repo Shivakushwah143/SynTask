@@ -80,6 +80,8 @@ docs/                    Testing guide and diagrams
 | Lead | Direct execution team | Employees |
 | Employee | Individual task/ticket work | No users |
 
+Employees can be assigned as a project Leader without changing their global role. In that case, the backend grants Lead-level permissions only for that project and recalculates access from current project membership on every protected request.
+
 ## Multi-Tenancy
 SynTask uses a single database with tenant isolation through `company_id` fields. Most tenant-owned models store `company_id`, and API queries use the authenticated user from `get_current_user()` plus dependency helpers to restrict access. Super admins can cross tenant boundaries; company users are scoped to their company.
 

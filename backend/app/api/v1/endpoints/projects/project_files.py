@@ -138,7 +138,7 @@ async def upload_project_file(
 async def delete_project_file(
     project_id: str,
     file_id: str,
-    current_user: User = Depends(get_current_company_admin_or_lead),
+    current_user: User = Depends(get_current_user),
 ):
     """Delete a file from a project. Path project_id can be custom ID or MongoDB _id."""
     project, _ = await get_project_by_id(project_id, current_user.company_id)
@@ -147,7 +147,8 @@ async def delete_project_file(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail="Project not found"
         )
-    await ensure_project_access_for_user(project, current_user)
+    if not has_project_permission(current_user, project, ProjectPermission.MANAGE_PAGE):
+        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="You do not have permission to manage project files")
     
     file_index = None
     for idx, file_data in enumerate(project.files or []):
