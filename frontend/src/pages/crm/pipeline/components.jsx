@@ -82,6 +82,9 @@ export const PipelineBoardShell = ({ title, description, actions, children }) =>
   </div>
 )
 
+// Compact single-row filter strip. All controls are equal-height small inputs
+// (`.input-sm`) so the whole bar fits in one dense band; labels are sr-only and
+// the reset action is a small inline button in the same row.
 export const PipelineFiltersBar = memo(function PipelineFiltersBar({
   filters,
   onChange,
@@ -92,161 +95,155 @@ export const PipelineFiltersBar = memo(function PipelineFiltersBar({
   onSearchChange,
   currency = 'INR',
 }) {
+  const handleReset = () => {
+    if (onResetFilters) {
+      onResetFilters()
+      return
+    }
+    onChange({
+      q: '',
+      owner: '',
+      priority: '',
+      tags: '',
+      minValue: '',
+      maxValue: '',
+      createdFrom: '',
+      createdTo: '',
+      stage: '',
+    })
+  }
+
+  const optionClass = 'bg-white text-gray-900 dark:bg-gray-700 dark:text-white'
+
   return (
-    <div className="rounded-2xl border border-surface-border/80 bg-surface/95 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <div className="grid gap-3">
-        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(150px,1fr))]">
+    <div className="rounded-xl border border-surface-border/80 bg-surface/95 p-2.5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[minmax(190px,1.5fr)_repeat(7,minmax(0,1fr))]">
+        <label className="relative col-span-2 block min-w-0 sm:col-span-1">
+          <span className="sr-only">Search</span>
+          <Sparkles className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+          <input
+            value={searchValue}
+            onChange={(event) => onSearchChange?.(event.target.value)}
+            className="input input-sm pl-8"
+            placeholder="Search pipeline..."
+            aria-label="Search pipeline"
+          />
+        </label>
+        <label className="block min-w-0">
+          <span className="sr-only">Owner</span>
+          <select
+            className="input input-sm"
+            value={filters.owner}
+            onChange={(event) => onChange({ owner: event.target.value })}
+            aria-label="Filter by owner"
+          >
+            <option className={optionClass} value="">Owner: All</option>
+            {ownerOptions.map((option) => (
+              <option className={optionClass} key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block min-w-0">
+          <span className="sr-only">Priority</span>
+          <select
+            className="input input-sm"
+            value={filters.priority}
+            onChange={(event) => onChange({ priority: event.target.value })}
+            aria-label="Filter by priority"
+          >
+            <option className={optionClass} value="">Priority: All</option>
+            <option className={optionClass} value="critical">Critical</option>
+            <option className={optionClass} value="high">High</option>
+            <option className={optionClass} value="medium">Medium</option>
+            <option className={optionClass} value="low">Low</option>
+          </select>
+        </label>
+        <label className="block min-w-0">
+          <span className="sr-only">Current Stage</span>
+          <select
+            className="input input-sm"
+            value={filters.stage}
+            onChange={(event) => onChange({ stage: event.target.value })}
+            aria-label="Filter by stage"
+          >
+            <option className={optionClass} value="">Stage: All</option>
+            {stageOptions.map((stage) => (
+              <option key={stage.value} value={stage.value}>
+                {stage.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block min-w-0">
+          <span className="sr-only">Tags</span>
+          <input
+            className="input input-sm"
+            value={filters.tags}
+            onChange={(event) => onChange({ tags: event.target.value })}
+            placeholder="Tags"
+            aria-label="Filter by tags"
+          />
+        </label>
+        <label className="block min-w-0">
+          <span className="sr-only">Min deal value</span>
+          <input
+            className="input input-sm"
+            type="number"
+            inputMode="numeric"
+            min="0"
+            value={filters.minValue}
+            onChange={(event) => onChange({ minValue: event.target.value })}
+            placeholder={currency === 'INR' ? 'Min ₹' : 'Min value'}
+            aria-label="Minimum deal value"
+          />
+        </label>
+        <label className="block min-w-0">
+          <span className="sr-only">Max deal value</span>
+          <input
+            className="input input-sm"
+            type="number"
+            inputMode="numeric"
+            min="0"
+            value={filters.maxValue}
+            onChange={(event) => onChange({ maxValue: event.target.value })}
+            placeholder="Max value"
+            aria-label="Maximum deal value"
+          />
+        </label>
+        <div className="grid min-w-0 grid-cols-2 gap-2">
           <label className="block min-w-0">
-            <span className="sr-only">Search</span>
-            <div className="relative">
-              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-              <input
-                value={searchValue}
-                onChange={(event) => onSearchChange?.(event.target.value)}
-                className="input pl-10"
-                placeholder="Search in pipeline..."
-                aria-label="Search pipeline"
-              />
-            </div>
+            <span className="sr-only">Created from</span>
+            <input
+              className="input input-sm"
+              type="date"
+              value={filters.createdFrom}
+              onChange={(event) => onChange({ createdFrom: event.target.value })}
+              aria-label="Filter by created from date"
+            />
           </label>
           <label className="block min-w-0">
-            <span className="sr-only">Owner</span>
-            <select
-              className="input"
-              value={filters.owner}
-              onChange={(event) => onChange({ owner: event.target.value })}
-              aria-label="Filter by owner"
-            >
-              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Owner: All</option>
-              {ownerOptions.map((option) => (
-                <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block min-w-0">
-            <span className="sr-only">Priority</span>
-            <select
-              className="input"
-              value={filters.priority}
-              onChange={(event) => onChange({ priority: event.target.value })}
-              aria-label="Filter by priority"
-            >
-              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="">Priority: All</option>
-              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="critical">Critical</option>
-              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="high">High</option>
-              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="medium">Medium</option>
-              <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="low">Low</option>
-            </select>
-          </label>
-          <label className="block min-w-0">
-            <span className="sr-only">Current Stage</span>
-            <select
-              className="input"
-              value={filters.stage}
-              onChange={(event) => onChange({ stage: event.target.value })}
-              aria-label="Filter by stage"
-            >
-              <option value="">Stage: All</option>
-              {stageOptions.map((stage) => (
-                <option key={stage.value} value={stage.value}>
-                  {stage.label}
-                </option>
-              ))}
-            </select>
+            <span className="sr-only">Created to</span>
+            <input
+              className="input input-sm"
+              type="date"
+              value={filters.createdTo}
+              onChange={(event) => onChange({ createdTo: event.target.value })}
+              aria-label="Filter by created to date"
+            />
           </label>
         </div>
-      </div>
-      <div className="space-y-4">
-        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_minmax(0,.8fr)_minmax(0,1fr)]">
-          <label className="block min-w-0">
-            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Tags</span>
-            <input
-              className="input"
-              value={filters.tags}
-              onChange={(event) => onChange({ tags: event.target.value })}
-              placeholder="Enter comma-separated tags"
-              aria-label="Filter by tags"
-            />
-          </label>
-          <label className="block min-w-0">
-            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Min deal value</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={filters.minValue}
-              onChange={(event) => onChange({ minValue: event.target.value })}
-              placeholder={currency === 'INR' ? '0' : 'Min value'}
-              aria-label="Minimum deal value"
-            />
-          </label>
-          <label className="block min-w-0">
-            <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Max deal value</span>
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={filters.maxValue}
-              onChange={(event) => onChange({ maxValue: event.target.value })}
-              placeholder="No cap"
-              aria-label="Maximum deal value"
-            />
-          </label>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-            <label className="block min-w-0">
-              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created from</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.createdFrom}
-                onChange={(event) => onChange({ createdFrom: event.target.value })}
-                aria-label="Filter by created from date"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="mb-1 block text-sm font-medium text-text-secondary dark:text-gray-200">Created to</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.createdTo}
-                onChange={(event) => onChange({ createdTo: event.target.value })}
-                aria-label="Filter by created to date"
-              />
-            </label>
-          </div>
+        <div className="col-span-2 flex items-end justify-end sm:col-span-1">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[11px] font-semibold text-text-secondary transition hover:bg-surface-muted dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            <Filter className="h-3.5 w-3.5" />
+            Reset
+          </button>
         </div>
-      </div>
-      <div className="mt-4 flex justify-end border-t border-surface-border/70 pt-4 dark:border-gray-800">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="w-full justify-center sm:w-auto sm:whitespace-nowrap"
-          onClick={() => {
-            if (onResetFilters) {
-              onResetFilters()
-              return
-            }
-            onChange({
-              q: '',
-              owner: '',
-              priority: '',
-              tags: '',
-              minValue: '',
-              maxValue: '',
-              createdFrom: '',
-              createdTo: '',
-              stage: '',
-            })
-          }}
-        >
-          <Filter className="h-4 w-4" />
-          Reset filters
-        </Button>
       </div>
     </div>
   )

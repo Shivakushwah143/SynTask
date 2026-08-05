@@ -684,6 +684,8 @@ export default function CRMPipelinePage() {
   // ============================================================
   // Stat Card Component
   // ============================================================
+  // Compact metric tile: icon + label on one row with the value beside it, so all
+  // six stats fit in a single dense band on wide screens.
   const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, suffix = '' }) => {
     const colors = {
       indigo: 'from-indigo-500 to-purple-500',
@@ -695,22 +697,24 @@ export default function CRMPipelinePage() {
     }
 
     return (
-      <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-          <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+      <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+        <div className="flex items-center gap-2.5">
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r ${colors[color]} text-white shadow-sm transition-transform group-hover:scale-105`}>
             <Icon className="h-4 w-4" />
           </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-400">{label}</p>
+            <p className="truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">
+              {typeof value === 'number' && label.includes('Value')
+                ? `${currency} ${value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+                : typeof value === 'number'
+                  ? value.toLocaleString('en-IN')
+                  : value}
+              {suffix}
+            </p>
+            {subtitle ? <p className="truncate text-[10px] text-gray-500 dark:text-gray-400">{subtitle}</p> : null}
+          </div>
         </div>
-        <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-          {typeof value === 'number' && label.includes('Value')
-            ? `${currency} ${value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
-            : typeof value === 'number'
-              ? value.toLocaleString('en-IN')
-              : value}
-          {suffix}
-        </p>
-        {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
       </div>
     )
   }
@@ -723,44 +727,51 @@ export default function CRMPipelinePage() {
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 p-4 text-white shadow-lg sm:p-5">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-40 w-40 rounded-full bg-white/10 blur-2xl"></div>
 
-        <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">
-                  {selectedStageLabel ? `${selectedStageLabel} Leads` : 'Sales Pipeline'}
-                </h1>
-                <p className="mt-1 text-indigo-100">
-                  {selectedStageLabel
-                    ? `Showing only leads in the ${selectedStageLabel} stage.`
-                    : 'Manage your leads and move them through the pipeline workflow.'}
-                </p>
-              </div>
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <LayoutDashboard className="h-5 w-5" />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => navigate('/crm/leads?import=1')}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                <Import className="h-4 w-4" />
-                Import
-              </button>
-              <button
-                onClick={() => pipelineQuery.refetch()}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </button>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold sm:text-xl">
+                {selectedStageLabel ? `${selectedStageLabel} Leads` : 'Sales Pipeline'}
+              </h1>
+              <p className="truncate text-xs text-indigo-100 sm:text-sm">
+                {selectedStageLabel
+                  ? `Showing ${selectedStageLabel} stage leads.`
+                  : 'Manage leads and move them through the pipeline workflow.'}
+              </p>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50 dark:bg-gray-900 dark:text-indigo-300 dark:hover:bg-gray-800"
+            >
+              <Plus className="h-4 w-4" />
+              Add Lead
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/crm/leads?import=1')}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-2 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <Import className="h-4 w-4" />
+              Import
+            </button>
+            <button
+              type="button"
+              onClick={() => pipelineQuery.refetch()}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-2 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
           </div>
         </div>
       </div>
@@ -768,13 +779,13 @@ export default function CRMPipelinePage() {
       {/* ============================================================ */}
       {/* STAT CARDS - Merged Pipeline Metrics */}
       {/* ============================================================ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <StatCard
           label="Total Leads"
           value={pipelineStats.total}
           icon={Users}
           color="indigo"
-          subtitle="All leads in pipeline"
+          subtitle="All leads"
         />
 
         <StatCard
@@ -790,7 +801,7 @@ export default function CRMPipelinePage() {
           value={pipelineStats.hotLeads}
           icon={Target}
           color="rose"
-          subtitle="Critical or high priority"
+          subtitle="High priority"
         />
 
         <StatCard
@@ -814,7 +825,7 @@ export default function CRMPipelinePage() {
           value={pipelineStats.totalValue}
           icon={DollarSign}
           color="amber"
-          subtitle={`${currency} ${pipelineStats.avgValue.toFixed(0)} average`}
+          subtitle={`${pipelineStats.avgValue.toFixed(0)} avg`}
         />
       </div>
 
@@ -822,18 +833,18 @@ export default function CRMPipelinePage() {
       {/* FILTERS BAR - Section with Header */}
       {/* ============================================================ */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-              <Filter className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white px-4 py-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+              <Filter className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Filters & Search</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Narrow down leads by stage, owner, or keyword</p>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Filters & Search</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Narrow leads by stage, owner, status, or keyword</p>
             </div>
           </div>
         </div>
-        <div className="p-4">
+        <div className="p-3">
           <PipelineFiltersBar
             filters={filters}
             onChange={updateFilters}
@@ -845,7 +856,7 @@ export default function CRMPipelinePage() {
             currency={currency}
           />
           {selectedStageKey ? (
-            <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+            <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
                   {selectedStageKey === 'discovery' ? 'Discovery Outcome' : `${selectedStageLabel} Status`}

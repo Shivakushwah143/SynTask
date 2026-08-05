@@ -238,6 +238,12 @@
     background-color: var(--color-app-input);
     color: var(--color-app-text);
   }
+
+  /* Compact input variant: combine with `input` (className="input input-sm") to
+     shrink height/padding/radius for dense filter bars and toolbars. */
+  .input-sm {
+    @apply min-h-9 rounded-xl px-3 py-1.5 text-xs;
+  }
   
   .card {
     @apply min-w-0 max-w-full rounded-2xl border p-4 dark:shadow-none;
