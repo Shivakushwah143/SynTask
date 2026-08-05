@@ -85,13 +85,24 @@ const ADMIN_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN];
 // Roles allowed in CRM settings (mirrors CRMSettingsGuard: company admin + manager).
 const CRM_SETTINGS_ROLES = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER];
 
+export const CRM_PIPELINE_STAGE_ITEMS = [
+  { name: "New", href: "/crm/pipeline/new", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Contacted", href: "/crm/pipeline/contacted", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Qualified", href: "/crm/pipeline/qualified", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Discovery", href: "/crm/pipeline/discovery", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Proposal", href: "/crm/pipeline/proposal", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Negotiation", href: "/crm/pipeline/negotiation", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Won", href: "/crm/pipeline/won", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+  { name: "Lost", href: "/crm/pipeline/lost", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
+];
+
 // ── Top-level section structure (spec §2 + §8). Items are resolved by name. ──
 // Items listed here but with no existing route are intentionally omitted (hidden until the page
 // is built) — see the Phase 0 hide/link/build decision table.
 // A section renders iff at least one of its items passes canAccessNavItem().
 export const SECTIONS = [
   { key: "home", label: "Home", items: ["Home", "Calendar"] },
-  { key: "sales", label: "Sales", items: ["Leads", "All Leads", "Pipeline", "Import Leads"] },
+  { key: "sales", label: "Sales", items: ["Leads", "All Leads", ...CRM_PIPELINE_STAGE_ITEMS.map((item) => item.name), "Pipeline", "Import Leads"] },
   { key: "clients", label: "Clients", items: ["All Clients", "Companies", "Contacts", "Client Calendar", "Client Insights"] },
   { key: "work", label: "Work", items: ["Projects", "Tasks", "Requests", "Scheduled Work", "Time Tracking"] },
   { key: "content", label: "Content", items: ["Content Calendar", "Content Studio"] },
@@ -177,6 +188,7 @@ export const navigation = [
 export const crmNavigation = [
   { name: "Leads", href: "/crm/leads", icon: UserRoundSearch, roles: STANDARD_ROLES, module: "sales_crm" },
   { name: "All Leads", href: "/crm/leads/all", icon: Users, roles: STANDARD_ROLES, module: "sales_crm" },
+  ...CRM_PIPELINE_STAGE_ITEMS,
   { name: "Pipeline", href: "/crm/pipeline", icon: GitBranch, roles: STANDARD_ROLES, module: "sales_crm" },
   { name: "Companies", href: "/crm/companies", icon: Factory, roles: TEAM_ROLES, module: "sales_crm" },
   { name: "Contacts", href: "/crm/contacts", icon: UserCheck, roles: TEAM_ROLES, module: "sales_crm" },
@@ -221,6 +233,14 @@ export const ITEM_COLORS = {
 
   Leads: "text-sky-400",
   "All Leads": "text-indigo-400",
+  New: "text-sky-400",
+  Contacted: "text-amber-400",
+  Qualified: "text-emerald-400",
+  Discovery: "text-violet-400",
+  Proposal: "text-indigo-400",
+  Negotiation: "text-orange-400",
+  Won: "text-green-400",
+  Lost: "text-rose-400",
   Pipeline: "text-cyan-300",
   "Import Leads": "text-orange-400",
 

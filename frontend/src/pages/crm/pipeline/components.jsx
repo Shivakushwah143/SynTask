@@ -323,7 +323,7 @@ export const PipelineBoard = memo(function PipelineBoard({
     return <PipelineSearchEmptyState onResetFilters={onResetFilters} />
   }
 
-  if (totalLeads === 0) {
+  if (totalLeads === 0 && stages.length > 1) {
     return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
   }
 
@@ -348,6 +348,138 @@ export const PipelineBoard = memo(function PipelineBoard({
             />
           ))}
         </div>
+      </div>
+    </div>
+  )
+})
+
+export const PipelineStageListView = memo(function PipelineStageListView({
+  stage,
+  leads = [],
+  stages = [],
+  currency = 'INR',
+  movingLeadId = null,
+  onMoveLeadToStage,
+  onCopyLeadId,
+  onLeadSelect,
+  onResetFilters,
+  hasActiveFilters = false,
+}) {
+  if (!stage) {
+    return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
+  }
+
+  if (hasActiveFilters && leads.length === 0) {
+    return <PipelineSearchEmptyState onResetFilters={onResetFilters} />
+  }
+
+  if (leads.length === 0) {
+    return <PipelineStageEmptyState label={stage.name} />
+  }
+
+  const nextStage = stages.find((candidate) => candidate.key === stage.nextStageKey)
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-surface/95 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-surface-border/80 text-sm">
+          <thead className="bg-surface-muted/80 text-text-secondary dark:bg-gray-950/50 dark:text-gray-300">
+            <tr>
+              <th className="px-4 py-3 text-left font-semibold">Lead</th>
+              <th className="px-4 py-3 text-left font-semibold">Owner</th>
+              <th className="px-4 py-3 text-left font-semibold">Contact</th>
+              <th className="px-4 py-3 text-left font-semibold">Priority</th>
+              <th className="px-4 py-3 text-left font-semibold">Value</th>
+              <th className="px-4 py-3 text-left font-semibold">Created</th>
+              <th className="px-4 py-3 text-left font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-surface-border/80 dark:divide-gray-800">
+            {leads.map((lead, index) => {
+              const leadId = lead.id || lead._id || `${stage.key}-${index}`
+              const leadTitle = lead.company_name || lead.prospect_name || getLeadContactLabel(lead) || 'Lead'
+              const leadSubtitle = lead.email || [lead.country_code, lead.phone].filter(Boolean).join(' ') || 'No contact info'
+              const ownerLabel = getLeadOwnerLabel(lead)
+              const priority = getLeadPriority(lead)
+              const tags = getLeadTags(lead)
+              const isMovePending = Boolean(movingLeadId && leadId === movingLeadId)
+
+              return (
+                <tr key={leadId} className="hover:bg-surface-muted/60 dark:hover:bg-gray-800/50">
+                  <td className="px-4 py-4">
+                    <button
+                      type="button"
+                      onClick={() => onLeadSelect?.(lead)}
+                      className="block text-left focus-visible:outline-none"
+                    >
+                      <div className="font-semibold text-text-primary dark:text-gray-100">{leadTitle}</div>
+                      <div className="mt-1 text-xs text-text-secondary dark:text-gray-400">{leadSubtitle}</div>
+                      {tags.length ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {tags.slice(0, 4).map((tag) => (
+                            <Badge key={tag} label={tag} colorKey="draft" className="text-[10px]" />
+                          ))}
+                          {tags.length > 4 ? (
+                            <span className="inline-flex items-center rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-text-muted dark:bg-gray-800 dark:text-gray-400">
+                              +{tags.length - 4}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </button>
+                  </td>
+                  <td className="px-4 py-4 text-text-primary dark:text-gray-100">{ownerLabel}</td>
+                  <td className="px-4 py-4 text-text-secondary dark:text-gray-300">
+                    <div className="space-y-1">
+                      <div>{lead.phone ? [lead.country_code, lead.phone].filter(Boolean).join(' ') : 'No phone'}</div>
+                      <div>{lead.email || 'No email'}</div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <Badge label={priority} colorKey={priority} className="text-[10px] uppercase tracking-[0.12em]" />
+                  </td>
+                  <td className="px-4 py-4 font-semibold text-text-primary dark:text-gray-100">
+                    {formatCurrency(getLeadDealValue(lead), currency)}
+                  </td>
+                  <td className="px-4 py-4 text-text-secondary dark:text-gray-300">
+                    {formatShortDate(lead.created_at || lead.createdAt || lead.created_date)}
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onLeadSelect?.(lead)}
+                      >
+                        Open lead
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        loading={isMovePending}
+                        loadingText="Updating stage"
+                        onClick={() => nextStage && onMoveLeadToStage?.(lead, stage.nextStageKey)}
+                        disabled={!nextStage}
+                      >
+                        {nextStage ? `Move to ${nextStage.name}` : 'Final stage'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onCopyLeadId?.(lead)}
+                      >
+                        Copy ID
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )

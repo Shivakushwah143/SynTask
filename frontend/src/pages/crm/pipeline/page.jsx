@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
+import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   LayoutDashboard,
@@ -47,12 +47,14 @@ import {
   PipelineFiltersBar,
   PipelineInsightRail,
   PipelineLoadingState,
+  PipelineStageListView,
 } from './components'
 import {
   buildPipelineBoard,
   filterPipelineLeads,
   getLeadOwnerLabel,
   getAllowedPipelineStageKeys,
+  getCanonicalPipelineStageKey,
   getLeadPriority,
   isAllowedPipelineTransition,
   moveLeadInBoard,
@@ -104,6 +106,7 @@ const getResponseItems = (data, key) => {
 export default function CRMPipelinePage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { stageKey: stageRouteKey = '' } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const [localSearchValue, setLocalSearchValue] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
@@ -150,12 +153,35 @@ export default function CRMPipelinePage() {
     [usersQuery.data]
   )
   const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
+  const loading = pipelineQuery.isLoading
+  const hasError = pipelineQuery.isError
   const filters = useMemo(() => parsePipelineFilters(searchParams), [searchParams])
+  const routeStageKey = useMemo(() => getCanonicalPipelineStageKey(stageRouteKey), [stageRouteKey])
+  const queryStageKey = useMemo(() => getCanonicalPipelineStageKey(filters.stage), [filters.stage])
+  const requestedStageKey = routeStageKey || queryStageKey
+  const selectedStage = useMemo(
+    () => board.stages.find((stage) => stage.key === requestedStageKey) || null,
+    [board.stages, requestedStageKey]
+  )
+  const selectedStageKey = selectedStage?.key || ''
+  const selectedStageView = useMemo(() => {
+    if (!selectedStage) return null
+    const stageIndex = board.stages.findIndex((stage) => stage.key === selectedStage.key)
+    return {
+      ...selectedStage,
+      previousStageKey: board.stages[stageIndex - 1]?.key || null,
+      nextStageKey: board.stages[stageIndex + 1]?.key || null,
+    }
+  }, [board.stages, selectedStage])
+  const scopedStages = useMemo(
+    () => (selectedStage ? [selectedStage] : board.stages),
+    [board.stages, selectedStage]
+  )
 
   const selectedStageLabel = useMemo(() => {
-    if (!filters.stage) return ''
-    return board.stages.find((stage) => stage.key === filters.stage)?.name || filters.stage
-  }, [board.stages, filters.stage])
+    if (!selectedStage) return ''
+    return selectedStage.name || selectedStage.label || selectedStage.key || ''
+  }, [selectedStage])
 
   const debouncedSearch = useDebounce(searchValue, 160)
   const effectiveSearch = useMemo(() => {
@@ -168,24 +194,30 @@ export default function CRMPipelinePage() {
   }, [filters.q, setSearchValue])
 
   useEffect(() => {
+    if (!stageRouteKey || loading || hasError) return
+    if (selectedStage) return
+    navigate('/crm/pipeline', { replace: true })
+  }, [hasError, loading, navigate, selectedStage, stageRouteKey])
+
+  useEffect(() => {
     if (effectiveSearch !== filters.q) {
       setSearchParams((current) => mergeSearchParams(current, { q: effectiveSearch }), { replace: true })
     }
   }, [effectiveSearch, filters.q, setSearchParams])
 
   const visibleLeads = useMemo(() => {
-    const allLeads = board.stages.flatMap((stage) => stage.leads)
+    const allLeads = scopedStages.flatMap((stage) => stage.leads)
     return filterPipelineLeads(allLeads, { ...filters, q: effectiveSearch })
-  }, [board.stages, effectiveSearch, filters])
+  }, [effectiveSearch, filters, scopedStages])
 
   const visibleLeadIds = useMemo(() => new Set(visibleLeads.map((lead) => lead.id || lead._id)), [visibleLeads])
   const hasActiveFilters = useMemo(() => (
     Boolean(effectiveSearch)
-    || Object.entries(filters).some(([key, value]) => key !== 'q' && String(value || '').trim())
+    || Object.entries(filters).some(([key, value]) => key !== 'q' && key !== 'stage' && String(value || '').trim())
   ), [effectiveSearch, filters])
 
   const visibleBoard = useMemo(() => {
-    const nextStages = board.stages
+    const nextStages = scopedStages
       .map((stage, index, items) => ({
         ...stage,
         leads: stage.leads.filter((lead) => visibleLeadIds.has(lead.id || lead._id)),
@@ -205,7 +237,9 @@ export default function CRMPipelinePage() {
       stages: nextStages,
       leadIndex,
     }
-  }, [board, visibleLeadIds])
+  }, [board, scopedStages, visibleLeadIds])
+
+  const interactiveStages = selectedStage ? board.stages : visibleBoard.stages
 
   const defaultStageId = getStageValue(stages[0])
   const defaultCategoryId = getOptionId(categories[0])
@@ -224,17 +258,31 @@ export default function CRMPipelinePage() {
   }, [createOpen, defaultCategoryId, defaultOwnerId, defaultProductIds, defaultStageId])
 
   const updateFilters = useCallback((partial) => {
+    if (Object.prototype.hasOwnProperty.call(partial, 'stage')) {
+      const nextStageKey = getCanonicalPipelineStageKey(partial.stage)
+      const nextSearch = mergeSearchParams(searchParams, partial)
+      nextSearch.delete('stage')
+      navigate({
+        pathname: nextStageKey ? `/crm/pipeline/${nextStageKey}` : '/crm/pipeline',
+        search: nextSearch.toString() ? `?${nextSearch.toString()}` : '',
+      }, { replace: true })
+      return
+    }
     setSearchParams((current) => mergeSearchParams(current, partial), { replace: true })
-  }, [setSearchParams])
+  }, [navigate, searchParams, setSearchParams])
 
   const clearFilters = useCallback(() => {
     setSearchValue('')
+    if (selectedStageKey) {
+      navigate(`/crm/pipeline/${selectedStageKey}`, { replace: true })
+      return
+    }
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       Array.from(next.keys()).forEach((key) => next.delete(key))
       return next
     }, { replace: true })
-  }, [setSearchParams, setSearchValue])
+  }, [navigate, selectedStageKey, setSearchParams, setSearchValue])
 
   const createLeadMutation = useMutation((payload) => salesApi.createLead(payload), {
     onSuccess: () => {
@@ -338,15 +386,15 @@ export default function CRMPipelinePage() {
     const leadId = lead?.id || lead?._id
     if (!leadId || !nextStageKey) return
     if (moveLeadMutation.isLoading) return
-    const sourceStage = visibleBoard.stages.find((stage) => stage.leads.some((item) => (item.id || item._id) === leadId))
-    const targetStage = visibleBoard.stages.find((stage) => stage.key === nextStageKey)
+    const sourceStage = interactiveStages.find((stage) => stage.leads.some((item) => (item.id || item._id) === leadId))
+    const targetStage = interactiveStages.find((stage) => stage.key === nextStageKey)
     if (sourceStage?.key === nextStageKey) return
     if (sourceStage && targetStage && !isAllowedPipelineTransition(sourceStage, targetStage)) {
       toast.error(`Move ${sourceStage.name} leads to ${targetStage.name} through the required workflow steps.`)
       return
     }
     return moveLeadMutation.mutateAsync({ leadId, stageKey: nextStageKey, lead })
-  }, [moveLeadMutation, visibleBoard.stages])
+  }, [interactiveStages, moveLeadMutation])
 
   const handleCopyLeadId = useCallback(async (lead) => {
     const value = lead?.id || lead?._id
@@ -392,7 +440,7 @@ export default function CRMPipelinePage() {
   // STATS CALCULATION
   // ============================================================
   const pipelineStats = useMemo(() => {
-    const allLeads = board.stages.flatMap(stage => stage.leads)
+    const allLeads = scopedStages.flatMap(stage => stage.leads)
     const total = allLeads.length
     const openLeads = allLeads.filter(lead =>
       !['closed_won', 'closed_lost', 'disqualified'].includes(lead.current_stage?.toLowerCase())
@@ -406,7 +454,7 @@ export default function CRMPipelinePage() {
     const hotLeads = allLeads.filter(lead =>
       ['critical', 'high'].includes(getLeadPriority(lead))
     ).length
-    const activeStages = board.stages.filter(stage => (stage.leads || []).length > 0).length
+    const activeStages = scopedStages.filter(stage => (stage.leads || []).length > 0).length
     const totalValue = allLeads.reduce((sum, lead) =>
       sum + parseFloat(lead.amount || lead.value || 0), 0
     )
@@ -414,14 +462,12 @@ export default function CRMPipelinePage() {
     const conversionRate = total > 0 ? (wonLeads / total) * 100 : 0
 
     return { total, openLeads, wonLeads, highValueLeads, hotLeads, activeStages, totalValue, avgValue, conversionRate }
-  }, [board.stages])
+  }, [scopedStages])
 
   const currency = rawPipeline?.meta?.currency || 'INR'
   const hasMoreLeads = Boolean(rawPipeline?.meta?.has_more)
   const totalLeads = Number(rawPipeline?.meta?.total_leads || 0)
   const boardLimit = Number(rawPipeline?.meta?.limit || 0)
-  const loading = pipelineQuery.isLoading
-  const hasError = pipelineQuery.isError
 
   // ============================================================
   // Phone Input Component
@@ -524,11 +570,11 @@ export default function CRMPipelinePage() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold md:text-3xl">
-                  {selectedStageLabel ? `${selectedStageLabel} Pipeline` : 'Sales Pipeline'}
+                  {selectedStageLabel ? `${selectedStageLabel} Leads` : 'Sales Pipeline'}
                 </h1>
                 <p className="mt-1 text-indigo-100">
                   {selectedStageLabel
-                    ? `Showing leads in the ${selectedStageLabel} stage.`
+                    ? `Showing only leads in the ${selectedStageLabel} stage.`
                     : 'Manage your leads and move them through the pipeline workflow.'}
                 </p>
               </div>
@@ -655,11 +701,11 @@ export default function CRMPipelinePage() {
             </div>
             <div>
               <h2 className="font-bold text-gray-900 dark:text-white">
-                {selectedStageLabel ? `${selectedStageLabel} Board` : 'Pipeline Board'}
+                {selectedStageLabel ? `${selectedStageLabel} Leads` : 'Pipeline Board'}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {selectedStageLabel
-                  ? 'This view came from a workflow shortcut. Clear filters to return to the full pipeline.'
+                  ? 'Use the filters to narrow this stage or switch to another stage from the Sales tabs.'
                   : 'Drag leads between stages, or use the quick actions menu to move them with a single click.'}
               </p>
             </div>
@@ -687,6 +733,19 @@ export default function CRMPipelinePage() {
                 Retry
               </button>
             </div>
+          ) : selectedStageView ? (
+            <PipelineStageListView
+              stage={selectedStageView}
+              stages={interactiveStages}
+              currency={currency}
+              movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
+              onMoveLeadToStage={handleLeadMove}
+              onCopyLeadId={handleCopyLeadId}
+              onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
+              onResetFilters={clearFilters}
+              leads={visibleLeads}
+              hasActiveFilters={hasActiveFilters}
+            />
           ) : (
             <DndContext
               collisionDetection={closestCorners}
@@ -701,7 +760,7 @@ export default function CRMPipelinePage() {
                 movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
                 users={users}
                 onMoveLeadToStage={handleLeadMove}
-                getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, visibleBoard.stages)}
+                getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, interactiveStages)}
                 onCopyLeadId={handleCopyLeadId}
                 onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
                 onResetFilters={clearFilters}

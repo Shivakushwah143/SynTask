@@ -110,9 +110,19 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
 
     expect(screen.getByRole('tab', { name: /^All Leads$/i })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: /^Leads$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^New$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Qualified$/i })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /^Pipeline$/i })).toBeTruthy()
+    expect(screen.getAllByRole('tab').at(-1).textContent).toContain('Pipeline')
     // Import Leads stays in the sidebar config but is hidden from the tab bar.
     expect(screen.queryByRole('tab', { name: /^Import Leads$/i })).toBeNull()
+  })
+
+  it('keeps a stage-specific pipeline page on the matching tab', () => {
+    renderTabs('/crm/pipeline/qualified')
+
+    expect(screen.getByRole('tab', { name: /^Qualified$/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^Pipeline$/i })).toBeTruthy()
   })
 
   it('renders nothing for non-section pages (chat)', () => {

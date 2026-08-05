@@ -333,6 +333,7 @@ function App() {
             <Route index element={<Navigate to="pipeline" replace />} />
             <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
             <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
+            <Route path="pipeline/:stageKey" element={withBoundary(<CRMPipelinePage />)} />
             <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
             <Route path="leads/all" element={withBoundary(<CRMAllLeadsPage />)} />
             <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />

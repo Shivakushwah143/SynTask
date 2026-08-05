@@ -5,14 +5,17 @@
 ```mermaid
 flowchart TD
   A[Authenticated user] --> B[Main app navigation]
-  B --> C[/crm/pipeline]
-  B --> D[/crm/leads/:leadId]
-  B --> E[/crm/companies]
-  B --> F[/crm/contacts]
-  B --> G[/crm/activities]
-  B --> H[/crm/calendar]
-  B --> I[/crm/reports]
-  B --> J[/crm/settings]
+  B --> C[/crm/leads]
+  B --> D[/crm/leads/all]
+  B --> E[/crm/pipeline]
+  B --> F[/crm/pipeline/:stageKey]
+  B --> G[/crm/leads/:leadId]
+  B --> H[/crm/companies]
+  B --> I[/crm/contacts]
+  B --> J[/crm/activities]
+  B --> K[/crm/calendar]
+  B --> L[/crm/reports]
+  B --> M[/crm/settings]
 ```
 
 ## CRM Dashboard
@@ -27,10 +30,11 @@ flowchart TD
 - Related modules updated: dashboard data is derived from Sales/CRM data only.
 
 ## CRM Pipeline
-- How the user reaches it: CRM sidebar, dashboard shortcut, or direct `/crm/pipeline`.
-- What they can do: search, filter, drag leads, move leads with quick actions, open a lead workspace.
+- How the user reaches it: CRM sidebar tabs, dashboard shortcut, direct `/crm/pipeline`, or a stage-specific route such as `/crm/pipeline/qualified`.
+- What they can do: search, filter, drag leads, move leads with quick actions, open a lead workspace, or view one stage at a time on its dedicated page.
 - What happens after every action:
   - Search and filters update URL state and board visibility.
+  - Stage routes scope the board to one lead stage and keep the pipeline shell consistent.
   - Drag/drop or quick move sends a stage update request.
   - Quick move buttons show an in-progress state while the stage update request is waiting for a response.
   - Successful move updates the board optimistically and refreshes pipeline history.
@@ -42,6 +46,10 @@ flowchart TD
 - Timeline events created: `LeadStageChanged` on backend stage success.
 - Notifications sent: none explicitly in the frontend; backend may emit existing notifications if configured.
 - Related modules updated: Lead Workspace, Activities, Timeline, Sales domain stage history.
+
+## CRM Navigation
+- The Sales CRM navigation surfaces Leads, All Leads, the stage pages, and then Pipeline last.
+- The pipeline stage entries are separate pages for stage-focused work, while `/crm/pipeline` remains the full board.
 
 ## Leads Dashboard
 - How the user reaches it: CRM sidebar, dashboard shortcut, or direct `/crm/leads`.
