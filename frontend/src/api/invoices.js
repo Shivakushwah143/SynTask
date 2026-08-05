@@ -68,7 +68,12 @@ export const invoicesAPI = {
   },
   // Download invoice PDF
   downloadInvoicePdf: async (invoiceId) => {
-    return api.get(`/invoices/${invoiceId}/pdf`, { responseType: 'blob' })
+    return api.get(`/invoices/${invoiceId}/pdf`, {
+      responseType: 'blob',
+      // The Invoices page decodes and shows the error itself, so the global
+      // interceptor must not add a second toast.
+      suppressGlobalToast: true,
+    })
   },
 
   // Seed realistic local demo invoices
