@@ -3,7 +3,7 @@ CRM pipeline backend endpoints.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -34,6 +34,12 @@ class PipelineStatusUpdateRequest(BaseModel):
     stage_status: str = Field(..., min_length=1)
 
 
+class BulkAssignRequest(BaseModel):
+    """Assign many leads to one user from the stage list (bulk action)."""
+    lead_ids: List[str] = Field(..., min_length=1)
+    target_user_id: str = Field(..., min_length=1)
+
+
 class PipelineReopenRequest(BaseModel):
     reason: Optional[str] = None
 
@@ -54,6 +60,11 @@ async def get_pipeline(
     current_user: User = Depends(get_current_user),
 ):
     return await CRMPipelineService.load_pipeline(current_user, limit=limit)
+
+
+@router.post("/bulk-assign")
+async def bulk_assign(payload: BulkAssignRequest, current_user: User = Depends(get_current_user)):
+    return await CRMPipelineService.bulk_assign(current_user, payload.lead_ids, payload.target_user_id)
 
 
 @router.patch("/{lead_id}/stage")

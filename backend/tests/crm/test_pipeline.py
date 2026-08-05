@@ -1267,3 +1267,113 @@ async def test_load_pipeline_serializes_owned_acquire_leads_as_assigned(monkeypa
     result = await CRMPipelineService.load_pipeline(user)
     acquire_leads = result["leads_by_stage"]["Acquire"]
     assert acquire_leads[0]["current_stage_status"] == "assigned"
+
+
+# ── Bulk assign (Acquire multi-select) ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_bulk_assign_assigns_selected_leads_and_promotes_acquire_status(monkeypatch):
+    lead_1 = _journey_lead(id="lead-1", current_stage="Acquire", assigned_to="user-1", current_stage_status="new")
+    lead_2 = _journey_lead(id="lead-2", current_stage="Acquire", assigned_to=None, current_stage_status=None)
+    by_id = {"lead-1": lead_1, "lead-2": lead_2}
+
+    async def fake_get(lead_id):
+        return by_id.get(lead_id)
+
+    transfers = []
+
+    class FakeOwnershipTransfer:
+        def __init__(self, **kwargs):
+            transfers.append(kwargs)
+
+        async def insert(self):
+            return self
+
+    async def fake_validate(current_user, target_user_id, **kwargs):
+        return SimpleNamespace(id=target_user_id), []
+
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.validate_target_user", fake_validate)
+    monkeypatch.setattr("app.models.ownership_transfer.OwnershipTransfer", FakeOwnershipTransfer)
+
+    user = SimpleNamespace(id="user-9", company_id="company-1", role=UserRole.ADMIN)
+    result = await CRMPipelineService.bulk_assign(user, ["lead-1", "lead-2"], "user-2")
+
+    assert result["assigned_count"] == 2
+    assert result["skipped_count"] == 0
+    assert result["target_user_id"] == "user-2"
+    assert lead_1.assigned_to == "user-2"
+    assert lead_2.assigned_to == "user-2"
+    # Owned Acquire leads are promoted to the Assigned inner status.
+    assert lead_1.current_stage_status == "assigned"
+    assert lead_2.current_stage_status == "assigned"
+    # An ownership-transfer record is created for the changed assignee.
+    assert len(transfers) == 2
+    assert transfers[0]["entity_id"] == "lead-1"
+    assert transfers[0]["to_user_id"] == "user-2"
+    assert transfers[1]["entity_id"] == "lead-2"
+    assert transfers[1]["from_user_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_bulk_assign_skips_transferred_leads(monkeypatch):
+    transferred = _journey_lead(
+        id="lead-2", current_stage="Acquire", assigned_to="user-1", transferred_at=datetime.utcnow()
+    )
+    by_id = {"lead-2": transferred}
+
+    async def fake_get(lead_id):
+        return by_id.get(lead_id)
+
+    class FakeOwnershipTransfer:
+        def __init__(self, **kwargs):
+            pass
+
+        async def insert(self):
+            return self
+
+    async def fake_validate(current_user, target_user_id, **kwargs):
+        return SimpleNamespace(id=target_user_id), []
+
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.validate_target_user", fake_validate)
+    monkeypatch.setattr("app.models.ownership_transfer.OwnershipTransfer", FakeOwnershipTransfer)
+
+    user = SimpleNamespace(id="user-9", company_id="company-1", role=UserRole.ADMIN)
+    result = await CRMPipelineService.bulk_assign(user, ["lead-2"], "user-2")
+
+    assert result["assigned_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped"][0]["reason"] == "Lead transferred to Clients"
+
+
+@pytest.mark.asyncio
+async def test_bulk_assign_skips_leads_the_employee_cannot_write(monkeypatch):
+    # An EMPLOYEE may only reassign leads they own; lead-3 belongs to someone else.
+    not_mine = _journey_lead(id="lead-3", current_stage="Acquire", assigned_to="other-user", current_stage_status="new")
+    by_id = {"lead-3": not_mine}
+
+    async def fake_get(lead_id):
+        return by_id.get(lead_id)
+
+    class FakeOwnershipTransfer:
+        def __init__(self, **kwargs):
+            pass
+
+        async def insert(self):
+            return self
+
+    async def fake_validate(current_user, target_user_id, **kwargs):
+        return SimpleNamespace(id=target_user_id), []
+
+    monkeypatch.setattr("app.crm.pipeline.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.validate_target_user", fake_validate)
+    monkeypatch.setattr("app.models.ownership_transfer.OwnershipTransfer", FakeOwnershipTransfer)
+
+    user = SimpleNamespace(id="user-9", company_id="company-1", role=UserRole.EMPLOYEE)
+    result = await CRMPipelineService.bulk_assign(user, ["lead-3"], "user-2")
+
+    assert result["assigned_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped"][0]["reason"] == "No permission to update this lead"

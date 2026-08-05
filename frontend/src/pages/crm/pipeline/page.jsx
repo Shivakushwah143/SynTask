@@ -138,8 +138,11 @@ export default function CRMPipelinePage() {
   const pipelineSearchContext = usePipelineSearchContext()
   const searchValue = pipelineSearchContext.searchValue ?? localSearchValue
   const setSearchValue = pipelineSearchContext.setSearchValue || setLocalSearchValue
+  // Short staleness so the board never diverges from the lead detail page: a
+  // 5-minute cache made a budget saved on the detail page stay invisible on the
+  // pipeline (Value column showing Rs 0) until the user manually edited again.
   const pipelineQuery = useQuery(PIPELINE_QUERY_KEY, () => crmApi.getPipeline(), {
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
   })
   const categoriesQuery = useQuery('crm-lead-categories', salesApi.getCategories, { staleTime: 5 * 60 * 1000 })
   const stagesQuery = useQuery('crm-lead-stages', salesApi.getStages, { staleTime: 5 * 60 * 1000 })
@@ -362,12 +365,28 @@ export default function CRMPipelinePage() {
   // Shared failure handling for stage-movement attempts. Business validation
   // blockers open the required-details popup or show a warning; only genuine
   // technical failures surface as error toasts.
-  const handleMoveFailure = (error, variables) => {
+  const handleMoveFailure = async (error, variables) => {
     const blocker = classifyTransitionFailure(error, 'Failed to update lead stage')
     if (blocker.category === TRANSITION_BLOCKER.MISSING_DETAILS) {
+      const leadId = variables?.lead?.id || variables?.lead?._id
+      // The board lead can be up to 5 minutes stale (cached pipeline query), so
+      // the popup must analyze the live record: a field saved just now elsewhere
+      // must not be asked for again. Falls back to the board lead on any error.
+      let leadForDialog = variables?.lead
+      if (leadId) {
+        try {
+          const response = await salesApi.getLead(leadId)
+          const freshLead = response?.data || response
+          if (freshLead && typeof freshLead === 'object') {
+            leadForDialog = { ...(variables?.lead || {}), ...freshLead }
+          }
+        } catch {
+          // Keep the board snapshot; the dialog still re-checks it.
+        }
+      }
       setRequirementsDialog({
         blocker,
-        lead: variables?.lead,
+        lead: leadForDialog,
         targetStageKey: variables?.stageKey,
       })
       return
@@ -561,6 +580,33 @@ export default function CRMPipelinePage() {
     if (updateStatusMutation.isLoading) return
     updateStatusMutation.mutate({ leadId, stageStatus: nextStatus })
   }, [updateStatusMutation])
+
+  // ── Bulk assign (Acquire stage multi-select) ───────────────────────────────
+  const bulkAssignMutation = useMutation(
+    ({ leadIds, userId }) => crmApi.bulkAssignLeads({ lead_ids: leadIds, target_user_id: userId }),
+    {
+      onSuccess: (data) => {
+        const assignedCount = Number(data?.assigned_count ?? data?.assigned?.length ?? 0)
+        const skippedCount = Number(data?.skipped_count ?? 0)
+        toast.success(assignedCount
+          ? `${assignedCount} lead${assignedCount === 1 ? '' : 's'} assigned` + (skippedCount ? `, ${skippedCount} skipped` : '')
+          : 'No leads were assigned')
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to assign selected leads')
+      },
+    }
+  )
+
+  // Returns a promise so the stage list can clear its selection only on success.
+  const handleBulkAssign = useCallback((leadIds, userId) => {
+    if (!leadIds?.length || !userId) return Promise.resolve()
+    if (bulkAssignMutation.isLoading) return Promise.resolve()
+    return bulkAssignMutation.mutateAsync({ leadIds, userId })
+  }, [bulkAssignMutation])
 
   const handleCopyLeadId = useCallback(async (lead) => {
     const value = lead?.id || lead?._id
@@ -926,6 +972,8 @@ export default function CRMPipelinePage() {
               onRecordContact={handleRecordContact}
               onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
               onResetFilters={clearFilters}
+              onBulkAssign={handleBulkAssign}
+              bulkAssigning={bulkAssignMutation.isLoading}
               leads={visibleLeads}
               hasActiveFilters={hasActiveFilters}
             />

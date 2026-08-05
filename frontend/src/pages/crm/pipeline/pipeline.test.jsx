@@ -69,6 +69,26 @@ describe('crm pipeline helpers', () => {
     expect(getLeadDealValue({ budget: 500000, won_amount: 450000 })).toBe(450000)
   })
 
+  it('ignores a zero won_amount so it cannot shadow a real budget', () => {
+    // The lead-detail header edit writes won_amount ("Deal value"); saving an
+    // empty field stores 0. That 0 must never make the Value column show Rs 0
+    // when the overview already saved a real budget — the reported sync bug.
+    expect(getLeadDealValue({ budget: 500000, won_amount: 0 })).toBe(500000)
+    expect(getLeadDealValue({ budget: 500000, won_amount: '' })).toBe(500000)
+    expect(getLeadDealValue({ budget: 500000, won_amount: 0, deal_value: 0 })).toBe(500000)
+    // All zeros means the lead genuinely has no deal size recorded.
+    expect(getLeadDealValue({ budget: 0, won_amount: 0 })).toBe(0)
+  })
+
+  it('keeps a zero won_amount authoritative once a deal is Won', () => {
+    // A deal that closed at 0 (free pilot / promotional close) must report 0,
+    // not fall back to the pre-close Budget — the closed value is authoritative.
+    expect(getLeadDealValue({ current_stage: 'won', budget: 500000, won_amount: 0 })).toBe(0)
+    expect(getLeadDealValue({ current_stage: 'lost', budget: 500000, won_amount: 0 })).toBe(0)
+    // Open stages still ignore the stray zero.
+    expect(getLeadDealValue({ current_stage: 'qualify', budget: 500000, won_amount: 0 })).toBe(500000)
+  })
+
   it('exposes Not Contacted / Contacted in the Acquire stage status options', () => {
     // Reported feedback: the Qualify select offered Contacted / Not Contacted
     // but the Acquire stage did not. Both stages share the contact progression.

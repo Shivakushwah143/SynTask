@@ -69,11 +69,26 @@ export const buildLeadSearchText = (lead) => {
   return values.filter(Boolean).map(normalizeText).join(' ')
 }
 
+const CLOSED_STAGE_KEYS = new Set(['won', 'lost'])
+
+// The lead-detail header edit writes won_amount ("Deal value"); an empty save
+// stores 0. That 0 is not a deal size and must never shadow a real value stored
+// in a sibling field (the overview writes budget) — a Qualify lead with budget
+// set must not display Rs 0 just because won_amount is 0. Once a deal closes,
+// however, won_amount is the authoritative closed value: a genuinely closed
+// lead must report its recorded won amount (even 0) rather than fall back to a
+// pre-close budget.
 export const getLeadDealValue = (lead) => {
+  const stageKey = getCanonicalPipelineStageKey(lead?.current_stage || lead?.stage)
+  const isClosed = CLOSED_STAGE_KEYS.has(stageKey)
   for (const field of DEAL_VALUE_FIELDS) {
-    if (lead?.[field] !== undefined && lead?.[field] !== null && lead?.[field] !== '') {
-      return normalizeNumber(lead[field])
-    }
+    const raw = lead?.[field]
+    if (raw === undefined || raw === null || raw === '') continue
+    const value = normalizeNumber(raw)
+    if (value !== 0) return value
+    // For closed leads a recorded zero won_amount is authoritative (deal closed
+    // at 0 / free pilot) — it must win over any leftover budget.
+    if (isClosed && field === 'won_amount') return 0
   }
   return 0
 }

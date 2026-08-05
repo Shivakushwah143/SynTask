@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, ChevronDown, Filter, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles } from 'lucide-react'
+import { AlertCircle, ChevronDown, Filter, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
@@ -408,21 +408,11 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   onRecordContact,
   onLeadSelect,
   onResetFilters,
+  onBulkAssign,
+  bulkAssigning = false,
   hasActiveFilters = false,
 }) {
-  if (!stage) {
-    return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
-  }
-
-  if (hasActiveFilters && leads.length === 0) {
-    return <PipelineSearchEmptyState onResetFilters={onResetFilters} />
-  }
-
-  if (leads.length === 0) {
-    return <PipelineStageEmptyState label={stage.name} />
-  }
-
-  const nextStage = stages.find((candidate) => candidate.key === stage.nextStageKey)
+  // ── Hooks first: they must run unconditionally, before the early returns ───
   // Same owner resolution as the board cards: the assigned user id is looked up
   // in the live users list first, so a stale serialized owner_name (or a raw id)
   // can never surface as wrong Owner detail in the table.
@@ -436,12 +426,131 @@ export const PipelineStageListView = memo(function PipelineStageListView({
     return values
   }, [users])
 
+  // ── Bulk multi-select (e.g. assign many Acquire leads at once) ─────────────
+  const leadIdOf = (lead) => lead.id || lead._id || ''
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [assignTarget, setAssignTarget] = useState('')
+  const visibleIds = leads.map((lead) => leadIdOf(lead)).filter(Boolean)
+
+  // Drop selections that no longer exist in this view (lead moved / filter changed).
+  useEffect(() => {
+    if (selectedIds.size === 0) return
+    const valid = new Set(visibleIds)
+    const stale = [...selectedIds].filter((id) => !valid.has(id))
+    if (stale.length) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        stale.forEach((id) => next.delete(id))
+        return next
+      })
+    }
+  }, [visibleIds.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!stage) {
+    return <PipelineEmptyBoardState onResetFilters={onResetFilters} />
+  }
+
+  if (hasActiveFilters && leads.length === 0) {
+    return <PipelineSearchEmptyState onResetFilters={onResetFilters} />
+  }
+
+  if (leads.length === 0) {
+    return <PipelineStageEmptyState label={stage.name} />
+  }
+
+  const nextStage = stages.find((candidate) => candidate.key === stage.nextStageKey)
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
+
+  const toggleLead = (leadId, checked) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(leadId)
+      else next.delete(leadId)
+      return next
+    })
+  }
+
+  const toggleAll = (checked) => {
+    setSelectedIds(checked ? new Set(visibleIds) : new Set())
+  }
+
+  const clearSelection = () => {
+    setSelectedIds(new Set())
+    setAssignTarget('')
+  }
+
+  const handleBulkAssign = async () => {
+    if (!assignTarget || bulkAssigning) return
+    const ids = Array.from(selectedIds)
+    try {
+      await onBulkAssign?.(ids, assignTarget)
+      clearSelection()
+    } catch {
+      // Keep the selection so the user can retry.
+    }
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl border border-surface-border/80 bg-surface/95 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      {selectedIds.size > 0 ? (
+        <div className="flex flex-wrap items-center gap-3 border-b border-primary-200/70 bg-primary-50/60 px-3 py-2.5 dark:border-primary-900/50 dark:bg-primary-950/20">
+          <span className="text-xs font-bold text-text-primary dark:text-gray-100">
+            {selectedIds.size} selected
+          </span>
+          <label className="flex min-w-0 items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-muted dark:text-gray-400">Assign to</span>
+            <select
+              className="input input-sm"
+              value={assignTarget}
+              onChange={(event) => setAssignTarget(event.target.value)}
+              aria-label="Assign selected leads to"
+            >
+              <option value="" className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white">Select user</option>
+              {users.map((user) => {
+                const id = String(user?.id || user?._id || user?.user_id || '')
+                return (
+                  <option key={id || `${user?.first_name || ''}${user?.last_name || ''}`} value={id} className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white">
+                    {getUserDisplayName(user) || id || 'Unnamed user'}
+                  </option>
+                )
+              })}
+            </select>
+          </label>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            loading={bulkAssigning}
+            loadingText="Assigning"
+            disabled={!assignTarget || bulkAssigning}
+            onClick={handleBulkAssign}
+          >
+            Assign
+          </Button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            disabled={bulkAssigning}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-text-secondary transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            <X className="h-3.5 w-3.5" />
+            Clear
+          </button>
+        </div>
+      ) : null}
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-surface-border/80 text-sm">
           <thead className="bg-surface-muted/80 text-text-secondary dark:bg-gray-950/50 dark:text-gray-300">
             <tr>
+              <th className="w-10 px-3 py-2">
+                <input
+                  type="checkbox"
+                  aria-label="Select all leads"
+                  checked={allVisibleSelected}
+                  onChange={(event) => toggleAll(event.target.checked)}
+                  className="h-4 w-4 cursor-pointer rounded border-surface-border/80 accent-primary-600 dark:border-gray-600"
+                />
+              </th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Lead</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Owner</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Priority</th>
@@ -464,8 +573,19 @@ export const PipelineStageListView = memo(function PipelineStageListView({
               const isMovePending = Boolean(movingLeadId && leadId === movingLeadId)
               const isStatusUpdating = Boolean(statusUpdatingId && leadId === statusUpdatingId)
 
+              const isSelected = Boolean(leadId && selectedIds.has(leadId))
+
               return (
-                <tr key={leadId} className="group hover:bg-surface-muted/60 dark:hover:bg-gray-800/50">
+                <tr key={leadId} className={`group hover:bg-surface-muted/60 dark:hover:bg-gray-800/50 ${isSelected ? 'bg-primary-50/50 dark:bg-primary-950/15' : ''}`}>
+                  <td className="px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${leadTitle}`}
+                      checked={isSelected}
+                      onChange={(event) => toggleLead(leadId, event.target.checked)}
+                      className="h-4 w-4 cursor-pointer rounded border-surface-border/80 accent-primary-600 dark:border-gray-600"
+                    />
+                  </td>
                   <td className="px-3 py-2.5">
                     <button
                       type="button"

@@ -51,8 +51,20 @@ export function StageRequirementsDialog({
   const [localSaving, setLocalSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
 
+  // A field the lead already carries is not missing — never ask for it again.
+  // The backend computes the missing set from the live record, but the popup
+  // can be opened with a slightly older lead snapshot (the pipeline board is
+  // cached up to 5 minutes), so the popup re-checks the lead it was given and
+  // drops fields that already have a value (a zero budget still counts as
+  // missing — the gate requires a real deal size).
   const fields = useMemo(() => {
     if (!open) return []
+    const hasExistingValue = (field) => {
+      const value = lead?.[field.field]
+      if (value === undefined || value === null || value === '') return false
+      if (field.type === 'currency') return Number(value) > 0
+      return true
+    }
     const missing = blocker?.missingFields || []
     const registry = TRANSITION_FIELD_REGISTRY
     return missing
@@ -62,7 +74,8 @@ export function StageRequirementsDialog({
         return { ...meta, label: item?.label || meta.label }
       })
       .filter(Boolean)
-  }, [open, blocker])
+      .filter((field) => !hasExistingValue(field))
+  }, [open, blocker, lead])
 
   const unknownFields = useMemo(() => {
     if (!open) return []
@@ -396,6 +409,23 @@ export function StageRequirementsDialog({
           </div>
         ) : null}
 
+        {/* The blocker listed fields, but the lead snapshot already carries all
+            of them (stale blocker / value saved through another surface). Offer
+            a safe re-attempt instead of an empty form. */}
+        {(blocker?.missingFields?.length || 0) > 0 && !fields.length && !unknownFields.length && !showWarning ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+                The required details are already saved on this lead
+              </p>
+              <p className="mt-1 text-sm leading-6 text-emerald-700 dark:text-emerald-300/90">
+                Try moving the lead forward again — the backend re-checks the saved record.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {/* Unknown fields: safe warning list, never uncontrolled forms */}
         {unknownFields.length ? (
           <div className="rounded-2xl border border-amber-200/80 bg-amber-50/60 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
@@ -415,7 +445,7 @@ export function StageRequirementsDialog({
           </div>
         ) : null}
 
-        {!fields.length && !unknownFields.length && !showWarning ? (
+        {!(blocker?.missingFields?.length > 0) && !fields.length && !unknownFields.length && !showWarning ? (
           <div className="flex items-center gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/30">
             <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
             <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">

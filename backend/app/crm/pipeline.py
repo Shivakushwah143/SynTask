@@ -1364,6 +1364,82 @@ class CRMPipelineService:
         }
 
     @staticmethod
+    async def bulk_assign(
+        current_user: User,
+        lead_ids: List[str],
+        target_user_id: str,
+    ) -> Dict[str, Any]:
+        """Assign multiple leads to one user (Acquire bulk action).
+
+        The target user is validated once up front; every lead then follows the
+        exact single-assignment rules (tenant scope, write permission, transferred
+        exclusion, ownership-transfer record). Leads that cannot be assigned are
+        skipped with a reason — a batch never fails because of one bad lead.
+        Owned Acquire leads are promoted to the ``assigned`` inner status exactly
+        like the single-lead update path.
+        """
+        from app.crm.lead_engine import AssignmentEngine
+        from app.models.ownership_transfer import OwnershipTransfer
+
+        company_id = _user_company_id(current_user)
+        normalized_target = str(target_user_id or "").strip()
+        if not normalized_target:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_user_id is required")
+        await AssignmentEngine.validate_target_user(current_user, normalized_target)
+
+        now = utc_now()
+        assigned: List[str] = []
+        skipped: List[Dict[str, Any]] = []
+        for lead_id in lead_ids or []:
+            prospect = await SalesProspect.get(lead_id)
+            if not prospect or prospect.deleted:
+                skipped.append({"lead_id": lead_id, "reason": "Lead not found"})
+                continue
+            if prospect.company_id != company_id and current_user.role != UserRole.SUPER_ADMIN:
+                skipped.append({"lead_id": lead_id, "reason": "Access denied to this company"})
+                continue
+            if not _can_write_pipeline(current_user, prospect):
+                skipped.append({"lead_id": lead_id, "reason": "No permission to update this lead"})
+                continue
+            if getattr(prospect, "transferred_at", None):
+                skipped.append({"lead_id": lead_id, "reason": "Lead transferred to Clients"})
+                continue
+            previous_assignee = getattr(prospect, "assigned_to", None)
+            if str(previous_assignee or "") == normalized_target:
+                # Already owned by the target — nothing to change, still counted.
+                assigned.append(lead_id)
+                continue
+            prospect.assigned_to = normalized_target
+            prospect.updated_at = now
+            await OwnershipTransfer(
+                company_id=str(prospect.company_id),
+                entity_type="lead",
+                entity_id=str(prospect.id),
+                from_user_id=str(previous_assignee) if previous_assignee else None,
+                to_user_id=normalized_target,
+                reason="bulk_assignment",
+                transferred_by=str(getattr(current_user, "id", "")),
+                notes="Bulk assignment from the pipeline stage list",
+            ).insert()
+            stage_key = stage_status_key(getattr(prospect, "current_stage", None))
+            if stage_key == "acquire":
+                current_status = _normalize_status_value(getattr(prospect, "current_stage_status", None))
+                if current_status in ("", "new", "imported"):
+                    apply_stage_status_change(
+                        prospect, stage_key=stage_key, new_status="assigned", user=current_user, now=now
+                    )
+            await prospect.save()
+            assigned.append(lead_id)
+        return {
+            "assigned": assigned,
+            "assigned_count": len(assigned),
+            "skipped": skipped,
+            "skipped_count": len(skipped),
+            "target_user_id": normalized_target,
+            "message": f"Assigned {len(assigned)} lead(s) to the selected user.",
+        }
+
+    @staticmethod
     async def reopen_lost_lead(current_user: User, lead_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
         company_id = _user_company_id(current_user)
         prospect = await SalesProspect.get(lead_id)

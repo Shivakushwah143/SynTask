@@ -301,6 +301,74 @@ async def test_import_leads_imports_rows_whose_phone_already_exists(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_import_leads_maps_sales_journey_columns_to_real_fields(monkeypatch):
+    """Budget/decision-maker/timeline columns in a CSV land on the real lead
+    fields, not custom_fields — otherwise the pipeline Value column shows Rs 0
+    and the move popup re-asks for already-imported details (the reported sync
+    bug)."""
+    def fake_parse(file_name, content):
+        return ["phone", "budget", "timeline", "decision_maker", "industry", "deal value"], [
+            {
+                "phone": "9999999999",
+                "budget": "250000",
+                "timeline": "This quarter",
+                "decision_maker": "Priya Shah",
+                "industry": "IT Services",
+                "deal value": "450000",
+            }
+        ]
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1")]
+
+    class FakeQuery:
+        async def to_list(self):
+            return []
+
+    class FakeSalesProspect:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        @staticmethod
+        def find(query):
+            return FakeQuery()
+
+        @staticmethod
+        async def insert_many(prospects):
+            FakeSalesProspect.inserted = prospects
+            return None
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine._parse_tabular_upload", fake_parse)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeSalesProspect)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+
+    current_user = SimpleNamespace(id="admin-1", company_id="company-1", role=UserRole.ADMIN)
+    result = await LeadEngine.import_leads(
+        current_user,
+        _build_import_file(),
+        strategy="round-robin",
+    )
+
+    assert result["total_uploaded"] == 1
+    prospect = FakeSalesProspect.inserted[0]
+    assert prospect.budget == 250000
+    assert prospect.won_amount == 450000
+    assert prospect.timeline == "This quarter"
+    assert prospect.decision_maker == "Priya Shah"
+    assert prospect.industry == "IT Services"
+    # None of the journey columns leaked into custom_fields.
+    assert "budget" not in prospect.custom_fields
+    assert "decision_maker" not in prospect.custom_fields
+    assert "won_amount" not in prospect.custom_fields
+    # The auto-assigned Acquire lead persists as Assigned.
+    assert prospect.current_stage_status == "assigned"
+
+
+@pytest.mark.asyncio
 async def test_import_leads_allows_duplicates_when_enabled(monkeypatch):
     """Rows whose phone repeats within the file are all imported (in-file
     duplicates are no longer skipped). allow_duplicates remains accepted for

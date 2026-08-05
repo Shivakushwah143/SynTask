@@ -113,4 +113,63 @@ describe('pipeline stage list view', () => {
     )
     expect(screen.getByLabelText('Update inner status').value).toBe('assigned')
   })
+
+  it('supports multi-select and bulk assigns the chosen leads to a user', async () => {
+    // Reported feedback: the Acquire stage needs a multi-select so bulk leads
+    // can be assigned to anyone at once.
+    const onBulkAssign = vi.fn(() => Promise.resolve())
+    render(
+      <PipelineStageListView
+        stage={{ key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' }}
+        stages={[
+          { key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' },
+          { key: 'qualify', name: 'Qualify' },
+        ]}
+        users={[{ id: 'user-9', first_name: 'Riya', last_name: 'Shah' }]}
+        leads={[
+          { id: 'lead-1', company_name: 'Acme Pvt Ltd' },
+          { id: 'lead-2', company_name: 'Beta Labs' },
+        ]}
+        onLeadSelect={vi.fn()}
+        onMoveLeadToStage={vi.fn()}
+        onResetFilters={vi.fn()}
+        onBulkAssign={onBulkAssign}
+      />,
+    )
+
+    // No bulk bar until leads are selected.
+    expect(screen.queryByText(/selected/)).toBeNull()
+
+    // Select both rows via the header select-all checkbox.
+    fireEvent.click(screen.getByLabelText('Select all leads'))
+    expect(screen.getByText('2 selected')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Assign selected leads to'), { target: { value: 'user-9' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Assign$/i }))
+
+    expect(onBulkAssign).toHaveBeenCalledWith(['lead-1', 'lead-2'], 'user-9')
+  })
+
+  it('clears the bulk selection instead of assigning when the user cancels', () => {
+    render(
+      <PipelineStageListView
+        stage={{ key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' }}
+        stages={[
+          { key: 'acquire', name: 'Acquire', nextStageKey: 'qualify' },
+          { key: 'qualify', name: 'Qualify' },
+        ]}
+        users={[{ id: 'user-9', first_name: 'Riya', last_name: 'Shah' }]}
+        leads={[{ id: 'lead-1', company_name: 'Acme Pvt Ltd' }]}
+        onLeadSelect={vi.fn()}
+        onMoveLeadToStage={vi.fn()}
+        onResetFilters={vi.fn()}
+        onBulkAssign={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByLabelText('Select Acme Pvt Ltd'))
+    expect(screen.getByText('1 selected')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /^Clear$/i }))
+    expect(screen.queryByText(/selected/)).toBeNull()
+  })
 })

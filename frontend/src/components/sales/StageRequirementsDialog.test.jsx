@@ -19,7 +19,10 @@ const makeBlocker = (overrides = {}) => ({
 })
 
 describe('StageRequirementsDialog', () => {
-  it('renders only the missing editable fields', () => {
+  it('asks only for the fields the lead does not already have', () => {
+    // Reported feedback: the popup asked for both budget and decision maker
+    // even when only one was missing. A field already carried by the lead is
+    // never re-asked.
     render(
       <StageRequirementsDialog
         open
@@ -30,12 +33,42 @@ describe('StageRequirementsDialog', () => {
         onSaveAndMove={vi.fn()}
       />
     )
-    expect(screen.getByLabelText(/Budget/i)).toBeTruthy()
+    // Budget is already on the lead, so only Decision Maker is asked for.
+    expect(screen.queryByLabelText(/Budget/i)).toBeNull()
     expect(screen.getByLabelText(/Decision Maker/i)).toBeTruthy()
-    // Budget is prefilled from existing lead data; decision maker stays empty.
-    expect(screen.getByLabelText(/Budget/i).value).toBe('50000')
     expect(screen.getByText('Save Details')).toBeTruthy()
     expect(screen.getByText('Save and Move Forward')).toBeTruthy()
+  })
+
+  it('shows an already-saved note instead of an empty form when every blocker field is present on the lead', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker()}
+        lead={{ budget: 50000, decision_maker: 'Priya Shah' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    expect(screen.queryByLabelText(/Budget/i)).toBeNull()
+    expect(screen.queryByLabelText(/Decision Maker/i)).toBeNull()
+    expect(screen.getByText(/already saved on this lead/i)).toBeTruthy()
+  })
+
+  it('still asks for a zero budget (the gate requires a real deal size)', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker()}
+        lead={{ budget: 0, decision_maker: 'Priya Shah' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText(/Budget/i)).toBeTruthy()
+    expect(screen.queryByLabelText(/Decision Maker/i)).toBeNull()
   })
 
   it('shows an amber warning banner when a status rule also blocks (mixed case)', () => {

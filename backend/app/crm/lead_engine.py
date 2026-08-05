@@ -374,6 +374,14 @@ class LeadNormalizer:
                 normalized["budget"] = None
         else:
             normalized["budget"] = None
+        won_amount = normalized.get("won_amount")
+        if won_amount is not None and won_amount != "":
+            try:
+                normalized["won_amount"] = float(won_amount)
+            except (TypeError, ValueError):
+                normalized["won_amount"] = None
+        else:
+            normalized["won_amount"] = None
         return normalized
 
     @staticmethod
@@ -386,7 +394,12 @@ class LeadNormalizer:
             parts = name.split()
             first_name = parts[0]
             last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
-        # Detect known fields to separate unknown columns into custom_fields
+        # Detect known fields to separate unknown columns into custom_fields.
+        # Sales-journey columns (budget, decision maker, timeline, ...) map onto
+        # the real lead fields — otherwise an imported "budget" only lived in
+        # custom_fields and was invisible to the pipeline Value column and the
+        # stage gates (the reported sync bug: budget defined in the import but
+        # shown as Rs 0 / asked again by the move popup).
         KNOWN_KEYS = {
             "first_name", "last_name", "prospect_name", "name",
             "country_code", "phone", "email",
@@ -400,6 +413,9 @@ class LeadNormalizer:
             "owner_name", "owner_contact_no",
             "tag", "crm_company_id", "contact_id",
             "due_date", "due_time",
+            "budget", "timeline", "decision_maker", "industry",
+            "requirement", "location", "pain_points",
+            "won_amount", "deal_value", "dealValue", "value", "amount",
         }
         custom_fields = {}
         for key, value in row_norm.items():
@@ -432,6 +448,23 @@ class LeadNormalizer:
                 "tag": row_norm.get("tag"),
                 "crm_company_id": row_norm.get("crm_company_id"),
                 "contact_id": row_norm.get("contact_id"),
+                # Sales-journey fields land on the real lead fields (not custom_fields).
+                "budget": row_norm.get("budget"),
+                "timeline": row_norm.get("timeline"),
+                "decision_maker": row_norm.get("decision_maker"),
+                "industry": row_norm.get("industry"),
+                "requirement": row_norm.get("requirement"),
+                "location": row_norm.get("location"),
+                "pain_points": row_norm.get("pain_points"),
+                # Deal-size aliases ("won amount", "deal value", "value",
+                # "amount") map onto won_amount, matching DEAL_VALUE_FIELDS.
+                "won_amount": (
+                    row_norm.get("won_amount")
+                    or row_norm.get("deal_value")
+                    or row_norm.get("dealValue")
+                    or row_norm.get("value")
+                    or row_norm.get("amount")
+                ),
                 "custom_fields": custom_fields,
             },
             source=source,
@@ -1185,6 +1218,18 @@ class LeadEngine:
                     tag=list(row.get("tag") or []),
                     greeting_preference=row.get("greeting_preference"),
                     status=_parse_status(row.get("status")),
+                    # Sales-journey columns land on the real lead fields so the
+                    # pipeline Value column and the stage gates see them (the
+                    # reported sync bug: an imported budget shown as Rs 0 and
+                    # re-asked by the move popup).
+                    budget=row.get("budget"),
+                    timeline=row.get("timeline"),
+                    decision_maker=row.get("decision_maker"),
+                    industry=row.get("industry"),
+                    requirement=row.get("requirement"),
+                    location=row.get("location"),
+                    pain_points=row.get("pain_points"),
+                    won_amount=row.get("won_amount"),
                     company_id=current_user.company_id,
                     created_by=str(current_user.id),
                     deleted=False,
@@ -1287,6 +1332,9 @@ class LeadEngine:
             "owner_name": "Owner Name", "owner_contact_no": "Owner Contact",
             "tag": "Tags", "crm_company_id": "CRM Company",
             "contact_id": "Contact", "due_date": "Due Date", "due_time": "Due Time",
+            "budget": "Budget", "timeline": "Timeline", "decision_maker": "Decision Maker",
+            "industry": "Industry", "requirement": "Requirement", "location": "Location",
+            "pain_points": "Pain Points",
         }
         field_recommendations = []
         for header in normalized_headers:
