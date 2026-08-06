@@ -277,7 +277,7 @@ function App() {
           <Route path="msa" element={withBoundary(<MSA />)} />
           */}
           <Route path="ledger" element={withBoundary(<Ledger />)} />
-          <Route path="bulk-leads" element={<CompanyAdminGuard>{withBoundary(<BulkLeads />)}</CompanyAdminGuard>} />
+          <Route path="bulk-leads" element={withBoundary(<BulkLeads />)} />
           <Route path="projects" element={withBoundary(<Projects />)} />
           <Route path="projects/:projectId/board" element={withBoundary(<ProjectBoard />)} />
           <Route path="projects/:projectId/tasks/:taskId" element={withBoundary(<TaskDetail />)} />

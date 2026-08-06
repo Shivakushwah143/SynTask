@@ -149,9 +149,9 @@ export const navigation = [
   { name: "Calendar", href: "/calendar", icon: CalendarDays, roles: STANDARD_ROLES },
 
   // Sales (Pipeline/Leads/All Leads live in crmNavigation; kept gated by sales_crm like the old "CRM" item)
-  // Import Leads stays in the sidebar config (favorites/landing) but is hidden from the in-page
-  // tab bar — SectionTabs filters it out for the sales section (tab bar only).
-  { name: "Import Leads", href: "/bulk-leads", icon: Megaphone, roles: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.SUPER_ADMIN], module: "sales_crm" },
+  // Import Leads is open to every role (anyone may bulk-import leads); it stays hidden from the
+  // in-page tab bar — SectionTabs filters it out for the sales section (tab bar only).
+  { name: "Import Leads", href: "/bulk-leads", icon: Megaphone, roles: STANDARD_ROLES, module: "sales_crm" },
 
   // Clients — /clients has no backend module gate; company admins only.
   { name: "All Clients", href: "/clients", icon: Briefcase, roles: ADMIN_ROLES },

@@ -11,7 +11,7 @@ import re
 from pydantic import BaseModel
 
 from app.api.deps import Pagination50, PaginationParams
-from app.api.dependencies import get_current_company_admin_or_lead, get_current_user, require_module
+from app.api.dependencies import get_current_user, require_module
 from app.core.rbac_visibility import build_visibility_query, require_owned_record_access
 from app.models.user import User, UserRole, UserStatus
 from app.models.department import Department
@@ -120,15 +120,6 @@ def _normalize_lead_csv_header(header: str) -> str:
     if normalized in {"email_address", "email_id", "e_mail"}:
         return "email"
     return normalized
-
-
-def _ensure_create_permission(user: User):
-    # Allow all roles including EMPLOYEE to create prospects
-    if user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE, UserRole.SUPER_ADMIN]:
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to add prospects"
-        )
 
 
 def _parse_multi_value(value: str) -> List[str]:
@@ -603,8 +594,11 @@ async def create_prospect(
     agreement_expiry_date: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new prospect"""
-    _ensure_create_permission(current_user)
+    """Create a new prospect.
+
+    Open to every authenticated company user (any role) so leads can be added
+    by anyone, by any channel — no role-based creation gate.
+    """
     logger.info(
         "Create prospect request ownerId=%s companyId=%s actorId=%s phone=%s",
         assigned_to,
@@ -804,12 +798,14 @@ async def bulk_upload_prospects(
     target_user_id: Optional[str] = Form(None),
     target_department_id: Optional[str] = Form(None),
     allow_duplicates: bool = Form(False),
-    current_user: User = Depends(get_current_company_admin_or_lead)
+    current_user: User = Depends(get_current_user)
 ):
     """Bulk upload prospects from CSV with assignment strategies.
 
-    allow_duplicates=True imports every valid row even when the same phone
-    already exists in the company (or repeats within the file).
+    Open to every authenticated company user (any role) so leads can be
+    imported by anyone. allow_duplicates=True imports every valid row even
+    when the same phone already exists in the company (or repeats within the
+    file).
     """
     return await LeadEngine.import_leads(
         current_user,
@@ -827,7 +823,7 @@ async def preview_bulk_upload_prospects(
     file: UploadFile = File(...),
     target_user_id: Optional[str] = Form(None),
     target_department_id: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_company_admin_or_lead)
+    current_user: User = Depends(get_current_user)
 ):
     return await LeadEngine.preview_import(
         current_user,
@@ -839,5 +835,5 @@ async def preview_bulk_upload_prospects(
 
 
 @router.post("/imports/{job_id}/retry")
-async def retry_import_job(job_id: str, current_user: User = Depends(get_current_company_admin_or_lead)):
+async def retry_import_job(job_id: str, current_user: User = Depends(get_current_user)):
     return await LeadEngine.retry_import_job(current_user, job_id)
