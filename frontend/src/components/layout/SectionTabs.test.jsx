@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SectionTabs from './SectionTabs'
+import { SECTIONS } from '../../config/navigation'
 
 // Mutable mock so tests can exercise role-based gating.
 const { mockUser } = vi.hoisted(() => ({
@@ -93,16 +94,40 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
   })
 
   it('renders a leading Overview tab (active) on a section landing page', () => {
-    renderTabs('/sections/clients')
+    renderTabs('/sections/work')
 
     expect(screen.getByRole('tab', { name: /^Overview$/i })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: /^All Clients$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Projects$/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /^Tasks$/i })).toBeTruthy()
+  })
+
+  it('does not render an Overview tab on the Clients page (dedicated /clients page)', () => {
+    renderTabs('/clients')
+
+    expect(screen.queryByRole('tab', { name: /^Overview$/i })).toBeNull()
+    expect(screen.getByRole('tab', { name: /^All Clients$/i })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: /^Companies$/i })).toBeTruthy()
   })
 
-  it('points the Clients Overview tab at the All Clients page', () => {
+  it('does not render an Overview tab on the Clients section landing', () => {
     renderTabs('/sections/clients')
-    expect(screen.getByRole('tab', { name: /^Overview$/i }).getAttribute('href')).toBe('/clients')
+
+    expect(screen.queryByRole('tab', { name: /^Overview$/i })).toBeNull()
+    expect(screen.getByRole('tab', { name: /^All Clients$/i })).toBeTruthy()
+  })
+
+  it('links Home straight to the dashboard and hides its Overview tab; Sales keeps Overview', () => {
+    const home = SECTIONS.find((section) => section.key === 'home')
+    const clients = SECTIONS.find((section) => section.key === 'clients')
+    const sales = SECTIONS.find((section) => section.key === 'sales')
+
+    expect(home.overviewHref).toBe('/dashboard')
+    expect(home.hideOverviewTab).toBe(true)
+    expect(clients.overviewHref).toBe('/clients')
+    expect(clients.hideOverviewTab).toBe(true)
+    // Sales keeps its Overview tab (dedicated dashboard, but no hide flag).
+    expect(sales.overviewHref).toBe('/sales-overview')
+    expect(sales.hideOverviewTab).toBeUndefined()
   })
 
   it('points the Sales Overview tab at the dedicated sales overview dashboard', () => {

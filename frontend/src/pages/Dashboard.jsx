@@ -232,6 +232,21 @@ const formatDuration = (totalSeconds) => {
   return `${hrs}h ${mins}m`
 }
 
+const formatFollowUpPhone = (lead) => {
+  const countryCode = (lead?.country_code || '').trim()
+  const phone = lead?.phone || ''
+  return phone ? `${countryCode ? `${countryCode} ` : ''}${phone}` : ''
+}
+
+const followUpDateTone = (value, now) => {
+  const date = timeService.instant(value)
+  if (!value || Number.isNaN(date.getTime())) return 'upcoming'
+  if (date < now) return 'overdue'
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  return dateStart === todayStart ? 'today' : 'upcoming'
+}
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
@@ -266,6 +281,7 @@ const Dashboard = () => {
   const [sectionOrder, setSectionOrder] = useState(readStoredSectionOrder)
   const [sectionPanelCollapsed, setSectionPanelCollapsed] = useState(getDefaultSectionPanelCollapsed)
   const [sectionSearch, setSectionSearch] = useState('')
+  const [leadFollowUps, setLeadFollowUps] = useState([])
 
   // Load cached dashboard data on mount (stale‑while‑revalidate)
   useEffect(() => {
@@ -286,6 +302,7 @@ const Dashboard = () => {
       setEodToday(cached.eodToday)
       setAttendanceStats(cached.attendanceStats)
       setRevenueMode(cached.revenueMode ?? 'Accrual')
+      setLeadFollowUps(cached.leadFollowUps || [])
       setLoading(false)
     }
   }, [])
@@ -311,6 +328,14 @@ const Dashboard = () => {
       const crmDashboardPromise = shouldLoadCrmDashboard
         ? crmApi.getDashboard().then((r) => r?.data || null).catch(() => null)
         : Promise.resolve(null)
+      // Leads with a follow-up scheduled (next_follow_up_at set) — drives the
+      // Lead Follow-ups dashboard section. Only CRM-capable roles can see the
+      // full company list; employees keep their own calendar-based follow-ups.
+      // limit 500 = backend MAX_PAGE_SIZE; companies with more follow-up leads
+      // silently show the soonest 500 (documented trade-off).
+      const followUpsPromise = shouldLoadCrmDashboard
+        ? crmApi.getLeads({ has_follow_up: true, limit: 500 }).then((r) => r?.data?.prospects || r?.prospects || []).catch(() => [])
+        : Promise.resolve([])
       const healthPromise =
         dashboardRole === ROLE.EMPLOYEE
           ? tasksAPI.getMyTaskHealth().catch(() => null)
@@ -328,7 +353,7 @@ const Dashboard = () => {
           ? tasksAPI.getProductionDashboard().catch(() => null)
           : Promise.resolve(null)
 
-      const [crmDashboardData, healthData, extensionData, teamData, ticketsData, attendanceRes, eodTodayRes, productionDashboardData] = await Promise.all([
+      const [crmDashboardData, healthData, extensionData, teamData, ticketsData, attendanceRes, eodTodayRes, productionDashboardData, followUpsData] = await Promise.all([
         crmDashboardPromise,
         healthPromise,
         extensionPromise,
@@ -337,6 +362,7 @@ const Dashboard = () => {
         attendancePromise,
         eodPromise,
         productionDashboardPromise,
+        followUpsPromise,
       ])
 
       if (!isMounted()) return
@@ -353,6 +379,7 @@ const Dashboard = () => {
       setTaskExtensions(extensionData)
       setTeamCompletion(teamData)
       setProductionDashboard(productionDashboardData)
+      setLeadFollowUps(followUpsData)
 
       if (dashboardRole === ROLE.EMPLOYEE) {
         if (attendanceRes && attendanceRes.data) setAttendanceToday(attendanceRes.data)
@@ -378,6 +405,7 @@ const Dashboard = () => {
           eodToday: eodTodayRes,
           attendanceStats: attendanceRes?.data || null,
           revenueMode,
+          leadFollowUps: followUpsData,
         }
         sessionStorage.setItem('syntask-dashboard-cache', JSON.stringify(cachePayload))
       } catch (e) {
@@ -541,6 +569,33 @@ const Dashboard = () => {
 
   const role = normalizeRole(stats?.role || user?.role)
   const canSeeSalesWidgets = [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD, ROLE.SUPER_ADMIN].includes(role)
+  // NOTE: plain computations, not hooks — they run after the loading early-return
+  // so memoizing here would violate the Rules of Hooks.
+  const followUpItems = role === ROLE.EMPLOYEE
+    ? workspaceEvents
+        .filter((event) => event.type === 'follow_up' && event.start)
+        .map((event) => ({
+          id: event.id,
+          prospect_name: event.lead_name || event.title,
+          company_name: event.company_name || '',
+          next_follow_up_at: event.start,
+          created_at: null,
+          phone: event.phone_display || event.phone || '',
+          owner_name: event.assignee || '',
+          current_stage: event.status || '',
+        }))
+        .sort((a, b) => timeService.instantTime(a.next_follow_up_at) - timeService.instantTime(b.next_follow_up_at))
+    : [...leadFollowUps]
+        .filter((lead) => lead && lead.next_follow_up_at)
+        .sort((a, b) => timeService.instantTime(a.next_follow_up_at) - timeService.instantTime(b.next_follow_up_at))
+
+  const followUpNow = timeService.now()
+  const followUpCounts = { overdue: 0, dueToday: 0 }
+  followUpItems.forEach((item) => {
+    const tone = followUpDateTone(item.next_follow_up_at, followUpNow)
+    if (tone === 'overdue') followUpCounts.overdue += 1
+    else if (tone === 'today') followUpCounts.dueToday += 1
+  })
   const taskSource = recentTasks
   const priorityTasks = [...recentTasks].filter((task) => ['critical', 'high'].includes((task.priority || '').toLowerCase())).slice(0, 5)
   const salesSummary = crmDashboard?.sales || {}
@@ -649,6 +704,7 @@ const Dashboard = () => {
   ]
 
   const dashboardSections = [
+    { id: 'lead-follow-ups', name: 'Lead Follow-ups' },
     { id: 'workflow-guide', name: 'Workflow Guide' },
     { id: 'workflow-journey', name: 'Workflow Journey' },
     { id: 'snapshot-cards', name: 'Snapshot Cards' },
@@ -664,7 +720,6 @@ const Dashboard = () => {
     { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && Boolean(productionDashboard) },
     { id: 'recent-activity', name: 'Recent Activity' },
     { id: 'calendar-overview', name: 'Calendar Overview' },
-    { id: 'lead-follow-ups', name: 'Lead Follow-ups' },
   ].filter((section) => section.available !== false)
 
   const orderedDashboardSections = normalizeSectionOrder(dashboardSections, sectionOrder)
@@ -797,6 +852,98 @@ const Dashboard = () => {
         onSelectAll={() => setAllDashboardSections(true)}
         onClearAll={() => setAllDashboardSections(false)}
       />
+
+      {/* ============================================================ */}
+      {/* LEAD FOLLOW-UPS */}
+      {/* ============================================================ */}
+      {renderDashboardSection('lead-follow-ups', (
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+                <Phone className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Lead Follow-ups</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Every lead with a follow-up scheduled — soonest first, with created date and mobile number.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge label={`${followUpItems.length} follow-up${followUpItems.length === 1 ? '' : 's'}`} colorKey={followUpItems.length ? 'active' : 'draft'} />
+              {followUpCounts.dueToday > 0 && <Badge label={`${followUpCounts.dueToday} due today`} colorKey="pending" />}
+              {followUpCounts.overdue > 0 && <Badge label={`${followUpCounts.overdue} overdue`} colorKey="rejected" />}
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                onClick={() => navigate('/crm/leads')}
+              >
+                View Leads
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+          {followUpItems.length ? (
+            <div className="max-h-[420px] overflow-auto rounded-lg border border-gray-100 dark:border-gray-700">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="sticky top-0 z-10 bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Lead</th>
+                    <th className="px-3 py-2 font-medium">Follow-up Date</th>
+                    <th className="px-3 py-2 font-medium">Created</th>
+                    <th className="px-3 py-2 font-medium">Mobile</th>
+                    <th className="px-3 py-2 font-medium">Stage</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {followUpItems.map((lead) => {
+                    const phoneDisplay = formatFollowUpPhone(lead)
+                    const phoneHref = phoneDisplay ? `tel:${phoneDisplay.replace(/[^\d+]/g, '')}` : null
+                    const tone = followUpDateTone(lead.next_follow_up_at, followUpNow)
+                    return (
+                      <tr
+                        key={lead.id || lead.next_follow_up_at}
+                        onClick={() => navigate(lead.id ? `/crm/leads/${lead.id}` : '/crm/leads')}
+                        className="cursor-pointer transition-colors hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20"
+                      >
+                        <td className="px-3 py-2">
+                          <p className="truncate font-medium text-gray-900 dark:text-white">{lead.prospect_name || lead.company_name || 'Unnamed lead'}</p>
+                          {lead.company_name && <p className="truncate text-xs text-gray-500 dark:text-gray-400">{lead.company_name}</p>}
+                        </td>
+                        <td className="px-3 py-2">
+                          <p className={`font-medium ${tone === 'overdue' ? 'text-rose-600 dark:text-rose-400' : tone === 'today' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-white'}`}>
+                            {timeService.formatPattern(lead.next_follow_up_at, 'MMM d, yyyy')}
+                          </p>
+                          {lead.next_action && <p className="max-w-[220px] truncate text-xs text-gray-500 dark:text-gray-400">{lead.next_action}</p>}
+                        </td>
+                        <td className="px-3 py-2 text-gray-600 dark:text-gray-300">
+                          {lead.created_at ? timeService.formatPattern(lead.created_at, 'MMM d, yyyy') : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {phoneHref ? (
+                            <a href={phoneHref} onClick={(event) => event.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:underline dark:text-indigo-400" title={`Call ${phoneDisplay}`}>
+                              <Phone className="h-3 w-3" />
+                              {phoneDisplay}
+                            </a>
+                          ) : (
+                            <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Badge label={lead.current_stage || 'Unstaged'} colorKey={lead.current_stage || 'draft'} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <Phone className="h-6 w-6 text-gray-300 dark:text-gray-600" />
+              <p className="text-xs text-gray-400 dark:text-gray-500">No leads with follow-ups yet. Set a follow-up on any lead and it will show up here.</p>
+            </div>
+          )}
+        </section>
+      ))}
 
       {/* ============================================================ */}
       {/* WORKFLOW GUIDE */}
@@ -1335,74 +1482,7 @@ const Dashboard = () => {
       ))}
 
       {/* ============================================================ */}
-      {/* LEAD FOLLOW-UPS */}
-      {/* ============================================================ */}
-      {renderDashboardSection('lead-follow-ups', (
-        <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700 mb-6">
-          <div className="mb-2 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Lead Follow-ups</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Upcoming scheduled lead follow-ups for the next 30 days.</p>
-            </div>
-            <button
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-              onClick={() => navigate('/crm/leads')}
-            >
-              View Leads
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div className="space-y-2">
-            {workspaceEvents.filter((e) => e.type === 'follow_up' && e.start).slice(0, 6).map((e) => {
-              const phoneDisplay = e.phone_display || e.phone || ''
-              const phoneHref = phoneDisplay ? `tel:${phoneDisplay.replace(/[^\d+]/g, '')}` : null
-              return (
-                <div key={e.id} className="group flex items-center justify-between gap-2 rounded-md border border-gray-100 p-2 transition-colors hover:border-indigo-200 hover:bg-indigo-50/30 dark:border-gray-700 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/20">
-                  <div className="min-w-0">
-                    <a onClick={() => navigate(e.lead_id ? `/crm/leads/${e.lead_id}` : '/crm/leads')} className="block cursor-pointer truncate font-medium text-gray-900 hover:underline dark:text-white">{e.lead_name || e.title}</a>
-                    <p className="flex items-center gap-1 truncate text-xs text-gray-500 dark:text-gray-400">
-                      <span>{e.start}</span>
-                      {phoneDisplay && phoneHref && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <a href={phoneHref} onClick={(event) => event.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:underline dark:text-indigo-400" title={`Call ${phoneDisplay}`}>
-                            <Phone className="h-3 w-3" />
-                            {phoneDisplay}
-                          </a>
-                        </>
-                      )}
-                      <span aria-hidden="true">·</span>
-                      <span>{e.assignee || 'Unassigned'}</span>
-                      {e.status && (
-                        <span className="ml-2 inline-flex items-center rounded px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">{e.status}</span>
-                      )}
-                    </p>
-                    {e.description && (
-                      <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{e.description}</p>
-                    )}
-                  </div>
-                  {phoneHref ? (
-                    <a
-                      href={phoneHref}
-                      onClick={(event) => event.stopPropagation()}
-                      title={`Call ${phoneDisplay}`}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 hover:shadow-sm dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950/70"
-                    >
-                      <Phone className="h-3.5 w-3.5" />
-                      Call
-                    </a>
-                  ) : (
-                    <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">No phone</span>
-                  )}
-                </div>
-              )
-            })}
-            {workspaceEvents.filter((e) => e.type === 'follow_up' && e.start).length === 0 && (
-              <p className="text-xs text-gray-400">No upcoming lead follow-ups</p>
-            )}
-          </div>
-        </section>
-      ))}
+
 
       {/* ============================================================ */}
       {/* PROJECT HEALTH */}
