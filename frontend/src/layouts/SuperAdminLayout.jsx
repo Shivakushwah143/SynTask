@@ -227,6 +227,7 @@ const SuperAdminLayout = () => {
           setAssistantOpen(true)
         }}
         onDismiss={() => setSynzinPromptOpen(false)}
+        onOpen={() => setSynzinPromptOpen(true)}
       />
     </div>
   )

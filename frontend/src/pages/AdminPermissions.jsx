@@ -293,22 +293,22 @@ const AdminPermissions = () => {
   return (
     <div className="space-y-6">
       {/* ── Page Header ── */}
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary-600 dark:text-primary-400">
               Admin controls
             </p>
-            <h1 className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100">
+            <h1 className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100">
               Permissions Management
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
               Set module defaults per department, apply them to all members, and customise
               access for individual users — all from one place.
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
               <div className="flex items-center gap-2 font-semibold">
                 <ShieldCheck className="h-4 w-4" />
                 Company Admin
@@ -335,19 +335,19 @@ const AdminPermissions = () => {
       {successMsg && <Toast message={successMsg} type="success" onDismiss={() => setSuccessMsg('')} />}
 
       {/* ── Two-column: Department defaults + User access ── */}
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
 
         {/* Department Defaults */}
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-slate-100">
             <Building2 className="h-5 w-5 text-primary-600" />
             Department Defaults
           </div>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Set which modules are enabled by default for a department. Use "Apply to members" to push defaults to all current members.
           </p>
 
-          <div className="mt-5 space-y-5">
+          <div className="mt-3 space-y-4">
             {/* Department selector */}
             {overview?.departments?.length ? (
               <div className="relative">
@@ -444,17 +444,17 @@ const AdminPermissions = () => {
         </section>
 
         {/* User Access Management */}
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-slate-100">
             <Users className="h-5 w-5 text-primary-600" />
             User Access
           </div>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Pick a user to customise their module access individually.
           </p>
 
           {/* User table */}
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
+          <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-800">
                 <tr>
@@ -522,7 +522,7 @@ const AdminPermissions = () => {
 
           {/* Selected user panel */}
           {selectedUser ? (
-            <div className="mt-5 rounded-2xl border border-primary-200 bg-primary-50/50 p-5 dark:border-primary-800 dark:bg-primary-950/20">
+            <div className="mt-3 rounded-2xl border border-primary-200 bg-primary-50/50 p-4 dark:border-primary-800 dark:bg-primary-950/20">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="font-bold text-slate-900 dark:text-slate-100">{selectedUser.full_name}</h2>
@@ -609,18 +609,18 @@ const AdminPermissions = () => {
       </div>
 
       {/* ── Bottom row: Promote / Current Admins ── */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
 
         {/* Promote employees */}
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-slate-100">
             <UserCheck className="h-5 w-5 text-emerald-600" />
             Promote to Sub-Admin
           </div>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Grant elevated admin access to an employee, manager, or team lead.
           </p>
-          <div className="mt-4 space-y-2.5">
+          <div className="mt-3 space-y-2">
             {overview?.employees?.length ? overview.employees.map((employee) => (
               <div
                 key={employee.id}
@@ -649,15 +649,15 @@ const AdminPermissions = () => {
         </section>
 
         {/* Current admins */}
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-slate-100">
             <UserX className="h-5 w-5 text-rose-600" />
             Current Admins
           </div>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Demote an admin back to their previous role. The last company admin cannot be demoted.
           </p>
-          <div className="mt-4 space-y-2.5">
+          <div className="mt-3 space-y-2">
             {overview?.admins?.length ? overview.admins.map((admin) => (
               <div
                 key={admin.id}

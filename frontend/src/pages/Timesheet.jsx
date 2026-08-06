@@ -37,15 +37,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center gap-3">
         <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+          <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -332,24 +334,24 @@ export default function Timesheet() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 p-4 text-white shadow-xl md:p-5">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <Clock className="h-6 w-6" />
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <Clock className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Timesheet</h1>
-              <p className="mt-1 text-indigo-100">Log weekly work, review attendance summary, and track approval status.</p>
+              <h1 className="text-xl font-bold md:text-2xl">Timesheet</h1>
+              <p className="mt-0.5 text-xs text-indigo-100">Log weekly work, review attendance summary, and track approval status.</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total Hours"
           value={`${totalHours.toFixed(1)}h`}

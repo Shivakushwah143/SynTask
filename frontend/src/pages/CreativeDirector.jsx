@@ -71,15 +71,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
-          <Icon className="h-4 w-4" />
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-md bg-gradient-to-r ${colors[color]} p-1.5 text-white shadow transition-transform group-hover:scale-110`}>
+          <Icon className="h-3.5 w-3.5" />
         </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -392,43 +392,43 @@ export default function CreativeDirector() {
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-rose-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-rose-600 px-5 py-3.5 text-white shadow-lg">
         {/* Decorative blur circles */}
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
         
         <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <Wand2 className="h-6 w-6" />
+              <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+                <Wand2 className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Creative Director AI</h1>
-                <p className="mt-1 text-indigo-100">
+                <h1 className="text-lg font-bold leading-tight md:text-xl">Creative Director AI</h1>
+                <p className="text-xs text-indigo-100">
                   Review assets with evidence, version context, and approval-ready recommendations.
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                 Approval workflow
               </span>
               <button 
                 onClick={handleRefresh}
                 disabled={loading}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30 disabled:opacity-50"
               >
                 {loading ? (
                   <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                     Loading...
                   </>
                 ) : (
                   <>
-                    <RefreshCw className="h-4 w-4" />
+                    <RefreshCw className="h-3.5 w-3.5" />
                     Refresh
                   </>
                 )}
@@ -441,7 +441,7 @@ export default function CreativeDirector() {
       {/* ============================================================ */}
       {/* STAT CARDS - 4 Cards with Gradients */}
       {/* ============================================================ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
           label="Total Reviews" 
           value={stats.total} 
