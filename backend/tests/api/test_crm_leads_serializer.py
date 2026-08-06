@@ -88,3 +88,50 @@ async def test_crm_leads_serializer_includes_won_amount_and_company_name(monkeyp
     assert serialized["won_amount"] == 555222.0
     assert serialized["company_name"] == "Acme Corp"
     assert serialized["prospect_name"] == "John Doe"
+
+
+@pytest.mark.asyncio
+async def test_crm_leads_has_follow_up_filter(monkeypatch):
+    """has_follow_up=true narrows the query to leads with next_follow_up_at set."""
+    captured = {}
+
+    def fake_find(query):
+        captured["query"] = query
+        return FakeProspectQuery([])
+
+    fake_prospect_model = SimpleNamespace(
+        find=fake_find,
+        created_at=0,
+        next_follow_up_at=0,
+    )
+    monkeypatch.setattr("app.api.v1.endpoints.crm.SalesProspect", fake_prospect_model)
+
+    current_user = SimpleNamespace(company_id="company-1", role=UserRole.ADMIN)
+    pagination = SimpleNamespace(skip=0, limit=50)
+    response = await crm_leads(current_user=current_user, pagination=pagination, has_follow_up=True)
+
+    assert response["total"] == 0
+    assert captured["query"]["next_follow_up_at"] == {"$exists": True, "$ne": None}
+
+
+@pytest.mark.asyncio
+async def test_crm_leads_without_has_follow_up_keeps_default_query(monkeypatch):
+    """The default call must not include the follow-up filter (backward compatible)."""
+    captured = {}
+
+    def fake_find(query):
+        captured["query"] = query
+        return FakeProspectQuery([])
+
+    fake_prospect_model = SimpleNamespace(
+        find=fake_find,
+        created_at=0,
+        next_follow_up_at=0,
+    )
+    monkeypatch.setattr("app.api.v1.endpoints.crm.SalesProspect", fake_prospect_model)
+
+    current_user = SimpleNamespace(company_id="company-1", role=UserRole.ADMIN)
+    pagination = SimpleNamespace(skip=0, limit=50)
+    await crm_leads(current_user=current_user, pagination=pagination)
+
+    assert "next_follow_up_at" not in captured["query"]
