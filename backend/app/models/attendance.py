@@ -6,6 +6,7 @@ from typing import Optional
 from beanie import Document, Indexed
 from pydantic import Field
 from enum import Enum
+from pymongo import IndexModel, ASCENDING
 
 
 class AttendanceStatus(str, Enum):
@@ -15,6 +16,7 @@ class AttendanceStatus(str, Enum):
     WORKING = "Working"
     ON_BREAK = "On Break"
     OFFLINE = "Offline"
+    CHECKED_OUT = "Checked Out"
 
 
 class Attendance(Document):
@@ -28,6 +30,7 @@ class Attendance(Document):
     logout_time: Optional[datetime] = None
     total_working_hours: float = 0.0  # Stored as cumulative seconds
     break_duration: float = 0.0       # Stored as cumulative seconds
+    current_break_started_at: Optional[datetime] = None
     overtime_seconds: float = 0.0     # Seconds worked beyond 8 hours
     work_type: Optional[str] = None   # "Under Time", "Full Time", "Overtime"
     
@@ -52,6 +55,11 @@ class Attendance(Document):
             "company_id",
             "date",
             "status",
+            IndexModel(
+                [("company_id", ASCENDING), ("employee_id", ASCENDING), ("date", ASCENDING)],
+                unique=True,
+                name="uniq_company_employee_attendance_date",
+            ),
         ]
 
 

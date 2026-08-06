@@ -76,24 +76,7 @@ async def _startup_tasks() -> None:
     register_knowledge_subscribers()
     register_recruitment_subscribers()
     logger.info("Knowledge subscribers registered")
-    from app.models.user import User, UserRole
-    from app.models.attendance import Attendance, AttendanceStatus
-    try:
-        today_str = utc_now().strftime("%Y-%m-%d")
-        async for att in Attendance.find({"date": today_str, "status": AttendanceStatus.WORKING.value}):
-            user = await User.get(str(att.employee_id))
-            if user and user.role == UserRole.MANAGER:
-                att.status = AttendanceStatus.OFFLINE
-                now = utc_now()
-                att.logout_time = now
-                att.monitoring_end_time = now
-                wt = compute_work_type(att.total_working_hours)
-                att.work_type = wt["work_type"]
-                att.overtime_seconds = wt["overtime_seconds"]
-                await att.save()
-                logger.info(f"Manager {user.email} attendance reset to Offline on startup.")
-    except Exception as attendance_err:
-        logger.warning(f"Attendance startup cleanup skipped: {attendance_err}")
+    logger.info("Attendance startup cleanup skipped; backend restart must not check users out.")
     if SEMANTIC_AVAILABLE:
         register_semantic_subscribers()
         logger.info("Semantic subscribers registered")

@@ -27,6 +27,18 @@ export const crmApi = {
   createLeadProposal: (leadId, payload) => api.post(`/crm/leads/${leadId}/proposals`, payload),
   updateLeadProposal: (leadId, proposalId, payload) => api.patch(`/crm/leads/${leadId}/proposals/${proposalId}`, payload),
   archiveLeadProposal: (leadId, proposalId) => api.post(`/crm/leads/${leadId}/proposals/${proposalId}/archive`),
+  getLeadDocuments: (leadId) => api.get(`/crm/leads/${leadId}/documents`),
+  createLeadDocument: (leadId, payload) => api.post(`/crm/leads/${leadId}/documents`, payload),
+  updateLeadDocument: (leadId, documentId, payload) => api.patch(`/crm/leads/${leadId}/documents/${documentId}`, payload),
+  generateLeadDocumentPdf: (leadId, documentId) => api.post(`/crm/leads/${leadId}/documents/${documentId}/generate-pdf`),
+  downloadLeadDocumentPdf: (leadId, documentId) => api.get(`/crm/leads/${leadId}/documents/${documentId}/pdf`, { responseType: 'blob' }),
+  sendLeadDocument: (leadId, documentId, payload) => api.post(`/crm/leads/${leadId}/documents/${documentId}/send`, payload),
+  createLeadDocumentShareLink: (leadId, documentId, payload) => api.post(`/crm/leads/${leadId}/documents/${documentId}/share-link`, payload),
+  revokeLeadDocumentShareLink: (leadId, documentId) => api.post(`/crm/leads/${leadId}/documents/${documentId}/revoke-link`),
+  cancelLeadDocument: (leadId, documentId) => api.post(`/crm/leads/${leadId}/documents/${documentId}/cancel`),
+  createContractFromDocument: (leadId, documentId) => api.post(`/crm/leads/${leadId}/documents/${documentId}/create-contract`),
+  uploadLeadDocumentPdf: (leadId, payload) => api.post(`/crm/leads/${leadId}/documents/upload`, payload),
+  leadDocumentPdfUrl: (leadId, documentId) => `/api/v1/crm/leads/${leadId}/documents/${documentId}/pdf`,
   getLeadFiles: (leadId) => api.get(`/crm/leads/${leadId}/files`),
   uploadLeadFile: (leadId, payload) => api.post(`/crm/leads/${leadId}/files`, payload),
   deleteLeadFile: (leadId, fileId) => api.delete(`/crm/leads/${leadId}/files/${fileId}`),
@@ -39,4 +51,13 @@ export const crmApi = {
   createContact: (payload) => api.post('/crm/contacts', payload),
   updateContact: (contactId, payload) => api.patch(`/crm/contacts/${contactId}`, payload),
   deleteContact: (contactId) => api.delete(`/crm/contacts/${contactId}`),
+}
+
+export const publicCrmDocumentsApi = {
+  getDocument: (token) => api.get(`/public/crm-documents/${token}`, { skipAuth: true, allowUnauthenticated: true }),
+  downloadPdf: (token) => api.get(`/public/crm-documents/${token}/pdf`, { responseType: 'blob', skipAuth: true, allowUnauthenticated: true }),
+  accept: (token, payload) => api.post(`/public/crm-documents/${token}/accept`, payload, { skipAuth: true, allowUnauthenticated: true }),
+  reject: (token, payload) => api.post(`/public/crm-documents/${token}/reject`, payload, { skipAuth: true, allowUnauthenticated: true }),
+  requestChanges: (token, payload) => api.post(`/public/crm-documents/${token}/request-changes`, payload, { skipAuth: true, allowUnauthenticated: true }),
+  pdfUrl: (token) => `/api/v1/public/crm-documents/${token}/pdf`,
 }

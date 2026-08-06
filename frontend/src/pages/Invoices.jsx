@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { 
   CreditCard, 
   Download, 
@@ -48,6 +48,7 @@ import {
 } from 'lucide-react'
 import { invoicesAPI } from '../api/invoices'
 import { clientsAPI } from '../api/clients'
+import { downloadBlob, getDownloadFilename, safeDownloadFilename, decodeBlobErrorMessage } from '../utils/download'
 import { useConfirmation } from '../hooks/useConfirmation'
 import { useAuthStore } from '../store/authStore'
 import { hasCompanyAdminAccess, isLeadRole } from '../utils/roles'
@@ -179,6 +180,8 @@ const Invoices = () => {
   const [clientDetails, setClientDetails] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [recordingPayment, setRecordingPayment] = useState(false)
+  const [downloadingPdfId, setDownloadingPdfId] = useState(null)
+  const downloadingPdfRef = useRef(false)
 
   const isCompanyAdmin = hasCompanyAdminAccess(user?.role)
   const isLead = isLeadRole(user?.role)
@@ -377,21 +380,26 @@ const Invoices = () => {
   }
 
   const handleDownloadInvoice = async (invoice) => {
+    if (downloadingPdfRef.current) return
+    downloadingPdfRef.current = true
+    setDownloadingPdfId(invoice.id)
     try {
       const response = await invoicesAPI.downloadInvoicePdf(invoice.id)
       const blob = new Blob([response.data], { type: 'application/pdf' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${invoice.invoice_number || 'invoice'}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
+      const filename = getDownloadFilename(
+        response.headers?.['content-disposition'],
+        safeDownloadFilename(`${invoice.invoice_number || 'invoice'}.pdf`)
+      )
+      downloadBlob(blob, filename)
       toast.success('Invoice PDF downloaded! 📥')
     } catch (error) {
       console.error('Error downloading invoice PDF:', error)
-      toast.error(error.response?.data?.detail || 'Failed to download invoice PDF')
+      // Backend errors arrive as JSON inside a Blob; surface the real message.
+      const message = await decodeBlobErrorMessage(error, 'Failed to download invoice PDF')
+      toast.error(message)
+    } finally {
+      downloadingPdfRef.current = false
+      setDownloadingPdfId(null)
     }
   }
 
@@ -763,10 +771,16 @@ const Invoices = () => {
                           </button>
                           <button
                             onClick={() => handleDownloadInvoice(invoice)}
-                            className="rounded-lg p-1.5 text-gray-500 transition hover:bg-blue-100 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-blue-900/30 dark:hover:text-blue-400"
-                            title="Download PDF"
+                            disabled={downloadingPdfId === invoice.id}
+                            className="rounded-lg p-1.5 text-gray-500 transition hover:bg-blue-100 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-blue-900/30 dark:hover:text-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={downloadingPdfId === invoice.id ? 'Downloading...' : 'Download PDF'}
+                            data-testid={`download-pdf-${invoice.id}`}
                           >
-                            <Download className="h-4 w-4" />
+                            {downloadingPdfId === invoice.id ? (
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
                           </button>
                           {!invoice.email_sent && invoice.status === 'draft' && (
                             <button
@@ -1252,10 +1266,21 @@ const Invoices = () => {
               <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
                 <button
                   onClick={() => handleDownloadInvoice(selectedInvoice)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                  disabled={downloadingPdfId === selectedInvoice.id}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  data-testid="download-pdf-detail"
                 >
-                  <Download className="h-4 w-4" />
-                  Download PDF
+                  {downloadingPdfId === selectedInvoice.id ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4" />
+                      Download PDF
+                    </>
+                  )}
                 </button>
                 {(isCompanyAdmin || isLead) && Number(selectedInvoice.outstanding_amount ?? selectedInvoice.total_amount ?? 0) > 0 && (
                   <button

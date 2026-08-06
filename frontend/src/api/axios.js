@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
 import { getAccessToken, getRefreshToken, updateAccessToken } from '../utils/storage'
+import { decodeBlobErrorMessage } from '../utils/download'
 import toast from 'react-hot-toast'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
@@ -203,13 +204,21 @@ axiosInstance.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // Handle other errors - suppress toasts for 401/403 and unauthenticated requests
-    if (![401, 403].includes(error.response?.status) && !originalRequest?._unauthenticated) {
-      const errorMessage = extractErrorMessage(
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        error.response?.data
-      )
+    // Handle other errors - suppress toasts for 401/403, unauthenticated
+    // requests, and requests that opt out via `suppressGlobalToast` (their
+    // caller shows a local notification instead, e.g. the invoice PDF download).
+    if (![401, 403].includes(error.response?.status) && !originalRequest?._unauthenticated && !originalRequest?.suppressGlobalToast) {
+      let errorMessage
+      if (originalRequest?.responseType === 'blob') {
+        // Blob responses hide the backend's JSON error; decode it for the toast.
+        errorMessage = await decodeBlobErrorMessage(error, 'Request failed')
+      } else {
+        errorMessage = extractErrorMessage(
+          error.response?.data?.detail ||
+          error.response?.data?.message ||
+          error.response?.data
+        )
+      }
       toast.error(errorMessage)
     }
 
