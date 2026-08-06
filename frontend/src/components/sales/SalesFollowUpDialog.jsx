@@ -23,6 +23,7 @@ import { useMutation, useQueryClient } from 'react-query'
 import toast from 'react-hot-toast'
 import { CalendarClock, Check, Loader2, X } from 'lucide-react'
 import { salesApi } from '../../api/sales'
+import { invalidateWorkspaceCalendar } from '../../api/calendar'
 import { timeService } from '../../services/timeService'
 import { Button, LoadingSpinner } from '../ui'
 
@@ -268,6 +269,7 @@ export default function SalesFollowUpDialog({
         if (leadId) {
           queryClient.invalidateQueries(['crm-lead-workspace', leadId])
         }
+        invalidateWorkspaceCalendar(queryClient)
         onCreated?.(data)
         onClose?.()
       },
@@ -294,6 +296,7 @@ export default function SalesFollowUpDialog({
         if (leadId) {
           queryClient.invalidateQueries(['crm-lead-workspace', leadId])
         }
+        invalidateWorkspaceCalendar(queryClient)
         onRescheduled?.(data)
         onClose?.()
       },
@@ -320,6 +323,7 @@ export default function SalesFollowUpDialog({
         if (leadId) {
           queryClient.invalidateQueries(['crm-lead-workspace', leadId])
         }
+        invalidateWorkspaceCalendar(queryClient)
         onCancelled?.(data)
         onClose?.()
       },

@@ -121,6 +121,17 @@ class SchedulingService:
                 job.status = ScheduledJobStatus.COMPLETED
                 job.completed_at = utc_now()
                 job.error = None
+                # Persist the generated record id so calendar consumers can
+                # deduplicate the RUNNING placeholder against the real Task.
+                if result and isinstance(result, dict):
+                    result_id = result.get("task_id") or result.get("id") or result.get("project_id")
+                    if result_id:
+                        job.result_type = (
+                            "task"
+                            if job.action_type == ScheduledJobActionType.CREATE_TASK
+                            else "project"
+                        )
+                        job.result_id = str(result_id)
                 await job.save()
 
                 logger.info(f"Successfully completed scheduled job {job.id}")

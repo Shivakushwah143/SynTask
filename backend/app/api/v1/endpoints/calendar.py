@@ -9,10 +9,12 @@ from app.models.meeting import Meeting
 from app.models.task import Task, TaskStatus
 from app.models.project import Project, ProjectStatus
 from app.models.user import User, UserRole
+from app.models.scheduled_job import ScheduledJob, ScheduledJobActionType, ScheduledJobStatus
+from app.models.sales_prospect import SalesProspect
 from app.api.dependencies import get_current_user, check_company_access
 from app.services.project_service import ProjectService
 from app.services.reminder_service import calendar_due_tone
-from app.core.clock import parse_to_utc, utc_now
+from app.core.clock import parse_to_utc, utc_now, local_day_bounds_utc, ClockService
 
 router = APIRouter()
 
@@ -38,7 +40,13 @@ def calendar_error_detail(exc: Exception) -> str:
     return f"Error fetching calendar events: {message}"
 
 
-def parse_calendar_window(start_date: Optional[str], end_date: Optional[str]):
+def parse_calendar_window(start_date: Optional[str], end_date: Optional[str], timezone_name: Optional[str] = None):
+    """Parse the calendar window and return naive-UTC datetime bounds.
+
+    When `timezone_name` is provided the local calendar-day boundaries are
+    converted to UTC, so a near-midnight event lands on the correct local day
+    even though `run_at`/`due_date` are stored in UTC.
+    """
     try:
         if start_date:
             start = datetime.strptime(start_date, "%Y-%m-%d").date()
@@ -54,6 +62,17 @@ def parse_calendar_window(start_date: Optional[str], end_date: Optional[str]):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid date format: {str(e)}",
         )
+
+    if timezone_name:
+        try:
+            ClockService.validate_timezone(timezone_name)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid timezone: {timezone_name}",
+            )
+        start_at, end_at = local_day_bounds_utc(start, end, timezone_name)
+        return start, end, start_at, end_at
 
     start_at = datetime.combine(start, datetime.min.time())
     end_at = datetime.combine(end, datetime.max.time())
@@ -126,6 +145,186 @@ def _enum_value(value, fallback: str) -> str:
     return getattr(value, "value", value) or fallback
 
 
+# ── Scheduled CREATE_TASK jobs as Calendar placeholders ──────────────────────
+# A scheduled task does not exist in the Task collection until SchedulingService
+# executes its ScheduledJob. Before execution the ScheduledJob itself is the
+# source of truth for the Workspace Calendar; after execution the generated Task
+# takes over (COMPLETED/CANCELLED jobs are never returned here).
+
+
+def build_calendar_scheduled_job_query(
+    current_user: User,
+    *,
+    view_type: str,
+    user_ids_to_fetch: list[str],
+    start_at: datetime,
+    end_at: datetime,
+    project_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Company-scoped query for active CREATE_TASK scheduled jobs.
+
+    Only PENDING, RUNNING and FAILED jobs are returned. `run_at` is the
+    occurrence time (when the Task is created) and is the Calendar date.
+
+    Visibility rules:
+    - my_calendar: payload.assigned_to == current user OR created_by == user,
+      so an employee sees a follow-up a manager scheduled for them, and a
+      creator sees their own unassigned scheduled task.
+    - team_calendar: payload.assigned_to must be inside user_ids_to_fetch
+      (already scoped by existing Admin/Manager/Lead authorization + employee
+      filtering). No cross-company, no cross-team exposure.
+    """
+    query: Dict[str, Any] = {
+        "company_id": current_user.company_id,
+        "action_type": ScheduledJobActionType.CREATE_TASK.value,
+        "status": {
+            "$in": [
+                ScheduledJobStatus.PENDING.value,
+                ScheduledJobStatus.RUNNING.value,
+                ScheduledJobStatus.FAILED.value,
+            ]
+        },
+        "run_at": {"$gte": start_at, "$lte": end_at},
+    }
+    if view_type == "my_calendar":
+        query["$or"] = [
+            {"payload.assigned_to": str(current_user.id)},
+            {"created_by": str(current_user.id)},
+        ]
+    else:
+        query["payload.assigned_to"] = {"$in": user_ids_to_fetch}
+    if project_id:
+        query["payload.project_id"] = project_id
+    return query
+
+
+def is_sales_follow_up_job(job) -> bool:
+    """Identify a Sales follow-up using durable scheduling metadata.
+
+    Preferred: payload.source_type == "sales_follow_up". For older records that
+    predate source_type, fall back to the relation metadata the Sales follow-up
+    endpoint has always written (related_entity_type == "sales_lead") or the
+    known "sales-follow-up" tag. Titles are deliberately NOT inspected.
+    """
+    payload = getattr(job, "payload", None) or {}
+    if payload.get("source_type") == "sales_follow_up":
+        return True
+    if payload.get("related_entity_type") == "sales_lead":
+        return True
+    tags = payload.get("tags") or []
+    if isinstance(tags, str):
+        tags = [tags]
+    normalized_tags = {str(tag).strip().lower() for tag in tags}
+    return bool(normalized_tags & {"sales-follow-up", "sales_follow_up"})
+
+
+def should_show_scheduled_placeholder(job) -> bool:
+    """Deduplicate the scheduled placeholder against the generated record.
+
+    Once a RUNNING job has persisted its result linkage, the real Task exists
+    and is rendered through the normal Task calendar flow, so the placeholder is
+    skipped. PENDING and FAILED jobs always keep their placeholder.
+    """
+    if getattr(job, "result_type", None) == "task" and getattr(job, "result_id", None):
+        return False
+    return True
+
+
+def scheduled_job_calendar_title(job, *, lead_name: Optional[str] = None) -> str:
+    """Human title for a scheduled placeholder without repeated prefixes."""
+    payload = getattr(job, "payload", None) or {}
+    stored = (payload.get("title") or "").strip()
+    if is_sales_follow_up_job(job):
+        if stored.lower().startswith("follow up"):
+            return stored
+        fallback = lead_name or stored or "Scheduled follow-up"
+        return f"Follow-up: {fallback}"
+    base = stored or "Scheduled task"
+    if base.lower().startswith("scheduled task"):
+        return base
+    return f"Scheduled Task: {base}"
+
+
+def _serialize_payload_datetime(value) -> Optional[str]:
+    """Serialize a payload datetime (datetime or ISO string) as full UTC ISO."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = parse_to_utc(value)
+        return parsed.isoformat() if parsed else value.isoformat()
+    parsed = parse_to_utc(str(value))
+    return parsed.isoformat() if parsed else str(value)
+
+
+def scheduled_job_to_calendar_event(
+    job,
+    *,
+    assignee_name: str = "Unassigned",
+    project_name: Optional[str] = None,
+    lead_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Serialize an active CREATE_TASK job as a Calendar placeholder event.
+
+    `run_at` is the occurrence time (start_at / scheduled_run_at). Datetimes are
+    returned as full UTC ISO instants; the frontend converts them through its
+    timezone service — never pre-formatted strings.
+    """
+    payload = getattr(job, "payload", None) or {}
+    is_follow_up = is_sales_follow_up_job(job)
+    status_value = _enum_value(getattr(job, "status", None), ScheduledJobStatus.PENDING.value)
+    status_styles = {
+        ScheduledJobStatus.PENDING.value: ("scheduled", "#D946EF" if is_follow_up else "#06B6D4"),
+        ScheduledJobStatus.RUNNING.value: ("running", "#F59E0B"),
+        ScheduledJobStatus.FAILED.value: ("failed", "#EF4444"),
+    }
+    status_label, color = status_styles.get(status_value, ("scheduled", "#D946EF" if is_follow_up else "#06B6D4"))
+    run_at = getattr(job, "run_at", None)
+    notes = (payload.get("description") or "").strip() or (getattr(job, "notes", None) or "").strip()
+    return {
+        "id": f"scheduled_job_{job.id}",
+        "type": "sales_follow_up" if is_follow_up else "scheduled_task",
+        "title": scheduled_job_calendar_title(job, lead_name=lead_name),
+        "description": notes or None,
+        "start": run_at.date().isoformat() if isinstance(run_at, datetime) else None,
+        "start_at": run_at.isoformat() if isinstance(run_at, datetime) else None,
+        "scheduled_run_at": run_at.isoformat() if isinstance(run_at, datetime) else None,
+        "due_date": _serialize_payload_datetime(payload.get("due_date")),
+        "time": None,
+        "status": status_label,
+        "scheduled_status": status_value,
+        "scheduled_job_id": str(job.id),
+        "is_scheduled_placeholder": True,
+        "priority": payload.get("priority") or "medium",
+        "assignee": assignee_name,
+        "assignee_id": payload.get("assigned_to"),
+        "project_id": payload.get("project_id"),
+        "project_name": project_name,
+        "source_type": payload.get("source_type"),
+        "related_entity_type": payload.get("related_entity_type"),
+        "related_entity_id": payload.get("related_entity_id"),
+        "related_entity_stage": payload.get("related_entity_stage"),
+        "related_entity_url": payload.get("related_entity_url"),
+        "notes": notes or None,
+        "color": color,
+        "result_type": getattr(job, "result_type", None),
+        "result_id": getattr(job, "result_id", None),
+        "error": getattr(job, "error", None),
+        "created_by": getattr(job, "created_by", None),
+    }
+
+
+async def resolve_calendar_job_assignee_names(user_ids: list[str]) -> Dict[str, str]:
+    """Batch-resolve assignee ids to display names (single query, no N+1)."""
+    names: Dict[str, str] = {}
+    object_ids = valid_object_ids([uid for uid in user_ids if uid])
+    if not object_ids:
+        return names
+    users = await User.find({"_id": {"$in": object_ids}}).to_list()
+    for user in users:
+        names[str(user.id)] = f"{user.first_name} {user.last_name}".strip() or "Unassigned"
+    return names
+
+
 def task_to_calendar_event(task, *, assignee_name: str = "Unassigned", project_name: Optional[str] = None) -> Dict[str, Any]:
     event_datetime = task.due_date or task.created_at
     event_date = event_datetime.date() if isinstance(event_datetime, datetime) else event_datetime
@@ -150,6 +349,13 @@ def task_to_calendar_event(task, *, assignee_name: str = "Unassigned", project_n
         "project_name": project_name,
         "priority": priority,
         "status": status_value,
+        # Optional relationship metadata so an executed Sales follow-up Task can
+        # link back to its originating lead in the Calendar detail view.
+        "source_type": getattr(task, "source_type", None),
+        "related_entity_type": getattr(task, "related_entity_type", None),
+        "related_entity_id": getattr(task, "related_entity_id", None),
+        "related_entity_stage": getattr(task, "related_entity_stage", None),
+        "related_entity_url": getattr(task, "related_entity_url", None),
         "color": "#10B981" if priority in {"urgent", "critical"} else "#F59E0B" if priority == "high" else "#3B82F6",
     }
 
@@ -161,6 +367,7 @@ async def get_calendar_events(
     view_type: str = Query("my_calendar", description="my_calendar or team_calendar"),
     employee_id: Optional[str] = Query(None, description="Filter by employee ID (for team calendar)"),
     project_id: Optional[str] = Query(None, description="Filter by project ID (for team calendar)"),
+    timezone: Optional[str] = Query(None, description="IANA timezone used to convert local day boundaries to UTC"),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -169,7 +376,7 @@ async def get_calendar_events(
     - team_calendar: Team events (accessible by Admin, Manager, Lead).
     """
     try:
-        start, end, start_at, end_at = parse_calendar_window(start_date, end_date)
+        start, end, start_at, end_at = parse_calendar_window(start_date, end_date, timezone)
         
         events = []
         
@@ -490,8 +697,63 @@ async def get_calendar_events(
                         "color": color,
                     })
 
+        # 4. Fetch active CREATE_TASK scheduled jobs (pending Sales follow-ups
+        #    and generic scheduled tasks) so they appear in the Calendar before
+        #    execution. COMPLETED/CANCELLED jobs are excluded by the query; once
+        #    a job executes, its generated Task is shown through the Task flow.
+        scheduled_jobs = await ScheduledJob.find(
+            build_calendar_scheduled_job_query(
+                current_user,
+                view_type=view_type,
+                user_ids_to_fetch=user_ids_to_fetch,
+                start_at=start_at,
+                end_at=end_at,
+                project_id=project_id,
+            )
+        ).to_list()
+
+        # Batch-resolve assignee names (single query, no N+1).
+        job_assignee_names = await resolve_calendar_job_assignee_names(
+            [job.payload.get("assigned_to") for job in scheduled_jobs if job.payload.get("assigned_to")]
+        )
+
+        # Batch-resolve project names.
+        job_project_ids = {job.payload.get("project_id") for job in scheduled_jobs if job.payload.get("project_id")}
+        job_project_names = {}
+        if job_project_ids:
+            db_projects = await Project.find(build_project_name_lookup_query(list(job_project_ids))).to_list()
+            for proj in db_projects:
+                job_project_names[str(proj.id)] = proj.name
+                if proj.project_id:
+                    job_project_names[proj.project_id] = proj.name
+
+        # Batch-resolve lead names for Sales follow-ups (for titles).
+        follow_up_jobs = [job for job in scheduled_jobs if is_sales_follow_up_job(job)]
+        lead_ids = [str(job.payload.get("related_entity_id")) for job in follow_up_jobs if job.payload.get("related_entity_id")]
+        lead_names = {}
+        lead_object_ids = valid_object_ids(lead_ids)
+        if lead_object_ids:
+            leads = await SalesProspect.find({"_id": {"$in": lead_object_ids}}).to_list()
+            for lead in leads:
+                lead_names[str(lead.id)] = lead.prospect_name or lead.company_name or "Lead"
+
+        for job in scheduled_jobs:
+            if not should_show_scheduled_placeholder(job):
+                # Generated Task already exists — the real Task event is the
+                # single visible item (no ScheduledJob/CRMActivity/Task trio).
+                continue
+            payload = job.payload or {}
+            events.append(
+                scheduled_job_to_calendar_event(
+                    job,
+                    assignee_name=job_assignee_names.get(payload.get("assigned_to"), "Unassigned"),
+                    project_name=job_project_names.get(payload.get("project_id")),
+                    lead_name=lead_names.get(str(payload.get("related_entity_id"))),
+                )
+            )
+
         # Sort events by date
-        events.sort(key=lambda x: x["start"])
+        events.sort(key=lambda x: x["start"] or "")
         
         return {
             "events": events,

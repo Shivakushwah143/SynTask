@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from 'react-query'
+import { useQuery, useQueryClient } from 'react-query'
 import {
   addDays,
   addMonths,
@@ -19,6 +19,7 @@ import {
 } from 'date-fns'
 import {
   Calendar as CalendarIcon,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -40,7 +41,8 @@ import {
   BarChart3,
   PieChart,
   Activity,
-  Bell
+  Bell,
+  PhoneCall
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { calendarApi } from '../api/calendar'
@@ -54,8 +56,27 @@ const TIMELINE_START_HOUR = 8
 const TIMELINE_END_HOUR = 20
 const HOURS = Array.from({ length: TIMELINE_END_HOUR - TIMELINE_START_HOUR + 1 }, (_, i) => TIMELINE_START_HOUR + i)
 
+// Canonical calendar date for an event. Prioritizes the full UTC instant
+// (start_at / scheduled_run_at) so near-midnight scheduled follow-ups group on
+// the correct LOCAL date, falling back to due_date, start+time and finally the
+// plain start date. All Calendar grouping, stats and sorting go through this.
+export function getCalendarEventDate(event) {
+  const candidates = [
+    event?.start_at,
+    event?.scheduled_run_at,
+    event?.due_date,
+    event?.start && event?.time ? `${event.start}T${String(event.time).length === 5 ? `${event.time}:00` : event.time}` : null,
+    event?.start,
+  ]
+  const first = candidates.find((candidate) => !!candidate)
+  if (!first) return timeService.now()
+  const parsed = timeService.instant(first)
+  return isValid(parsed) ? parsed : timeService.now()
+}
+
 export default function WorkspaceCalendar() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const userRole = normalizeRole(user?.role)
   const isEmployee = userRole === ROLE.EMPLOYEE
@@ -74,6 +95,8 @@ export default function WorkspaceCalendar() {
     project: true,
     meeting: true,
     milestone: true,
+    follow_up: true,
+    scheduled_task: true,
     completed: true,
     pending: true,
     high: true,
@@ -106,12 +129,22 @@ export default function WorkspaceCalendar() {
     () => calendarApi.getEvents({
       start_date: dateRange.start_date,
       end_date: dateRange.end_date,
-      view_type: viewType
+      view_type: viewType,
+      timezone: timeService.getTimezone()
     }),
     { staleTime: 30 * 1000 }
   )
 
-  const events = asArray(data, ['events'])
+  const events = asArray(data, ['events']).filter((event) => {
+    // Defensive mirrors of the backend guarantees: completed/cancelled
+    // placeholders and placeholders whose generated Task already exists must
+    // never render, so no ScheduledJob/Task duplicate can appear.
+    if (event.is_scheduled_placeholder) {
+      if (['COMPLETED', 'CANCELLED'].includes(String(event.scheduled_status || ''))) return false
+      if (event.result_type === 'task' && event.result_id) return false
+    }
+    return true
+  })
 
   // Helper to parse dates safely
   const parseEventDate = (dateStr) => {
@@ -134,6 +167,8 @@ export default function WorkspaceCalendar() {
       if (event.type === 'milestone' && filters.milestone) matchesType = true
       if ((event.type === 'project_start' || event.type === 'project_due') && filters.project) matchesType = true
       if ((event.type === 'task_assigned' || event.type === 'task_due' || event.type === 'task') && filters.task) matchesType = true
+      if (event.type === 'sales_follow_up' && filters.follow_up) matchesType = true
+      if (event.type === 'scheduled_task' && filters.scheduled_task) matchesType = true
 
       const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(event.status || '').toLowerCase())
       let matchesStatus = false
@@ -175,10 +210,20 @@ export default function WorkspaceCalendar() {
   const overdueTasks = useMemo(() => {
     const today = timeService.now()
     return events.filter(e => {
+      // Scheduled placeholders: failed jobs (did not execute) and pending jobs
+      // whose run_at already passed count as overdue; running jobs do not.
+      if (e.is_scheduled_placeholder) {
+        if (e.status === 'failed') return true
+        if (String(e.scheduled_status || '') === 'PENDING') {
+          const runAt = getCalendarEventDate(e)
+          return isBefore(runAt, today) && !isSameDay(runAt, today)
+        }
+        return false
+      }
       if (e.type !== 'task_due') return false
       const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(e.status || '').toLowerCase())
       if (isCompleted) return false
-      const due = parseEventDate(e.start)
+      const due = getCalendarEventDate(e)
       return isBefore(due, today) && !isSameDay(due, today)
     })
   }, [events])
@@ -186,10 +231,12 @@ export default function WorkspaceCalendar() {
   const upcomingDeadlines = useMemo(() => {
     const today = timeService.now()
     return events.filter(e => {
-      if (e.type !== 'task_due' && e.type !== 'project_due') return false
+      const isScheduled = !!e.is_scheduled_placeholder
+      if (e.type !== 'task_due' && e.type !== 'project_due' && !isScheduled) return false
       const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(e.status || '').toLowerCase())
       if (isCompleted) return false
-      const due = parseEventDate(e.start)
+      if (isScheduled && e.status === 'failed') return false
+      const due = getCalendarEventDate(e)
       return isAfter(due, today) || isSameDay(due, today)
     }).slice(0, 5)
   }, [events])
@@ -231,6 +278,8 @@ export default function WorkspaceCalendar() {
       project: true,
       meeting: true,
       milestone: true,
+      follow_up: true,
+      scheduled_task: true,
       completed: true,
       pending: true,
       high: true,
@@ -245,6 +294,8 @@ export default function WorkspaceCalendar() {
       project: false,
       meeting: false,
       milestone: false,
+      follow_up: false,
+      scheduled_task: false,
       completed: false,
       pending: false,
       high: false,
@@ -265,6 +316,26 @@ export default function WorkspaceCalendar() {
       } else {
         navigate('/meetings')
       }
+      return
+    }
+
+    // Sales follow-up placeholder → the originating Sales lead. Only internal
+    // application paths (starting with '/') are accepted from job metadata;
+    // arbitrary external URLs are never followed.
+    if (event.type === 'sales_follow_up') {
+      const relatedUrl = event.related_entity_url
+      if (typeof relatedUrl === 'string' && relatedUrl.startsWith('/')) {
+        navigate(relatedUrl)
+      } else if (event.related_entity_id) {
+        navigate(`/crm/leads/${event.related_entity_id}`)
+      }
+      return
+    }
+
+    // Generic scheduled task placeholder → Scheduled Work (the Task does not
+    // exist yet, so /tasks/{scheduled_job_id} would be wrong).
+    if (event.type === 'scheduled_task') {
+      navigate('/scheduled-jobs')
       return
     }
 
@@ -303,6 +374,8 @@ export default function WorkspaceCalendar() {
       case 'task_assigned': return 'Task Assigned'
       case 'task_due': return 'Task Due'
       case 'milestone': return 'Milestone'
+      case 'sales_follow_up': return 'Sales Follow-up'
+      case 'scheduled_task': return 'Scheduled Task'
       default: return 'Event'
     }
   }
@@ -521,6 +594,20 @@ export default function WorkspaceCalendar() {
                     <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600" checked={filters.milestone} onChange={() => toggleFilter('milestone')} />
                     Milestones
                   </label>
+                  <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-fuchsia-600 focus:ring-fuchsia-500 dark:border-gray-600" checked={filters.follow_up} onChange={() => toggleFilter('follow_up')} />
+                    <span className="flex items-center gap-1">
+                      <PhoneCall className="h-3 w-3 text-fuchsia-500" />
+                      Sales Follow-ups
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500 dark:border-gray-600" checked={filters.scheduled_task} onChange={() => toggleFilter('scheduled_task')} />
+                    <span className="flex items-center gap-1">
+                      <CalendarClock className="h-3 w-3 text-cyan-500" />
+                      Scheduled Tasks
+                    </span>
+                  </label>
                 </div>
               </div>
 
@@ -720,7 +807,7 @@ export default function WorkspaceCalendar() {
                   setSelected={setSelectedDate}
                   month={currentDate}
                   onOpenEvent={setSelectedEvent}
-                  parseEventDate={parseEventDate}
+                  parseEventDate={getCalendarEventDate}
                 />
               )}
               {view === 'week' && (
@@ -728,7 +815,7 @@ export default function WorkspaceCalendar() {
                   days={weekDays}
                   events={filteredEvents}
                   onOpenEvent={setSelectedEvent}
-                  parseEventDate={parseEventDate}
+                  parseEventDate={getCalendarEventDate}
                 />
               )}
               {view === 'day' && (
@@ -736,7 +823,7 @@ export default function WorkspaceCalendar() {
                   day={currentDate}
                   events={filteredEvents}
                   onOpenEvent={setSelectedEvent}
-                  parseEventDate={parseEventDate}
+                  parseEventDate={getCalendarEventDate}
                 />
               )}
             </div>
@@ -778,8 +865,8 @@ export default function WorkspaceCalendar() {
             <div className="flex-1 p-6 space-y-6">
               {/* Same Date Items Selector */}
               {(() => {
-                const targetDate = parseEventDate(selectedEvent.start)
-                const sameDateEvents = filteredEvents.filter((e) => isSameDay(parseEventDate(e.start), targetDate))
+                const targetDate = getCalendarEventDate(selectedEvent)
+                const sameDateEvents = filteredEvents.filter((e) => isSameDay(getCalendarEventDate(e), targetDate))
                 
                 return (
                   <>
@@ -840,7 +927,7 @@ export default function WorkspaceCalendar() {
                           </span>
                         </div>
                         <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-gray-900 px-2.5 py-1 rounded-xl shadow-xs border border-indigo-200 dark:border-indigo-800">
-                          {timeService.formatPattern(parseEventDate(selectedEvent.start), 'MMM d, yyyy')}
+                          {timeService.formatPattern(getCalendarEventDate(selectedEvent), 'MMM d, yyyy')}
                         </span>
                       </div>
 
@@ -851,7 +938,9 @@ export default function WorkspaceCalendar() {
                             ? timeService.formatPattern(parseEventDate(selectedEvent.start_date), 'PPP')
                             : selectedEvent.is_scheduled
                               ? timeService.formatPattern(parseEventDate(selectedEvent.start), 'PPP')
-                              : 'Not specified'}
+                              : selectedEvent.is_scheduled_placeholder
+                                ? timeService.formatPattern(getCalendarEventDate(selectedEvent), 'PPP')
+                                : 'Not specified'}
                         </span>
                       </div>
 
@@ -900,6 +989,40 @@ export default function WorkspaceCalendar() {
                             <User className="h-3.5 w-3.5 text-gray-500" />
                             {selectedEvent.assignee}
                           </span>
+                        </div>
+                      )}
+
+                      {selectedEvent.is_scheduled_placeholder && (
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 col-span-2">
+                          <span className="font-semibold text-gray-400 block uppercase tracking-wider mb-1">Scheduled Status</span>
+                          <span className={`font-medium flex items-center gap-1.5 ${selectedEvent.status === 'failed' ? 'text-rose-600 dark:text-rose-400' : selectedEvent.status === 'running' ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                            <CalendarClock className="h-3.5 w-3.5" />
+                            <span className="capitalize">{selectedEvent.status || 'scheduled'}</span>
+                          </span>
+                        </div>
+                      )}
+
+                      {selectedEvent.type === 'sales_follow_up' && (
+                        <div className="p-3 rounded-xl bg-fuchsia-50/50 dark:bg-fuchsia-950/20 border border-fuchsia-100 dark:border-fuchsia-900/30 col-span-2">
+                          <span className="font-semibold text-fuchsia-500 block uppercase tracking-wider mb-1">Lead</span>
+                          <span className="font-medium text-fuchsia-900 dark:text-fuchsia-200 flex items-center gap-1.5">
+                            <PhoneCall className="h-3.5 w-3.5" />
+                            {selectedEvent.related_entity_id ? `Lead ${selectedEvent.related_entity_id}` : 'Linked Sales lead'}
+                            {selectedEvent.related_entity_stage && (
+                              <span className="ml-1 rounded-full bg-white dark:bg-gray-900 px-2 py-0.5 text-[10px] font-semibold border border-fuchsia-200 dark:border-fuchsia-800">
+                                {String(selectedEvent.related_entity_stage).replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+
+                      {selectedEvent.status === 'failed' && selectedEvent.error && (
+                        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 col-span-2">
+                          <span className="font-semibold text-rose-500 block uppercase tracking-wider mb-1">Failure Reason</span>
+                          <p className="text-xs text-rose-700 dark:text-rose-300 whitespace-pre-wrap break-words">
+                            {String(selectedEvent.error).slice(0, 500)}
+                          </p>
                         </div>
                       )}
 
@@ -1009,6 +1132,16 @@ export default function WorkspaceCalendar() {
                             <Video className="h-4 w-4" />
                             Join Meeting
                           </>
+                        ) : selectedEvent.type === 'sales_follow_up' ? (
+                          <>
+                            <PhoneCall className="h-4 w-4" />
+                            Open Lead
+                          </>
+                        ) : selectedEvent.type === 'scheduled_task' ? (
+                          <>
+                            <CalendarClock className="h-4 w-4" />
+                            Manage Schedule
+                          </>
                         ) : (
                           <>
                             <ExternalLink className="h-4 w-4" />
@@ -1040,7 +1173,7 @@ function MonthView({ days, events, selected, setSelected, month, onOpenEvent, pa
       
       <div className="grid grid-cols-7 divide-x divide-y divide-gray-100 dark:divide-gray-800">
         {days.map((day) => {
-          const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
+          const dayEvents = events.filter((e) => isSameDay(parseEventDate(e), day))
           const isSelected = isSameDay(day, selected)
           const isCurrentMonth = isSameMonth(day, month)
           const isToday = isSameDay(day, timeService.now())
@@ -1049,6 +1182,7 @@ function MonthView({ days, events, selected, setSelected, month, onOpenEvent, pa
           return (
             <div
               key={timeService.toUtcISOString(day)}
+              data-calendar-day={format(day, 'yyyy-MM-dd')}
               onClick={() => {
                 setSelected(day)
                 if (dayEvents.length > 0) {
@@ -1136,7 +1270,7 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
 
       <div className="grid min-w-[700px] grid-cols-7 divide-x divide-gray-200 dark:divide-gray-700 min-h-[450px] bg-white dark:bg-gray-900">
         {days.map((day) => {
-          const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
+          const dayEvents = events.filter((e) => isSameDay(parseEventDate(e), day))
           return (
             <div key={timeService.toUtcISOString(day)} className="p-2 space-y-2">
               {dayEvents.length === 0 ? (
@@ -1177,7 +1311,7 @@ function WeekView({ days, events, onOpenEvent, parseEventDate }) {
 
 /* Day view sub-component */
 function DayView({ day, events, onOpenEvent, parseEventDate }) {
-  const dayEvents = events.filter((e) => isSameDay(parseEventDate(e.start), day))
+  const dayEvents = events.filter((e) => isSameDay(parseEventDate(e), day))
   const timedEvents = dayEvents.filter((e) => e.time)
   const allDayEvents = dayEvents.filter((e) => !e.time)
 
@@ -1269,9 +1403,19 @@ function DayView({ day, events, onOpenEvent, parseEventDate }) {
 }
 
 /* Helper styles */
+const COMPLETED_STATUSES = ['completed', 'done', 'approved', 'published', 'resolved']
+
 function getEventColorStyles(event) {
-  const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(event.status || '').toLowerCase())
+  const isCompleted = COMPLETED_STATUSES.includes(String(event.status || '').toLowerCase())
   if (isCompleted) return 'border-gray-200 bg-gray-100 text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'
+
+  // Scheduled placeholders: failed is always red, running amber.
+  if (event.is_scheduled_placeholder && event.status === 'failed') {
+    return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300'
+  }
+  if (event.is_scheduled_placeholder && event.status === 'running') {
+    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300'
+  }
 
   switch (event.type) {
     case 'meeting':
@@ -1295,14 +1439,25 @@ function getEventColorStyles(event) {
       return 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-950/20 dark:text-orange-300'
     case 'milestone':
       return 'border-yellow-300 bg-yellow-50/50 text-yellow-800 dark:border-yellow-900/30 dark:bg-yellow-950/10 dark:text-yellow-300'
+    case 'sales_follow_up':
+      return 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20 dark:text-fuchsia-300'
+    case 'scheduled_task':
+      return 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/20 dark:text-cyan-300'
     default:
       return 'border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'
   }
 }
 
 function getEventStylesWithBorder(event) {
-  const isCompleted = ['completed', 'done', 'approved', 'published', 'resolved'].includes(String(event.status || '').toLowerCase())
+  const isCompleted = COMPLETED_STATUSES.includes(String(event.status || '').toLowerCase())
   if (isCompleted) return 'border-l-4 border-gray-400 bg-gray-50 text-gray-500 border-y border-r border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
+
+  if (event.is_scheduled_placeholder && event.status === 'failed') {
+    return 'border-l-4 border-red-500 bg-red-50 text-red-700 border-y border-r border-red-100 dark:bg-red-950/10 dark:text-red-300 dark:border-red-900/30'
+  }
+  if (event.is_scheduled_placeholder && event.status === 'running') {
+    return 'border-l-4 border-amber-500 bg-amber-50 text-amber-700 border-y border-r border-amber-100 dark:bg-amber-950/10 dark:text-amber-300 dark:border-amber-900/30'
+  }
 
   switch (event.type) {
     case 'meeting':
@@ -1326,6 +1481,10 @@ function getEventStylesWithBorder(event) {
       return 'border-l-4 border-orange-500 bg-orange-50 text-orange-700 border-y border-r border-orange-100 dark:bg-orange-950/10 dark:text-orange-300 dark:border-orange-900/30'
     case 'milestone':
       return 'border-l-4 border-yellow-600 bg-yellow-50/50 text-yellow-800 border-y border-r border-yellow-100 dark:bg-yellow-950/10 dark:text-yellow-300 dark:border-yellow-900/30'
+    case 'sales_follow_up':
+      return 'border-l-4 border-fuchsia-500 bg-fuchsia-50 text-fuchsia-700 border-y border-r border-fuchsia-100 dark:bg-fuchsia-950/10 dark:text-fuchsia-300 dark:border-fuchsia-900/30'
+    case 'scheduled_task':
+      return 'border-l-4 border-cyan-500 bg-cyan-50 text-cyan-700 border-y border-r border-cyan-100 dark:bg-cyan-950/10 dark:text-cyan-300 dark:border-cyan-900/30'
     default:
       return 'border-l-4 border-gray-500 bg-gray-50 text-gray-700 border-y border-r border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'
   }

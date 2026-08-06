@@ -9,6 +9,10 @@ vi.mock('../api/scheduledJobs', () => ({
   },
 }))
 
+vi.mock('react-query', () => ({
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+}))
+
 vi.mock('../store/authStore', () => ({
   useAuthStore: () => ({
     user: { role: 'admin' },
