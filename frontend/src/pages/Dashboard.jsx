@@ -1373,7 +1373,13 @@ const Dashboard = () => {
                       )}
                       <span aria-hidden="true">·</span>
                       <span>{e.assignee || 'Unassigned'}</span>
+                      {e.status && (
+                        <span className="ml-2 inline-flex items-center rounded px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">{e.status}</span>
+                      )}
                     </p>
+                    {e.description && (
+                      <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{e.description}</p>
+                    )}
                   </div>
                   {phoneHref ? (
                     <a
