@@ -58,14 +58,14 @@ const VIEW_MODES = [
 function Section({ title, description, action, children }) {
   return (
     <section className="rounded-3xl border border-gray-200/80 bg-white/90 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-950/80">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
         <div>
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-          {description ? <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p> : null}
+          {description ? <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{description}</p> : null}
         </div>
         {action}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-4">{children}</div>
     </section>
   )
 }
@@ -247,19 +247,19 @@ export default function GoogleWorkspacePage() {
 
   const renderDashboard = () => (
     <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[
           ['Today\'s events', stats.todayEvents, CalendarDays],
           ['Meetings', stats.upcomingMeetings, Video],
           ['Mail items', stats.gmailActivity, Mail],
           ['Drive files', stats.driveFiles, FolderOpen],
         ].map(([label, value, Icon]) => (
-          <div key={label} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/60">
+          <div key={label} className="rounded-2xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/60">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
               <Icon className="h-4 w-4 text-gray-400" />
             </div>
-            <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-50">{value}</p>
+            <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-50">{value}</p>
           </div>
         ))}
       </div>
@@ -267,12 +267,12 @@ export default function GoogleWorkspacePage() {
       <div className="grid gap-4 xl:grid-cols-2">
         <Section title="Connected account" description="Reuses the existing Google identity and stored Workspace credentials.">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800">
-              {account.avatar ? <img src={account.avatar} alt={account.name || 'Google account'} className="h-full w-full object-cover" /> : <UserCircle2 className="h-8 w-8 text-gray-400" />}
+            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800">
+              {account.avatar ? <img src={account.avatar} alt={account.name || 'Google account'} className="h-full w-full object-cover" /> : <UserCircle2 className="h-6 w-6 text-gray-400" />}
             </div>
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{account.name || 'Connected Google account'}</h3>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{account.name || 'Connected Google account'}</h3>
                 <StatusPill connected={account.connected !== false} status={account.status} />
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400">{account.email || user?.email}</p>
@@ -287,7 +287,7 @@ export default function GoogleWorkspacePage() {
               <button key={action.id} type="button" onClick={() => {
                 if (action.id === 'compose') setComposerOpen(true)
                 if (action.id === 'sync') void refreshAll()
-              }} className="flex items-center justify-between rounded-2xl border border-gray-200 px-4 py-3 text-left transition hover:border-primary-300 hover:bg-primary-50/60 dark:border-gray-800 dark:hover:border-primary-800 dark:hover:bg-primary-950/20">
+              }} className="flex items-center justify-between rounded-2xl border border-gray-200 px-3 py-2 text-left transition hover:border-primary-300 hover:bg-primary-50/60 dark:border-gray-800 dark:hover:border-primary-800 dark:hover:bg-primary-950/20">
                 <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">{action.label}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">SynTask-native action</p>
@@ -515,18 +515,18 @@ export default function GoogleWorkspacePage() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      <div className="rounded-[2rem] border border-gray-200/80 bg-gradient-to-br from-white via-slate-50 to-primary-50 p-5 shadow-sm dark:border-gray-800 dark:from-gray-950 dark:via-gray-950 dark:to-primary-950/20 md:p-7">
+      <div className="rounded-[2rem] border border-gray-200/80 bg-gradient-to-br from-white via-slate-50 to-primary-50 p-4 shadow-sm dark:border-gray-800 dark:from-gray-950 dark:via-gray-950 dark:to-primary-950/20 md:p-5">
         <PageHeader
           title="Google Workspace"
           description="A native SynTask workspace for Gmail, Calendar, Meet, and account management."
           actions={pageHeaderActions}
         />
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           {TABS.map((tab) => {
             const Icon = tab.icon
             const active = activeTab === tab.id
             return (
-              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${active ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950' : 'bg-white/80 text-gray-600 hover:bg-white dark:bg-gray-900/70 dark:text-gray-300 dark:hover:bg-gray-800'}`}>
+              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition ${active ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950' : 'bg-white/80 text-gray-600 hover:bg-white dark:bg-gray-900/70 dark:text-gray-300 dark:hover:bg-gray-800'}`}>
                 <Icon className="h-4 w-4" />
                 {tab.label}
               </button>

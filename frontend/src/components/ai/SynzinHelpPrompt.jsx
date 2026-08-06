@@ -2,8 +2,24 @@ import { motion } from 'framer-motion'
 import { MessageCircle, X } from 'lucide-react'
 import { SynzinAvatar } from './SynzinAvatar'
 
-export function SynzinHelpPrompt({ isOpen, onAsk, onDismiss }) {
-  if (!isOpen) return null
+export function SynzinHelpPrompt({ isOpen, onAsk, onDismiss, onOpen }) {
+  if (!isOpen) {
+    return (
+      <motion.button
+        type="button"
+        onClick={onOpen}
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 0.5, scale: 1 }}
+        whileHover={{ opacity: 1, scale: 1.08 }}
+        whileTap={{ scale: 0.95 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="fixed bottom-11 right-11 z-40 inline-flex h-16 w-16 items-center justify-center rounded-full border border-orange-100 bg-white shadow-lg shadow-slate-900/10 dark:border-[#5a4635] dark:bg-[rgb(29_24_19)]"
+        aria-label="Open Synzin AI help"
+      >
+        <SynzinAvatar size="sm" />
+      </motion.button>
+    )
+  }
 
   return (
     <motion.aside

@@ -252,7 +252,7 @@ const TicketBarChart = ({ title, description, data, icon: Icon, color = 'indigo'
   }
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h3>
@@ -260,7 +260,7 @@ const TicketBarChart = ({ title, description, data, icon: Icon, color = 'indigo'
         </div>
         {Icon && <Icon className="h-5 w-5 text-indigo-500" />}
       </div>
-      <div className="mt-4 space-y-3">
+      <div className="mt-3 space-y-2">
         {data.map((item) => {
           const width = `${Math.max((item.value / maxValue) * 100, item.value ? 6 : 0)}%`
           const barColor = item.color || colorMap[color]
@@ -292,10 +292,10 @@ const SignalTile = ({ label, value, helper, icon: Icon, tone = 'amber', trend, t
   }
 
   return (
-    <div className={`rounded-2xl border ${tones[tone] || tones.amber} bg-white p-4 shadow-sm transition-all hover:shadow-md dark:bg-gray-800`}>
+    <div className={`rounded-2xl border ${tones[tone] || tones.amber} bg-white p-3 shadow-sm transition-all hover:shadow-md dark:bg-gray-800`}>
       <div className="flex items-center justify-between">
-        <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone] || tones.amber}`}>
-          <Icon className="h-5 w-5" />
+        <div className={`inline-flex h-8 w-8 items-center justify-center rounded-xl ${tones[tone] || tones.amber}`}>
+          <Icon className="h-4 w-4" />
         </div>
         {trend && (
           <span className={`text-xs font-semibold ${trend === 'up' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
@@ -303,9 +303,9 @@ const SignalTile = ({ label, value, helper, icon: Icon, tone = 'amber', trend, t
           </span>
         )}
       </div>
-      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
+      <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-0.5 text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+      <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
     </div>
   )
 }
@@ -322,7 +322,7 @@ const QuickActionCard = ({ icon: Icon, label, description, href, onClick, color 
 
   const Element = href ? Link : 'button'
   const props = {
-    className: "group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-lg hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800",
+    className: "group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-lg dark:border-gray-700 dark:bg-gray-800",
     ...(href ? { to: href } : { type: 'button', onClick }),
   }
 
@@ -330,8 +330,8 @@ const QuickActionCard = ({ icon: Icon, label, description, href, onClick, color 
     <Element {...props}>
       <div className={`absolute right-0 top-0 -mr-8 -mt-8 h-20 w-20 rounded-full bg-gradient-to-r ${colors[color]} opacity-10 blur-2xl`}></div>
       <div className="relative flex items-center gap-3">
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2.5 text-white shadow-lg`}>
-          <Icon className="h-5 w-5" />
+        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
+          <Icon className="h-4 w-4" />
         </div>
         <div>
           <p className="text-sm font-semibold text-gray-900 dark:text-white">{label}</p>
@@ -747,24 +747,24 @@ const Tickets = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-4 text-white shadow-xl md:p-5">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
-              <Ticket className="h-7 w-7 text-white" />
+        <div className="relative z-10 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-white/20 p-2 backdrop-blur-md shadow-lg border border-white/20">
+              <Ticket className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">Service Requests & Tickets</h1>
-              <p className="mt-1 text-indigo-100 text-sm">Track, manage & resolve support requests with real-time status boards</p>
+              <h1 className="text-xl font-bold md:text-2xl text-white tracking-tight">Service Requests & Tickets</h1>
+              <p className="mt-0.5 text-indigo-100 text-xs">Track, manage & resolve support requests with real-time status boards</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
+              className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
             >
               <Plus className="h-4 w-4" />
               <span>New Request</span>
@@ -777,7 +777,7 @@ const Tickets = () => {
                   setColumnForm({ label: '', color: 'badge-secondary' })
                   setShowColumnModal(true)
                 }}
-                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 shadow-md border border-white/10"
+                className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 shadow-md border border-white/10"
               >
                 <Settings className="h-4 w-4" />
                 <span>Manage Columns</span>
@@ -788,71 +788,83 @@ const Tickets = () => {
       </div>
 
       {/* Quick Stats - 6 Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <div className="group rounded-xl border border-indigo-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total</span>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="group rounded-xl border border-indigo-100 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center gap-3">
             <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
               <Inbox className="h-4 w-4" />
             </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">Total</p>
+              <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{tickets.length}</p>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">All requests</p>
+            </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{tickets.length}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">All requests</p>
         </div>
 
-        <div className="group rounded-xl border border-emerald-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Active</span>
+        <div className="group rounded-xl border border-emerald-100 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center gap-3">
             <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
               <Activity className="h-4 w-4" />
             </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">Active</p>
+              <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{ticketStats.activeCount}</p>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">In progress</p>
+            </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.activeCount}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">In progress</p>
         </div>
 
-        <div className="group rounded-xl border border-rose-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Urgent</span>
+        <div className="group rounded-xl border border-rose-100 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center gap-3">
             <div className="rounded-lg bg-rose-50 p-2 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
               <AlertCircle className="h-4 w-4" />
             </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">Urgent</p>
+              <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{ticketStats.urgentCount}</p>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">Needs attention</p>
+            </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.urgentCount}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Needs attention</p>
         </div>
 
-        <div className="group rounded-xl border border-amber-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Unassigned</span>
+        <div className="group rounded-xl border border-amber-100 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center gap-3">
             <div className="rounded-lg bg-amber-50 p-2 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
               <User className="h-4 w-4" />
             </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">Unassigned</p>
+              <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{ticketStats.unassignedCount}</p>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">Needs assignment</p>
+            </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.unassignedCount}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Needs assignment</p>
         </div>
 
-        <div className="group rounded-xl border border-blue-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Resolved</span>
+        <div className="group rounded-xl border border-blue-100 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center gap-3">
             <div className="rounded-lg bg-blue-50 p-2 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
               <CheckCircle2 className="h-4 w-4" />
             </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">Resolved</p>
+              <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{ticketStats.resolvedCount}</p>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">Closed/Resolved</p>
+            </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.resolvedCount}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Closed/Resolved</p>
         </div>
 
-        <div className="group rounded-xl border border-purple-100 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">High Priority</span>
+        <div className="group rounded-xl border border-purple-100 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center gap-3">
             <div className="rounded-lg bg-purple-50 p-2 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
               <Zap className="h-4 w-4" />
             </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">High Priority</p>
+              <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{ticketStats.highPriorityCount}</p>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">High + Urgent</p>
+            </div>
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{ticketStats.highPriorityCount}</p>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">High + Urgent</p>
         </div>
       </div>
 
@@ -889,9 +901,9 @@ const Tickets = () => {
       </div>
 
       {/* Filters and Charts Row */}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)]">
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div className="mb-4 flex items-center justify-between">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)]">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-3 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Filter Tickets</h3>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Narrow down the ticket list</p>
@@ -961,7 +973,7 @@ const Tickets = () => {
       </div>
 
       {/* Charts Row */}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <TicketBarChart
           title="Status Distribution"
           description="Tickets across all stages"
@@ -970,8 +982,8 @@ const Tickets = () => {
           color="indigo"
         />
         
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800" data-section="quick-stats">
-          <div className="mb-4">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800" data-section="quick-stats">
+          <div className="mb-3">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Quick Stats</h3>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Ticket metrics at a glance</p>
           </div>

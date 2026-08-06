@@ -287,6 +287,7 @@ const MainLayout = () => {
             setAssistantOpen(true)
           }}
           onDismiss={() => setSynzinPromptOpen(false)}
+          onOpen={() => setSynzinPromptOpen(true)}
         />
         <ReminderToastListener />
       </div>

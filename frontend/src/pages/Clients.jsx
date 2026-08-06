@@ -33,15 +33,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.01] hover:border-indigo-200 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-indigo-800">
+    <div className="group rounded-xl border border-gray-200/80 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-xl bg-gradient-to-r ${colors[color]} p-2.5 text-white shadow-md transition-transform group-hover:scale-110`}>
-          <Icon className="h-4 w-4" />
+        <div className={`rounded-md bg-gradient-to-r ${colors[color]} p-1.5 text-white shadow transition-transform group-hover:scale-110`}>
+          <Icon className="h-3.5 w-3.5" />
         </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -609,17 +609,17 @@ const Clients = () => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Header Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-5 py-3.5 text-white shadow-lg">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
-              <Briefcase className="h-7 w-7 text-white" />
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-md border border-white/20">
+              <Briefcase className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">Clients Directory</h1>
-              <p className="mt-1 text-indigo-100 text-sm">Manage enterprise client accounts, linked projects, contract budgets & files</p>
+              <h1 className="text-lg font-bold leading-tight text-white tracking-tight md:text-xl">Clients Directory</h1>
+              <p className="text-xs text-indigo-100">Manage enterprise client accounts, linked projects, contract budgets & files</p>
             </div>
           </div>
           {(isCompanyAdmin || isLead) && (
@@ -629,7 +629,7 @@ const Clients = () => {
                 resetForm()
                 setShowCreateModal(true)
               }}
-              className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20 self-start md:self-auto"
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3.5 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 border border-white/20"
             >
               <Plus className="h-4 w-4" />
               <span>Add Client</span>
@@ -639,7 +639,7 @@ const Clients = () => {
       </div>
 
       {/* Metrics Stats Row */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Total Clients" value={clients.length} icon={Users} color="indigo" subtitle="Registered Accounts" />
         <StatCard label="Active Accounts" value={activeCount} icon={CheckCircle2} color="emerald" subtitle="In Operations" />
         <StatCard label="Portfolio Budget" value={`₹${totalPortfolioBudget > 0 ? totalPortfolioBudget.toLocaleString() : '0'}`} icon={DollarSign} color="amber" subtitle="Total Contract Value" />
@@ -647,24 +647,24 @@ const Clients = () => {
       </div>
 
       {/* Search & Filter Controls Surface */}
-      <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-2xl border border-gray-200/80 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
               placeholder="Search clients by name, company, email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 pl-10 pr-4 py-2 text-xs font-medium text-gray-900 shadow-sm transition placeholder:text-gray-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800/50 dark:text-white dark:focus:bg-gray-800"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50/50 pl-9 pr-3 py-2 text-xs font-medium text-gray-900 shadow-sm transition placeholder:text-gray-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800/50 dark:text-white dark:focus:bg-gray-800"
             />
           </div>
           <div className="relative flex items-center">
-            <Filter className="absolute left-3.5 h-4 w-4 text-gray-400 pointer-events-none z-10" />
+            <Filter className="absolute left-3 h-4 w-4 text-gray-400 pointer-events-none z-10" />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-10 w-full sm:w-auto rounded-xl border border-gray-200 bg-white pl-10 pr-9 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-indigo-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-600 cursor-pointer appearance-none"
+              className="h-9 w-full sm:w-auto rounded-lg border border-gray-200 bg-white pl-9 pr-8 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-indigo-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-indigo-600 cursor-pointer appearance-none"
             >
               <option value="">All Statuses</option>
               <option value="active">Active</option>
