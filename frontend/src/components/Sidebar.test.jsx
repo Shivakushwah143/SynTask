@@ -106,6 +106,11 @@ describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
     expect(screen.getByRole('link', { name: /^clients$/i }).getAttribute('href')).toBe('/clients')
   })
 
+  it('links the Home section straight to the dashboard', () => {
+    renderSidebar()
+    expect(screen.getByRole('link', { name: /^home$/i }).getAttribute('href')).toBe('/dashboard')
+  })
+
   it('highlights the Sales section on the dedicated sales overview page', () => {
     renderSidebar('/sales-overview')
     expect(screen.getByRole('link', { name: /^sales$/i }).getAttribute('aria-current')).toBe('page')
