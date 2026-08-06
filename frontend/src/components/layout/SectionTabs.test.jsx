@@ -100,6 +100,16 @@ describe('SectionTabs (tab sub-nav plan, Phase B)', () => {
     expect(screen.getByRole('tab', { name: /^Companies$/i })).toBeTruthy()
   })
 
+  it('points the Clients Overview tab at the All Clients page', () => {
+    renderTabs('/sections/clients')
+    expect(screen.getByRole('tab', { name: /^Overview$/i }).getAttribute('href')).toBe('/clients')
+  })
+
+  it('points the Sales Overview tab at the dedicated sales overview dashboard', () => {
+    renderTabs('/sales-overview')
+    expect(screen.getByRole('tab', { name: /^Overview$/i }).getAttribute('href')).toBe('/sales-overview')
+  })
+
   it('keeps the parent tab active on a detail page (prefix match)', () => {
     renderTabs('/projects/p1/board')
     expect(screen.getByRole('tab', { name: /^Projects$/i })).toHaveAttribute('aria-selected', 'true')
