@@ -156,6 +156,8 @@ export const STAGE_INNER_STATUSES = {
     { value: 'assigned', label: 'Assigned' },
     { value: 'not_contacted', label: 'Not Contacted' },
     { value: 'contacted', label: 'Contacted' },
+    { value: 'wrong_number', label: 'Wrong Number' },
+    { value: 'no_response', label: 'No Response' },
     { value: 'duplicate', label: 'Duplicate' },
     { value: 'spam', label: 'Spam' },
   ],

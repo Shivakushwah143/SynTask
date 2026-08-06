@@ -12,6 +12,12 @@ flowchart TD
   B --> G[/sales/settings]
 ```
 
+## Sales Overview Dashboard (`/sales-overview`)
+- How the user reaches it: the sidebar **Sales** link and the in-page Sales Overview tab (see `sidebar-overview.md`) — `frontend/src/pages/sales/SalesOverview.jsx`.
+- What they can do: see a compact daily brief (high-priority leads, proposals pending, calls/meetings, follow-ups due), a Stage Momentum strip at the top with one card per pipeline stage (stage name + live lead count, linking to that stage's board), a KPI grid (today's leads/calls/meetings, follow-ups, proposals, revenue closed, conversion rate, monthly target), follow-ups due today, today's activity, quick actions, and a spotlight of won-deal highlights. Every metric is computed from live data; unavailable values render as "—".
+- Layout: compact by design — slim hero, stage cards (one per journey stage) and a 2×4 KPI grid (4 tiles per row, 2 columns on small screens) with every label and value kept fully visible, and the content grid stacks on narrow viewports so the dashboard fits without excessive scrolling.
+- Backend APIs called: `GET /api/v1/crm/dashboard` (sales overview), `GET /api/v1/crm/pipeline` (board), `GET /api/v1/crm/activities`.
+
 ## Sales Dashboard
 - How the user reaches it: `/sales` or module navigation.
 - What they can do: inspect sales overview and jump to sales workspaces.
@@ -104,7 +110,7 @@ flowchart TD
   - Read-time: `resolved_stage_status` (`backend/app/crm/pipeline.py`) resolves an owned Acquire lead whose stored status is empty, `new`, or `imported` to `assigned` — covering pre-existing leads without a migration.
   - Write-time: `LeadEngine._promote_assignment_status` (`backend/app/crm/lead_engine.py`) persists `assigned` when a lead is created or CSV/Excel-imported with an owner (creation always assigns through the least-loaded strategy); the existing lead-update path already promotes on owner reassignment.
 - Explicit non-default statuses (`duplicate`, `spam`) are preserved — ownership never overrides a deliberate flag.
-- Acquire also exposes the same contact progression as Qualify — `Not Contacted` and `Contacted` (`STAGE_INNER_STATUSES["acquire"]` in `backend/app/crm/pipeline.py`, mirrored in `frontend/src/pages/crm/pipeline/utils.js`) — so intake leads can be marked contacted without moving them to Qualify first.
+- Acquire also exposes the intake contact progression — `Not Contacted`, `Contacted`, `Wrong Number`, and `No Response` (added to `STAGE_INNER_STATUSES["acquire"]` per user feedback while Qualify keeps the same contact-outcome labels; config in `backend/app/crm/pipeline.py`, mirrored in `frontend/src/pages/crm/pipeline/utils.js`) — so intake leads can be marked contacted, wrong-number, or unresponsive without moving them to Qualify first.
 - The stage list Owner column resolves the assigned user from the live users list by id (same as the board cards), so a stale serialized `owner_name` or an id-shaped value can never surface as wrong Owner detail.
 
 ## Budget / Deal value stays in sync with the lead detail page

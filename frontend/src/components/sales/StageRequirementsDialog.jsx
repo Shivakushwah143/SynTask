@@ -221,12 +221,17 @@ export function StageRequirementsDialog({
         <input
           id={fieldId}
           className={`${inputClassName} mt-1.5`}
-          type="number"
-          min="0"
-          step="0.01"
+          type="text"
           inputMode="decimal"
+          pattern="[0-9]*\.?[0-9]*"
           value={values[field.field] ?? ''}
-          onChange={(event) => handleFieldChange(field.field, event.target.value)}
+          onChange={(event) => {
+            const raw = event.target.value
+            // Allow empty, digits, and a single decimal point
+            if (raw === '' || /^\d*\.?\d*$/.test(raw)) {
+              handleFieldChange(field.field, raw)
+            }
+          }}
           placeholder="0"
         />
       )
