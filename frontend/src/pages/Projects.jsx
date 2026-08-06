@@ -137,23 +137,26 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, trend 
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
+    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
-          <Icon className="h-4 w-4" />
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
+        <div className={`rounded-md bg-gradient-to-r ${colors[color]} p-1.5 text-white shadow`}>
+          <Icon className="h-3.5 w-3.5" />
         </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+      {subtitle && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
       {trend && (
-        <div className={`mt-2 inline-flex items-center gap-1 text-xs font-medium ${trend > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+        <div className={`mt-1 inline-flex items-center gap-1 text-[11px] font-medium ${trend > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
           {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}%
         </div>
       )}
     </div>
   )
 }
+
+const compactInputClassName =
+  'min-h-9 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 dark:border-gray-700 dark:bg-gray-800/80 dark:text-white dark:placeholder:text-gray-400'
 
 export default function Projects() {
   const navigate = useNavigate()
@@ -548,36 +551,34 @@ export default function Projects() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 px-5 py-3.5 text-white shadow-lg">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <FolderKanban className="h-6 w-6" />
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <FolderKanban className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Projects</h1>
-              <p className="mt-1 text-indigo-100">Project health, ownership, and progress tracking</p>
+              <h1 className="text-lg font-bold leading-tight md:text-xl">Projects</h1>
+              <p className="text-xs text-indigo-100">Project health, ownership, and progress tracking</p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            {canCreateProjects && (
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(true)}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                <Plus className="h-4 w-4" />
-                New Project
-              </button>
-            )}
-          </div>
+          {canCreateProjects && (
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3.5 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <Plus className="h-4 w-4" />
+              New Project
+            </button>
+          )}
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           label="Total Projects"
           value={summary.total}
@@ -616,20 +617,20 @@ export default function Projects() {
       </div>
 
       {/* Search & Filters */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
-              className={`${inputClassName} pl-10`}
+              className={`${compactInputClassName} pl-9`}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search projects by name, key, status, or description"
+              placeholder="Search by name, key, status, or description"
             />
           </div>
-          <div id="project-filters" className="grid gap-3 md:grid-cols-3 lg:flex-1">
+          <div id="project-filters" className="grid gap-2 md:grid-cols-3 lg:flex-1">
             <select
-              className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`}
+              className={`${compactInputClassName} bg-gray-50 dark:bg-gray-900/50`}
               value={filters.status}
               onChange={(event) => setFilters((state) => ({ ...state, status: event.target.value }))}
             >
@@ -641,7 +642,7 @@ export default function Projects() {
               <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" value="completed">Completed</option>
             </select>
             <select
-              className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`}
+              className={`${compactInputClassName} bg-gray-50 dark:bg-gray-900/50`}
               value={filters.type}
               onChange={(event) => setFilters((state) => ({ ...state, type: event.target.value }))}
             >
@@ -649,7 +650,7 @@ export default function Projects() {
               {projectTypeOptions.map((item) => <option className="bg-white text-gray-900 dark:bg-gray-700 dark:text-white" key={item.value} value={item.value}>{item.label}</option>)}
             </select>
             <select
-              className={`${inputClassName} bg-gray-50 dark:bg-gray-900/50`}
+              className={`${compactInputClassName} bg-gray-50 dark:bg-gray-900/50`}
               value={filters.owner}
               onChange={(event) => setFilters((state) => ({ ...state, owner: event.target.value }))}
             >

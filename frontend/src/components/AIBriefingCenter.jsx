@@ -863,17 +863,17 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
         </div>
 
         {/* Metrics and Suggestions Grid */}
-        <div className="relative mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="grid gap-3 sm:grid-cols-3">
+        <div className="relative mt-4 grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid gap-2 sm:grid-cols-3">
             {renderMetrics()}
           </div>
 
-          <div className="rounded-xl border border-slate-200/80 bg-white/70 p-4 shadow-sm backdrop-blur-sm transition-all duration-300 hover:shadow-md dark:border-cyan-500/20 dark:bg-slate-800/40 dark:backdrop-blur-sm dark:hover:border-cyan-400/30">
-            <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-cyan-400">
+          <div className="rounded-xl border border-slate-200/80 bg-white/70 p-3 shadow-sm backdrop-blur-sm transition-all duration-300 hover:shadow-md dark:border-cyan-500/20 dark:bg-slate-800/40 dark:backdrop-blur-sm dark:hover:border-cyan-400/30">
+            <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-cyan-400">
               <Zap className="h-3.5 w-3.5 dark:animate-pulse" />
               Suggested Actions
             </div>
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               {renderSuggestions()}
             </div>
           </div>
@@ -881,7 +881,7 @@ export default function AIBriefingCenter({ user, stats, recentTasks = [], recent
 
         {/* Data Visualization */}
         {chartData.length > 0 && (
-          <div className="relative mt-5">
+          <div className="relative mt-4">
             <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-cyan-400">
               <TrendingUp className="h-3.5 w-3.5" />
               Task Distribution
