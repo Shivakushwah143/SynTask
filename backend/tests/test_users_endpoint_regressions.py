@@ -56,3 +56,19 @@ def test_get_assignable_users_includes_admins_and_employees():
 
     for snippet in role_filter_snippets:
         assert snippet in ast.get_source_segment(source, function)
+
+
+def test_get_assignable_users_supports_sales_lead_context():
+    """The assignable-users endpoint must accept the Sales lead assignment
+    context and scope the list through the shared assignment helper so the
+    owner dropdown always matches lead-creation validation."""
+    source = Path(__file__).resolve().parents[1] / "app" / "api" / "v1" / "endpoints" / "users.py"
+    source = source.read_text(encoding="utf-8")
+    function = _get_function(ast.parse(source), "get_assignable_users")
+
+    segment = ast.get_source_segment(source, function)
+    assert "context" in segment
+    assert "department_id" in segment
+    assert "sales_lead" in segment
+    assert "resolve_sales_assignment_department" in segment
+    assert "load_assignable_users_for_company" in segment
