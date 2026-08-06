@@ -150,6 +150,35 @@ describe('pipeline stage list view', () => {
     expect(onBulkAssign).toHaveBeenCalledWith(['lead-1', 'lead-2'], 'user-9')
   })
 
+  it('keeps the lead in its row with an in-flight indicator while the move request is pending', () => {
+    // Reported feedback: the lead must NOT appear moved until the backend
+    // confirms. While the move is in flight (movingLeadId set) the row stays in
+    // the current stage and the button shows a loading state, so a failed
+    // request never makes the lead visibly jump stages and snap back.
+    render(
+      <PipelineStageListView
+        stage={{ key: 'qualify', name: 'Qualify', nextStageKey: 'discovery' }}
+        stages={[
+          { key: 'qualify', name: 'Qualify', nextStageKey: 'discovery' },
+          { key: 'discovery', name: 'Discovery' },
+        ]}
+        leads={[{ id: 'lead-1', company_name: 'Acme Pvt Ltd' }]}
+        movingLeadId="lead-1"
+        onLeadSelect={vi.fn()}
+        onMoveLeadToStage={vi.fn()}
+        onResetFilters={vi.fn()}
+      />,
+    )
+
+    // The lead stays visible in the current stage while the request runs.
+    expect(screen.getByText('Acme Pvt Ltd')).toBeTruthy()
+    // The Move button is disabled and shows the in-flight label + spinner.
+    const moveButton = screen.getByRole('button', { name: /Updating stage/i })
+    expect(moveButton).toBeTruthy()
+    expect(moveButton).toBeDisabled()
+    expect(moveButton).toHaveAttribute('aria-busy', 'true')
+  })
+
   it('clears the bulk selection instead of assigning when the user cancels', () => {
     render(
       <PipelineStageListView

@@ -59,7 +59,6 @@ import {
   getLeadPriority,
   getStageStatusOptions,
   isAllowedPipelineTransition,
-  moveLeadInBoard,
   ownerOptionsFromBoard,
   parsePipelineFilters,
   stageOptionsFromBoard,
@@ -152,6 +151,11 @@ export default function CRMPipelinePage() {
   const [dragOverlayLead, setDragOverlayLead] = useState(null)
   const [requirementsDialog, setRequirementsDialog] = useState(null)
   const [contactAttemptLead, setContactAttemptLead] = useState(null)
+  // Lead id whose stage move is in flight through the required-details dialog
+  // ("Save and Move Forward"). Kept separate from the mutation so the row keeps
+  // its loading state while that dialog-driven move runs, giving one consistent
+  // in-flight indicator on the stage list / board.
+  const [dialogMovingLeadId, setDialogMovingLeadId] = useState(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -409,23 +413,17 @@ export default function CRMPipelinePage() {
   const moveLeadMutation = useMutation(
     ({ leadId, stageKey }) => crmApi.updatePipelineStage(leadId, { stage: stageKey }),
     {
-      onMutate: async ({ leadId, stageKey, lead }) => {
+      // No optimistic board write: the lead must NOT visibly move until the
+      // backend confirms the move. The row/card stays on its current stage with
+      // the button showing its loading state (movingLeadId drives isMovePending
+      // in the stage list and board cards), so a failed request never causes
+      // the lead to appear to jump stages and then snap back.
+      onMutate: async () => {
+        // Drop any in-flight board refetch so it cannot race the PATCH and
+        // cache a pre-move snapshot right before the success refetch.
         await queryClient.cancelQueries(PIPELINE_QUERY_KEY)
-        const previousBoard = queryClient.getQueryData(PIPELINE_QUERY_KEY)
-        const optimisticLead = {
-          ...lead,
-          current_stage: stageKey,
-          days_in_stage: 0,
-        }
-        queryClient.setQueryData(PIPELINE_QUERY_KEY, (currentBoard) =>
-          moveLeadInBoard(buildPipelineBoard(currentBoard || {}), leadId, stageKey, optimisticLead)
-        )
-        return { previousBoard }
       },
-      onError: (error, variables, context) => {
-        if (context?.previousBoard) {
-          queryClient.setQueryData(PIPELINE_QUERY_KEY, context.previousBoard)
-        }
+      onError: (error, variables) => {
         handleMoveFailure(error, variables)
       },
       onSuccess: (response) => {
@@ -443,7 +441,7 @@ export default function CRMPipelinePage() {
   const handleLeadMove = useCallback((lead, nextStageKey) => {
     const leadId = lead?.id || lead?._id
     if (!leadId || !nextStageKey) return
-    if (moveLeadMutation.isLoading) return
+    if (moveLeadMutation.isLoading || dialogMovingLeadId) return
     const sourceStage = interactiveStages.find((stage) => stage.leads.some((item) => (item.id || item._id) === leadId))
     const targetStage = interactiveStages.find((stage) => stage.key === nextStageKey)
     if (sourceStage?.key === nextStageKey) return
@@ -451,10 +449,10 @@ export default function CRMPipelinePage() {
       toast(`Move ${sourceStage.name} leads to ${targetStage.name} through the required workflow steps.`, TRANSITION_WARNING_TOAST)
       return
     }
-    // onError already handles rollback + dialog/warning; swallow the rejection
-    // so board buttons and drag-and-drop never produce an unhandled promise.
+    // onError already handles the dialog/warning; swallow the rejection so board
+    // buttons and drag-and-drop never produce an unhandled promise.
     return moveLeadMutation.mutateAsync({ leadId, stageKey: nextStageKey, lead }).catch(() => {})
-  }, [interactiveStages, moveLeadMutation])
+  }, [dialogMovingLeadId, interactiveStages, moveLeadMutation])
 
   // ── Required-details dialog (guided validation) ────────────────────────────
   // Save Details: persists only the missing editable fields, keeps the lead on
@@ -484,7 +482,14 @@ export default function CRMPipelinePage() {
     if (!leadId || !stageKey) return
     try {
       await salesApi.updateLeadForm(leadId, values)
-      await crmApi.updatePipelineStage(leadId, { stage: stageKey })
+      // Drive the same in-flight indicator as a direct stage move so the row's
+      // Move button shows loading (and is disabled) while the move runs.
+      setDialogMovingLeadId(leadId)
+      try {
+        await crmApi.updatePipelineStage(leadId, { stage: stageKey })
+      } finally {
+        setDialogMovingLeadId(null)
+      }
       queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
       queryClient.invalidateQueries('crm-leads-entry')
       queryClient.invalidateQueries('sales-prospects')
@@ -684,6 +689,12 @@ export default function CRMPipelinePage() {
 
     return { total, openLeads, wonLeads, highValueLeads, hotLeads, activeStages, totalValue, avgValue, conversionRate }
   }, [scopedStages])
+
+  // Single source of truth for "this lead's move is in flight": either the
+  // direct move mutation or the dialog-driven save-and-move.
+  const effectiveMovingLeadId = moveLeadMutation.isLoading
+    ? moveLeadMutation.variables?.leadId
+    : dialogMovingLeadId
 
   const currency = rawPipeline?.meta?.currency || 'INR'
   const hasMoreLeads = Boolean(rawPipeline?.meta?.has_more)
@@ -974,7 +985,7 @@ export default function CRMPipelinePage() {
               stages={interactiveStages}
               currency={currency}
               users={users}
-              movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
+              movingLeadId={effectiveMovingLeadId}
               statusUpdatingId={updateStatusMutation.isLoading ? updateStatusMutation.variables?.leadId : null}
               onMoveLeadToStage={handleLeadMove}
               onUpdateStageStatus={handleStageStatusChange}
@@ -997,7 +1008,7 @@ export default function CRMPipelinePage() {
                 stages={visibleBoard.stages}
                 currency={currency}
                 activeLeadId={activeLeadId}
-                movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
+                movingLeadId={effectiveMovingLeadId}
                 statusUpdatingId={updateStatusMutation.isLoading ? updateStatusMutation.variables?.leadId : null}
                 users={users}
                 onMoveLeadToStage={handleLeadMove}
