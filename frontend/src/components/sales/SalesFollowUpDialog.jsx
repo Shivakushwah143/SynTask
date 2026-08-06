@@ -70,19 +70,23 @@ function defaultTitle(lead) {
 
 function DialogHeader({ title, subtitle, onClose }) {
   return (
-    <div className="flex items-start justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-      <div className="min-w-0">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
+    <div className="relative flex items-center gap-3 border-b border-gray-200 bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 px-5 py-3.5 dark:border-gray-700">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/20 text-white shadow-sm">
+        <CalendarClock className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h2 className="truncate text-base font-bold text-white">{title}</h2>
         {subtitle ? (
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>
+          <p className="truncate text-xs text-indigo-100">{subtitle}</p>
         ) : null}
       </div>
       <button
         type="button"
         onClick={onClose}
-        className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
+        aria-label="Close dialog"
+        className="rounded-lg p-1.5 text-white/80 transition hover:bg-white/20 hover:text-white"
       >
-        <X className="h-5 w-5" />
+        <X className="h-4 w-4" />
       </button>
     </div>
   )
@@ -399,30 +403,31 @@ export default function SalesFollowUpDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isSubmitting) onClose?.()
       }}
     >
-      <div
-        className="relative flex w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl dark:bg-gray-900 max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <DialogHeader
-          title={isReschedule ? 'Reschedule Follow-up' : 'Schedule Follow-up'}
-          subtitle={
-            leadName
-              ? `${leadName} — ${stageName}`
-              : 'Select a lead and choose a follow-up time'
-          }
-          onClose={isSubmitting ? undefined : onClose}
-        />
-
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-1 flex-col overflow-hidden"
+      <div className="flex min-h-full items-center justify-center py-4">
+        <div
+          className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-900"
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          <DialogHeader
+            title={isReschedule ? 'Reschedule Follow-up' : 'Schedule Follow-up'}
+            subtitle={
+              leadName
+                ? `${leadName} — ${stageName}`
+                : 'Select a lead and choose a follow-up time'
+            }
+            onClose={isSubmitting ? undefined : onClose}
+          />
+
+          <form
+            onSubmit={handleSubmit}
+            className="flex flex-1 flex-col overflow-hidden"
+          >
+            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {/* Lead selector (when opened without a preselected lead) */}
             {hasNoLead && (
               <FormField label="Lead" required hint="Type at least 2 characters to search">
@@ -436,7 +441,7 @@ export default function SalesFollowUpDialog({
                       setCurrentLead(null)
                     }}
                     placeholder="Search leads..."
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                   />
                   {leadsLoading && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -483,7 +488,7 @@ export default function SalesFollowUpDialog({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Follow up with Acme Corp"
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
               />
               {errors.title && (
                 <p className="mt-1 text-xs text-rose-500">{errors.title}</p>
@@ -495,14 +500,14 @@ export default function SalesFollowUpDialog({
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                rows={3}
+                rows={2}
                 placeholder="Call regarding revised proposal..."
-                className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
               />
             </FormField>
 
             {/* Quick date options */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <FormField label="Quick schedule">
                 <div className="flex flex-wrap gap-2">
                   {QUICK_DATE_OPTIONS.map((opt) => {
@@ -536,7 +541,7 @@ export default function SalesFollowUpDialog({
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
               />
               {errors.scheduledAt && (
                 <p className="mt-1 text-xs text-rose-500">{errors.scheduledAt}</p>
@@ -551,7 +556,7 @@ export default function SalesFollowUpDialog({
               <select
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
               >
                 {users.length === 0 && (
                   <option value="">No users available</option>
@@ -569,12 +574,12 @@ export default function SalesFollowUpDialog({
             </FormField>
 
             {/* Priority & estimated hours */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <FormField label="Priority">
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                 >
                   {PRIORITIES.map((p) => (
                     <option key={p.value} value={p.value}>
@@ -591,14 +596,14 @@ export default function SalesFollowUpDialog({
                   step="0.25"
                   value={estimatedHours}
                   onChange={(e) => setEstimatedHours(parseFloat(e.target.value) || 0)}
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                 />
               </FormField>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+          <div className="flex items-center justify-between gap-3 border-t border-gray-200 bg-gray-50/60 px-5 py-3 dark:border-gray-700 dark:bg-gray-900/60">
             {isReschedule && followUpData?.id ? (
               <Button
                 type="button"
@@ -638,6 +643,7 @@ export default function SalesFollowUpDialog({
           </div>
         </form>
       </div>
+    </div>
     </div>
   )
 }
