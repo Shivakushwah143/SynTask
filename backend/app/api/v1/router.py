@@ -30,7 +30,7 @@ from app.api.v1.endpoints import crm_notes
 from app.api.v1.endpoints import crm_pipeline
 from app.api.v1.endpoints import content_calendar
 from app.api.v1.endpoints import scheduled_jobs
-from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports
+from app.api.v1.endpoints import sales_categories, sales_products, sales_contacts, sales_prospects, sales_masters, sales_reports, sales_followups
 from app.api.v1.endpoints import superadmin_plans, superadmin_tenants, superadmin_usage, superadmin_billing, superadmin_features
 from app.api.dependencies import require_module
 from app.dependencies import rate_limit
@@ -187,6 +187,9 @@ api_router.include_router(sales_contacts.router, prefix="/sales/contacts", tags=
 
 # Lead create/list powers CRM as well as Sales, so do not gate whole router by the Sales module.
 api_router.include_router(sales_prospects.router, prefix="/sales/prospects", tags=["Leads"])
+# Sales follow-ups live in the same route family and reuse the scheduled-task
+# system, so they follow the same non-gated registration as leads.
+api_router.include_router(sales_followups.router, prefix="/sales/prospects", tags=["Leads"])
 api_router.include_router(sales_masters.router, prefix="/sales/masters", tags=["Sales Masters"], dependencies=sales_module_dependency)
 api_router.include_router(sales_reports.router, prefix="/sales/reports", tags=["Sales Reports"], dependencies=sales_module_dependency)
 

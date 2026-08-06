@@ -258,6 +258,7 @@ const Dashboard = () => {
   const [todayEvents, setTodayEvents] = useState([])
   const [upcomingDeadlines, setUpcomingDeadlines] = useState([])
   const [upcomingMeetingsList, setUpcomingMeetingsList] = useState([])
+  const [workspaceEvents, setWorkspaceEvents] = useState([])
   const [, setTodayContent] = useState([])
   const [, setOverdueTasksList] = useState([])
   const [, setCalendarLoading] = useState(false)
@@ -439,6 +440,7 @@ const Dashboard = () => {
         if (!active) return;
         const workspaceEvents = workspaceResp?.events || [];
         const contentEvents = contentResp?.events || [];
+        if (active) setWorkspaceEvents(workspaceEvents)
         const todayStr = format(today, 'yyyy-MM-dd');
 
         setTodayEvents(workspaceEvents.filter((e) => e.start === todayStr));
@@ -662,6 +664,7 @@ const Dashboard = () => {
     { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && Boolean(productionDashboard) },
     { id: 'recent-activity', name: 'Recent Activity' },
     { id: 'calendar-overview', name: 'Calendar Overview' },
+    { id: 'lead-follow-ups', name: 'Lead Follow-ups' },
   ].filter((section) => section.available !== false)
 
   const orderedDashboardSections = normalizeSectionOrder(dashboardSections, sectionOrder)
@@ -1327,6 +1330,76 @@ const Dashboard = () => {
                 </div>
               )}
             </div>
+          </div>
+        </section>
+      ))}
+
+      {/* ============================================================ */}
+      {/* LEAD FOLLOW-UPS */}
+      {/* ============================================================ */}
+      {renderDashboardSection('lead-follow-ups', (
+        <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700 mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Lead Follow-ups</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Upcoming scheduled lead follow-ups for the next 30 days.</p>
+            </div>
+            <button
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              onClick={() => navigate('/crm/leads')}
+            >
+              View Leads
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {workspaceEvents.filter((e) => e.type === 'follow_up' && e.start).slice(0, 6).map((e) => {
+              const phoneDisplay = e.phone_display || e.phone || ''
+              const phoneHref = phoneDisplay ? `tel:${phoneDisplay.replace(/[^\d+]/g, '')}` : null
+              return (
+                <div key={e.id} className="group flex items-center justify-between gap-2 rounded-md border border-gray-100 p-2 transition-colors hover:border-indigo-200 hover:bg-indigo-50/30 dark:border-gray-700 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/20">
+                  <div className="min-w-0">
+                    <a onClick={() => navigate(e.lead_id ? `/crm/leads/${e.lead_id}` : '/crm/leads')} className="block cursor-pointer truncate font-medium text-gray-900 hover:underline dark:text-white">{e.lead_name || e.title}</a>
+                    <p className="flex items-center gap-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                      <span>{e.start}</span>
+                      {phoneDisplay && phoneHref && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <a href={phoneHref} onClick={(event) => event.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:underline dark:text-indigo-400" title={`Call ${phoneDisplay}`}>
+                            <Phone className="h-3 w-3" />
+                            {phoneDisplay}
+                          </a>
+                        </>
+                      )}
+                      <span aria-hidden="true">·</span>
+                      <span>{e.assignee || 'Unassigned'}</span>
+                      {e.status && (
+                        <span className="ml-2 inline-flex items-center rounded px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">{e.status}</span>
+                      )}
+                    </p>
+                    {e.description && (
+                      <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{e.description}</p>
+                    )}
+                  </div>
+                  {phoneHref ? (
+                    <a
+                      href={phoneHref}
+                      onClick={(event) => event.stopPropagation()}
+                      title={`Call ${phoneDisplay}`}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 hover:shadow-sm dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950/70"
+                    >
+                      <Phone className="h-3.5 w-3.5" />
+                      Call
+                    </a>
+                  ) : (
+                    <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">No phone</span>
+                  )}
+                </div>
+              )
+            })}
+            {workspaceEvents.filter((e) => e.type === 'follow_up' && e.start).length === 0 && (
+              <p className="text-xs text-gray-400">No upcoming lead follow-ups</p>
+            )}
           </div>
         </section>
       ))}

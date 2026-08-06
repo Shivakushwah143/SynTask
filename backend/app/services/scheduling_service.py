@@ -113,23 +113,7 @@ class SchedulingService:
                         current_user=creator,
                     )
                 elif job.action_type == ScheduledJobActionType.CREATE_TASK:
-                    result = await TaskService.create_task_core(
-                        title=job.payload.get("title"),
-                        description=job.payload.get("description"),
-                        assigned_to=job.payload.get("assigned_to"),
-                        priority=job.payload.get("priority", "medium"),
-                        due_date=job.payload.get("due_date"),
-                        tags=job.payload.get("tags"),
-                        parent_task_id=job.payload.get("parent_task_id"),
-                        project_id=job.payload.get("project_id"),
-                        epic_id=job.payload.get("epic_id"),
-                        sprint_id=job.payload.get("sprint_id"),
-                        department_id=job.payload.get("department_id"),
-                        story_points=job.payload.get("story_points"),
-                        estimated_hours=job.payload.get("estimated_hours"),
-                        current_user=creator,
-                        background_tasks=None
-                    )
+                    result = await SchedulingService._execute_create_task(job, creator)
                 else:
                     raise ValueError(f"Unsupported action type: {job.action_type}")
 
@@ -137,22 +121,39 @@ class SchedulingService:
                 job.status = ScheduledJobStatus.COMPLETED
                 job.completed_at = utc_now()
                 job.error = None
+                # Persist the generated record id so calendar consumers can
+                # deduplicate the RUNNING placeholder against the real Task.
+                if result and isinstance(result, dict):
+                    result_id = result.get("task_id") or result.get("id") or result.get("project_id")
+                    if result_id:
+                        job.result_type = (
+                            "task"
+                            if job.action_type == ScheduledJobActionType.CREATE_TASK
+                            else "project"
+                        )
+                        job.result_id = str(result_id)
                 await job.save()
 
                 logger.info(f"Successfully completed scheduled job {job.id}")
 
-                # Send success notification to creator
-                notification = Notification(
-                    company_id=job.company_id,
-                    user_id=job.created_by,
-                    type=NotificationType.SYSTEM,
-                    title="Scheduled Job Completed",
-                    message=f"Your scheduled action '{job.action_type.value}' has completed successfully.",
-                    related_id=str(job.id),
-                    related_type="scheduled_job",
-                    action_url="/scheduled-jobs",
-                )
-                await notification.insert()
+                # For Sales follow-ups the normal Task Assigned notification is
+                # the primary reminder, so no additional vague "Scheduled Job
+                # Completed" notification is created when the task was assigned.
+                is_sales_follow_up = job.payload.get("source_type") == "sales_follow_up"
+                task_has_assignee = bool(job.payload.get("assigned_to"))
+                if not (is_sales_follow_up and task_has_assignee):
+                    # Send success notification to creator
+                    notification = Notification(
+                        company_id=job.company_id,
+                        user_id=job.created_by,
+                        type=NotificationType.SYSTEM,
+                        title="Scheduled Job Completed",
+                        message=f"Your scheduled action '{job.action_type.value}' has completed successfully.",
+                        related_id=str(job.id),
+                        related_type="scheduled_job",
+                        action_url="/scheduled-jobs",
+                    )
+                    await notification.insert()
 
                 # Write timeline activity log
                 await create_timeline_event(
@@ -207,6 +208,69 @@ class SchedulingService:
                         related_module=TimelineModule.TASK,
                         related_record_id=str(job.id),
                     )
+
+    @staticmethod
+    async def _execute_create_task(job: ScheduledJob, creator: User) -> Dict[str, Any]:
+        """Execute a CREATE_TASK job, forwarding every payload field additively.
+
+        Sales follow-up jobs additionally link the generated task back to the
+        scheduled CRM activity (task_id + status scheduled -> in_progress). The
+        job is already locked as RUNNING before this runs, so a re-execution can
+        only happen for FAILED jobs, which never reach the success path — a
+        follow-up task is created exactly once.
+        """
+        result = await TaskService.create_task_core(
+            title=job.payload.get("title"),
+            description=job.payload.get("description"),
+            assigned_to=job.payload.get("assigned_to"),
+            priority=job.payload.get("priority", "medium"),
+            due_date=job.payload.get("due_date"),
+            tags=job.payload.get("tags"),
+            parent_task_id=job.payload.get("parent_task_id"),
+            project_id=job.payload.get("project_id"),
+            epic_id=job.payload.get("epic_id"),
+            sprint_id=job.payload.get("sprint_id"),
+            department_id=job.payload.get("department_id"),
+            story_points=job.payload.get("story_points"),
+            estimated_hours=job.payload.get("estimated_hours"),
+            task_type=job.payload.get("task_type", "standard"),
+            measurement_type=job.payload.get("measurement_type"),
+            custom_measurement_label=job.payload.get("custom_measurement_label"),
+            target_quantity=job.payload.get("target_quantity"),
+            target_unit=job.payload.get("target_unit"),
+            source_type=job.payload.get("source_type"),
+            related_entity_type=job.payload.get("related_entity_type"),
+            related_entity_id=job.payload.get("related_entity_id"),
+            related_entity_stage=job.payload.get("related_entity_stage"),
+            related_entity_url=job.payload.get("related_entity_url"),
+            current_user=creator,
+            background_tasks=None
+        )
+        if job.payload.get("source_type") == "sales_follow_up" and result:
+            try:
+                from app.models.crm_activity import CRMActivity, CRMActivityStatus
+                task_id = result.get("task_id") or result.get("id")
+                activity = await CRMActivity.find_one(
+                    {
+                        "company_id": job.company_id,
+                        "metadata.scheduled_job_id": str(job.id),
+                        "deleted": False,
+                    }
+                )
+                if activity and task_id:
+                    activity.status = CRMActivityStatus.IN_PROGRESS
+                    activity.metadata = {
+                        **dict(activity.metadata or {}),
+                        "task_id": str(task_id),
+                    }
+                    activity.updated_at = utc_now()
+                    await activity.save()
+            except Exception as exc:
+                logger.warning(
+                    f"Could not link scheduled job {job.id} to its CRM activity: {str(exc)}",
+                    exc_info=True,
+                )
+        return result
 
     @staticmethod
     async def run_scheduled_jobs_loop():

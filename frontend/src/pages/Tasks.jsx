@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from 'react-query'
 import { AlertTriangle, Plus, Calendar, User, MoreVertical, Search, Filter, CheckCircle2, ListTodo, RefreshCcw, LayoutGrid, Clock, Zap, Target, Award, TrendingUp, Activity, BarChart3, X, Pencil, Trash2, Timer } from 'lucide-react'
 import { tasksAPI } from '../api/tasks'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
+import { invalidateWorkspaceCalendar } from '../api/calendar'
 import { usersAPI } from '../api/users'
 import { departmentsAPI } from '../api/departments'
 import { useAuthStore } from '../store/authStore'
@@ -145,6 +147,7 @@ function ScheduledCountdownPanel({ runAt, compact = false }) {
 
 const Tasks = () => {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
   const { view, setView } = useViewStore()
@@ -514,6 +517,7 @@ useEffect(() => {
           run_at: runAt.toISOString(),
         })
         toast.success('Task scheduled successfully')
+        invalidateWorkspaceCalendar(queryClient)
         closeCreateModal()
         fetchTasks({ isRefresh: true })
         return
