@@ -30,6 +30,16 @@ flowchart TD
 - Notifications sent: none directly.
 - Related modules updated: many app areas by navigation.
 
+### Lead Follow-ups section (top of dashboard)
+- How the user reaches it: the dashboard's first section by default (above the Workflow Guide).
+- What they can do: see every lead that has a follow-up scheduled, sorted soonest-first, with the lead name/company, follow-up date (overdue and today highlighted), the date the lead was created, the mobile number (tap-to-call `tel:` link), the current pipeline stage, and the follow-up note. Rows link to the lead detail page; the count badge includes an overdue count.
+- What happens after every action: clicking a row navigates to `/crm/leads/:id`; calling opens the device dialer; refreshing re-fetches leads with `next_follow_up_at` set.
+- Backend APIs called: `GET /api/v1/crm/leads?has_follow_up=true&limit=500` (company-scoped, `transferred_at` excluded, sorted by soonest `next_follow_up_at`).
+- Timeline events created: none directly.
+- Notifications sent: none directly.
+- Related modules updated: CRM Leads; the section updates when a follow-up is scheduled (via the dashboard live-sync events).
+- Tenant isolation: the leads list is always filtered to the authenticated user's `company_id`; Employees see only their own calendar follow-up events instead of the company-wide list (RBAC visibility preserved).
+
 ## Global Time Settings
 - How the user reaches it: navbar live clock.
 - What they can do: view active timezone, time format, seconds setting, and automatic/manual time mode.

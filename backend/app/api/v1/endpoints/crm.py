@@ -31,6 +31,7 @@ async def crm_leads(
     assigned_to: Optional[str] = None,
     current_stage: Optional[str] = None,
     status: Optional[str] = None,
+    has_follow_up: Optional[bool] = None,
     pagination: PaginationParams = Pagination50,
     current_user: User = Depends(get_current_user),
 ):
@@ -38,6 +39,9 @@ async def crm_leads(
     query = {"deleted": False, "company_id": current_user.company_id}
     # Transferred leads leave the active sales lists (they live in the Clients module).
     query["transferred_at"] = None
+    if has_follow_up:
+        # Only leads with a scheduled follow-up set (next_follow_up_at present and not null).
+        query["next_follow_up_at"] = {"$exists": True, "$ne": None}
     if assigned_to:
         # Filter by a specific assignee (used by managers/admins viewing a specific employee's leads)
         query["assigned_to"] = assigned_to
@@ -53,7 +57,11 @@ async def crm_leads(
             {"email": {"$regex": search, "$options": "i"}},
         ]
     total = await SalesProspect.find(query).count()
-    prospects = await SalesProspect.find(query).skip(skip).limit(limit).sort(-SalesProspect.created_at).to_list()
+    if has_follow_up:
+        # Soonest follow-up first so dashboards can show what needs attention next.
+        prospects = await SalesProspect.find(query).skip(skip).limit(limit).sort(SalesProspect.next_follow_up_at).to_list()
+    else:
+        prospects = await SalesProspect.find(query).skip(skip).limit(limit).sort(-SalesProspect.created_at).to_list()
     return {
         "total": total,
         "prospects": [
