@@ -135,6 +135,11 @@ class TaskService:
         custom_measurement_label: Optional[str] = None,
         target_quantity: Optional[int] = None,
         target_unit: Optional[str] = None,
+        source_type: Optional[str] = None,
+        related_entity_type: Optional[str] = None,
+        related_entity_id: Optional[str] = None,
+        related_entity_stage: Optional[str] = None,
+        related_entity_url: Optional[str] = None,
         current_user: User,
         background_tasks = None
     ) -> dict:
@@ -189,6 +194,25 @@ class TaskService:
         parent_task_id = parent_task_id.strip() if parent_task_id and parent_task_id.strip() else None
         assigned_to = assigned_to.strip() if assigned_to and assigned_to.strip() else None
 
+        # Generic relationship linkage. A Sales follow-up task is generated from
+        # the scheduled job payload; the source fields must survive so the task
+        # keeps its link back to the originating lead.
+        source_type = (source_type or "").strip() or None
+        related_entity_type = (related_entity_type or "").strip() or None
+        related_entity_id = (related_entity_id or "").strip() or None
+        related_entity_stage = (related_entity_stage or "").strip() or None
+        related_entity_url = (related_entity_url or "").strip() or None
+        # Employee self-assignment carve-out for Sales follow-up tasks. A
+        # follow-up created by an employee is always self-assigned, so the
+        # scheduled execution (which runs as the creator) must be allowed to
+        # create it without broadly weakening task creation permissions.
+        is_self_assigned_sales_followup = bool(
+            source_type == "sales_follow_up"
+            and current_user.role == UserRole.EMPLOYEE
+            and assigned_to
+            and str(assigned_to) == str(current_user.id)
+        )
+
         project = None
         if project_id:
             from app.api.dependencies import get_project_by_id
@@ -229,10 +253,11 @@ class TaskService:
             else:
                 project_id = str(project.id)
         elif current_user.role not in {UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN}:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to create tasks",
-            )
+            if not is_self_assigned_sales_followup:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to create tasks",
+                )
 
         assignee = None
         if assigned_to:
@@ -247,7 +272,11 @@ class TaskService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Assigned user must be from the same company"
                 )
-            await _assert_can_assign_task(current_user, assignee, project)
+            # The employee self-assigned follow-up carve-out skips the normal
+            # assignment hierarchy check; everything else follows the standard
+            # task assignment rules unchanged.
+            if not is_self_assigned_sales_followup:
+                await _assert_can_assign_task(current_user, assignee, project)
 
         if epic_id:
             from app.models.project import Epic
@@ -310,6 +339,11 @@ class TaskService:
             custom_measurement_label=custom_measurement_label,
             target_quantity=target_quantity,
             target_unit=target_unit,
+            source_type=source_type,
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id,
+            related_entity_stage=related_entity_stage,
+            related_entity_url=related_entity_url,
         )
 
         await task.insert()
@@ -360,6 +394,11 @@ class TaskService:
             "completed_quantity": getattr(task, "completed_quantity", 0),
             "estimated_hours": getattr(task, "estimated_hours", None),
             "story_points": getattr(task, "story_points", None),
+            "source_type": getattr(task, "source_type", None),
+            "related_entity_type": getattr(task, "related_entity_type", None),
+            "related_entity_id": getattr(task, "related_entity_id", None),
+            "related_entity_stage": getattr(task, "related_entity_stage", None),
+            "related_entity_url": getattr(task, "related_entity_url", None),
             "created_at": task.created_at,
             "message": "Task created successfully",
             "task_id": str(task.id)

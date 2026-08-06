@@ -23,6 +23,7 @@ import {
   Phone,
   Tag,
   Calendar,
+  CalendarClock,
   Star,
   AlertCircle,
   BarChart3,
@@ -65,6 +66,7 @@ import {
 } from './utils'
 import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
 import { ContactAttemptDialog } from '../../../components/sales/ContactAttemptDialog'
+import SalesFollowUpDialog from '../../../components/sales/SalesFollowUpDialog'
 import {
   TRANSITION_BLOCKER,
   TRANSITION_WARNING_TOAST,
@@ -151,6 +153,7 @@ export default function CRMPipelinePage() {
   const [dragOverlayLead, setDragOverlayLead] = useState(null)
   const [requirementsDialog, setRequirementsDialog] = useState(null)
   const [contactAttemptLead, setContactAttemptLead] = useState(null)
+  const [followUpLead, setFollowUpLead] = useState(null)
   // Lead id whose stage move is in flight through the required-details dialog
   // ("Save and Move Forward"). Kept separate from the mutation so the row keeps
   // its loading state while that dialog-driven move runs, giving one consistent
@@ -633,6 +636,13 @@ export default function CRMPipelinePage() {
     }
   }, [])
 
+  // ── Schedule Follow-up ────────────────────────────────────────────────────
+  const handleScheduleFollowUp = useCallback((lead) => {
+    const leadId = lead?.id || lead?._id
+    if (!leadId) return
+    setFollowUpLead(lead)
+  }, [])
+
   const handleSearchChange = useCallback((value) => {
     setSearchValue(value)
   }, [setSearchValue])
@@ -979,8 +989,7 @@ export default function CRMPipelinePage() {
                 Retry
               </button>
             </div>
-          ) : selectedStageView ? (
-            <PipelineStageListView
+          ) : selectedStageView ? (              <PipelineStageListView
               stage={selectedStageView}
               stages={interactiveStages}
               currency={currency}
@@ -990,6 +999,7 @@ export default function CRMPipelinePage() {
               onMoveLeadToStage={handleLeadMove}
               onUpdateStageStatus={handleStageStatusChange}
               onRecordContact={handleRecordContact}
+              onScheduleFollowUp={handleScheduleFollowUp}
               onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
               onResetFilters={clearFilters}
               onBulkAssign={handleBulkAssign}
@@ -1014,6 +1024,7 @@ export default function CRMPipelinePage() {
                 onMoveLeadToStage={handleLeadMove}
                 onUpdateStageStatus={handleStageStatusChange}
                 onRecordContact={handleRecordContact}
+                onScheduleFollowUp={handleScheduleFollowUp}
                 getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, interactiveStages)}
                 onCopyLeadId={handleCopyLeadId}
                 onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
@@ -1097,6 +1108,16 @@ export default function CRMPipelinePage() {
           setRequirementsDialog(null)
           if (leadId) navigate(`/crm/leads/${leadId}`)
         }}
+      />
+
+      {/* ============================================================ */}
+      {/* FOLLOW-UP DIALOG */}
+      {/* ============================================================ */}
+      <SalesFollowUpDialog
+        open={Boolean(followUpLead)}
+        lead={followUpLead}
+        users={users}
+        onClose={() => setFollowUpLead(null)}
       />
 
       {/* ============================================================ */}

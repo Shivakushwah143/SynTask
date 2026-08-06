@@ -3,7 +3,7 @@
 // Every metric is computed from live system data (sales dashboard, pipeline board,
 // and CRM activities). Values that cannot be calculated are shown as "—" instead of
 // fabricating results.
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -28,6 +28,7 @@ import { crmApi } from '../../api/crm'
 import { buildPipelineBoard, formatCurrency, getLeadDealValue, getLeadOwnerLabel, getLeadPriority } from '../crm/pipeline/utils'
 import { CRMEmptyState } from '../../components/crm'
 import { Badge, Button, Skeleton } from '../../components/ui'
+import SalesFollowUpDialog from '../../components/sales/SalesFollowUpDialog'
 import { normalizeText } from '../crm/pipeline/utils'
 
 const isToday = (value) => {
@@ -69,6 +70,8 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', hint, currency }
 
 export default function SalesOverview() {
   const navigate = useNavigate()
+  const [followUpOpen, setFollowUpOpen] = useState(false)
+  const [followUpLead, setFollowUpLead] = useState(null)
   const overviewQuery = useQuery('sales-overview-dashboard', salesApi.getOverview, { staleTime: 60_000 })
   const pipelineQuery = useQuery('sales-overview-pipeline', crmApi.getPipeline, { staleTime: 60_000 })
   const activitiesQuery = useQuery('sales-overview-activities', () => crmApi.getActivities({ limit: 30 }), { staleTime: 60_000 })
@@ -108,12 +111,17 @@ export default function SalesOverview() {
   const revenueClosed = overviewMetrics.revenue_closed_this_month ?? summary.this_month ?? 0
   const monthlyTarget = overviewMetrics.monthly_target ?? (Array.isArray(closedVsTarget.target) ? closedVsTarget.target[closedVsTarget.target.length - 1] : 0)
 
+  const handleScheduleFollowUp = useCallback(() => {
+    setFollowUpLead(null)
+    setFollowUpOpen(true)
+  }, [])
+
   const quickActions = [
     { label: 'Add Lead', href: '/crm/leads?create=1', icon: Plus, tone: 'bg-indigo-600 text-white' },
     { label: 'Import Leads', href: '/bulk-leads', icon: Upload, tone: 'bg-emerald-600 text-white' },
     { label: 'Create Meeting', href: '/meetings', icon: Video, tone: 'bg-violet-600 text-white' },
     { label: 'Generate Proposal', href: '/crm/pipeline/proposal', icon: FileDown, tone: 'bg-amber-600 text-white' },
-    { label: 'Schedule Follow-up', href: '/crm/leads', icon: CalendarClock, tone: 'bg-rose-600 text-white' },
+    { label: 'Schedule Follow-up', action: handleScheduleFollowUp, icon: CalendarClock, tone: 'bg-rose-600 text-white' },
   ]
 
   // Real, computed brief — never fabricated AI output.
@@ -302,19 +310,36 @@ export default function SalesOverview() {
               <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <h2 className="font-bold text-gray-900 dark:text-white">Quick Actions</h2>
                 <div className="mt-4 grid gap-2">
-                  {quickActions.map((action) => (
-                    <Link
-                      key={action.label}
-                      to={action.href}
-                      className="group flex min-h-11 items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-800 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40"
-                    >
-                      <span className={`rounded-lg p-1.5 text-white ${action.tone}`}><action.icon className="h-4 w-4" /></span>
-                      {action.label}
-                      <ArrowRight className="ml-auto h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5" />
-                    </Link>
-                  ))}
+                  {quickActions.map((action) => {
+                    const Wrapper = action.action ? 'button' : Link
+                    const wrapperProps = action.action
+                      ? { onClick: action.action, type: 'button' }
+                      : { to: action.href }
+                    return (
+                      <Wrapper
+                        key={action.label}
+                        {...wrapperProps}
+                        className="group flex min-h-11 items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-800 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40 w-full"
+                      >
+                        <span className={`rounded-lg p-1.5 text-white ${action.tone}`}><action.icon className="h-4 w-4" /></span>
+                        {action.label}
+                        <ArrowRight className="ml-auto h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5" />
+                      </Wrapper>
+                    )
+                  })}
                 </div>
               </section>
+
+              {/* Follow-up Dialog */}
+              <SalesFollowUpDialog
+                open={followUpOpen}
+                lead={followUpLead}
+                users={[]}
+                onClose={() => {
+                  setFollowUpOpen(false)
+                  setFollowUpLead(null)
+                }}
+              />
 
               {/* Spotlight */}
               <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">

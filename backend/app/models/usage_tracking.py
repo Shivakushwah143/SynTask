@@ -53,5 +53,6 @@ class UsageTracking(Document):
                     ("period_year", ASCENDING),
                     ("period_month", ASCENDING),
                 ],
+                name="usage_company_period_idx",
             ),
         ]

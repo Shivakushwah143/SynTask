@@ -115,6 +115,15 @@ class Task(Document):
     checklist: List[Dict[str, Any]] = Field(default_factory=list)
     dependencies: List[str] = Field(default_factory=list)
     
+    # Generic relationship linkage (additive, nullable). Lets a task retain a
+    # link back to the source record that generated it (e.g. a Sales follow-up
+    # scheduled from a lead). Existing tasks are unaffected.
+    related_entity_type: Optional[str] = None  # e.g. "sales_lead"
+    related_entity_id: Optional[str] = None    # e.g. lead ObjectId string
+    related_entity_stage: Optional[str] = None # e.g. current lead stage at schedule time
+    related_entity_url: Optional[str] = None   # e.g. "/crm/leads/{lead_id}"
+    source_type: Optional[str] = None          # e.g. "sales_follow_up"
+
     # Workflow
     workflow_id: Optional[str] = None  # Custom workflow
     
@@ -169,6 +178,7 @@ class Task(Document):
             IndexModel([("company_id", ASCENDING), ("project_id", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("assigned_to", ASCENDING), ("created_at", DESCENDING)]),
             IndexModel([("company_id", ASCENDING), ("parent_task_id", ASCENDING)]),
+            IndexModel([("company_id", ASCENDING), ("related_entity_type", ASCENDING), ("related_entity_id", ASCENDING)]),
             IndexModel([("title", TEXT), ("description", TEXT)]),
         ]
 
