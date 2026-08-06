@@ -9,6 +9,7 @@ from app.models.meeting import Meeting
 from app.models.task import Task, TaskStatus
 from app.models.project import Project, ProjectStatus
 from app.models.user import User, UserRole
+from app.services.sales_follow_up_query_service import query_follow_ups
 from app.api.dependencies import get_current_user, check_company_access
 from app.services.project_service import ProjectService
 from app.services.reminder_service import calendar_due_tone
@@ -397,6 +398,51 @@ async def get_calendar_events(
             project_id=project_id,
         )
         tasks = await Task.find(task_query).to_list()
+
+        # 4. Fetch CRM follow-ups and merge into calendar events
+        try:
+            follow_ups = await query_follow_ups(
+                current_user,
+                start_at=start_at,
+                end_at=end_at,
+                owner_ids=user_ids_to_fetch if user_ids_to_fetch else None,
+            )
+        except Exception:
+            follow_ups = []
+
+        for fu in follow_ups:
+            # Map follow-up DTO into calendar event shape
+            event_date = None
+            if fu.get('due_date'):
+                try:
+                    from datetime import datetime
+                    event_date = datetime.fromisoformat(fu['due_date'].replace('Z', '+00:00')).date()
+                except Exception:
+                    event_date = None
+            if not event_date and fu.get('scheduled_at'):
+                try:
+                    from datetime import datetime
+                    event_date = datetime.fromisoformat(fu['scheduled_at'].replace('Z', '+00:00')).date()
+                except Exception:
+                    event_date = None
+
+            if event_date and start <= event_date <= end:
+                events.append({
+                    'id': f"followup_{fu['id']}",
+                    'type': 'follow_up',
+                    'title': fu.get('title') or 'Follow-up',
+                    'description': fu.get('description') or '',
+                    'start': event_date.isoformat(),
+                    'start_at': fu.get('due_date') or fu.get('scheduled_at'),
+                    'time': None,
+                    'assignee': fu.get('owner_name'),
+                    'assignee_id': fu.get('owner_id'),
+                    'lead_id': fu.get('lead_id'),
+                    'lead_name': fu.get('lead_name'),
+                    'phone': fu.get('formatted_phone'),
+                    'status': fu.get('status'),
+                    'color': '#D946EF',
+                })
         
         # Format tasks
         # Cache unique assigned_to user names to prevent N+1 queries

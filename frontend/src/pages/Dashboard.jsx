@@ -258,6 +258,7 @@ const Dashboard = () => {
   const [todayEvents, setTodayEvents] = useState([])
   const [upcomingDeadlines, setUpcomingDeadlines] = useState([])
   const [upcomingMeetingsList, setUpcomingMeetingsList] = useState([])
+  const [workspaceEvents, setWorkspaceEvents] = useState([])
   const [, setTodayContent] = useState([])
   const [, setOverdueTasksList] = useState([])
   const [, setCalendarLoading] = useState(false)
@@ -439,6 +440,7 @@ const Dashboard = () => {
         if (!active) return;
         const workspaceEvents = workspaceResp?.events || [];
         const contentEvents = contentResp?.events || [];
+        if (active) setWorkspaceEvents(workspaceEvents)
         const todayStr = format(today, 'yyyy-MM-dd');
 
         setTodayEvents(workspaceEvents.filter((e) => e.start === todayStr));
@@ -662,6 +664,7 @@ const Dashboard = () => {
     { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && Boolean(productionDashboard) },
     { id: 'recent-activity', name: 'Recent Activity' },
     { id: 'calendar-overview', name: 'Calendar Overview' },
+    { id: 'lead-follow-ups', name: 'Lead Follow-ups' },
   ].filter((section) => section.available !== false)
 
   const orderedDashboardSections = normalizeSectionOrder(dashboardSections, sectionOrder)
@@ -1327,6 +1330,47 @@ const Dashboard = () => {
                 </div>
               )}
             </div>
+          </div>
+        </section>
+      ))}
+
+      {/* ============================================================ */}
+      {/* LEAD FOLLOW-UPS */}
+      {/* ============================================================ */}
+      {renderDashboardSection('lead-follow-ups', (
+        <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700 mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Lead Follow-ups</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Upcoming scheduled lead follow-ups for the next 30 days.</p>
+            </div>
+            <button
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              onClick={() => navigate('/crm/leads')}
+            >
+              View Leads
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {workspaceEvents.filter((e) => e.type === 'follow_up' && e.start).slice(0, 6).map((e) => (
+              <div key={e.id} className="flex items-center justify-between rounded-md border border-gray-100 p-2">
+                <div>
+                  <a onClick={() => navigate(e.lead_id ? `/crm/leads/${e.lead_id}` : '/crm/leads')} className="font-medium text-gray-900 dark:text-white hover:underline cursor-pointer">{e.lead_name || e.title}</a>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{e.start} · {e.assignee || 'Unassigned'}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {e.phone ? (
+                    <a href={`tel:${e.phone}`} className="text-xs text-indigo-600 hover:underline">{e.phone}</a>
+                  ) : (
+                    <span className="text-xs text-gray-400">No phone</span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {workspaceEvents.filter((e) => e.type === 'follow_up' && e.start).length === 0 && (
+              <p className="text-xs text-gray-400">No upcoming lead follow-ups</p>
+            )}
           </div>
         </section>
       ))}
