@@ -415,13 +415,11 @@ async def get_calendar_events(
             event_date = None
             if fu.get('due_date'):
                 try:
-                    from datetime import datetime
                     event_date = datetime.fromisoformat(fu['due_date'].replace('Z', '+00:00')).date()
                 except Exception:
                     event_date = None
             if not event_date and fu.get('scheduled_at'):
                 try:
-                    from datetime import datetime
                     event_date = datetime.fromisoformat(fu['scheduled_at'].replace('Z', '+00:00')).date()
                 except Exception:
                     event_date = None
@@ -439,7 +437,9 @@ async def get_calendar_events(
                     'assignee_id': fu.get('owner_id'),
                     'lead_id': fu.get('lead_id'),
                     'lead_name': fu.get('lead_name'),
-                    'phone': fu.get('formatted_phone'),
+                    'phone': fu.get('phone'),
+                    'country_code': fu.get('country_code'),
+                    'phone_display': fu.get('formatted_phone'),
                     'status': fu.get('status'),
                     'color': '#D946EF',
                 })
