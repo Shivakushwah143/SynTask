@@ -73,15 +73,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+      <div className="flex items-center gap-3">
+        <div className={`shrink-0 rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</span>
+          <p className="mt-0.5 truncate text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -90,15 +92,15 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
 // SECTION HEADER COMPONENT
 // ============================================================
 const SectionHeader = ({ icon: Icon, title, description, action }) => (
-  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+  <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-          <Icon className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+      <div className="flex items-center gap-2.5">
+        <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+          <Icon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
         </div>
         <div>
           <h2 className="font-bold text-gray-900 dark:text-white">{title}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
         </div>
       </div>
       {action}
@@ -490,25 +492,68 @@ const Invoices = () => {
   if (loading && !invoices.length) {
     return (
       <div className="space-y-6 p-4 md:p-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 p-6 text-white shadow-xl md:p-8">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 p-4 text-white shadow-xl md:p-5">
           <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
           <div className="relative z-10">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
+              <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+                <LayoutDashboard className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Invoices</h1>
-                <p className="mt-1 text-indigo-100">Loading invoices...</p>
+                <h1 className="text-xl font-bold md:text-2xl">Invoices</h1>
+                <p className="mt-0.5 text-indigo-100">Loading invoices...</p>
               </div>
             </div>
           </div>
         </div>
-        <div className="flex items-center justify-center py-12">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading invoices...</p>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, index) => (
+            <div key={index} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 shrink-0 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="h-2.5 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                  <div className="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                  <div className="h-2 w-14 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="border-b border-gray-200 p-3 dark:border-gray-700">
+            <div className="flex items-center gap-2.5">
+              <div className="h-7 w-7 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+              <div className="space-y-1">
+                <div className="h-3 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div className="h-2 w-48 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-3 p-3 md:grid-cols-4">
+            {[...Array(4)].map((_, index) => (
+              <div key={index} className="space-y-1">
+                <div className="h-3 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                <div className="h-9 w-full animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="border-b border-gray-200 p-3 dark:border-gray-700">
+            <div className="flex items-center gap-2.5">
+              <div className="h-7 w-7 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+              <div className="h-3 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            </div>
+          </div>
+          <div className="space-y-3 p-4">
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="h-11 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800"></div>
+            ))}
           </div>
         </div>
       </div>
@@ -519,27 +564,27 @@ const Invoices = () => {
     <div className="space-y-6 p-4 md:p-6">
       {/* ============================================================ */}
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-4 text-white shadow-xl md:p-5">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         
-        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="rounded-xl bg-white/20 p-3 backdrop-blur-md shadow-lg border border-white/20">
-              <FileText className="h-7 w-7 text-white" />
+        <div className="relative z-10 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-white/20 p-2 backdrop-blur-md shadow-lg border border-white/20">
+              <FileText className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl text-white tracking-tight">Invoices & Financials</h1>
-              <p className="mt-1 text-indigo-100 text-sm">Generate tax invoices, proforma estimates & track client billing status</p>
+              <h1 className="text-xl font-bold md:text-2xl text-white tracking-tight">Invoices & Financials</h1>
+              <p className="mt-0.5 text-indigo-100 text-sm">Generate tax invoices, proforma estimates & track client billing status</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
             {(isCompanyAdmin || isLead) && (
               <>
                 <button
                   type="button"
                   onClick={() => setComposerOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 border border-white/10 shadow-md"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/20 border border-white/10 shadow-md"
                 >
                   <Mail className="h-4 w-4" />
                   <span>Send Email</span>
@@ -550,7 +595,7 @@ const Invoices = () => {
                     resetForm()
                     setShowCreateModal(true)
                   }}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur-md transition hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/40 shadow-lg border border-white/20"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Create Invoice</span>
@@ -564,7 +609,7 @@ const Invoices = () => {
       {/* ============================================================ */}
       {/* STAT CARDS - 4 Cards with Gradients */}
       {/* ============================================================ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
           label="Total Invoices" 
           value={stats.total} 
@@ -617,8 +662,8 @@ const Invoices = () => {
             </button>
           }
         />
-        <div className="p-4">
-          <div className="grid gap-4 md:grid-cols-4">
+        <div className="p-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <div className="space-y-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search</label>
               <div className="relative">

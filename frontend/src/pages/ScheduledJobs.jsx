@@ -164,15 +164,17 @@ function StatCard({ label, value, icon: Icon, color = 'indigo', subtitle }) {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center gap-3">
         <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+          <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -480,28 +482,28 @@ export default function ScheduledJobs() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-700 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-700 p-4 text-white shadow-xl md:p-5">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
+        <div className="relative z-10 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <CalendarClock className="h-6 w-6" />
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <CalendarClock className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Scheduled Jobs</h1>
-              <p className="mt-1 text-indigo-100">Manage future-scheduled actions for Projects and Tasks.</p>
+              <h1 className="text-xl font-bold md:text-2xl">Scheduled Jobs</h1>
+              <p className="mt-0.5 text-xs text-indigo-100">Manage future-scheduled actions for Projects and Tasks.</p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-2 md:self-center">
             <button
               onClick={() => loadJobs({ silent: true })}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30 disabled:opacity-50"
               aria-label="Refresh"
               id="scheduled-jobs-refresh-btn"
             >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </button>
           </div>
@@ -510,14 +512,14 @@ export default function ScheduledJobs() {
 
       {/* Info banner for non-schedulers */}
       {!canSchedule && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/30 dark:bg-amber-950/20">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900/30 dark:bg-amber-950/20">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
             <div>
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
                 Limited Access
               </p>
-              <p className="text-sm text-amber-700 dark:text-amber-400">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
                 Only Admins, Managers and Leads can schedule actions. Contact your administrator to grant access.
               </p>
             </div>
@@ -526,7 +528,7 @@ export default function ScheduledJobs() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total Jobs"
           value={total}
