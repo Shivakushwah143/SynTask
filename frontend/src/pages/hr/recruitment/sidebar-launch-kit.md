@@ -69,6 +69,7 @@ Questions? Reply to this message.
 | Ledger / Transactions | Finance → Transactions | Was "Ledger" under Administration |
 | Subscriptions | Finance → Subscriptions | Was duplicated in Administration AND Finance Tools |
 | Leads | Sales → Leads | Was under CRM Tools |
+| All leads (full list) | Sales → All Leads | New full-list page at /crm/leads/all |
 | CRM Pipeline | Sales → Pipeline | Was under CRM Tools |
 | Import leads (bulk upload) | Sales → Import Leads | Was "Bulk Lead Import" under Administration |
 | Company / Client list | Clients → Companies | Was "CRM Companies" under CRM Tools |

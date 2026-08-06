@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCorners, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
+import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   LayoutDashboard,
@@ -40,6 +40,7 @@ import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { isAssignableActiveUser } from '../../../utils/userFilters'
 import { useDebounce } from '../../../hooks/useDebounce'
+import { PhoneInput } from '../../../components/ui/PhoneInput'
 import {
   PipelineBoard,
   PipelineBoardShell,
@@ -47,20 +48,29 @@ import {
   PipelineFiltersBar,
   PipelineInsightRail,
   PipelineLoadingState,
+  PipelineStageListView,
 } from './components'
 import {
   buildPipelineBoard,
   filterPipelineLeads,
   getLeadOwnerLabel,
   getAllowedPipelineStageKeys,
+  getCanonicalPipelineStageKey,
   getLeadPriority,
+  getStageStatusOptions,
   isAllowedPipelineTransition,
-  moveLeadInBoard,
   ownerOptionsFromBoard,
   parsePipelineFilters,
   stageOptionsFromBoard,
 } from './utils'
-import { sanitizeLocalPhone, parsePhonePaste } from '../../../components/ui/phoneUtils'
+import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
+import { ContactAttemptDialog } from '../../../components/sales/ContactAttemptDialog'
+import {
+  TRANSITION_BLOCKER,
+  TRANSITION_WARNING_TOAST,
+  buildStatusWarningMessage,
+  classifyTransitionFailure,
+} from '../../../utils/salesTransition'
 
 // ============================================================
 // CONSTANTS & HELPERS
@@ -104,6 +114,7 @@ const getResponseItems = (data, key) => {
 export default function CRMPipelinePage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { stageKey: stageRouteKey = '' } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const [localSearchValue, setLocalSearchValue] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
@@ -126,8 +137,11 @@ export default function CRMPipelinePage() {
   const pipelineSearchContext = usePipelineSearchContext()
   const searchValue = pipelineSearchContext.searchValue ?? localSearchValue
   const setSearchValue = pipelineSearchContext.setSearchValue || setLocalSearchValue
+  // Short staleness so the board never diverges from the lead detail page: a
+  // 5-minute cache made a budget saved on the detail page stay invisible on the
+  // pipeline (Value column showing Rs 0) until the user manually edited again.
   const pipelineQuery = useQuery(PIPELINE_QUERY_KEY, () => crmApi.getPipeline(), {
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
   })
   const categoriesQuery = useQuery('crm-lead-categories', salesApi.getCategories, { staleTime: 5 * 60 * 1000 })
   const stagesQuery = useQuery('crm-lead-stages', salesApi.getStages, { staleTime: 5 * 60 * 1000 })
@@ -135,6 +149,13 @@ export default function CRMPipelinePage() {
   const productsQuery = useQuery('crm-lead-products', salesApi.getProducts, { staleTime: 5 * 60 * 1000 })
   const [activeLeadId, setActiveLeadId] = useState(null)
   const [dragOverlayLead, setDragOverlayLead] = useState(null)
+  const [requirementsDialog, setRequirementsDialog] = useState(null)
+  const [contactAttemptLead, setContactAttemptLead] = useState(null)
+  // Lead id whose stage move is in flight through the required-details dialog
+  // ("Save and Move Forward"). Kept separate from the mutation so the row keeps
+  // its loading state while that dialog-driven move runs, giving one consistent
+  // in-flight indicator on the stage list / board.
+  const [dialogMovingLeadId, setDialogMovingLeadId] = useState(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -150,12 +171,35 @@ export default function CRMPipelinePage() {
     [usersQuery.data]
   )
   const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
+  const loading = pipelineQuery.isLoading
+  const hasError = pipelineQuery.isError
   const filters = useMemo(() => parsePipelineFilters(searchParams), [searchParams])
+  const routeStageKey = useMemo(() => getCanonicalPipelineStageKey(stageRouteKey), [stageRouteKey])
+  const queryStageKey = useMemo(() => getCanonicalPipelineStageKey(filters.stage), [filters.stage])
+  const requestedStageKey = routeStageKey || queryStageKey
+  const selectedStage = useMemo(
+    () => board.stages.find((stage) => stage.key === requestedStageKey) || null,
+    [board.stages, requestedStageKey]
+  )
+  const selectedStageKey = selectedStage?.key || ''
+  const selectedStageView = useMemo(() => {
+    if (!selectedStage) return null
+    const stageIndex = board.stages.findIndex((stage) => stage.key === selectedStage.key)
+    return {
+      ...selectedStage,
+      previousStageKey: board.stages[stageIndex - 1]?.key || null,
+      nextStageKey: board.stages[stageIndex + 1]?.key || null,
+    }
+  }, [board.stages, selectedStage])
+  const scopedStages = useMemo(
+    () => (selectedStage ? [selectedStage] : board.stages),
+    [board.stages, selectedStage]
+  )
 
   const selectedStageLabel = useMemo(() => {
-    if (!filters.stage) return ''
-    return board.stages.find((stage) => stage.key === filters.stage)?.name || filters.stage
-  }, [board.stages, filters.stage])
+    if (!selectedStage) return ''
+    return selectedStage.name || selectedStage.label || selectedStage.key || ''
+  }, [selectedStage])
 
   const debouncedSearch = useDebounce(searchValue, 160)
   const effectiveSearch = useMemo(() => {
@@ -168,24 +212,30 @@ export default function CRMPipelinePage() {
   }, [filters.q, setSearchValue])
 
   useEffect(() => {
+    if (!stageRouteKey || loading || hasError) return
+    if (selectedStage) return
+    navigate('/crm/pipeline', { replace: true })
+  }, [hasError, loading, navigate, selectedStage, stageRouteKey])
+
+  useEffect(() => {
     if (effectiveSearch !== filters.q) {
       setSearchParams((current) => mergeSearchParams(current, { q: effectiveSearch }), { replace: true })
     }
   }, [effectiveSearch, filters.q, setSearchParams])
 
   const visibleLeads = useMemo(() => {
-    const allLeads = board.stages.flatMap((stage) => stage.leads)
+    const allLeads = scopedStages.flatMap((stage) => stage.leads)
     return filterPipelineLeads(allLeads, { ...filters, q: effectiveSearch })
-  }, [board.stages, effectiveSearch, filters])
+  }, [effectiveSearch, filters, scopedStages])
 
   const visibleLeadIds = useMemo(() => new Set(visibleLeads.map((lead) => lead.id || lead._id)), [visibleLeads])
   const hasActiveFilters = useMemo(() => (
     Boolean(effectiveSearch)
-    || Object.entries(filters).some(([key, value]) => key !== 'q' && String(value || '').trim())
+    || Object.entries(filters).some(([key, value]) => key !== 'q' && key !== 'stage' && String(value || '').trim())
   ), [effectiveSearch, filters])
 
   const visibleBoard = useMemo(() => {
-    const nextStages = board.stages
+    const nextStages = scopedStages
       .map((stage, index, items) => ({
         ...stage,
         leads: stage.leads.filter((lead) => visibleLeadIds.has(lead.id || lead._id)),
@@ -205,7 +255,9 @@ export default function CRMPipelinePage() {
       stages: nextStages,
       leadIndex,
     }
-  }, [board, visibleLeadIds])
+  }, [board, scopedStages, visibleLeadIds])
+
+  const interactiveStages = selectedStage ? board.stages : visibleBoard.stages
 
   const defaultStageId = getStageValue(stages[0])
   const defaultCategoryId = getOptionId(categories[0])
@@ -224,17 +276,31 @@ export default function CRMPipelinePage() {
   }, [createOpen, defaultCategoryId, defaultOwnerId, defaultProductIds, defaultStageId])
 
   const updateFilters = useCallback((partial) => {
+    if (Object.prototype.hasOwnProperty.call(partial, 'stage')) {
+      const nextStageKey = getCanonicalPipelineStageKey(partial.stage)
+      const nextSearch = mergeSearchParams(searchParams, partial)
+      nextSearch.delete('stage')
+      navigate({
+        pathname: nextStageKey ? `/crm/pipeline/${nextStageKey}` : '/crm/pipeline',
+        search: nextSearch.toString() ? `?${nextSearch.toString()}` : '',
+      }, { replace: true })
+      return
+    }
     setSearchParams((current) => mergeSearchParams(current, partial), { replace: true })
-  }, [setSearchParams])
+  }, [navigate, searchParams, setSearchParams])
 
   const clearFilters = useCallback(() => {
     setSearchValue('')
+    if (selectedStageKey) {
+      navigate(`/crm/pipeline/${selectedStageKey}`, { replace: true })
+      return
+    }
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       Array.from(next.keys()).forEach((key) => next.delete(key))
       return next
     }, { replace: true })
-  }, [setSearchParams, setSearchValue])
+  }, [navigate, selectedStageKey, setSearchParams, setSearchValue])
 
   const createLeadMutation = useMutation((payload) => salesApi.createLead(payload), {
     onSuccess: () => {
@@ -300,27 +366,65 @@ export default function CRMPipelinePage() {
     createLeadMutation.mutate(payload)
   }, [createForm, createLeadMutation, defaultOwnerId])
 
+  // The board lead can be up to 5 minutes stale (cached pipeline query), so the
+  // required-details popup must analyze the live record: a field saved just now
+  // elsewhere must not be asked for again (and a field a previous save actually
+  // failed to persist must be asked for). Falls back to the snapshot on error.
+  const fetchFreshLeadForDialog = useCallback(async (leadId) => {
+    if (!leadId) return null
+    try {
+      const response = await salesApi.getLead(leadId)
+      const freshLead = response?.data || response
+      return freshLead && typeof freshLead === 'object' ? freshLead : null
+    } catch {
+      return null
+    }
+  }, [])
+
+  // Shared failure handling for stage-movement attempts. Business validation
+  // blockers open the required-details popup or show a warning; only genuine
+  // technical failures surface as error toasts.
+  const handleMoveFailure = async (error, variables) => {
+    const blocker = classifyTransitionFailure(error, 'Failed to update lead stage')
+    if (blocker.category === TRANSITION_BLOCKER.MISSING_DETAILS) {
+      const leadId = variables?.lead?.id || variables?.lead?._id
+      const freshLead = await fetchFreshLeadForDialog(leadId)
+      setRequirementsDialog({
+        blocker,
+        lead: freshLead ? { ...(variables?.lead || {}), ...freshLead } : variables?.lead,
+        targetStageKey: variables?.stageKey,
+      })
+      return
+    }
+    if (
+      blocker.category === TRANSITION_BLOCKER.STATUS_REQUIREMENT
+      || blocker.category === TRANSITION_BLOCKER.ACTION_REQUIREMENT
+    ) {
+      toast(buildStatusWarningMessage(blocker) || blocker.message, TRANSITION_WARNING_TOAST)
+      return
+    }
+    if (blocker.category === TRANSITION_BLOCKER.PERMISSION_DENIED) {
+      toast(blocker.message, { icon: '🔒', ...TRANSITION_WARNING_TOAST })
+      return
+    }
+    toast.error(blocker.message)
+  }
+
   const moveLeadMutation = useMutation(
     ({ leadId, stageKey }) => crmApi.updatePipelineStage(leadId, { stage: stageKey }),
     {
-      onMutate: async ({ leadId, stageKey, lead }) => {
+      // No optimistic board write: the lead must NOT visibly move until the
+      // backend confirms the move. The row/card stays on its current stage with
+      // the button showing its loading state (movingLeadId drives isMovePending
+      // in the stage list and board cards), so a failed request never causes
+      // the lead to appear to jump stages and then snap back.
+      onMutate: async () => {
+        // Drop any in-flight board refetch so it cannot race the PATCH and
+        // cache a pre-move snapshot right before the success refetch.
         await queryClient.cancelQueries(PIPELINE_QUERY_KEY)
-        const previousBoard = queryClient.getQueryData(PIPELINE_QUERY_KEY)
-        const optimisticLead = {
-          ...lead,
-          current_stage: stageKey,
-          days_in_stage: 0,
-        }
-        queryClient.setQueryData(PIPELINE_QUERY_KEY, (currentBoard) =>
-          moveLeadInBoard(buildPipelineBoard(currentBoard || {}), leadId, stageKey, optimisticLead)
-        )
-        return { previousBoard }
       },
-      onError: (error, variables, context) => {
-        if (context?.previousBoard) {
-          queryClient.setQueryData(PIPELINE_QUERY_KEY, context.previousBoard)
-        }
-        toast.error(error?.response?.data?.detail || 'Failed to update lead stage')
+      onError: (error, variables) => {
+        handleMoveFailure(error, variables)
       },
       onSuccess: (response) => {
         const updatedLead = response?.lead || response?.data?.lead || response?.updatedLead || response
@@ -337,16 +441,186 @@ export default function CRMPipelinePage() {
   const handleLeadMove = useCallback((lead, nextStageKey) => {
     const leadId = lead?.id || lead?._id
     if (!leadId || !nextStageKey) return
-    if (moveLeadMutation.isLoading) return
-    const sourceStage = visibleBoard.stages.find((stage) => stage.leads.some((item) => (item.id || item._id) === leadId))
-    const targetStage = visibleBoard.stages.find((stage) => stage.key === nextStageKey)
+    if (moveLeadMutation.isLoading || dialogMovingLeadId) return
+    const sourceStage = interactiveStages.find((stage) => stage.leads.some((item) => (item.id || item._id) === leadId))
+    const targetStage = interactiveStages.find((stage) => stage.key === nextStageKey)
     if (sourceStage?.key === nextStageKey) return
     if (sourceStage && targetStage && !isAllowedPipelineTransition(sourceStage, targetStage)) {
-      toast.error(`Move ${sourceStage.name} leads to ${targetStage.name} through the required workflow steps.`)
+      toast(`Move ${sourceStage.name} leads to ${targetStage.name} through the required workflow steps.`, TRANSITION_WARNING_TOAST)
       return
     }
-    return moveLeadMutation.mutateAsync({ leadId, stageKey: nextStageKey, lead })
-  }, [moveLeadMutation, visibleBoard.stages])
+    // onError already handles the dialog/warning; swallow the rejection so board
+    // buttons and drag-and-drop never produce an unhandled promise.
+    return moveLeadMutation.mutateAsync({ leadId, stageKey: nextStageKey, lead }).catch(() => {})
+  }, [dialogMovingLeadId, interactiveStages, moveLeadMutation])
+
+  // ── Required-details dialog (guided validation) ────────────────────────────
+  // Save Details: persists only the missing editable fields, keeps the lead on
+  // its current stage. Save and Move Forward: persists, then re-runs the
+  // transition; the lead moves only when every backend rule passes.
+  const handleDialogSaveFields = async (values) => {
+    const leadId = requirementsDialog?.lead?.id || requirementsDialog?.lead?._id
+    if (!leadId) return
+    try {
+      await salesApi.updateLeadForm(leadId, values)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Unable to save details')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) toast.error(blocker.message)
+      else toast(blocker.message, TRANSITION_WARNING_TOAST)
+      throw error
+    }
+    queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+    queryClient.invalidateQueries('crm-leads-entry')
+    queryClient.invalidateQueries('sales-prospects')
+    toast.success('Details saved')
+    setRequirementsDialog(null)
+  }
+
+  const handleDialogSaveAndMove = async (values) => {
+    const leadId = requirementsDialog?.lead?.id || requirementsDialog?.lead?._id
+    const stageKey = requirementsDialog?.targetStageKey
+    if (!leadId || !stageKey) return
+    try {
+      await salesApi.updateLeadForm(leadId, values)
+      // Drive the same in-flight indicator as a direct stage move so the row's
+      // Move button shows loading (and is disabled) while the move runs.
+      setDialogMovingLeadId(leadId)
+      try {
+        await crmApi.updatePipelineStage(leadId, { stage: stageKey })
+      } finally {
+        setDialogMovingLeadId(null)
+      }
+      queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+      queryClient.invalidateQueries('crm-leads-entry')
+      queryClient.invalidateQueries('sales-prospects')
+      queryClient.invalidateQueries(['crm-pipeline-history', leadId], { exact: true })
+      toast.success('Lead moved successfully! 🚀')
+      setRequirementsDialog(null)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Failed to update lead stage')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) {
+        setRequirementsDialog(null)
+        toast.error(blocker.message)
+      } else {
+        // Keep the popup open with the updated blocker (e.g. remaining status rule)
+        // and analyze the LIVE record. The stored blocker can be stale — a
+        // previous save may or may not have persisted — so re-fetching prevents
+        // a green "all requirements fulfilled" banner against an outdated lead
+        // snapshot while the record still actually misses a field.
+        const freshLead = await fetchFreshLeadForDialog(leadId)
+        setRequirementsDialog((current) => ({
+          ...current,
+          blocker,
+          lead: {
+            ...(current?.lead || {}),
+            ...(freshLead || {}),
+            ...values,
+          },
+        }))
+      }
+    }
+  }
+
+  const updateStatusMutation = useMutation(
+    ({ leadId, stageStatus }) => crmApi.updateStageStatus(leadId, stageStatus),
+    {
+      onSuccess: (response, variables) => {
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+        if (variables?.leadId) {
+          queryClient.invalidateQueries(['crm-pipeline-history', variables.leadId], { exact: true })
+        }
+        const message = response?.message || 'Stage status updated successfully'
+        toast.success(message)
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to update stage status')
+      },
+    }
+  )
+
+  // ── Record Contact Attempt (Acquire) ──────────────────────────────────────
+  // Creates a real call/email activity and backfills the lead's contact
+  // timestamps; the backend then treats the first-contact gate as satisfied.
+  const recordContactMutation = useMutation(
+    async ({ leadId, method, notes }) => {
+      // The lead timestamp is the source of truth for the first-contact gate;
+      // the activity is the audit trail (types: call / email / follow_up).
+      await salesApi.updateLeadForm(leadId, { last_contacted_at: new Date().toISOString() })
+      const activityType = method === 'email' ? 'email' : method === 'call' ? 'call' : 'follow_up'
+      const title = method === 'email'
+        ? 'First contact email'
+        : method === 'call'
+          ? 'First contact call'
+          : `First contact via ${method}`
+      await crmApi.createActivity({
+        entity_type: 'lead',
+        entity_id: leadId,
+        activity_type: activityType,
+        title,
+        description: notes || `First contact attempt recorded via ${method}.`,
+        status: 'completed',
+      })
+    },
+    {
+      onSuccess: () => {
+        toast.success('Contact attempt recorded')
+        setContactAttemptLead(null)
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to record contact attempt')
+      },
+    }
+  )
+
+  const handleRecordContact = useCallback((lead) => {
+    if (!lead?.id && !lead?._id) return
+    setContactAttemptLead(lead)
+  }, [])
+
+  const handleContactSubmit = useCallback((method, notes) => {
+    const leadId = contactAttemptLead?.id || contactAttemptLead?._id
+    if (!leadId) return
+    recordContactMutation.mutate({ leadId, method, notes })
+  }, [contactAttemptLead, recordContactMutation])
+
+  const handleStageStatusChange = useCallback((lead, nextStatus) => {
+    const leadId = lead?.id || lead?._id
+    if (!leadId || !nextStatus) return
+    if (updateStatusMutation.isLoading) return
+    updateStatusMutation.mutate({ leadId, stageStatus: nextStatus })
+  }, [updateStatusMutation])
+
+  // ── Bulk assign (Acquire stage multi-select) ───────────────────────────────
+  const bulkAssignMutation = useMutation(
+    ({ leadIds, userId }) => crmApi.bulkAssignLeads({ lead_ids: leadIds, target_user_id: userId }),
+    {
+      onSuccess: (data) => {
+        const assignedCount = Number(data?.assigned_count ?? data?.assigned?.length ?? 0)
+        const skippedCount = Number(data?.skipped_count ?? 0)
+        toast.success(assignedCount
+          ? `${assignedCount} lead${assignedCount === 1 ? '' : 's'} assigned` + (skippedCount ? `, ${skippedCount} skipped` : '')
+          : 'No leads were assigned')
+        queryClient.invalidateQueries(PIPELINE_QUERY_KEY)
+        queryClient.invalidateQueries('crm-leads-entry')
+        queryClient.invalidateQueries('sales-prospects')
+      },
+      onError: (error) => {
+        toast.error(error?.response?.data?.detail || 'Failed to assign selected leads')
+      },
+    }
+  )
+
+  // Returns a promise so the stage list can clear its selection only on success.
+  const handleBulkAssign = useCallback((leadIds, userId) => {
+    if (!leadIds?.length || !userId) return Promise.resolve()
+    if (bulkAssignMutation.isLoading) return Promise.resolve()
+    return bulkAssignMutation.mutateAsync({ leadIds, userId })
+  }, [bulkAssignMutation])
 
   const handleCopyLeadId = useCallback(async (lead) => {
     const value = lead?.id || lead?._id
@@ -392,7 +666,7 @@ export default function CRMPipelinePage() {
   // STATS CALCULATION
   // ============================================================
   const pipelineStats = useMemo(() => {
-    const allLeads = board.stages.flatMap(stage => stage.leads)
+    const allLeads = scopedStages.flatMap(stage => stage.leads)
     const total = allLeads.length
     const openLeads = allLeads.filter(lead =>
       !['closed_won', 'closed_lost', 'disqualified'].includes(lead.current_stage?.toLowerCase())
@@ -406,7 +680,7 @@ export default function CRMPipelinePage() {
     const hotLeads = allLeads.filter(lead =>
       ['critical', 'high'].includes(getLeadPriority(lead))
     ).length
-    const activeStages = board.stages.filter(stage => (stage.leads || []).length > 0).length
+    const activeStages = scopedStages.filter(stage => (stage.leads || []).length > 0).length
     const totalValue = allLeads.reduce((sum, lead) =>
       sum + parseFloat(lead.amount || lead.value || 0), 0
     )
@@ -414,64 +688,24 @@ export default function CRMPipelinePage() {
     const conversionRate = total > 0 ? (wonLeads / total) * 100 : 0
 
     return { total, openLeads, wonLeads, highValueLeads, hotLeads, activeStages, totalValue, avgValue, conversionRate }
-  }, [board.stages])
+  }, [scopedStages])
+
+  // Single source of truth for "this lead's move is in flight": either the
+  // direct move mutation or the dialog-driven save-and-move.
+  const effectiveMovingLeadId = moveLeadMutation.isLoading
+    ? moveLeadMutation.variables?.leadId
+    : dialogMovingLeadId
 
   const currency = rawPipeline?.meta?.currency || 'INR'
   const hasMoreLeads = Boolean(rawPipeline?.meta?.has_more)
   const totalLeads = Number(rawPipeline?.meta?.total_leads || 0)
   const boardLimit = Number(rawPipeline?.meta?.limit || 0)
-  const loading = pipelineQuery.isLoading
-  const hasError = pipelineQuery.isError
-
-  // ============================================================
-  // Phone Input Component
-  // ============================================================
-  const PhoneInput = ({ countryCode, phoneNumber, onCountryCodeChange, onPhoneNumberChange, required }) => {
-    const handlePaste = (e) => {
-      e.preventDefault()
-      const pasted = e.clipboardData?.getData('text') || ''
-      const { countryCode: detected, phoneNumber: clean } = parsePhonePaste(pasted)
-      if (detected) onCountryCodeChange(detected)
-      onPhoneNumberChange(clean)
-    }
-
-    const handleChange = (e) => {
-      const val = e.target.value
-      const { countryCode: detected, phoneNumber: clean } = parsePhonePaste(val)
-      if (detected) onCountryCodeChange(detected)
-      onPhoneNumberChange(clean)
-    }
-
-    return (
-      <div className="flex gap-2">
-        <select
-          value={countryCode}
-          onChange={(e) => onCountryCodeChange(e.target.value)}
-          className="w-24 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-        >
-          <option value="+91">+91</option>
-          <option value="+1">+1</option>
-          <option value="+44">+44</option>
-          <option value="+61">+61</option>
-          <option value="+81">+81</option>
-          <option value="+86">+86</option>
-        </select>
-        <input
-          type="tel"
-          value={phoneNumber}
-          onChange={handleChange}
-          onPaste={handlePaste}
-          className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-          placeholder="9876543210"
-          required={required}
-        />
-      </div>
-    )
-  }
 
   // ============================================================
   // Stat Card Component
   // ============================================================
+  // Compact metric tile: icon + label on one row with the value beside it, so all
+  // six stats fit in a single dense band on wide screens.
   const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle, suffix = '' }) => {
     const colors = {
       indigo: 'from-indigo-500 to-purple-500',
@@ -483,22 +717,24 @@ export default function CRMPipelinePage() {
     }
 
     return (
-      <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-          <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+      <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+        <div className="flex items-center gap-2.5">
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r ${colors[color]} text-white shadow-sm transition-transform group-hover:scale-105`}>
             <Icon className="h-4 w-4" />
           </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-400">{label}</p>
+            <p className="truncate text-lg font-bold leading-tight text-gray-900 dark:text-white">
+              {typeof value === 'number' && label.includes('Value')
+                ? `${currency} ${value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+                : typeof value === 'number'
+                  ? value.toLocaleString('en-IN')
+                  : value}
+              {suffix}
+            </p>
+            {subtitle ? <p className="truncate text-[10px] text-gray-500 dark:text-gray-400">{subtitle}</p> : null}
+          </div>
         </div>
-        <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-          {typeof value === 'number' && label.includes('Value')
-            ? `${currency} ${value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
-            : typeof value === 'number'
-              ? value.toLocaleString('en-IN')
-              : value}
-          {suffix}
-        </p>
-        {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
       </div>
     )
   }
@@ -511,44 +747,51 @@ export default function CRMPipelinePage() {
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 p-4 text-white shadow-lg sm:p-5">
+        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-40 w-40 rounded-full bg-white/10 blur-2xl"></div>
 
-        <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">
-                  {selectedStageLabel ? `${selectedStageLabel} Pipeline` : 'Sales Pipeline'}
-                </h1>
-                <p className="mt-1 text-indigo-100">
-                  {selectedStageLabel
-                    ? `Showing leads in the ${selectedStageLabel} stage.`
-                    : 'Manage your leads and move them through the pipeline workflow.'}
-                </p>
-              </div>
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <LayoutDashboard className="h-5 w-5" />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => navigate('/crm/leads?import=1')}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                <Import className="h-4 w-4" />
-                Import
-              </button>
-              <button
-                onClick={() => pipelineQuery.refetch()}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </button>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold sm:text-xl">
+                {selectedStageLabel ? `${selectedStageLabel} Leads` : 'Sales Pipeline'}
+              </h1>
+              <p className="truncate text-xs text-indigo-100 sm:text-sm">
+                {selectedStageLabel
+                  ? `Showing ${selectedStageLabel} stage leads.`
+                  : 'Manage leads and move them through the pipeline workflow.'}
+              </p>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50 dark:bg-gray-900 dark:text-indigo-300 dark:hover:bg-gray-800"
+            >
+              <Plus className="h-4 w-4" />
+              Add Lead
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/crm/leads?import=1')}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-2 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <Import className="h-4 w-4" />
+              Import
+            </button>
+            <button
+              type="button"
+              onClick={() => pipelineQuery.refetch()}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-2 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
           </div>
         </div>
       </div>
@@ -556,13 +799,13 @@ export default function CRMPipelinePage() {
       {/* ============================================================ */}
       {/* STAT CARDS - Merged Pipeline Metrics */}
       {/* ============================================================ */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <StatCard
           label="Total Leads"
           value={pipelineStats.total}
           icon={Users}
           color="indigo"
-          subtitle="All leads in pipeline"
+          subtitle="All leads"
         />
 
         <StatCard
@@ -578,7 +821,7 @@ export default function CRMPipelinePage() {
           value={pipelineStats.hotLeads}
           icon={Target}
           color="rose"
-          subtitle="Critical or high priority"
+          subtitle="High priority"
         />
 
         <StatCard
@@ -602,7 +845,7 @@ export default function CRMPipelinePage() {
           value={pipelineStats.totalValue}
           icon={DollarSign}
           color="amber"
-          subtitle={`${currency} ${pipelineStats.avgValue.toFixed(0)} average`}
+          subtitle={`${pipelineStats.avgValue.toFixed(0)} avg`}
         />
       </div>
 
@@ -610,18 +853,18 @@ export default function CRMPipelinePage() {
       {/* FILTERS BAR - Section with Header */}
       {/* ============================================================ */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-              <Filter className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white px-4 py-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+              <Filter className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Filters & Search</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Narrow down leads by stage, owner, or keyword</p>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Filters & Search</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Narrow leads by stage, owner, status, or keyword</p>
             </div>
           </div>
         </div>
-        <div className="p-4">
+        <div className="p-3">
           <PipelineFiltersBar
             filters={filters}
             onChange={updateFilters}
@@ -632,6 +875,55 @@ export default function CRMPipelinePage() {
             onSearchChange={handleSearchChange}
             currency={currency}
           />
+          {selectedStageKey ? (
+            <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                  {selectedStageKey === 'discovery' ? 'Discovery Outcome' : `${selectedStageLabel} Status`}
+                </span>
+                {filters.status ? (
+                  <button
+                    type="button"
+                    onClick={() => updateFilters({ status: '' })}
+                    className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300"
+                  >
+                    <X className="h-3 w-3" />
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  onClick={() => updateFilters({ status: '' })}
+                  className={`inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    !filters.status
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  All
+                </button>
+                {getStageStatusOptions(selectedStageKey).map((option) => {
+                  const active = filters.status === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => updateFilters({ status: option.value })}
+                      className={`inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        active
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -648,19 +940,19 @@ export default function CRMPipelinePage() {
       {/* PIPELINE BOARD - Main Content */}
       {/* ============================================================ */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-              <LayoutDashboard className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white px-4 py-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+              <LayoutDashboard className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">
-                {selectedStageLabel ? `${selectedStageLabel} Board` : 'Pipeline Board'}
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                {selectedStageLabel ? `${selectedStageLabel} Leads` : 'Pipeline Board'}
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
                 {selectedStageLabel
-                  ? 'This view came from a workflow shortcut. Clear filters to return to the full pipeline.'
-                  : 'Drag leads between stages, or use the quick actions menu to move them with a single click.'}
+                  ? 'Narrow this stage with filters, or switch stages from the Sales tabs.'
+                  : 'Drag leads between stages, or use the quick actions menu to move them.'}
               </p>
             </div>
           </div>
@@ -687,6 +979,24 @@ export default function CRMPipelinePage() {
                 Retry
               </button>
             </div>
+          ) : selectedStageView ? (
+            <PipelineStageListView
+              stage={selectedStageView}
+              stages={interactiveStages}
+              currency={currency}
+              users={users}
+              movingLeadId={effectiveMovingLeadId}
+              statusUpdatingId={updateStatusMutation.isLoading ? updateStatusMutation.variables?.leadId : null}
+              onMoveLeadToStage={handleLeadMove}
+              onUpdateStageStatus={handleStageStatusChange}
+              onRecordContact={handleRecordContact}
+              onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
+              onResetFilters={clearFilters}
+              onBulkAssign={handleBulkAssign}
+              bulkAssigning={bulkAssignMutation.isLoading}
+              leads={visibleLeads}
+              hasActiveFilters={hasActiveFilters}
+            />
           ) : (
             <DndContext
               collisionDetection={closestCorners}
@@ -698,10 +1008,13 @@ export default function CRMPipelinePage() {
                 stages={visibleBoard.stages}
                 currency={currency}
                 activeLeadId={activeLeadId}
-                movingLeadId={moveLeadMutation.isLoading ? moveLeadMutation.variables?.leadId : null}
+                movingLeadId={effectiveMovingLeadId}
+                statusUpdatingId={updateStatusMutation.isLoading ? updateStatusMutation.variables?.leadId : null}
                 users={users}
                 onMoveLeadToStage={handleLeadMove}
-                getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, visibleBoard.stages)}
+                onUpdateStageStatus={handleStageStatusChange}
+                onRecordContact={handleRecordContact}
+                getAllowedStageKeys={(stage) => getAllowedPipelineStageKeys(stage, interactiveStages)}
                 onCopyLeadId={handleCopyLeadId}
                 onLeadSelect={(lead) => navigate(`/crm/leads/${lead.id || lead._id}`)}
                 onResetFilters={clearFilters}
@@ -736,14 +1049,14 @@ export default function CRMPipelinePage() {
       {/* INSIGHT RAIL - Sidebar Analytics */}
       {/* ============================================================ */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-              <BarChart3 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white px-4 py-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+              <BarChart3 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Pipeline Insights</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Key metrics and analytics</p>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Pipeline Insights</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Key metrics and analytics</p>
             </div>
           </div>
         </div>
@@ -756,6 +1069,35 @@ export default function CRMPipelinePage() {
           />
         </div>
       </div>
+
+      {/* ============================================================ */}
+      {/* RECORD CONTACT ATTEMPT - Acquire stage quick action */}
+      {/* ============================================================ */}
+      <ContactAttemptDialog
+        open={Boolean(contactAttemptLead)}
+        lead={contactAttemptLead}
+        onClose={() => setContactAttemptLead(null)}
+        onRecord={handleContactSubmit}
+        saving={recordContactMutation.isLoading}
+      />
+
+      {/* ============================================================ */}
+      {/* REQUIRED DETAILS DIALOG - Guided stage-transition validation */}
+      {/* ============================================================ */}
+      <StageRequirementsDialog
+        open={Boolean(requirementsDialog)}
+        blocker={requirementsDialog?.blocker}
+        lead={requirementsDialog?.lead}
+        users={users}
+        onClose={() => setRequirementsDialog(null)}
+        onSaveFields={handleDialogSaveFields}
+        onSaveAndMove={handleDialogSaveAndMove}
+        onOpenLeadEditor={() => {
+          const leadId = requirementsDialog?.lead?.id || requirementsDialog?.lead?._id
+          setRequirementsDialog(null)
+          if (leadId) navigate(`/crm/leads/${leadId}`)
+        }}
+      />
 
       {/* ============================================================ */}
       {/* CREATE LEAD MODAL - Beautiful Glassmorphism */}

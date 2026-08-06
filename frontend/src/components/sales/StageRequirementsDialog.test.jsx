@@ -1,0 +1,316 @@
+import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { StageRequirementsDialog } from './StageRequirementsDialog'
+import { TRANSITION_BLOCKER } from '../../utils/salesTransition'
+
+const makeBlocker = (overrides = {}) => ({
+  category: TRANSITION_BLOCKER.MISSING_DETAILS,
+  severity: 'warning',
+  currentStage: 'Qualify',
+  targetStage: 'Discovery',
+  message: 'Cannot move to Discovery — missing Budget, Decision Maker.',
+  missingFields: [
+    { field: 'budget', label: 'Budget', type: 'currency' },
+    { field: 'decision_maker', label: 'Decision Maker', type: 'text' },
+  ],
+  statusRequirement: null,
+  actionRequirement: null,
+  ...overrides,
+})
+
+describe('StageRequirementsDialog', () => {
+  it('asks only for the fields the lead does not already have', () => {
+    // Reported feedback: the popup asked for both budget and decision maker
+    // even when only one was missing. A field already carried by the lead is
+    // never re-asked.
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker()}
+        lead={{ budget: 50000, decision_maker: '' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    // Budget is already on the lead, so only Decision Maker is asked for.
+    expect(screen.queryByLabelText(/Budget/i)).toBeNull()
+    expect(screen.getByLabelText(/Decision Maker/i)).toBeTruthy()
+    expect(screen.getByText('Save Details')).toBeTruthy()
+    expect(screen.getByText('Save and Move Forward')).toBeTruthy()
+  })
+
+  it('shows an already-saved note instead of an empty form when every blocker field is present on the lead', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker()}
+        lead={{ budget: 50000, decision_maker: 'Priya Shah' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    expect(screen.queryByLabelText(/Budget/i)).toBeNull()
+    expect(screen.queryByLabelText(/Decision Maker/i)).toBeNull()
+    expect(screen.getByText(/already saved on this lead/i)).toBeTruthy()
+  })
+
+  it('still asks for a zero budget (the gate requires a real deal size)', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker()}
+        lead={{ budget: 0, decision_maker: 'Priya Shah' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText(/Budget/i)).toBeTruthy()
+    expect(screen.queryByLabelText(/Decision Maker/i)).toBeNull()
+  })
+
+  it('shows an amber warning banner when a status rule also blocks (mixed case)', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          missingFields: [{ field: 'budget', label: 'Budget', type: 'currency' }],
+          statusRequirement: {
+            field: 'qualify_status',
+            label: 'Qualification Status',
+            allowed_values: ['interested', 'qualified'],
+            current_value: 'contacted',
+          },
+        })}
+        lead={{}}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/Qualification Status required/i)).toBeTruthy()
+    expect(screen.getByText(/Interested or Qualified/)).toBeTruthy()
+  })
+
+  it('renders unknown fields as a safe warning list, never as inputs', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({ missingFields: [{ field: 'client_id', label: 'Client', type: 'reference' }] })}
+        lead={{}}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/Additional information is required/i)).toBeTruthy()
+    expect(screen.getByText('Client')).toBeTruthy()
+    // No editable input was rendered for the reference field.
+    expect(screen.queryByLabelText(/Client/i)).toBeNull()
+  })
+
+  it('calls onSaveFields with the entered values', () => {
+    const onSaveFields = vi.fn().mockResolvedValue(undefined)
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker()}
+        lead={{ budget: '', decision_maker: '' }}
+        onClose={vi.fn()}
+        onSaveFields={onSaveFields}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    fireEvent.change(screen.getByLabelText(/Budget/i), { target: { value: '250000' } })
+    fireEvent.change(screen.getByLabelText(/Decision Maker/i), { target: { value: 'Rahul Sharma' } })
+    fireEvent.click(screen.getByText('Save Details'))
+    expect(onSaveFields).toHaveBeenCalledWith({ budget: '250000', decision_maker: 'Rahul Sharma' })
+  })
+
+  it('calls onSaveAndMove from the primary action', () => {
+    const onSaveAndMove = vi.fn().mockResolvedValue(undefined)
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker()}
+        lead={{ budget: '', decision_maker: '' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={onSaveAndMove}
+      />
+    )
+    fireEvent.click(screen.getByText('Save and Move Forward'))
+    expect(onSaveAndMove).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders one-click context actions (Won -> Clients inline completion)', () => {
+    const onClick = vi.fn()
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({ missingFields: [{ field: 'client_id', label: 'Client', type: 'reference' }] })}
+        lead={{}}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+        contextActions={[{ key: 'create_client', label: 'Create Client', onClick }]}
+      />
+    )
+    fireEvent.click(screen.getByText('Create Client'))
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders a mobile-number field with a separate country-code selector for the Acquire gate', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          message: 'Add a mobile number or record the first contact attempt before moving this lead to Qualify.',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Mobile number')).toBeTruthy()
+    expect(screen.getByLabelText('Country code')).toBeTruthy()
+    expect(screen.getByLabelText('Country code').value).toBe('+91')
+    // Country code is a select (not a free-text input) so digits can never be
+    // typed into it by mistake — that is what previously swallowed the number.
+    expect(screen.getByLabelText('Country code').tagName).toBe('SELECT')
+    // Regression guard: the select must keep its compact pinned width. Plain
+    // w-28 loses to the w-full inside inputClassName (same specificity, later in
+    // the stylesheet) and would expand the select to the whole row, crushing the
+    // phone input to zero width — exactly the reported bug.
+    expect(screen.getByLabelText('Country code').className).toContain('!w-28')
+    expect(screen.getByLabelText('Mobile number').className).toContain('flex-1')
+    expect(screen.getByLabelText('Mobile number').className).toContain('min-w-0')
+  })
+
+  it('saves the entered phone with its country code', () => {
+    const onSaveFields = vi.fn().mockResolvedValue(undefined)
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '' }}
+        onClose={vi.fn()}
+        onSaveFields={onSaveFields}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    fireEvent.change(screen.getByLabelText('Mobile number'), { target: { value: '9999999999' } })
+    fireEvent.click(screen.getByText('Save Details'))
+    expect(onSaveFields).toHaveBeenCalledWith({ phone: '9999999999', country_code: '+91' })
+  })
+
+  it('limits the mobile number input to 10 digits', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    const phoneInput = screen.getByLabelText('Mobile number')
+    fireEvent.change(phoneInput, { target: { value: '987654321012345' } })
+    expect(phoneInput.value).toBe('9876543210')
+  })
+
+  it('blocks save with an inline error when the phone is empty (no false success toast)', () => {
+    const onSaveFields = vi.fn().mockResolvedValue(undefined)
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={onSaveFields}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    fireEvent.click(screen.getByText('Save Details'))
+    expect(onSaveFields).not.toHaveBeenCalled()
+    expect(screen.getByText(/Enter a mobile number before saving/)).toBeTruthy()
+  })
+
+  it('blocks save-and-move with an inline error when the phone is empty', () => {
+    const onSaveAndMove = vi.fn().mockResolvedValue(undefined)
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={onSaveAndMove}
+      />
+    )
+    fireEvent.click(screen.getByText('Save and Move Forward'))
+    expect(onSaveAndMove).not.toHaveBeenCalled()
+    expect(screen.getByText(/Enter a mobile number before saving/)).toBeTruthy()
+  })
+
+  it('splits a pasted number with a country prefix into code + local number', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker({
+          currentStage: 'Acquire',
+          targetStage: 'Qualify',
+          missingFields: [{ field: 'phone', label: 'Mobile Number', type: 'text' }],
+        })}
+        lead={{ country_code: '+91' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    const phoneInput = screen.getByLabelText('Mobile number')
+    fireEvent.paste(phoneInput, {
+      clipboardData: { getData: () => '+91 9876543210' },
+    })
+    expect(phoneInput.value).toBe('9876543210')
+  })
+
+  it('keeps the lead on its current stage (no status auto-change)', () => {
+    render(
+      <StageRequirementsDialog
+        open
+        blocker={makeBlocker()}
+        lead={{ budget: '', decision_maker: '' }}
+        onClose={vi.fn()}
+        onSaveFields={vi.fn()}
+        onSaveAndMove={vi.fn()}
+      />
+    )
+    // There is no status input rendered from a MISSING_DETAILS blocker.
+    expect(screen.queryByLabelText(/Qualification Status/i)).toBeNull()
+    expect(screen.getByText(/stays on its current stage/i)).toBeTruthy()
+  })
+})

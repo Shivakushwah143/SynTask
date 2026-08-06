@@ -33,6 +33,7 @@ vi.mock('../../../api/crm', () => ({ crmApi: crmApiMock }))
 vi.mock('../../../api/users', () => ({
   usersAPI: {
     getAssignableUsers: vi.fn(),
+    getAssignableUsersWithJuniors: vi.fn().mockResolvedValue({ users: [] }),
   },
 }))
 vi.mock('./components', async () => {
@@ -180,7 +181,10 @@ describe('CRM lead workspace E2E', () => {
 
     expect(await screen.findByRole('heading', { name: 'Alpha Co', level: 1 })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    // The header edit and the overview edit are both named "Edit"; the overview
+    // one renders last in the workspace layout.
+    const editButtons = screen.getAllByRole('button', { name: 'Edit' })
+    fireEvent.click(editButtons[editButtons.length - 1])
     fireEvent.change(screen.getByLabelText('Company'), { target: { value: 'Beta Co' } })
     fireEvent.click(screen.getByRole('button', { name: 'Review changes' }))
 

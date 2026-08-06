@@ -27,10 +27,11 @@ CRM workspace, pipeline, lead workspace, company workspace, contact directory, a
 ### CRM Pipeline
 - Purpose: Kanban-style deal progression board.
 - Route: `/crm/pipeline`
+- Stage routes: `/crm/pipeline/:stageKey` for dedicated single-stage views.
 - Backend APIs used: `GET /api/v1/crm/pipeline`, `PATCH /api/v1/crm/pipeline/{leadId}/stage`, `GET /api/v1/crm/pipeline/history/{leadId}`
-- Actions available: search, filter, drag/drop move, quick stage move, open lead workspace.
-- Data displayed: stages, lead cards, counts, deal values, owners, tags, days in stage.
-- Navigation flow: pipeline -> lead workspace or related CRM surfaces.
+- Actions available: search, filter, drag/drop move, quick stage move, open lead workspace, or inspect a single stage on its dedicated page.
+- Data displayed: stages, lead cards, counts, deal values, owners, tags, days in stage, and stage-scoped subsets on dedicated routes.
+- Navigation flow: CRM tabs -> stage page or full pipeline -> lead workspace or related CRM surfaces.
 - Related screens: Lead Workspace, Activities, Calendar.
 - Empty state: empty stage cards and no-board states.
 - Loading state: board skeletons.

@@ -3,9 +3,9 @@ CRM pipeline backend endpoints.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_current_user
@@ -18,6 +18,26 @@ router = APIRouter()
 class PipelineStageUpdateRequest(BaseModel):
     stage: str = Field(..., min_length=1)
     reason: Optional[str] = None
+    # Managers/admins may bypass stage-gate conditions (never skip stages).
+    force: bool = False
+
+
+class ConversionUpdateRequest(BaseModel):
+    """Idempotent Won-stage conversion actions."""
+    action: str = Field(..., min_length=1)  # won_status | create_client | create_invoice | assign_account_manager | send_welcome_email | notify_operations
+    won_status: Optional[str] = None
+    user_id: Optional[str] = None
+
+
+class PipelineStatusUpdateRequest(BaseModel):
+    """Stage-scoped inner-status update (stage is read from the database)."""
+    stage_status: str = Field(..., min_length=1)
+
+
+class BulkAssignRequest(BaseModel):
+    """Assign many leads to one user from the stage list (bulk action)."""
+    lead_ids: List[str] = Field(..., min_length=1)
+    target_user_id: str = Field(..., min_length=1)
 
 
 class PipelineReopenRequest(BaseModel):
@@ -42,9 +62,49 @@ async def get_pipeline(
     return await CRMPipelineService.load_pipeline(current_user, limit=limit)
 
 
+@router.post("/bulk-assign")
+async def bulk_assign(payload: BulkAssignRequest, current_user: User = Depends(get_current_user)):
+    return await CRMPipelineService.bulk_assign(current_user, payload.lead_ids, payload.target_user_id)
+
+
 @router.patch("/{lead_id}/stage")
 async def update_stage(lead_id: str, payload: PipelineStageUpdateRequest, current_user: User = Depends(get_current_user)):
-    return await CRMPipelineService.move_lead(current_user, lead_id, payload.stage, payload.reason)
+    return await CRMPipelineService.move_lead(current_user, lead_id, payload.stage, payload.reason, force=payload.force)
+
+
+@router.patch("/{lead_id}/status")
+async def update_stage_status(lead_id: str, payload: PipelineStatusUpdateRequest, current_user: User = Depends(get_current_user)):
+    return await CRMPipelineService.update_stage_status(current_user, lead_id, payload.stage_status)
+
+
+@router.patch("/{lead_id}/conversion")
+async def update_conversion(lead_id: str, payload: ConversionUpdateRequest, current_user: User = Depends(get_current_user)):
+    from app.crm.conversion import LeadConversionService
+
+    if payload.action == "won_status":
+        if not payload.won_status:
+            raise HTTPException(status_code=422, detail="won_status is required for the won_status action")
+        return await LeadConversionService.update_won_status(current_user, lead_id, payload.won_status)
+    if payload.action == "create_client":
+        return await LeadConversionService.create_client(current_user, lead_id)
+    if payload.action == "create_invoice":
+        return await LeadConversionService.create_invoice(current_user, lead_id)
+    if payload.action == "assign_account_manager":
+        if not payload.user_id:
+            raise HTTPException(status_code=422, detail="user_id is required for assign_account_manager")
+        return await LeadConversionService.assign_account_manager(current_user, lead_id, payload.user_id)
+    if payload.action == "send_welcome_email":
+        return await LeadConversionService.send_welcome_email(current_user, lead_id)
+    if payload.action == "notify_operations":
+        return await LeadConversionService.notify_operations(current_user, lead_id)
+    raise HTTPException(status_code=422, detail="Unknown conversion action")
+
+
+@router.post("/{lead_id}/transfer")
+async def transfer_to_clients(lead_id: str, current_user: User = Depends(get_current_user)):
+    from app.crm.conversion import LeadConversionService
+
+    return await LeadConversionService.transfer_to_clients(current_user, lead_id)
 
 
 @router.post("/{lead_id}/reopen")

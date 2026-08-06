@@ -68,7 +68,7 @@ docs/                    Testing guide and diagrams
 - Chat conversations and group chat
 - Meetings and calendar endpoints
 - Google Workspace module for Gmail, Calendar, Meet, and connection diagnostics
-- Sales CRM for categories, products, contacts, prospects, masters, and reports
+- Sales CRM for categories, products, contacts, prospects, stage-specific pipeline pages, masters, and reports
 - Super-admin tenant, usage, plans, and billing management
 
 ## User Roles

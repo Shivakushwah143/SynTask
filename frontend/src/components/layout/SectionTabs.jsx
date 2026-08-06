@@ -22,6 +22,15 @@ import { HR_MODULES } from "../../config/hrModules";
 const SECTION_LANDING_RE = /^\/sections\/([^/]+)/;
 const SCROLL_STEP_PX = 240;
 
+// Sections whose Overview tab points at a dedicated dashboard page (e.g. the Sales
+// workspace Overview) instead of the generic /sections/:key landing.
+const SECTION_OVERVIEW_HREFS = [
+  ...SECTIONS.filter((section) => section.overviewHref).map((section) => ({
+    href: section.overviewHref,
+    sectionKey: section.key,
+  })),
+];
+
 // Inbox item name → unread-count key from useInboxUnreadCounts().
 const INBOX_COUNT_KEYS = {
   WhatsApp: "whatsapp",
@@ -30,6 +39,18 @@ const INBOX_COUNT_KEYS = {
   "Meta Messages": "metaTotal",
   Notifications: "notifications",
 };
+
+// Items kept in the shared navigation config (sidebar favorites, section landing cards)
+// but intentionally hidden from this in-page tab bar. User request: Import Leads stays
+// in the sidebar, it is only removed from the Sales section tabs. The legacy Sales
+// routes (Leads / All Leads / Pipeline) stay inside the section so their URLs resolve
+// to the Sales section, while the visible tabs remain exactly the guided journey.
+const TAB_HIDDEN_ITEM_NAMES = new Set(["Import Leads", "Leads", "All Leads", "Pipeline"]);
+
+// Legacy Sales routes resolved to one of the hidden items above (e.g. the full board
+// at /crm/pipeline or the browsing page at /crm/leads/all). No journey stage tab
+// applies to them, so they count as Sales landings — the Overview tab stays active.
+const SECTION_LEGACY_LANDING_ITEMS = new Set(["Leads", "All Leads", "Pipeline"]);
 
 // Exact pathname + query match (no prefix / match-based activation), used so only ONE tab is
 // ever active — prefix matches would otherwise light up several tabs on detail/HR pages.
@@ -53,8 +74,16 @@ const resolveSectionContext = (location) => {
   const landing = location.pathname.match(SECTION_LANDING_RE);
   if (landing) return { sectionKey: landing[1], isLanding: true };
 
+  // Dedicated overview dashboards (e.g. /sales-overview) count as the section landing.
+  const overviewMatch = SECTION_OVERVIEW_HREFS.find((entry) => location.pathname === entry.href);
+  if (overviewMatch) return { sectionKey: overviewMatch.sectionKey, isLanding: true };
+
   const ctx = getNavContextForPath(location.pathname, location.search);
-  if (ctx) return { sectionKey: ctx.sectionKey, isLanding: false, itemName: ctx.itemName };
+  if (ctx) {
+    const isLegacyLanding =
+      ctx.sectionKey === "sales" && SECTION_LEGACY_LANDING_ITEMS.has(ctx.itemName);
+    return { sectionKey: ctx.sectionKey, isLanding: isLegacyLanding, itemName: ctx.itemName };
+  }
 
   // HR recruitment screens belong to the People section (they were moved out of the
   // sidebar config, but their tabs live under People). Exact-match only: the interview
@@ -101,15 +130,18 @@ function SectionTabsInner({ location, context }) {
   // ── All hooks above; early returns only after every hook has run. ──────────
   const tabs = useMemo(() => {
     if (!section) return [];
-    let list = items;
+    let list = items.filter((item) => !TAB_HIDDEN_ITEM_NAMES.has(item.name));
     // Phase 6: per-channel unread counts on the Inbox tabs.
     if (section.key === "inbox") {
-      list = items.map((item) => {
+      list = list.map((item) => {
         const countKey = INBOX_COUNT_KEYS[item.name];
         return countKey ? { ...item, unreadCount: inboxCounts[countKey] || 0 } : item;
       });
     }
-    return [{ name: "Overview", href: `/sections/${section.key}`, icon: null, overview: true }, ...list];
+    return [
+      { name: "Overview", href: section.overviewHref || `/sections/${section.key}`, icon: null, overview: true },
+      ...list,
+    ];
   }, [items, section, inboxCounts, context.isLanding]);
 
   useEffect(() => {

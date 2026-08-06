@@ -490,7 +490,7 @@ Sales category list/create/update/delete are tenant-scoped and require the canon
 | POST | `/api/v1/sales/prospects/bulk-upload/preview` | `preview_bulk_upload_prospects` | Returns preview rows, failed rows, detected columns, and field mapping recommendations. |
 | GET | `/api/v1/sales/prospects/search/contact` | `search_contact_for_prospect` | Uses router/endpoint dependencies where configured. |
 | GET | `/api/v1/sales/prospects/{prospect_id}` | `get_prospect` | Uses router/endpoint dependencies where configured. |
-| PUT | `/api/v1/sales/prospects/{prospect_id}` | `update_prospect` | Uses router/endpoint dependencies where configured. |
+| PUT | `/api/v1/sales/prospects/{prospect_id}` | `update_prospect` | Updates only the form fields the client actually sent; omitted fields are left untouched (a partial update never clears budget, decision maker, phone, or other stored values). Fields sent as explicit empty strings still clear their stored value. The pipeline stage and inner status are never mutated by this endpoint. |
 
 ### Sales Reports
 

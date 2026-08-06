@@ -13,6 +13,7 @@ from app.crm.application import build_crm_dashboard
 from app.crm.lead_timeline import CRMLeadTimelineService
 from app.api.v1.endpoints.sales_prospects import _get_company_prospects, _lead_identity_score, _serialize_prospect_identity
 from app.crm.models import SalesProspect
+from app.crm.pipeline import normalize_stage_display, resolved_stage_status
 from app.models.user import User
 from app.api.deps import Pagination50, PaginationParams
 
@@ -35,6 +36,8 @@ async def crm_leads(
 ):
     skip, limit = pagination.skip, pagination.limit
     query = {"deleted": False, "company_id": current_user.company_id}
+    # Transferred leads leave the active sales lists (they live in the Clients module).
+    query["transferred_at"] = None
     if assigned_to:
         # Filter by a specific assignee (used by managers/admins viewing a specific employee's leads)
         query["assigned_to"] = assigned_to
@@ -66,7 +69,7 @@ async def crm_leads(
                 "category_id": p.category_id,
                 "product_ids": p.product_ids,
                 "crm_company_id": p.crm_company_id,
-                "current_stage": p.current_stage,
+                "current_stage": normalize_stage_display(p.current_stage),
                 "status": p.status.value,
                 "interest_level": p.interest_level.value,
                 "estimated_close_date": p.estimated_close_date.isoformat() if p.estimated_close_date else None,
@@ -79,6 +82,14 @@ async def crm_leads(
                 "updated_at": p.updated_at.isoformat() if p.updated_at else None,
                 "custom_fields": getattr(p, "custom_fields", {}) or {},
                 "owner_name": p.owner_name,
+                "source": p.source,
+                "qualify_status": getattr(p, "qualify_status", None),
+                "next_action": getattr(p, "next_action", None),
+                "next_follow_up_at": getattr(p, "next_follow_up_at", None),
+                "last_contacted_at": getattr(p, "last_contacted_at", None),
+                "won_status": getattr(p, "won_status", None),
+                "transferred_at": getattr(p, "transferred_at", None),
+                "current_stage_status": resolved_stage_status(p),
             }
             for p in prospects
         ],

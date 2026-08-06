@@ -110,7 +110,7 @@ describe('lead overview layout data', () => {
     expect(sections).toHaveLength(3)
     expect(sections.map((section) => section.tone)).toEqual(['emerald', 'amber', 'blue'])
     expect(sections[0].items).toHaveLength(3)
-    expect(sections[1].items).toHaveLength(3)
+    expect(sections[1].items).toHaveLength(4)
     expect(sections[2].items).toHaveLength(2)
   })
 })

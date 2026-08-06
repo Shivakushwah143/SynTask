@@ -115,6 +115,7 @@ describe('sidebar route correctness (Phase 7, spec §11)', () => {
       '/crm/leads',
       '/crm/settings',
       '/crm/settings/meta',
+      '/crm/pipeline/:stageKey',
       '/hr/recruitment/jobs',
       '/hr/recruitment/interview-screen',
       '/sales/reports',

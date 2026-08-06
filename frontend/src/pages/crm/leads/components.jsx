@@ -1,15 +1,22 @@
 /* eslint-disable react-refresh/only-export-components */
 import { memo, useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery } from 'react-query'
+import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, BadgeInfo, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Route, Save, Sparkles, StickyNote, Video, Wand2, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeInfo, Bell, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Route, Save, Sparkles, StickyNote, Users, Video, Wand2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { CRMContent, CRMEmptyState, CRMPage, CRMPageTitle, CRMSection, CRMStatCard } from '../../../components/crm'
 import { Badge, Button, EmptyState, LoadingSpinner, inputClassName } from '../../../components/ui'
-import { formatCurrency, formatShortDate, getCanonicalPipelineStageKey, getLeadContactLabel, getLeadOwnerLabel, getLeadTags } from '../pipeline/utils'
+import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
+import {
+  TRANSITION_BLOCKER,
+  TRANSITION_WARNING_TOAST,
+  buildStatusWarningMessage,
+  classifyTransitionFailure,
+} from '../../../utils/salesTransition'
+import { formatCurrency, formatShortDate, getCanonicalPipelineStageKey, getLeadContactLabel, getLeadOwnerLabel, getLeadStageStatus, getLeadTags, getStageStatusLabel, getStageStatusOptions } from '../pipeline/utils'
 import { asArray } from '../../phase4Utils'
 import { LeadFilesTab } from './files'
 
@@ -35,7 +42,7 @@ const leadTone = (value) => {
   return 'slate'
 }
 
-const LEAD_STAGE_STEPS = ['New', 'Contacted', 'Qualified', 'Discovery', 'Proposal', 'Negotiation', 'Won']
+const LEAD_STAGE_STEPS = ['Acquire', 'Qualify', 'Discovery', 'Proposal', 'Negotiation', 'Agreement', 'Won']
 const LEAD_STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'won', label: 'Won' },
@@ -47,6 +54,64 @@ const LEAD_PRIORITY_OPTIONS = [
   { value: 'warm', label: 'Warm' },
   { value: 'hot', label: 'Hot' },
 ]
+
+// Stage-gate checklist shown in the lead sidebar. Mirrors the backend
+// STAGE_ENTRY_REQUIREMENTS so users see exactly what is missing before the
+// lead can move to the next stage (backend still enforces the rules).
+const STAGE_GATE = {
+  acquire: {
+    nextKey: 'qualify',
+    nextLabel: 'Qualify',
+    requirements: (lead) => [
+      { label: 'First contact recorded', met: Boolean(lead?.first_contact_at) || Boolean(lead?.last_contacted_at) },
+    ],
+    hint: 'Record a first contact attempt before moving to Qualify.',
+  },
+  qualify: {
+    nextKey: 'discovery',
+    nextLabel: 'Discovery',
+    requirements: (lead) => [
+      { label: 'Interested / Qualified status', met: ['interested', 'qualified'].includes(String(lead?.qualify_status || '').toLowerCase()) },
+      { label: 'Budget recorded', met: Number(lead?.budget || 0) > 0 },
+      { label: 'Decision maker identified', met: Boolean(lead?.decision_maker) },
+    ],
+    hint: 'Set an Interested/Qualified status with a budget and decision maker.',
+  },
+  discovery: {
+    nextKey: 'proposal',
+    nextLabel: 'Proposal',
+    requirements: (lead) => [
+      // Mirrors the backend gate: a Discovery outcome of “Need Proposal” or
+      // “Qualified” both earn a proposal (see STAGE_ENTRY_REQUIREMENTS).
+      { label: 'Outcome requires a proposal', met: ['need_proposal', 'qualified'].includes(String(lead?.discovery_outcome || '').toLowerCase()) },
+    ],
+    hint: 'Set the Discovery outcome to “Need Proposal” or “Qualified”.',
+  },
+  proposal: {
+    nextKey: 'negotiation',
+    nextLabel: 'Negotiation',
+    requirements: (lead) => [
+      { label: 'Proposal accepted', met: String(lead?.proposal_status || '').toLowerCase() === 'accepted' },
+    ],
+    hint: 'Mark the proposal as Accepted before negotiating.',
+  },
+  negotiation: {
+    nextKey: 'agreement',
+    nextLabel: 'Agreement',
+    requirements: (lead) => [
+      { label: 'Commercial terms accepted', met: String(lead?.negotiation_status || '').toLowerCase() === 'accepted' },
+    ],
+    hint: 'Record the negotiation status as Accepted.',
+  },
+  agreement: {
+    nextKey: 'won',
+    nextLabel: 'Won',
+    requirements: (lead) => [
+      { label: 'Agreement signed', met: String(lead?.agreement_status || '').toLowerCase() === 'signed' },
+    ],
+    hint: 'Mark the agreement as Signed before closing Won.',
+  },
+}
 
 const formatUserName = (user) => `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.email || user?.id || ''
 
@@ -83,6 +148,7 @@ export const buildLeadOverviewSections = (lead = {}) => {
   ]
   const pipelineItems = [
     { label: 'Source', value: lead?.channel || '-' },
+    { label: 'Inner status', value: getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead)) || '-' },
     { label: 'Estimated close', value: formatShortDate(lead?.estimated_close_date) },
     { label: 'Days in stage', value: String(Math.max(Number(lead?.days_in_stage || 0), 0)) },
   ]
@@ -90,6 +156,19 @@ export const buildLeadOverviewSections = (lead = {}) => {
     { title: 'Contact Snapshot', tone: 'emerald', items: contactItems },
     { title: 'Pipeline Signals', tone: 'amber', items: pipelineItems },
   ]
+  const journeyItems = [
+    { label: 'Budget', value: lead?.budget ? formatCurrency(lead.budget) : null },
+    { label: 'Timeline', value: lead?.timeline || null },
+    { label: 'Decision maker', value: lead?.decision_maker || null },
+    { label: 'Industry', value: lead?.industry || null },
+    { label: 'Qualify status', value: lead?.qualify_status || null },
+    { label: 'Discovery outcome', value: lead?.discovery_outcome || null },
+    { label: 'Next action', value: lead?.next_action || null },
+    { label: 'Next follow-up', value: lead?.next_follow_up_at ? formatShortDate(lead.next_follow_up_at) : null },
+    { label: 'Last contacted', value: lead?.last_contacted_at ? formatShortDate(lead.last_contacted_at) : null },
+    { label: 'Won status', value: lead?.won_status || null },
+  ].filter((item) => item.value)
+  if (journeyItems.length) sections.push({ title: 'Sales Journey', tone: 'blue', items: journeyItems })
   const customItems = Object.entries(customFields).map(([key, value]) => ({ label: key, value: String(value) }))
   if (customItems.length) sections.push({ title: 'Custom Fields', tone: 'blue', items: customItems })
   return sections
@@ -111,6 +190,56 @@ function LeadPill({ label, value }) {
   )
 }
 
+export const LeadJourneyTracker = memo(function LeadJourneyTracker({ lead }) {
+  const stageKey = getCanonicalPipelineStageKey(lead?.current_stage || lead?.stage || 'acquire')
+  const currentIndex = Math.max(0, LEAD_STAGE_STEPS.findIndex((stage) => getCanonicalPipelineStageKey(stage) === stageKey))
+  const transferred = Boolean(lead?.transferred_at)
+
+  return (
+    <section className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:text-gray-400">Sales journey</p>
+        <p className="text-sm font-semibold text-text-primary dark:text-gray-100">
+          {transferred
+            ? 'Transferred to Clients'
+            : `Current: ${LEAD_STAGE_STEPS[currentIndex] || lead?.current_stage || 'Acquire'}`}
+        </p>
+      </div>
+      <ol className="mt-4 flex items-center gap-1 overflow-x-auto pb-1" aria-label="Sales journey stages">
+        {LEAD_STAGE_STEPS.map((stage, index) => {
+          const completed = index < currentIndex
+          const current = index === currentIndex
+          const pillClass = completed
+            ? 'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/60'
+            : current
+              ? 'bg-primary-500 text-white ring-primary-200 shadow-sm dark:bg-primary-600 dark:ring-primary-900/70'
+              : 'bg-surface-muted text-text-secondary ring-surface-border dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-700'
+          return (
+            <li key={stage} className="flex shrink-0 items-center gap-1">
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${pillClass}`}>
+                {completed ? <CheckCircle2 className="h-3.5 w-3.5" /> : current ? <Route className="h-3.5 w-3.5" /> : <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />}
+                {stage}
+              </span>
+              {index < LEAD_STAGE_STEPS.length - 1 ? (
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600" />
+              ) : null}
+            </li>
+          )
+        })}
+        {transferred ? (
+          <li className="flex shrink-0 items-center gap-1">
+            <ArrowRight className="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-700 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900/60">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Clients
+            </span>
+          </li>
+        ) : null}
+      </ol>
+    </section>
+  )
+})
+
 export const LeadWorkspace = memo(function LeadWorkspace({
   title,
   description,
@@ -127,10 +256,6 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   body,
   sidebar,
 }) {
-  const stageKey = getCanonicalPipelineStageKey(lead?.current_stage || lead?.stage || 'new')
-  const stageIndex = Math.max(0, LEAD_STAGE_STEPS.findIndex((stage) => getCanonicalPipelineStageKey(stage) === stageKey))
-  const stageStep = stageIndex + 1
-  const stageTotal = LEAD_STAGE_STEPS.length
   return (
     <CRMPage>
       <CRMPageTitle
@@ -156,21 +281,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
 
       <LeadHeader lead={lead} breadcrumbs={breadcrumbs} onSave={onSaveLead} isSaving={isSaving} users={users} />
 
-      <section className="rounded-2xl border border-surface-border/80 bg-white/90 p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/85">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted dark:text-gray-400">Pipeline progress</p>
-            <p className="mt-1 text-sm font-semibold text-text-primary dark:text-gray-100">
-              Step {stageStep} of {stageTotal}: {LEAD_STAGE_STEPS[stageIndex] || lead?.current_stage || 'New'}
-            </p>
-          </div>
-          <div className="min-w-48 flex-1 sm:max-w-sm">
-            <div className="h-2 overflow-hidden rounded-full bg-surface-muted dark:bg-gray-800">
-              <div className="h-full rounded-full bg-primary-500" style={{ width: `${(stageStep / stageTotal) * 100}%` }} />
-            </div>
-          </div>
-        </div>
-      </section>
+      <LeadJourneyTracker lead={lead} />
 
       <LeadTabs activeTab={activeTab} onTabChange={onTabChange} />
 
@@ -197,6 +308,7 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
   const stage = lead?.current_stage || 'Unassigned'
   const priority = lead?.priority || lead?.interest_level || 'medium'
   const status = lead?.status || 'active'
+  const stageStatusLabel = getStageStatusLabel(stage, getLeadStageStatus(lead))
   const createdDate = formatShortDate(lead?.created_at || lead?.createdAt || lead?.created_date)
   const phoneLabel = [lead?.country_code, lead?.phone].filter(Boolean).join(' ') || '-'
 
@@ -315,6 +427,7 @@ export const LeadHeader = memo(function LeadHeader({ lead, breadcrumbs = [], onS
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <LeadPill label="Stage" value={stage} />
+              {stageStatusLabel ? <LeadPill label="Inner status" value={stageStatusLabel} /> : null}
               <LeadPill label="Priority" value={priority} />
               <LeadPill label="Status" value={status} />
             </div>
@@ -502,6 +615,12 @@ const buildLeadOverviewForm = (lead = {}) => ({
   phone: lead?.phone || '',
   channel: lead?.channel || '',
   estimated_close_date: lead?.estimated_close_date ? String(lead.estimated_close_date).slice(0, 10) : '',
+  industry: lead?.industry || '',
+  budget: lead?.budget ? String(lead.budget) : '',
+  timeline: lead?.timeline || '',
+  decision_maker: lead?.decision_maker || '',
+  next_action: lead?.next_action || '',
+  next_follow_up_at: lead?.next_follow_up_at ? String(lead.next_follow_up_at).slice(0, 10) : '',
 })
 
 export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSaving = false }) {
@@ -542,6 +661,12 @@ export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSavin
             <LeadOverviewInput label="Phone" type="tel" maxLength={10} value={form.phone} onChange={(value) => updateField('phone', value)} />
             <LeadOverviewInput label="Source" value={form.channel} onChange={(value) => updateField('channel', value)} />
             <LeadOverviewInput label="Estimated close" type="date" value={form.estimated_close_date} onChange={(value) => updateField('estimated_close_date', value)} />
+            <LeadOverviewInput label="Industry" value={form.industry} onChange={(value) => updateField('industry', value)} />
+            <LeadOverviewInput label="Budget" value={form.budget} onChange={(value) => updateField('budget', value)} />
+            <LeadOverviewInput label="Timeline" value={form.timeline} onChange={(value) => updateField('timeline', value)} />
+            <LeadOverviewInput label="Decision maker" value={form.decision_maker} onChange={(value) => updateField('decision_maker', value)} />
+            <LeadOverviewInput label="Next action" value={form.next_action} onChange={(value) => updateField('next_action', value)} />
+            <LeadOverviewInput label="Next follow-up" type="date" value={form.next_follow_up_at} onChange={(value) => updateField('next_follow_up_at', value)} />
           </div>
           <div className="flex flex-wrap justify-end gap-2 border-t border-surface-border/80 pt-4 dark:border-gray-800">
             <Button type="button" variant="secondary" onClick={() => { setForm(buildLeadOverviewForm(lead)); setIsEditing(false) }}>
@@ -660,6 +785,169 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
     { label: 'Priority', value: form.interest_level || lead?.interest_level || 'medium' },
   ]
 
+  const currentStageKey = getCanonicalPipelineStageKey(lead?.current_stage || '')
+  const gate = STAGE_GATE[currentStageKey] || null
+  const gateRequirements = gate ? gate.requirements(lead) : []
+  const gateReady = gate ? gateRequirements.every((req) => req.met) : false
+  const isWonStage = currentStageKey === 'won'
+  const stageStatusOptions = getStageStatusOptions(currentStageKey)
+  const stageStatusLabel = getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead))
+  const [stageStatus, setStageStatus] = useState(() => getLeadStageStatus(lead))
+  const [accountManagerId, setAccountManagerId] = useState(lead?.account_manager_id || '')
+  const [requirementsDialog, setRequirementsDialog] = useState(null)
+  const queryClient = useQueryClient()
+  const refreshWorkspace = () => {
+    queryClient.invalidateQueries(['crm-lead-workspace', lead?.id], { exact: true })
+    queryClient.invalidateQueries('crm-pipeline-board')
+  }
+
+  // ── Guided stage-transition validation (shared classifier) ────────────────
+  // Business blockers (missing details / status / action) show the popup or a
+  // warning; only genuine technical failures surface as error toasts.
+  const handleSidebarTransitionError = (error, { mode, targetStageKey }) => {
+    const blocker = classifyTransitionFailure(error, mode === 'transfer' ? 'Transfer failed' : 'Stage update failed')
+    if (blocker.category === TRANSITION_BLOCKER.MISSING_DETAILS) {
+      setRequirementsDialog({ blocker, mode, targetStageKey })
+      return
+    }
+    if (
+      blocker.category === TRANSITION_BLOCKER.STATUS_REQUIREMENT
+      || blocker.category === TRANSITION_BLOCKER.ACTION_REQUIREMENT
+    ) {
+      toast(buildStatusWarningMessage(blocker) || blocker.message, TRANSITION_WARNING_TOAST)
+      return
+    }
+    if (blocker.category === TRANSITION_BLOCKER.PERMISSION_DENIED) {
+      toast(blocker.message, { icon: '🔒', ...TRANSITION_WARNING_TOAST })
+      return
+    }
+    toast.error(blocker.message)
+  }
+
+  // Persist only the fields the popup rendered (account manager goes through the
+  // existing conversion action so transfer rules are not bypassed).
+  const saveDialogFieldsOnly = async (values) => {
+    const leadId = lead?.id
+    if (!leadId) return
+    const entries = Object.entries(values || {})
+    const accountManagerEntry = entries.find(([key]) => key === 'account_manager_id')
+    if (accountManagerEntry && accountManagerEntry[1]) {
+      await crmApi.updateLeadConversion(leadId, {
+        action: 'assign_account_manager',
+        payload: { user_id: accountManagerEntry[1] },
+      })
+    }
+    const leadFields = entries.filter(([key]) => key !== 'account_manager_id')
+    if (leadFields.length) {
+      await salesApi.updateLeadForm(leadId, Object.fromEntries(leadFields))
+    }
+  }
+
+  const handleDialogSaveFields = async (values) => {
+    try {
+      await saveDialogFieldsOnly(values)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Unable to save details')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) toast.error(blocker.message)
+      else toast(blocker.message, TRANSITION_WARNING_TOAST)
+      throw error
+    }
+    refreshWorkspace()
+    toast.success('Details saved')
+    setRequirementsDialog(null)
+  }
+
+  const handleStageSaveAndMove = async (values) => {
+    const leadId = lead?.id
+    const targetStageKey = requirementsDialog?.targetStageKey
+    if (!leadId || !targetStageKey) return
+    try {
+      await saveDialogFieldsOnly(values)
+      await crmApi.updatePipelineStage(leadId, { stage: targetStageKey })
+      toast.success('Lead stage updated')
+      refreshWorkspace()
+      setRequirementsDialog(null)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Stage update failed')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) {
+        setRequirementsDialog(null)
+        toast.error(blocker.message)
+      } else {
+        setRequirementsDialog((current) => ({ ...current, blocker }))
+      }
+    }
+  }
+
+  const handleTransferSaveAndMove = async (values) => {
+    const leadId = lead?.id
+    if (!leadId) return
+    try {
+      await saveDialogFieldsOnly(values)
+      await crmApi.transferLeadToClients(leadId)
+      toast.success('Lead transferred to Clients')
+      refreshWorkspace()
+      setRequirementsDialog(null)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Transfer failed')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) {
+        setRequirementsDialog(null)
+        toast.error(blocker.message)
+      } else {
+        setRequirementsDialog((current) => ({ ...current, blocker }))
+      }
+    }
+  }
+
+  const handleDialogSaveAndMove = (values) => {
+    if (requirementsDialog?.mode === 'transfer') return handleTransferSaveAndMove(values)
+    return handleStageSaveAndMove(values)
+  }
+
+  // Won -> Clients: complete the missing handoff records inline, then re-attempt
+  // the transfer so the popup closes only when every rule passes.
+  const handleCreateClientFromDialog = async () => {
+    const leadId = lead?.id
+    if (!leadId) return
+    try {
+      // Reuse the existing conversion mutation so the popup button shows the
+      // real loading state and the success handler refreshes the workspace.
+      await conversionMutation.mutateAsync({ action: 'create_client' })
+      await crmApi.transferLeadToClients(leadId)
+      toast.success('Lead transferred to Clients')
+      setRequirementsDialog(null)
+    } catch (error) {
+      const blocker = classifyTransitionFailure(error, 'Transfer failed')
+      if (blocker.category === TRANSITION_BLOCKER.TECHNICAL_ERROR) {
+        setRequirementsDialog(null)
+        toast.error(blocker.message)
+      } else {
+        setRequirementsDialog((current) => ({ ...current, blocker }))
+      }
+    }
+  }
+
+  const dialogContextActions = requirementsDialog?.mode === 'transfer'
+    ? (requirementsDialog.blocker?.missingFields || []).some((item) => item.field === 'client_id')
+      ? [{
+          key: 'create_client',
+          label: 'Create Client',
+          loading: conversionMutation.isLoading,
+          onClick: handleCreateClientFromDialog,
+        }]
+      : []
+    : []
+
+  const handleMoveToNextStage = async () => {
+    if (!gate?.nextKey || !lead?.id) return
+    try {
+      await crmApi.updatePipelineStage(lead.id, { stage: gate.nextKey })
+      toast.success('Lead stage updated')
+      refreshWorkspace()
+    } catch (error) {
+      handleSidebarTransitionError(error, { mode: 'stage', targetStageKey: gate.nextKey })
+    }
+  }
+
   useEffect(() => {
     const custom = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
     setForm({
@@ -671,17 +959,68 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
       tag: Array.isArray(lead?.tag) ? lead.tag.join('|') : (lead?.tag || ''),
     })
     setCustomFields(JSON.stringify(custom, null, 2))
+    setStageStatus(getLeadStageStatus(lead))
   }, [lead])
 
   const stageMutation = useMutation((stage) => crmApi.updatePipelineStage(lead?.id, { stage }), {
-    onSuccess: () => toast.success('Lead stage updated'),
-    onError: (error) => toast.error(error?.response?.data?.detail || 'Stage update failed'),
+    onSuccess: () => {
+      toast.success('Lead stage updated')
+      refreshWorkspace()
+    },
+    onError: (error) => handleSidebarTransitionError(error, {
+      mode: 'stage',
+      targetStageKey: getCanonicalPipelineStageKey(form.current_stage),
+    }),
   })
 
   const saveMutation = useMutation((payload) => salesApi.updateLeadForm(lead?.id, payload), {
     onSuccess: () => toast.success('Lead updated'),
     onError: (error) => toast.error(error?.response?.data?.detail || 'Update failed'),
   })
+
+  const conversionMutation = useMutation(
+    ({ action, payload = {} }) => crmApi.updateLeadConversion(lead?.id, { action, ...payload }),
+    {
+      onSuccess: (data) => {
+        toast.success(data?.message || 'Conversion action completed')
+        refreshWorkspace()
+      },
+      onError: (error) => {
+        const message = error?.response?.data?.detail || 'Conversion action failed'
+        if (error?.response?.status === 400) toast(message, TRANSITION_WARNING_TOAST)
+        else toast.error(message)
+      },
+    },
+  )
+
+  const transferMutation = useMutation(() => crmApi.transferLeadToClients(lead?.id), {
+    onSuccess: (data) => {
+      toast.success(data?.message || 'Lead transferred to Clients')
+      refreshWorkspace()
+    },
+    onError: (error) => handleSidebarTransitionError(error, { mode: 'transfer', targetStageKey: 'clients' }),
+  })
+
+  const statusMutation = useMutation((status) => crmApi.updateStageStatus(lead?.id, status), {
+    onSuccess: () => {
+      toast.success('Stage status updated')
+      refreshWorkspace()
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.detail || 'Status update failed'
+      if (error?.response?.status === 400) toast(message, TRANSITION_WARNING_TOAST)
+      else toast.error(message)
+    },
+  })
+
+  const saveStageStatus = () => {
+    const value = String(stageStatus || '').trim()
+    if (!value || value === getLeadStageStatus(lead)) {
+      toast('No change to stage status')
+      return
+    }
+    statusMutation.mutate(value)
+  }
 
   const saveLead = () => {
     const payload = new FormData()
@@ -724,6 +1063,81 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
         </div>
       </div>
 
+      <LeadSidebarPanel
+        title="Stage status"
+        description={currentStageKey === 'discovery' ? 'Meeting outcome for this lead.' : 'Current condition inside this stage.'}
+      >
+        {stageStatusOptions.length ? (
+          <div className="space-y-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                {currentStageKey === 'discovery' ? 'Discovery Outcome' : `${stageStatusLabel || lead?.current_stage || 'Stage'} status`}
+              </span>
+              <select className={inputClassName} value={stageStatus} onChange={(event) => setStageStatus(event.target.value)}>
+                <option value="">
+                  {currentStageKey === 'discovery' ? 'Outcome not selected' : 'Not set'}
+                </option>
+                {stageStatusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="w-full justify-center"
+              onClick={saveStageStatus}
+              loading={statusMutation.isLoading}
+              disabled={!stageStatus || stageStatus === getLeadStageStatus(lead)}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Save status
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400">This stage has no inner statuses.</p>
+        )}
+      </LeadSidebarPanel>
+
+      <LeadSidebarPanel title="Stage checklist" description="Requirements before the lead can move to the next stage.">
+        {gate ? (
+          <div className="space-y-2">
+            {gateRequirements.map((req) => (
+              <div key={req.label} className="flex items-start gap-2 rounded-xl border border-surface-border/70 bg-white/75 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/70">
+                {req.met ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                ) : (
+                  <X className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                )}
+                <span className={`text-sm ${req.met ? 'font-medium text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {req.label}
+                </span>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="primary"
+              className="mt-4 w-full justify-center shadow-sm"
+              onClick={handleMoveToNextStage}
+              title={gateReady ? `Move this lead to ${gate.nextLabel}` : gate.hint}
+            >
+              <ArrowRight className="h-4 w-4" />
+              Move to {gate.nextLabel}
+            </Button>
+            {!gateReady ? (
+              <p className="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-400">{gate.hint}</p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {isWonStage
+              ? 'Deal closed. Use the Won conversion panel below, then transfer to Clients.'
+              : 'This lead is at the end of the sales journey.'}
+          </p>
+        )}
+      </LeadSidebarPanel>
+
       <LeadSidebarPanel title="Pipeline edits" description="Ownership, stage and qualification fields.">
         <div className="grid gap-3">
           {editFields.map((field) => (
@@ -748,6 +1162,66 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
         </details>
       </LeadSidebarPanel>
 
+      {isWonStage ? (
+        <LeadSidebarPanel title="Won conversion" description="Idempotent actions — retrying never creates duplicates. Won status is managed by the Stage status control above.">
+          <div className="space-y-3">
+            <div className="grid gap-2">
+              {lead?.invoice_id ? (
+                <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/60 px-3 py-2 text-xs font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+                  Invoice created ✓
+                </div>
+              ) : (
+                <Button type="button" variant="secondary" size="sm" className="w-full justify-center" onClick={() => conversionMutation.mutate({ action: 'create_invoice' })} loading={conversionMutation.isLoading}>
+                  <FileText className="h-4 w-4" />
+                  Create invoice
+                </Button>
+              )}
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Account manager</span>
+                <select className={inputClassName} value={accountManagerId} onChange={(event) => setAccountManagerId(event.target.value)}>
+                  <option value="">Select user</option>
+                  {users.map((user) => (
+                    <option key={user.id || user._id} value={user.id || user._id}>
+                      {formatUserName(user) || user.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="w-full justify-center"
+                onClick={() => conversionMutation.mutate({ action: 'assign_account_manager', payload: { user_id: accountManagerId } })}
+                disabled={!accountManagerId || accountManagerId === (lead?.account_manager_id || '')}
+              >
+                <Users className="h-4 w-4" />
+                Assign account manager
+              </Button>
+              <Button type="button" variant="secondary" size="sm" className="w-full justify-center" onClick={() => conversionMutation.mutate({ action: 'send_welcome_email' })}>
+                <Mail className="h-4 w-4" />
+                Send welcome email
+              </Button>
+              <Button type="button" variant="secondary" size="sm" className="w-full justify-center" onClick={() => conversionMutation.mutate({ action: 'notify_operations' })}>
+                <Bell className="h-4 w-4" />
+                Notify operations
+              </Button>
+            </div>
+            <Button
+              type="button"
+              variant="primary"
+              className="w-full justify-center shadow-sm"
+              onClick={() => transferMutation.mutate()}
+              loading={transferMutation.isLoading}
+              disabled={Boolean(lead?.transferred_at)}
+            >
+              <Route className="h-4 w-4" />
+              {lead?.transferred_at ? 'Transferred to Clients' : 'Transfer to Clients'}
+            </Button>
+          </div>
+        </LeadSidebarPanel>
+      ) : null}
+
       <LeadSidebarPanel title="Actions" description="Fast links to related CRM areas.">
         <div className="grid gap-3">
           <LeadSidebarAction icon={Mail} title="Send email" description="Start a lead thread." onClick={onSendEmail} />
@@ -771,6 +1245,17 @@ export const LeadSidebar = memo(function LeadSidebar({ lead, onSendEmail }) {
           <LeadSidebarMiniTile icon={Wand2} title="AI" value="Open AI tab" />
         </div>
       </LeadSidebarPanel>
+
+      <StageRequirementsDialog
+        open={Boolean(requirementsDialog)}
+        blocker={requirementsDialog?.blocker}
+        lead={lead}
+        users={users}
+        onClose={() => setRequirementsDialog(null)}
+        onSaveFields={handleDialogSaveFields}
+        onSaveAndMove={handleDialogSaveAndMove}
+        contextActions={dialogContextActions}
+      />
     </div>
   )
 })
@@ -1023,10 +1508,12 @@ export const LeadProposalTab = memo(function LeadProposalTab({
             <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Status</span>
             <select className={inputClassName} value={form.status} onChange={(event) => onChange('status', event.target.value)}>
               <option value="draft">Draft</option>
+              <option value="generated">Generated</option>
               <option value="sent">Sent</option>
               <option value="viewed">Viewed</option>
               <option value="accepted">Accepted</option>
               <option value="rejected">Rejected</option>
+              <option value="revision_requested">Revision Requested</option>
               <option value="expired">Expired</option>
             </select>
           </label>

@@ -93,6 +93,8 @@ const CRMReportsPage = lazy(() => import('./pages/crm/reports/page'))
 const CRMSettingsPage = lazy(() => import('./pages/crm/settings/page'))
 const CRMMetaIntegrationPage = lazy(() => import('./pages/crm/settings/meta'))
 const CRMLeadsPage = lazy(() => import('./pages/crm/leads/page'))
+const CRMAllLeadsPage = lazy(() => import('./pages/crm/leads/all'))
+const SalesOverviewPage = lazy(() => import('./pages/sales/SalesOverview'))
 const PublicCrmDocument = lazy(() => import('./pages/crm/PublicCrmDocument'))
 const HRDepartment = lazy(() => import('./pages/hr/HRDepartment'))
 const RecruitmentDashboard = lazy(() => import('./pages/hr/recruitment/RecruitmentDashboard'))
@@ -315,6 +317,8 @@ function App() {
         <Route path="my-team" element={withBoundary(<MyTeam />)} />
         <Route path="settings" element={withBoundary(<Settings />)} />
         <Route path="sections/:sectionKey" element={withBoundary(<SectionLanding />)} />
+        {/* Sales workspace Overview — the first tab of the guided sales journey. */}
+        <Route path="sales-overview" element={withBoundary(<SalesOverviewPage />)} />
           <Route path="hr">
             <Route index element={withBoundary(<HRDepartment />)} />
             <Route path="recruitment">
@@ -334,7 +338,9 @@ function App() {
             <Route index element={<Navigate to="pipeline" replace />} />
             <Route path="dashboard" element={<Navigate to="/crm/pipeline" replace />} />
             <Route path="pipeline" element={withBoundary(<CRMPipelinePage />)} />
+            <Route path="pipeline/:stageKey" element={withBoundary(<CRMPipelinePage />)} />
             <Route path="leads" element={withBoundary(<CRMLeadsPage />)} />
+            <Route path="leads/all" element={withBoundary(<CRMAllLeadsPage />)} />
             <Route path="leads/:leadId" element={withBoundary(<CRMLeadWorkspacePage />)} />
             <Route path="companies" element={withBoundary(<CRMCompaniesPage />)} />
             <Route path="companies/:companyId" element={withBoundary(<CRMCompanyWorkspacePage />)} />

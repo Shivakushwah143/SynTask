@@ -72,7 +72,7 @@ function, plus a small refactor to move the sidebar's item-gating logic into a s
 | Section | Tabs (first tab = landing route) |
 |---|---|
 | Home | Home (`/dashboard`) · Calendar (`/calendar`) *(decide: tabs or plain)* |
-| Sales | Leads · Pipeline · Import Leads |
+| Sales | Leads · All Leads · Pipeline · *(Import Leads: sidebar-only, hidden from tabs)* |
 | Clients | All Clients · Companies · Contacts · Client Calendar · Client Insights |
 | Work | Projects · Tasks · Requests · Scheduled Work · Time Tracking |
 | Content | Content Calendar · Content Studio |
