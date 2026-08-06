@@ -111,7 +111,9 @@ export const SALES_JOURNEY_TAB_ITEMS = ["Acquire", "Qualify", "Discovery", "Prop
 // the tab bar too — it is not part of the guided journey.
 export const SALES_HIDDEN_TAB_ITEMS = ["Leads", "All Leads", "Pipeline", "Import Leads"];
 
-// Route for the dedicated Sales Overview dashboard (per-section Overview tab).
+// Route for the dedicated Sales Overview dashboard. Used as the Sales section's default
+// destination: the sidebar section link and the in-page Overview tab both resolve here
+// instead of the generic /sections/sales landing.
 export const SALES_OVERVIEW_HREF = "/sales-overview";
 
 // ── Top-level section structure (spec §2 + §8). Items are resolved by name. ──
@@ -129,7 +131,7 @@ export const SECTIONS = [
     items: [...SALES_JOURNEY_TAB_ITEMS, ...SALES_HIDDEN_TAB_ITEMS],
     overviewHref: SALES_OVERVIEW_HREF,
   },
-  { key: "clients", label: "Clients", items: ["All Clients", "Companies", "Contacts", "Client Calendar", "Client Insights"] },
+  { key: "clients", label: "Clients", items: ["All Clients", "Companies", "Contacts", "Client Calendar", "Client Insights"], overviewHref: "/clients" },
   { key: "work", label: "Work", items: ["Projects", "Tasks", "Requests", "Scheduled Work", "Time Tracking"] },
   { key: "content", label: "Content", items: ["Content Calendar", "Content Studio"] },
   { key: "publishing", label: "Publishing", items: ["Publishing Centre", "Social Accounts", "Publishing Analytics", "Integrations"] },

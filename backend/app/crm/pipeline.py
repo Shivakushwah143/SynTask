@@ -130,7 +130,7 @@ STAGE_ENTRY_REQUIREMENTS: Dict[PipelineStage, Dict[str, Any]] = {
 # Repeated labels (Draft / Sent / Viewed / Accepted / Rejected / Expired / Spam)
 # are always scoped by the stage the lead is currently in.
 STAGE_INNER_STATUSES: Dict[str, List[str]] = {
-    "acquire": ["new", "imported", "assigned", "not_contacted", "contacted", "duplicate", "spam"],
+    "acquire": ["new", "imported", "assigned", "not_contacted", "contacted", "wrong_number", "no_response", "duplicate", "spam"],
     "qualify": ["not_contacted", "contacted", "busy", "call_back", "wrong_number", "no_response", "interested", "not_interested", "spam", "qualified"],
     "discovery": ["need_proposal", "need_audit", "need_second_meeting", "follow_up_required", "not_interested", "lost", "qualified"],
     "proposal": ["draft", "generated", "sent", "viewed", "accepted", "rejected", "revision_requested", "expired"],
