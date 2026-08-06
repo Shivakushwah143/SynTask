@@ -35,15 +35,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center gap-3">
         <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+          <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -708,27 +710,27 @@ useEffect(() => {
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-600 via-rose-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-600 via-rose-600 to-pink-600 p-3.5 text-white shadow-xl md:p-4">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
-        <div className="relative z-10">
+        <div className="relative z-10 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-              <ListTodo className="h-6 w-6" />
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <ListTodo className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold md:text-3xl">Tasks</h1>
-              <p className="mt-1 text-indigo-100">Track work and priorities across your team</p>
+              <h1 className="text-xl font-bold md:text-2xl">Tasks</h1>
+              <p className="mt-0.5 text-xs text-indigo-100">Track work and priorities across your team</p>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-2 md:self-center">
             <button
               type="button"
               onClick={() => fetchTasks({ isRefresh: true })}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
               aria-busy={refreshing || undefined}
             >
-              <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </button>
             {canManageTasks && (
@@ -737,9 +739,9 @@ useEffect(() => {
                   setSelectedDepartmentId('')
                   setShowCreateModal(true)
                 }}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
                 New Task
               </button>
             )}
@@ -748,7 +750,7 @@ useEffect(() => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total Tasks"
           value={totalTasks}
@@ -1695,15 +1697,15 @@ function TaskGraphPanel({ rows, summary, onOpenTask }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 overflow-hidden">
       {/* Header */}
-      <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-4 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
+      <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50/50 to-white p-3 dark:border-gray-700 dark:from-indigo-950/20 dark:to-gray-800">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-              <LayoutGrid className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/30">
+              <LayoutGrid className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">Task Overview</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{summary.total} tasks • {summary.active} active</p>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Task Overview</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{summary.total} tasks • {summary.active} active</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1719,39 +1721,39 @@ function TaskGraphPanel({ rows, summary, onOpenTask }) {
 
       {/* Summary Stats */}
       <div className="grid border-b border-gray-200 dark:border-gray-700 sm:grid-cols-3">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <div className="rounded-lg bg-indigo-50 p-2 dark:bg-indigo-900/30">
-            <ListTodo className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+        <div className="flex items-center gap-3 px-3 py-2">
+          <div className="rounded-lg bg-indigo-50 p-1.5 dark:bg-indigo-900/30">
+            <ListTodo className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
           </div>
           <div>
-            <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">{summary.total}</p>
+            <p className="text-base font-bold tabular-nums text-gray-900 dark:text-white">{summary.total}</p>
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Tasks</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 border-t border-gray-200 bg-gray-50/50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/30 sm:border-l sm:border-t-0">
-          <div className="rounded-lg bg-amber-50 p-2 dark:bg-amber-900/30">
-            <Activity className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+        <div className="flex items-center gap-3 border-t border-gray-200 bg-gray-50/50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/30 sm:border-l sm:border-t-0">
+          <div className="rounded-lg bg-amber-50 p-1.5 dark:bg-amber-900/30">
+            <Activity className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           </div>
           <div>
-            <p className="text-lg font-bold tabular-nums text-gray-600 dark:text-gray-300">{summary.active}</p>
+            <p className="text-base font-bold tabular-nums text-gray-600 dark:text-gray-300">{summary.active}</p>
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Active Tasks</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 border-t border-gray-200 bg-gray-50/50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/30 sm:border-l sm:border-t-0">
-          <div className="rounded-lg bg-emerald-50 p-2 dark:bg-emerald-900/30">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+        <div className="flex items-center gap-3 border-t border-gray-200 bg-gray-50/50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/30 sm:border-l sm:border-t-0">
+          <div className="rounded-lg bg-emerald-50 p-1.5 dark:bg-emerald-900/30">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <p className="text-lg font-bold tabular-nums text-gray-600 dark:text-gray-300">{summary.completed}</p>
+            <p className="text-base font-bold tabular-nums text-gray-600 dark:text-gray-300">{summary.completed}</p>
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Completed</p>
           </div>
         </div>
       </div>
 
       {/* Task Cards Grid */}
-      <div className="p-4">
+      <div className="p-3">
         {rows.length ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {rows.map((task) => (
               <TaskCard
                 key={task.id}

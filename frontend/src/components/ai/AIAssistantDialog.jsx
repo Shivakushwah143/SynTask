@@ -251,9 +251,9 @@ export function AIAssistantDialog({ isOpen, onClose }) {
           </motion.section>
         </main>
 
-        <footer className="border-t border-orange-100/80 bg-[#fffaf3] px-7 py-5 dark:border-[#5a4635] dark:bg-black/20">
+        <footer className="border-t border-orange-100/80 bg-[#fffaf3] px-5 py-3 dark:border-[#5a4635] dark:bg-black/20">
           <form
-            className="rounded-2xl border border-orange-300 bg-white p-4 shadow-sm dark:border-orange-900 dark:bg-black/25"
+            className="rounded-2xl border border-orange-300 bg-white p-3 shadow-sm dark:border-orange-900 dark:bg-black/25"
             onSubmit={(event) => {
               event.preventDefault()
               if (canSend) void sendMessage(input)
@@ -270,40 +270,40 @@ export function AIAssistantDialog({ isOpen, onClose }) {
                     if (canSend) void sendMessage(input)
                   }
                 }}
-                rows={2}
-                className="min-h-[58px] w-full resize-none border-0 bg-transparent text-base leading-7 text-text-primary outline-none placeholder:text-text-secondary disabled:opacity-70 dark:text-[var(--color-app-text)] dark:placeholder:text-[var(--color-app-text-secondary)]"
+                rows={1}
+                className="min-h-[46px] w-full resize-none border-0 bg-transparent text-sm leading-6 text-text-primary outline-none placeholder:text-text-secondary disabled:opacity-70 dark:text-[var(--color-app-text)] dark:placeholder:text-[var(--color-app-text-secondary)]"
                 placeholder={PLACEHOLDER_PROMPTS[placeholderIndex]}
                 disabled={isSending}
               />
             </label>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-1.5">
                 {[Paperclip, Sparkles, Lightbulb].map((Icon, index) => (
-                  <button key={index} type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-orange-100 bg-white text-text-secondary transition hover:bg-orange-50 hover:text-orange-600 dark:border-[#5a4635] dark:bg-black/30 dark:text-gray-200 dark:hover:bg-white/5" aria-label="Composer tool">
-                    <Icon className="h-5 w-5" />
+                  <button key={index} type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-orange-100 bg-white text-text-secondary transition hover:bg-orange-50 hover:text-orange-600 dark:border-[#5a4635] dark:bg-black/30 dark:text-gray-200 dark:hover:bg-white/5" aria-label="Composer tool">
+                    <Icon className="h-4 w-4" />
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-medium text-text-muted dark:text-[var(--color-app-text-muted)]">{input.length} / 2000</span>
-                <button type="submit" disabled={!canSend} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 px-6 text-base font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-orange-700 disabled:cursor-not-allowed disabled:opacity-60">
-                  {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-medium text-text-muted dark:text-[var(--color-app-text-muted)]">{input.length} / 2000</span>
+                <button type="submit" disabled={!canSend} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-orange-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   Send
                 </button>
               </div>
             </div>
           </form>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-            <span className="inline-flex items-center gap-2 font-semibold text-text-primary dark:text-[var(--color-app-text)]">
-              <Lightbulb className="h-5 w-5 text-orange-600" />
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 font-semibold text-text-primary dark:text-[var(--color-app-text)]">
+              <Lightbulb className="h-4 w-4 text-orange-600" />
               Quick tips
             </span>
             {QUICK_TIPS.map((tip) => {
               const Icon = tip.icon
               return (
-                <span key={tip.label} className="inline-flex items-center gap-2 rounded-xl border border-orange-100 bg-white px-4 py-2 font-medium text-text-secondary dark:border-[#5a4635] dark:bg-black/25 dark:text-gray-200">
-                  <Icon className="h-4 w-4 text-orange-600 dark:text-orange-300" />
+                <span key={tip.label} className="inline-flex items-center gap-1.5 rounded-lg border border-orange-100 bg-white px-3 py-1 font-medium text-text-secondary dark:border-[#5a4635] dark:bg-black/25 dark:text-gray-200">
+                  <Icon className="h-3.5 w-3.5 text-orange-600 dark:text-orange-300" />
                   {tip.label}
                 </span>
               )
@@ -323,17 +323,17 @@ function DialogWelcomeExperience({ firstName, greeting, isSending, onPrompt }) {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98, y: -8 }}
       transition={{ duration: 0.28, ease: 'easeOut' }}
-      className="flex min-h-[52vh] flex-col items-center justify-center text-center"
+      className="flex min-h-[38vh] flex-col items-center justify-center text-center"
     >
       <div className="relative">
         <motion.div
           aria-hidden="true"
-          className="absolute inset-0 rounded-[2rem] bg-orange-500/25 blur-xl"
+          className="absolute inset-0 rounded-2xl bg-orange-500/25 blur-xl"
           animate={{ opacity: [0.35, 0.75, 0.35], scale: [0.92, 1.08, 0.92] }}
           transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
         />
-        <div className="relative flex h-20 w-20 items-center justify-center rounded-[2rem] border border-orange-200 bg-white text-orange-600 shadow-xl shadow-orange-500/10 dark:border-orange-900 dark:bg-black/30 dark:text-orange-200">
-          <Sparkles className="h-8 w-8" aria-hidden="true" />
+        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-orange-200 bg-white text-orange-600 shadow-xl shadow-orange-500/10 dark:border-orange-900 dark:bg-black/30 dark:text-orange-200">
+          <Sparkles className="h-6 w-6" aria-hidden="true" />
         </div>
       </div>
 
@@ -341,20 +341,20 @@ function DialogWelcomeExperience({ firstName, greeting, isSending, onPrompt }) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08, duration: 0.24 }}
-        className="mt-6 max-w-3xl"
+        className="mt-4 max-w-3xl"
       >
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-600 dark:text-orange-300">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-600 dark:text-orange-300">
           SynTask AI
         </p>
-        <h3 className="mt-3 text-3xl font-semibold tracking-tight text-text-primary dark:text-[var(--color-app-text)] sm:text-4xl">
+        <h3 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary dark:text-[var(--color-app-text)] sm:text-3xl">
           {greeting}, {firstName}
         </h3>
-        <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-text-secondary dark:text-[var(--color-app-text-secondary)]">
+        <p className="mx-auto mt-1 max-w-2xl text-sm leading-6 text-text-secondary dark:text-[var(--color-app-text-secondary)]">
           I&apos;m SynTask AI. I can help you manage tasks, CRM, HR, projects, and reports.
         </p>
       </motion.div>
 
-      <div className="mt-8 grid w-full max-w-4xl grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-5 grid w-full max-w-4xl grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {QUICK_ACTIONS.map((action, index) => {
           const Icon = action.icon
           return (
@@ -368,16 +368,16 @@ function DialogWelcomeExperience({ firstName, greeting, isSending, onPrompt }) {
               transition={{ delay: 0.16 + index * 0.035, duration: 0.2 }}
               whileHover={{ y: -3, scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
-              className="group rounded-2xl border border-orange-100 bg-white/85 p-4 text-left shadow-sm transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#5a4635] dark:bg-black/25 dark:hover:bg-white/5"
+              className="group rounded-xl border border-orange-100 bg-white/85 p-3 text-left shadow-sm transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#5a4635] dark:bg-black/25 dark:hover:bg-white/5"
               aria-label={`Ask SynTask AI about ${action.label}`}
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600 transition group-hover:bg-white dark:bg-orange-950/60 dark:text-orange-200 dark:group-hover:bg-black/30">
-                  <Icon className="h-5 w-5" aria-hidden="true" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-600 transition group-hover:bg-white dark:bg-orange-950/60 dark:text-orange-200 dark:group-hover:bg-black/30">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
                   <div className="font-semibold text-text-primary dark:text-[var(--color-app-text)]">{action.label}</div>
-                  <div className="mt-1 text-sm leading-5 text-text-secondary dark:text-[var(--color-app-text-secondary)]">
+                  <div className="mt-0.5 text-xs leading-5 text-text-secondary dark:text-[var(--color-app-text-secondary)]">
                     {action.prompt}
                   </div>
                 </div>
@@ -387,8 +387,8 @@ function DialogWelcomeExperience({ firstName, greeting, isSending, onPrompt }) {
         })}
       </div>
 
-      <div className="mt-6 flex items-center gap-2 text-sm text-text-secondary dark:text-[var(--color-app-text-secondary)]">
-        <MessagesSquare className="h-4 w-4" aria-hidden="true" />
+      <div className="mt-4 flex items-center gap-2 text-xs text-text-secondary dark:text-[var(--color-app-text-secondary)]">
+        <MessagesSquare className="h-3.5 w-3.5" aria-hidden="true" />
         Answers stay grounded in your verified SynTask context.
       </div>
     </motion.section>

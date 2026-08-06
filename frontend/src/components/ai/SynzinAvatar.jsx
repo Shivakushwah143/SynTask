@@ -1,5 +1,5 @@
 export function SynzinAvatar({ size = 'sm', className = '' }) {
-  const sizeClass = size === 'lg' ? 'h-12 w-12 text-base' : 'h-8 w-8 text-xs'
+  const sizeClass = size === 'lg' ? 'h-12 w-12 text-base' : 'h-10 w-10 text-xs'
 
   return (
     <span

@@ -156,14 +156,14 @@ export function CRMContent({ className = '', children, aside }) {
 
 export function CRMSection({ title, description, actions, children, className = '' }) {
   return (
-    <section className={`rounded-2xl border border-primary-200/60 bg-[linear-gradient(135deg,rgba(255,250,244,0.96),rgba(248,242,232,0.9))] p-5 shadow-[0_14px_36px_rgba(63,49,37,0.07)] dark:border-[#5a4635] dark:bg-[linear-gradient(135deg,rgba(36,28,20,0.96),rgba(20,16,12,0.94))] dark:shadow-[0_18px_42px_rgba(0,0,0,0.24)] ${className}`}>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className={`rounded-2xl border border-primary-200/60 bg-[linear-gradient(135deg,rgba(255,250,244,0.96),rgba(248,242,232,0.9))] p-4 shadow-[0_14px_36px_rgba(63,49,37,0.07)] dark:border-[#5a4635] dark:bg-[linear-gradient(135deg,rgba(36,28,20,0.96),rgba(20,16,12,0.94))] dark:shadow-[0_18px_42px_rgba(0,0,0,0.24)] ${className}`}>
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
             {title}
           </h2>
           {description ? (
-            <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">{description}</p>
+            <p className="mt-0.5 text-sm leading-5 text-gray-500 dark:text-gray-400">{description}</p>
           ) : null}
         </div>
         {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
@@ -182,15 +182,19 @@ export function CRMStatCard({ icon: Icon, label, value, helper, tone = 'blue' })
   }
 
   return (
-    <article className="crm-icon-surface rounded-2xl border border-surface-border/80 bg-gradient-to-br from-white via-primary-50/40 to-white p-4 shadow-sm dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface)] dark:via-[var(--color-app-surface-muted)] dark:to-[var(--color-app-surface)]">
-      <div className={`inline-flex rounded-2xl border p-3 ${tones[tone] || tones.blue}`}>
-        {Icon ? <Icon className="h-5 w-5" /> : null}
+    <article className="crm-icon-surface rounded-2xl border border-surface-border/80 bg-gradient-to-br from-white via-primary-50/40 to-white p-3 shadow-sm dark:border-[var(--color-app-border)] dark:from-[var(--color-app-surface)] dark:via-[var(--color-app-surface-muted)] dark:to-[var(--color-app-surface)]">
+      <div className="flex items-center gap-3">
+        <div className={`inline-flex shrink-0 rounded-xl border p-2 ${tones[tone] || tones.blue}`}>
+          {Icon ? <Icon className="h-4 w-4" /> : null}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+          <p className="mt-0.5 truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+            {value}
+          </p>
+          {helper ? <p className="mt-0.5 truncate text-xs leading-4 text-gray-500 dark:text-gray-400">{helper}</p> : null}
+        </div>
       </div>
-      <p className="mt-4 text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-        {value}
-      </p>
-      {helper ? <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{helper}</p> : null}
     </article>
   )
 }

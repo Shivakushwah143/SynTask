@@ -151,10 +151,10 @@ const TaskHealthCard = ({ label, value, helper, tone = 'default' }) => {
   }
 
   return (
-    <div className={`rounded-xl border p-4 ${colors[tone]}`}>
-      <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {helper && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>}
+    <div className={`rounded-lg border p-2.5 ${colors[tone]}`}>
+      <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+      {helper && <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">{helper}</p>}
     </div>
   )
 }
@@ -258,6 +258,7 @@ const Dashboard = () => {
   const [todayEvents, setTodayEvents] = useState([])
   const [upcomingDeadlines, setUpcomingDeadlines] = useState([])
   const [upcomingMeetingsList, setUpcomingMeetingsList] = useState([])
+  const [workspaceEvents, setWorkspaceEvents] = useState([])
   const [, setTodayContent] = useState([])
   const [, setOverdueTasksList] = useState([])
   const [, setCalendarLoading] = useState(false)
@@ -439,6 +440,7 @@ const Dashboard = () => {
         if (!active) return;
         const workspaceEvents = workspaceResp?.events || [];
         const contentEvents = contentResp?.events || [];
+        if (active) setWorkspaceEvents(workspaceEvents)
         const todayStr = format(today, 'yyyy-MM-dd');
 
         setTodayEvents(workspaceEvents.filter((e) => e.start === todayStr));
@@ -509,26 +511,26 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="space-y-6 p-4 md:p-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 p-6 text-white shadow-xl md:p-8">
+      <div className="space-y-4 p-4 md:p-5">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 px-4 py-3 text-white shadow-lg">
           <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
           <div className="relative z-10">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
+              <div className="rounded-lg bg-white/20 p-1.5 backdrop-blur-sm">
+                <LayoutDashboard className="h-4 w-4" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Dashboard</h1>
-                <p className="mt-1 text-indigo-100">Loading workspace overview...</p>
+                <h1 className="text-base font-bold leading-tight md:text-lg">Dashboard</h1>
+                <p className="text-[11px] text-indigo-100">Loading workspace overview...</p>
               </div>
             </div>
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {[1, 2, 3, 4].map((item) => <SkeletonCard key={item} lines={3} />)}
         </div>
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-2">
           <SkeletonCard lines={6} />
           <SkeletonCard lines={6} />
         </div>
@@ -662,6 +664,7 @@ const Dashboard = () => {
     { id: 'production-tracking', name: 'Production Tracking', available: [ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.SUPER_ADMIN].includes(role) && Boolean(productionDashboard) },
     { id: 'recent-activity', name: 'Recent Activity' },
     { id: 'calendar-overview', name: 'Calendar Overview' },
+    { id: 'lead-follow-ups', name: 'Lead Follow-ups' },
   ].filter((section) => section.available !== false)
 
   const orderedDashboardSections = normalizeSectionOrder(dashboardSections, sectionOrder)
@@ -717,25 +720,25 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6 relative">
+    <div className="space-y-4 p-4 md:p-5 relative">
       {/* ============================================================ */}
       {/* HERO SECTION - Gradient with Glassmorphism */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 px-4 py-3 text-white shadow-lg">
         {/* Decorative blur circles */}
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
         
         <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
+              <div className="rounded-lg bg-white/20 p-1.5 backdrop-blur-sm">
+                <LayoutDashboard className="h-4 w-4" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Dashboard</h1>
-                <p className="mt-1 text-indigo-100">
+                <h1 className="text-base font-bold leading-tight md:text-lg">Dashboard</h1>
+                <p className="text-[11px] text-indigo-100">
                   Command center for work, meetings, and AI briefings.
                 </p>
               </div>
@@ -744,31 +747,31 @@ const Dashboard = () => {
               {role === ROLE.SUPER_ADMIN && (
                 <button 
                   onClick={() => navigate('/companies')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
                 >
-                  <Building2 className="h-4 w-4" />
+                  <Building2 className="h-3.5 w-3.5" />
                   Create Company
                 </button>
               )}
               <button 
                 onClick={() => navigate('/projects')}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
               >
-                <FolderKanban className="h-4 w-4" />
+                <FolderKanban className="h-3.5 w-3.5" />
                 Projects
               </button>
               <button 
                 onClick={() => navigate('/tasks')}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
               >
-                <CheckSquare className="h-4 w-4" />
+                <CheckSquare className="h-3.5 w-3.5" />
                 Tasks
               </button>
               <button 
                 onClick={() => navigate('/calendar')}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
               >
-                <CalendarDays className="h-4 w-4" />
+                <CalendarDays className="h-3.5 w-3.5" />
                 Calendar
               </button>
             </div>
@@ -843,14 +846,14 @@ const Dashboard = () => {
       {/* ============================================================ */}
       {renderDashboardSection('snapshot-cards', (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+          <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
             <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Today</p>
-            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{todayLabel}</p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Quick access to work, meetings, and AI guidance.</p>
+            <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{todayLabel}</p>
+            <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">Quick access to work, meetings, and AI guidance.</p>
           </div>
-          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+          <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
             <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Today's Events</p>
-            <div className="mt-2 space-y-1">
+            <div className="mt-1 space-y-1">
               {todayEvents.slice(0, 3).map((e) => (
                 <p key={e.id} className="text-xs truncate text-gray-700 dark:text-gray-300">{e.title} ({e.type})</p>
               ))}
@@ -859,9 +862,9 @@ const Dashboard = () => {
               )}
             </div>
           </div>
-          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+          <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
             <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Upcoming Deadlines</p>
-            <div className="mt-2 space-y-1">
+            <div className="mt-1 space-y-1">
               {upcomingDeadlines.slice(0, 3).map((e) => (
                 <p key={e.id} className="text-xs truncate text-gray-700 dark:text-gray-300">{e.title} - {e.start}</p>
               ))}
@@ -870,9 +873,9 @@ const Dashboard = () => {
               )}
             </div>
           </div>
-          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+          <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
             <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Upcoming Meetings</p>
-            <div className="mt-2 space-y-1">
+            <div className="mt-1 space-y-1">
               {upcomingMeetingsList.slice(0, 3).map((e) => (
                 <p key={e.id} className="text-xs truncate text-gray-700 dark:text-gray-300">{e.title} - {e.start}</p>
               ))}
@@ -881,35 +884,35 @@ const Dashboard = () => {
               )}
             </div>
           </div>
-          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+          <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">High-Priority Tasks</p>
               <Sparkles className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{priorityTasks.length}</p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Critical and high-priority work in progress.</p>
+            <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{priorityTasks.length}</p>
+            <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">Critical and high-priority work in progress.</p>
           </div>
-          <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+          <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Attendance Focus</p>
               <TrendingUp className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+            <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
               {role === ROLE.EMPLOYEE ? (attendanceToday?.status || 'Pending') : (attendanceStats?.present_today ?? 0)}
             </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
               {role === ROLE.EMPLOYEE ? 'Your latest attendance status.' : 'People present today.'}
             </p>
           </div>
           {role === ROLE.EMPLOYEE && (
-            <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+            <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Today's EOD</p>
                 <Badge label={eodStatusLabel} colorKey={eodToday?.status === 'submitted' ? 'active' : eodToday?.status === 'leave' ? 'pending' : 'draft'} />
               </div>
-              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{eodStatusLabel}</p>
+              <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{eodStatusLabel}</p>
               <button 
-                className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-700"
+                className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-700"
                 onClick={() => navigate('/eod')}
               >
                 {eodToday?.status === 'submitted' ? "Edit Today's EOD" : "Submit Today's EOD"}
@@ -929,12 +932,12 @@ const Dashboard = () => {
           aria-label="Open Task Health in Tasks"
           onClick={() => navigate('/tasks')}
           onKeyDown={(event) => handleCardKeyNavigation(event, '/tasks')}
-          className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 cursor-pointer dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700"
+          className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md hover:border-indigo-200 cursor-pointer dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700"
         >
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-base font-bold text-gray-900 dark:text-white">Task Health</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Task Health</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
                 {role === ROLE.EMPLOYEE ? 'Your assigned task status and extension requests.' : 'Team deadline pressure and extension workflow.'}
               </p>
             </div>
@@ -949,7 +952,7 @@ const Dashboard = () => {
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             {role === ROLE.EMPLOYEE ? (
               <>
                 <TaskHealthCard label="Assigned" value={healthSummary?.total_assigned_tasks ?? 0} />
@@ -1059,7 +1062,7 @@ const Dashboard = () => {
                 key={metric.label}
                 type="button"
                 onClick={() => navigate(metric.route)}
-                className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700"
+                className="group rounded-xl border border-gray-200 bg-white p-3 text-left shadow-sm transition-all hover:shadow-md hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700"
                 aria-label={`Open ${metric.label} report`}
               >
                 <div className="flex items-center justify-between">
@@ -1068,8 +1071,8 @@ const Dashboard = () => {
                     <ArrowRight className="h-3 w-3" />
                   </div>
                 </div>
-                <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{metric.value}</p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Open detailed report</p>
+                <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{metric.value}</p>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Open detailed report</p>
               </button>
             ))}
           </div>
@@ -1327,6 +1330,76 @@ const Dashboard = () => {
                 </div>
               )}
             </div>
+          </div>
+        </section>
+      ))}
+
+      {/* ============================================================ */}
+      {/* LEAD FOLLOW-UPS */}
+      {/* ============================================================ */}
+      {renderDashboardSection('lead-follow-ups', (
+        <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700 mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Lead Follow-ups</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Upcoming scheduled lead follow-ups for the next 30 days.</p>
+            </div>
+            <button
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              onClick={() => navigate('/crm/leads')}
+            >
+              View Leads
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {workspaceEvents.filter((e) => e.type === 'follow_up' && e.start).slice(0, 6).map((e) => {
+              const phoneDisplay = e.phone_display || e.phone || ''
+              const phoneHref = phoneDisplay ? `tel:${phoneDisplay.replace(/[^\d+]/g, '')}` : null
+              return (
+                <div key={e.id} className="group flex items-center justify-between gap-2 rounded-md border border-gray-100 p-2 transition-colors hover:border-indigo-200 hover:bg-indigo-50/30 dark:border-gray-700 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/20">
+                  <div className="min-w-0">
+                    <a onClick={() => navigate(e.lead_id ? `/crm/leads/${e.lead_id}` : '/crm/leads')} className="block cursor-pointer truncate font-medium text-gray-900 hover:underline dark:text-white">{e.lead_name || e.title}</a>
+                    <p className="flex items-center gap-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                      <span>{e.start}</span>
+                      {phoneDisplay && phoneHref && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <a href={phoneHref} onClick={(event) => event.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:underline dark:text-indigo-400" title={`Call ${phoneDisplay}`}>
+                            <Phone className="h-3 w-3" />
+                            {phoneDisplay}
+                          </a>
+                        </>
+                      )}
+                      <span aria-hidden="true">·</span>
+                      <span>{e.assignee || 'Unassigned'}</span>
+                      {e.status && (
+                        <span className="ml-2 inline-flex items-center rounded px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">{e.status}</span>
+                      )}
+                    </p>
+                    {e.description && (
+                      <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{e.description}</p>
+                    )}
+                  </div>
+                  {phoneHref ? (
+                    <a
+                      href={phoneHref}
+                      onClick={(event) => event.stopPropagation()}
+                      title={`Call ${phoneDisplay}`}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 hover:shadow-sm dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950/70"
+                    >
+                      <Phone className="h-3.5 w-3.5" />
+                      Call
+                    </a>
+                  ) : (
+                    <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">No phone</span>
+                  )}
+                </div>
+              )
+            })}
+            {workspaceEvents.filter((e) => e.type === 'follow_up' && e.start).length === 0 && (
+              <p className="text-xs text-gray-400">No upcoming lead follow-ups</p>
+            )}
           </div>
         </section>
       ))}

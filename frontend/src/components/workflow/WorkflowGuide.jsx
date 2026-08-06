@@ -3,17 +3,17 @@ import { Link } from 'react-router-dom'
 
 export function WorkflowGuide({ className = '', title, description, primaryAction, secondaryAction }) {
   return (
-    <section className={`rounded-3xl border border-surface-border bg-gradient-to-br from-surface to-surface-muted p-5 shadow-sm dark:border-border dark:from-black dark:via-black/95 dark:to-black/90 ${className}`}>
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <section className={`rounded-2xl border border-surface-border bg-gradient-to-br from-surface to-surface-muted p-4 shadow-sm dark:border-border dark:from-black dark:via-black/95 dark:to-black/90 ${className}`}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary-600 dark:text-primary-300">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary-600 dark:text-primary-300">
             Next action
           </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-text-primary dark:text-text-primary">
+          <h2 className="mt-1 text-lg font-semibold tracking-tight text-text-primary dark:text-text-primary">
             {title}
           </h2>
           {description ? (
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-text-secondary dark:text-text-secondary">
+            <p className="mt-1 max-w-3xl text-sm leading-5 text-text-secondary dark:text-text-secondary">
               {description}
             </p>
           ) : null}
@@ -47,7 +47,7 @@ export function WorkflowGuide({ className = '', title, description, primaryActio
 }
 
 function ActionButton({ action, variant }) {
-  const base = 'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors'
+  const base = 'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors'
   const styles = variant === 'primary'
     ? 'bg-primary-600 text-white hover:bg-primary-700'
     : 'bg-surface text-text-secondary ring-1 ring-surface-border hover:bg-surface-muted dark:bg-black/70 dark:text-text-secondary dark:ring-border dark:hover:bg-white/5'

@@ -410,6 +410,31 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
         a for a in activities
         if a.activity_type in ("follow_up", "reminder") and a.due_date and _in_range(a.due_date, today_start, tomorrow_start)
     ]
+
+    # Also compute a compact list of upcoming lead follow-ups for dashboard widgets
+    upcoming_follow_ups = []
+    for a in activities:
+        if a.activity_type != 'follow_up' or not getattr(a, 'due_date', None):
+            continue
+        if not _in_range(a.due_date, today_start, today_start + timedelta(days=30)):
+            continue
+        # Load basic lead info if available
+        lead = None
+        if a.entity_type == 'lead' and a.entity_id:
+            lead = next((p for p in prospects if str(p.id) == str(a.entity_id)), None)
+
+        upcoming_follow_ups.append({
+            'id': str(a.id),
+            'title': a.title,
+            'due_date': a.due_date,
+            'scheduled_at': a.scheduled_at,
+            'status': getattr(a, 'status', None).value if getattr(a, 'status', None) else None,
+            'lead_id': str(lead.id) if lead else (a.entity_id if a.entity_type == 'lead' else None),
+            'lead_name': (lead.prospect_name or lead.company_name) if lead else None,
+            'phone': getattr(lead, 'phone', None) if lead else None,
+            'owner_id': a.owner_id,
+            'owner_name': a.owner_name,
+        })
     proposals_pending = [p for p in proposals if p.status in ("sent", "viewed")]
     this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     proposals_accepted_month = [
@@ -447,6 +472,7 @@ async def build_sales_dashboard_summary(current_user: User) -> Dict[str, Any]:
             "pipeline_value": active_pipeline_value,
             "today": today_start.isoformat(),
         },
+        "upcoming_follow_ups": upcoming_follow_ups,
         "pipeline": {
             "stage_breakdown": _pipeline_breakdown(prospects, product_map),
         },

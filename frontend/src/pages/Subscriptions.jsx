@@ -359,23 +359,53 @@ export default function Subscriptions() {
   if (loading) {
     return (
       <div className="space-y-6 p-4 md:p-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-4 text-white shadow-xl md:p-5">
           <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
           <div className="relative z-10">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
+              <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+                <LayoutDashboard className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Subscription & Billing</h1>
-                <p className="mt-1 text-indigo-100">Loading subscription workspace...</p>
+                <h1 className="text-xl font-bold md:text-2xl">Subscription & Billing</h1>
+                <p className="mt-0.5 text-indigo-100">Loading subscription workspace...</p>
               </div>
             </div>
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          {[1, 2, 3].map((item) => <SkeletonCard key={item} lines={4} />)}
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1.5">
+              <div className="h-3 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+              <div className="h-5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+              <div className="h-2.5 w-56 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="h-14 w-32 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-700"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-3 space-y-1.5">
+            <div className="h-4 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            <div className="h-2.5 w-72 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[...Array(4)].map((_, index) => (
+              <div key={index} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <div className="space-y-2">
+                  <div className="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                  <div className="h-5 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                  <div className="h-8 w-full animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"></div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -528,27 +558,27 @@ export default function Subscriptions() {
       {/* ============================================================ */}
       {/* HERO SECTION */}
       {/* ============================================================ */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-6 text-white shadow-xl md:p-8">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 p-4 text-white shadow-xl md:p-5">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-white/5 blur-3xl"></div>
         
         <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <CreditCard className="h-6 w-6" />
+              <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+                <CreditCard className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Subscription & Billing</h1>
-                <p className="mt-1 text-indigo-100">
+                <h1 className="text-xl font-bold md:text-2xl">Subscription & Billing</h1>
+                <p className="mt-0.5 text-indigo-100">
                   View your current company plan and upgrade when your team needs more capacity.
                 </p>
               </div>
             </div>
             <button 
               onClick={loadData}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
+              className="inline-flex items-center gap-2 rounded-lg bg-white/20 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/30"
             >
               <RefreshCw className="h-4 w-4" />
               Refresh
@@ -560,8 +590,8 @@ export default function Subscriptions() {
       {/* ============================================================ */}
       {/* CURRENT PLAN BANNER */}
       {/* ============================================================ */}
-      <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-white p-6 shadow-sm dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-gray-800">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-white p-4 shadow-sm dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-gray-800">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <div className="rounded-lg bg-indigo-100 p-1.5 dark:bg-indigo-900/40">
@@ -569,8 +599,8 @@ export default function Subscriptions() {
               </div>
               <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">Current Company Plan</p>
             </div>
-            <h2 className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{currentPlanName}</h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            <h2 className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{currentPlanName}</h2>
+            <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
               This is the active plan for {company?.name || 'your company'}.
             </p>
           </div>

@@ -35,6 +35,7 @@ const SalesLayout = () => {
           setAssistantOpen(true)
         }}
         onDismiss={() => setSynzinPromptOpen(false)}
+        onOpen={() => setSynzinPromptOpen(true)}
       />
       <AttendanceStatusBootstrap />
     </div>

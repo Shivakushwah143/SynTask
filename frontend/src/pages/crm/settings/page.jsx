@@ -37,15 +37,17 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', subtitle }) => {
   }
 
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] dark:border-gray-700 dark:bg-gray-800">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
+    <div className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all hover:shadow-md dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-center gap-3">
         <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg`}>
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+          <p className="truncate text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+          {subtitle && <p className="truncate text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-      {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
     </div>
   )
 }
@@ -123,19 +125,19 @@ export default function CRMSettingsPage() {
   return (
     <CRMPage>
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-zinc-700 via-violet-600 to-purple-600 p-6 text-white shadow-xl md:p-8 mb-6">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-zinc-700 via-violet-600 to-purple-600 p-4 text-white shadow-xl md:p-5 mb-4">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <Settings className="h-6 w-6" />
+              <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+                <Settings className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-200">CRM</p>
-                <h1 className="text-2xl font-bold md:text-3xl">Settings</h1>
-                <p className="mt-1 text-indigo-100">Workspace configuration for the CRM.</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-200">CRM</p>
+                <h1 className="text-xl font-bold md:text-2xl">Settings</h1>
+                <p className="mt-0.5 text-indigo-100">Workspace configuration for the CRM.</p>
               </div>
             </div>
             <Badge label="CRM Settings" colorKey="draft" className="bg-white/20 text-white border-0" />
@@ -144,7 +146,7 @@ export default function CRMSettingsPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
         <StatCard
           label="Pipeline Controls"
           value={String(settings.pipeline.winReasons.length + settings.pipeline.lostReasons.length)}
@@ -320,19 +322,19 @@ function MetaInvestorDemo({ activeKey }) {
 
   return (
     <CRMPage>
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-zinc-700 via-violet-600 to-purple-600 p-6 text-white shadow-xl md:p-8 mb-6">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-zinc-700 via-violet-600 to-purple-600 p-4 text-white shadow-xl md:p-5 mb-4">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <Sparkles className="h-6 w-6" />
+              <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+                <Sparkles className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-wider text-indigo-200">Meta Omnichannel</p>
-                <h1 className="text-2xl font-bold md:text-3xl">{active.title}</h1>
-                <p className="mt-1 text-indigo-100">{active.summary}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-200">Meta Omnichannel</p>
+                <h1 className="text-xl font-bold md:text-2xl">{active.title}</h1>
+                <p className="mt-0.5 text-sm text-indigo-100">{active.summary}</p>
               </div>
             </div>
             <Badge label={active.status} colorKey={active.status === 'Coming soon' ? 'draft' : 'active'} className="bg-white/20 text-white border-0" />
@@ -340,23 +342,23 @@ function MetaInvestorDemo({ activeKey }) {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
+      <div className="grid gap-3 md:grid-cols-3 mb-4">
         <CRMStatCard icon={Target} label="Working features" value={String(working.length)} helper="Ready to show investors." tone="emerald" />
         <CRMStatCard icon={ListChecks} label="Guardrails" value="4" helper="Tenant, audit, no auto-send, no auto-merge." tone="blue" />
         <CRMStatCard icon={Settings} label="Pending phases" value={String(pending.length)} helper="Outbound, analytics, readiness, connect." tone="amber" />
       </div>
 
       <CRMSection title="Investor Demo Proof" description="What is built now, visible in SynTask, and backed by tested contracts.">
-        <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/30">
+        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/30">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{active.title}</h3>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{active.summary}</p>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{active.title}</h3>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{active.summary}</p>
               </div>
               <Badge label={active.status} colorKey={active.status === 'Coming soon' ? 'draft' : 'active'} />
             </div>
-            <ul className="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-200">
+            <ul className="mt-3 space-y-1.5 text-sm text-gray-700 dark:text-gray-200">
               {active.proof.map((item) => (
                 <li key={item} className="flex gap-2">
                   <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
@@ -366,9 +368,9 @@ function MetaInvestorDemo({ activeKey }) {
             </ul>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Demo Script</h3>
-            <ol className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+            <ol className="mt-2 space-y-1.5 text-sm text-gray-600 dark:text-gray-300">
               <li>1. Open Meta Omnichannel.</li>
               <li>2. Show WhatsApp, Instagram, Messenger inbox routes.</li>
               <li>3. Show identity linking: human confirmed, no auto-merge.</li>
@@ -382,12 +384,12 @@ function MetaInvestorDemo({ activeKey }) {
       <CRMSection title="Built Now" description="No Coming Soon labels here. These are investor-showable capabilities.">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {working.map((item) => (
-            <div key={item.key} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div key={item.key} className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
               <div className="flex items-start justify-between gap-3">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{item.title}</h3>
                 <Badge label="Working" colorKey="active" />
               </div>
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.summary}</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.summary}</p>
             </div>
           ))}
         </div>
@@ -396,12 +398,12 @@ function MetaInvestorDemo({ activeKey }) {
       <CRMSection title="Next Phases" description="Kept honest. These stay marked Coming Soon.">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {pending.map((item) => (
-            <div key={item.key} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30">
+            <div key={item.key} className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30">
               <div className="flex items-start justify-between gap-3">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.title}</h3>
                 <Badge label="Coming soon" colorKey="draft" />
               </div>
-              <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">{item.summary}</p>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{item.summary}</p>
             </div>
           ))}
         </div>
