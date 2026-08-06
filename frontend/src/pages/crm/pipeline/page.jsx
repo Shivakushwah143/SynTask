@@ -362,6 +362,21 @@ export default function CRMPipelinePage() {
     createLeadMutation.mutate(payload)
   }, [createForm, createLeadMutation, defaultOwnerId])
 
+  // The board lead can be up to 5 minutes stale (cached pipeline query), so the
+  // required-details popup must analyze the live record: a field saved just now
+  // elsewhere must not be asked for again (and a field a previous save actually
+  // failed to persist must be asked for). Falls back to the snapshot on error.
+  const fetchFreshLeadForDialog = useCallback(async (leadId) => {
+    if (!leadId) return null
+    try {
+      const response = await salesApi.getLead(leadId)
+      const freshLead = response?.data || response
+      return freshLead && typeof freshLead === 'object' ? freshLead : null
+    } catch {
+      return null
+    }
+  }, [])
+
   // Shared failure handling for stage-movement attempts. Business validation
   // blockers open the required-details popup or show a warning; only genuine
   // technical failures surface as error toasts.
@@ -369,24 +384,10 @@ export default function CRMPipelinePage() {
     const blocker = classifyTransitionFailure(error, 'Failed to update lead stage')
     if (blocker.category === TRANSITION_BLOCKER.MISSING_DETAILS) {
       const leadId = variables?.lead?.id || variables?.lead?._id
-      // The board lead can be up to 5 minutes stale (cached pipeline query), so
-      // the popup must analyze the live record: a field saved just now elsewhere
-      // must not be asked for again. Falls back to the board lead on any error.
-      let leadForDialog = variables?.lead
-      if (leadId) {
-        try {
-          const response = await salesApi.getLead(leadId)
-          const freshLead = response?.data || response
-          if (freshLead && typeof freshLead === 'object') {
-            leadForDialog = { ...(variables?.lead || {}), ...freshLead }
-          }
-        } catch {
-          // Keep the board snapshot; the dialog still re-checks it.
-        }
-      }
+      const freshLead = await fetchFreshLeadForDialog(leadId)
       setRequirementsDialog({
         blocker,
-        lead: leadForDialog,
+        lead: freshLead ? { ...(variables?.lead || {}), ...freshLead } : variables?.lead,
         targetStageKey: variables?.stageKey,
       })
       return
@@ -497,11 +498,19 @@ export default function CRMPipelinePage() {
         toast.error(blocker.message)
       } else {
         // Keep the popup open with the updated blocker (e.g. remaining status rule)
-        // and merge the just-saved values into the dialog's lead context.
+        // and analyze the LIVE record. The stored blocker can be stale — a
+        // previous save may or may not have persisted — so re-fetching prevents
+        // a green "all requirements fulfilled" banner against an outdated lead
+        // snapshot while the record still actually misses a field.
+        const freshLead = await fetchFreshLeadForDialog(leadId)
         setRequirementsDialog((current) => ({
           ...current,
           blocker,
-          lead: { ...(current?.lead || {}), ...values },
+          lead: {
+            ...(current?.lead || {}),
+            ...(freshLead || {}),
+            ...values,
+          },
         }))
       }
     }

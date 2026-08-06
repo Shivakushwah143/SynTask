@@ -635,6 +635,47 @@ async def test_update_lead_reassigns_owner_and_records_transfer(monkeypatch):
     assert lead.updated_at is not None
 
 
+@pytest.mark.asyncio
+async def test_update_lead_preserves_budget_when_not_in_payload(monkeypatch):
+    """A partial update must leave absent fields (budget, phone, ...) untouched.
+
+    Regression for the pipeline sync bug: the stage dialog saves only the missing
+    field (e.g. decision_maker); update_lead must not clear budget (which then
+    showed as Rs 0 on the pipeline Value column and re-opened the Qualify ->
+    Discovery gate for an already-defined budget).
+    """
+    lead = FakeProspect(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        source="manual",
+        assigned_to="user-1",
+        assigned_by="user-9",
+        budget=250000,
+        decision_maker=None,
+    )
+    lead.saved = False
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_require_owned_record_access(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.require_owned_record_access", fake_require_owned_record_access)
+
+    current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    result = await LeadEngine.update_lead(current_user, "lead-1", {"decision_maker": "Rahul Sharma"})
+
+    assert result["message"] == "Prospect updated successfully"
+    assert lead.decision_maker == "Rahul Sharma"
+    # Absent fields are preserved — never cleared by a partial update.
+    assert lead.budget == 250000
+    assert lead.saved is True
+
+
 def test_choose_assignee_honors_manual_round_robin_and_least_loaded():
     users = [
         SimpleNamespace(id="user-1"),
