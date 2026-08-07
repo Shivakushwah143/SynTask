@@ -241,6 +241,107 @@ async def test_create_lead_sub_admin_manual_owner_is_not_limited_to_actor_depart
     assert captured_departments == [None]
 
 
+@pytest.mark.asyncio
+async def test_create_lead_employee_with_no_assignable_users_gets_creator_ownership(monkeypatch):
+    """An employee whose department has no assignable users must still be able
+    to create a lead (reported: POST /api/v1/sales/prospects/ returns 400
+    'No assignable users found in your company' for employees). The lead falls
+    back to the creator instead of failing the request."""
+    async def fake_find_duplicate(current_user, payload):
+        return None
+
+    async def fake_resolve_company(current_user, payload):
+        return None, payload.get("company_name")
+
+    async def fake_resolve_contact(current_user, payload):
+        return None
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        raise HTTPException(status_code=400, detail="No assignable users found in your company")
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.find_duplicate", fake_find_duplicate)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_company", fake_resolve_company)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_contact", fake_resolve_contact)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeProspect)
+
+    # Employee scoped to a department that has no other assignable members.
+    current_user = SimpleNamespace(
+        id="employee-1",
+        company_id="company-1",
+        role=UserRole.EMPLOYEE,
+        department_id="dept-engineering",
+    )
+    result = await LeadEngine.create_lead(
+        current_user,
+        {
+            "first_name": "Ada",
+            "last_name": "Admin",
+            "country_code": "+91",
+            "phone": "9999999999",
+            "company_name": "Alpha",
+        },
+    )
+
+    assert result["message"] == "Prospect created successfully"
+    # The lead is owned by its creator so it stays visible on their dashboard.
+    assert result["lead"]["assigned_to"] == "employee-1"
+    assert result["lead"]["assigned_by"] == "employee-1"
+
+
+@pytest.mark.asyncio
+async def test_create_lead_falls_back_to_creator_when_explicit_owner_invalid(monkeypatch):
+    """An explicitly requested owner that cannot be validated (e.g. deactivated
+    or outside the creator's department scope) must not block lead creation —
+    the lead falls back to the creator."""
+    async def fake_find_duplicate(current_user, payload):
+        return None
+
+    async def fake_resolve_company(current_user, payload):
+        return None, payload.get("company_name")
+
+    async def fake_resolve_contact(current_user, payload):
+        return None
+
+    async def fake_validate_target_user(*args, **kwargs):
+        raise HTTPException(status_code=400, detail="Target user must be an active user in your company")
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.find_duplicate", fake_find_duplicate)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_company", fake_resolve_company)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_contact", fake_resolve_contact)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.validate_target_user", fake_validate_target_user)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeProspect)
+
+    current_user = SimpleNamespace(
+        id="manager-1",
+        company_id="company-1",
+        role=UserRole.MANAGER,
+        department_id="dept-sales",
+    )
+    result = await LeadEngine.create_lead(
+        current_user,
+        {
+            "first_name": "Ada",
+            "last_name": "Admin",
+            "country_code": "+91",
+            "phone": "9999999999",
+            "company_name": "Alpha",
+            "assigned_to": "user-9",
+        },
+    )
+
+    assert result["message"] == "Prospect created successfully"
+    assert result["lead"]["assigned_to"] == "manager-1"
+
+
 class FakeImportFile:
     """Minimal UploadFile-like object for import_leads tests."""
     filename = "leads.csv"
