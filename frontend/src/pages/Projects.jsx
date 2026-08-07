@@ -8,9 +8,11 @@ import {
   Briefcase, Layers, GitBranch, Sparkles, Activity, Timer
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useQueryClient } from 'react-query'
 import { useAuthStore } from '../store/authStore'
 import { projectsApi } from '../api/projects'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
+import { invalidateWorkspaceCalendar } from '../api/calendar'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
@@ -160,6 +162,7 @@ const compactInputClassName =
 
 export default function Projects() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const canCreateProjects = canCreateProject(user?.role)
   const userRole = normalizeRole(user?.role)
@@ -493,6 +496,7 @@ export default function Projects() {
           run_at: runAt.toISOString(),
         })
         toast.success('Project scheduled successfully')
+        invalidateWorkspaceCalendar(queryClient)
         setFormData({ name: '', key: '', project_id: '', description: '', type: 'software', lead_id: '', start_date: '', delivery_date: '' })
         setCreateMode('now')
         setScheduleRunAt('')

@@ -250,6 +250,7 @@ export const LeadWorkspace = memo(function LeadWorkspace({
   onBack,
   onRefresh,
   onSendEmail,
+  onScheduleFollowUp,
   onSaveLead,
   isSaving = false,
   users = [],
@@ -268,6 +269,12 @@ export const LeadWorkspace = memo(function LeadWorkspace({
               <Mail className="h-4 w-4" />
               Send Email
             </Button>
+            {onScheduleFollowUp ? (
+              <Button type="button" variant="secondary" size="sm" onClick={onScheduleFollowUp}>
+                <CalendarClock className="h-4 w-4" />
+                Schedule Follow-up
+              </Button>
+            ) : null}
             <Button type="button" variant="secondary" size="sm" onClick={onBack}>
               <ArrowLeft className="h-4 w-4" />
               Back

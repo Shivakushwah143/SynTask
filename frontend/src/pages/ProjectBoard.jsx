@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useQueryClient } from 'react-query'
 import { ArrowLeft, ArrowRight, Filter, GripVertical, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
 import {
   DndContext,
@@ -22,6 +23,7 @@ import toast from 'react-hot-toast'
 import { projectsApi } from '../api/projects'
 import { tasksAPI } from '../api/tasks'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
+import { invalidateWorkspaceCalendar } from '../api/calendar'
 import { usersAPI } from '../api/users'
 import { componentsApi } from '../api/components'
 import { versionsApi } from '../api/versions'
@@ -128,6 +130,7 @@ const normalizeBoardPayload = (payload) => {
 export default function ProjectBoard() {
   const { projectId } = useParams()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const isMobile = useMediaQuery('(max-width: 767px)')
   const userRole = normalizeRole(user?.role)
@@ -418,6 +421,7 @@ export default function ProjectBoard() {
           run_at: timeService.toUtcISOString(runAt),
         })
         toast.success('Task scheduled successfully')
+        invalidateWorkspaceCalendar(queryClient)
         setShowCreateModal(false)
         event.target.reset()
         setTaskAssigneeId('')

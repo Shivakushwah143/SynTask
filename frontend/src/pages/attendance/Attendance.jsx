@@ -4,7 +4,6 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  Coffee,
   History,
   PauseCircle,
   Play,
@@ -15,6 +14,8 @@ import toast from 'react-hot-toast'
 import { attendanceAPI } from '../../api/attendance'
 import { Button, Modal, PageHeader, Skeleton } from '../../components/ui'
 import { timeService } from '@/services/timeService'
+import { useAttendanceStore } from '../../store/attendanceStore'
+import { attendanceStatusMeta } from '../../features/attendance/attendanceStatus'
 
 const formatDuration = (totalSeconds) => {
   const s = Math.max(0, Math.floor(totalSeconds || 0))
@@ -50,41 +51,6 @@ const getDisplay = (record, nowMs) => {
   return { work, breakTotal: Math.floor(record.total_break_seconds || 0), currentBreak: 0, main: work }
 }
 
-const statusMeta = {
-  not_checked_in: {
-    label: 'Not Checked In',
-    icon: Clock,
-    badge: 'border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200',
-    timerLabel: 'Net working time',
-    help: 'Start tracking your working time for today.',
-    title: 'Attendance | SynTask',
-  },
-  working: {
-    label: 'Working',
-    icon: Play,
-    badge: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300',
-    timerLabel: 'Net working time',
-    title: 'Working | SynTask',
-  },
-  on_break: {
-    label: 'On Break',
-    icon: Coffee,
-    badge: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
-    timerLabel: 'Current break',
-    title: 'On Break | SynTask',
-  },
-  checked_out: {
-    label: 'Day Completed',
-    icon: CheckCircle2,
-    badge: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300',
-    timerLabel: 'Total working time',
-    help: 'Your attendance has been saved for today.',
-    title: 'Completed | SynTask',
-  },
-}
-
-const attachSyncTime = (record) => ({ ...(record || {}), received_at: Date.now() })
-
 const AttendanceSkeleton = () => (
   <div className="space-y-5 p-4 md:p-6">
     <PageHeader title="Attendance" description="Check in, manage breaks, and track today's working time." />
@@ -105,39 +71,46 @@ const AttendanceSkeleton = () => (
 )
 
 const Attendance = () => {
-  const [record, setRecord] = useState(null)
+  const record = useAttendanceStore((s) => s.record)
+  const loading = useAttendanceStore((s) => s.loading)
+  const refreshing = useAttendanceStore((s) => s.refreshing)
+  const error = useAttendanceStore((s) => s.error)
+  const pendingAction = useAttendanceStore((s) => s.pendingAction)
+  const initialize = useAttendanceStore((s) => s.initialize)
+  const refresh = useAttendanceStore((s) => s.refresh)
+  const checkIn = useAttendanceStore((s) => s.checkIn)
+  const startBreak = useAttendanceStore((s) => s.startBreak)
+  const resumeWork = useAttendanceStore((s) => s.resumeWork)
+  const checkOut = useAttendanceStore((s) => s.checkOut)
+
   const [history, setHistory] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(true)
   const [confirmCheckout, setConfirmCheckout] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const [tick, setTick] = useState(Date.now())
   const intervalRef = useRef(null)
 
-  const loadAttendance = useCallback(async ({ showLoading = false } = {}) => {
+  // The store is initialized globally (MainLayout bootstrap) once per session;
+  // this is a defensive no-op when it already holds this user's record.
+  useEffect(() => {
+    initialize()
+  }, [initialize])
+
+  const loadHistory = useCallback(async () => {
     try {
-      if (showLoading) setLoading(true)
-      setSyncing(true)
-      setLoadError(false)
-      const [today, recent] = await Promise.all([
-        attendanceAPI.getTodayAttendance(),
-        attendanceAPI.getMyAttendanceHistory(),
-      ])
-      setRecord(attachSyncTime(today.data))
+      setHistoryLoading(true)
+      const recent = await attendanceAPI.getMyAttendanceHistory()
       setHistory(recent.data || [])
     } catch {
-      setLoadError(true)
-      toast.error('Attendance could not be refreshed.')
+      setHistory([])
     } finally {
-      setLoading(false)
-      setSyncing(false)
+      setHistoryLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    loadAttendance({ showLoading: true })
-  }, [loadAttendance])
+    loadHistory()
+  }, [loadHistory])
 
   useEffect(() => {
     intervalRef.current = setInterval(() => setTick(Date.now()), 1000)
@@ -145,9 +118,10 @@ const Attendance = () => {
   }, [])
 
   const display = useMemo(() => getDisplay(record, tick), [record, tick])
-  const meta = statusMeta[record?.status] || statusMeta.not_checked_in
+  const meta = attendanceStatusMeta[record?.status] || attendanceStatusMeta.not_checked_in
   const StatusIcon = meta.icon
   const mainTime = formatDuration(display.main)
+  const loadError = Boolean(error) && !record
 
   useEffect(() => {
     const previousTitle = document.title
@@ -164,27 +138,61 @@ const Attendance = () => {
     document.title = `${mainTime} - ${meta.title}`
   }, [mainTime, meta.title, record])
 
-  const mutate = async (key, action, success, failure) => {
-    if (pendingAction) return
+  const retryLoad = async () => {
+    setRetrying(true)
     try {
-      setPendingAction(key)
-      const res = await action()
-      setRecord(attachSyncTime(res.data))
-      toast.success(success)
-      setConfirmCheckout(false)
-      const recent = await attendanceAPI.getMyAttendanceHistory()
-      setHistory(recent.data || [])
-    } catch {
-      toast.error(failure)
+      await refresh()
     } finally {
-      setPendingAction(null)
+      setRetrying(false)
     }
   }
 
-  const handleCheckIn = () => mutate('check_in', attendanceAPI.checkIn, 'Checked in successfully', "We couldn't check you in. Please try again.")
-  const handleStartBreak = () => mutate('start_break', attendanceAPI.startBreak, 'Break started', "We couldn't start your break. Your attendance is still active.")
-  const handleResume = () => mutate('resume', attendanceAPI.endBreak, 'Work resumed', "We couldn't resume your work session. Please try again.")
-  const handleCheckout = () => mutate('checkout', attendanceAPI.checkOut, 'Checked out successfully', "We couldn't check you out. Your attendance is still active.")
+  // The store performs the mutation and applies the authoritative server
+  // response; this page owns the user-facing success/failure toasts.
+  const handleCheckIn = async () => {
+    try {
+      const applied = await checkIn()
+      if (!applied) return // another action is already in flight
+      toast.success('Checked in successfully')
+      loadHistory()
+    } catch {
+      toast.error("We couldn't check you in. Please try again.")
+    }
+  }
+
+  const handleStartBreak = async () => {
+    try {
+      const applied = await startBreak()
+      if (!applied) return
+      toast.success('Break started')
+      loadHistory()
+    } catch {
+      toast.error("We couldn't start your break. Your attendance is still active.")
+    }
+  }
+
+  const handleResume = async () => {
+    try {
+      const applied = await resumeWork()
+      if (!applied) return
+      toast.success('Work resumed')
+      loadHistory()
+    } catch {
+      toast.error("We couldn't resume your work session. Please try again.")
+    }
+  }
+
+  const handleCheckout = async () => {
+    try {
+      const applied = await checkOut()
+      if (!applied) return
+      toast.success('Checked out successfully')
+      setConfirmCheckout(false)
+      loadHistory()
+    } catch {
+      toast.error("We couldn't check you out. Your attendance is still active.")
+    }
+  }
 
   const todayActivity = useMemo(() => {
     const entries = []
@@ -198,9 +206,9 @@ const Attendance = () => {
 
   const rows = history.slice(0, 7)
 
-  if (loading) return <AttendanceSkeleton />
+  if (loading && !record) return <AttendanceSkeleton />
 
-  if (loadError && !record) {
+  if (loadError) {
     return (
       <div className="space-y-5 p-4 md:p-6">
         <PageHeader title="Attendance" description="Check in, manage breaks, and track today's working time." />
@@ -210,7 +218,7 @@ const Attendance = () => {
             <div>
               <h2 className="font-semibold text-gray-900 dark:text-white">Attendance could not be loaded.</h2>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Your active attendance has not been changed.</p>
-              <Button className="mt-4" variant="secondary" onClick={() => loadAttendance({ showLoading: true })}>
+              <Button className="mt-4" variant="secondary" loading={retrying} onClick={retryLoad}>
                 <RefreshCw className="h-4 w-4" /> Try Again
               </Button>
             </div>
@@ -231,10 +239,10 @@ const Attendance = () => {
             {meta.label}
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            {syncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : loadError ? <AlertCircle className="h-3.5 w-3.5 text-red-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
-            {syncing ? 'Syncing...' : loadError ? 'Connection interrupted' : 'Synced just now'}
-            {loadError && (
-              <button className="ml-1 font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-300" onClick={() => loadAttendance()}>
+            {refreshing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : error ? <AlertCircle className="h-3.5 w-3.5 text-red-500" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
+            {refreshing ? 'Syncing...' : error ? 'Connection interrupted' : 'Synced just now'}
+            {error && (
+              <button className="ml-1 font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-300" onClick={retryLoad}>
                 Try Again
               </button>
             )}
@@ -341,7 +349,13 @@ const Attendance = () => {
           </div>
           <a href="/attendance/reports" className="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-300">View attendance history</a>
         </div>
-        {rows.length ? (
+        {historyLoading ? (
+          <div className="space-y-2 p-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : rows.length ? (
           <div className="overflow-hidden">
             <div className="hidden grid-cols-6 gap-3 border-b border-gray-100 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-gray-700 md:grid">
               <div>Date</div>
@@ -362,7 +376,7 @@ const Attendance = () => {
                   <div><span className="md:hidden">Check Out: </span>{formatClock(item.check_out_at || item.logout_time)}</div>
                   <div className="font-mono"><span className="font-sans md:hidden">Break: </span>{formatDuration(item.total_break_seconds ?? item.break_duration)}</div>
                   <div className="font-mono"><span className="font-sans md:hidden">Work: </span>{formatDuration(item.total_work_seconds ?? item.total_working_hours)}</div>
-                  <div>{statusMeta[item.status]?.label || (item.check_out_at || item.logout_time ? 'Day Completed' : 'Working')}</div>
+                  <div>{attendanceStatusMeta[item.status]?.label || (item.check_out_at || item.logout_time ? 'Day Completed' : 'Working')}</div>
                 </div>
               ))}
             </div>
@@ -394,11 +408,11 @@ const Attendance = () => {
         )}
       >
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between gap-4">
+          <div className="flex justify-between gap-3">
             <span className="text-gray-500 dark:text-gray-400">Net working time</span>
             <span className="font-mono font-semibold text-gray-900 dark:text-white">{formatDuration(display.work)}</span>
           </div>
-          <div className="flex justify-between gap-4">
+          <div className="flex justify-between gap-3">
             <span className="text-gray-500 dark:text-gray-400">Total break time</span>
             <span className="font-mono font-semibold text-gray-900 dark:text-white">{formatDuration(display.breakTotal)}</span>
           </div>

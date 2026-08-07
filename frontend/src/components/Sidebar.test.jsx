@@ -2,6 +2,7 @@ import { render, screen, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Sidebar from './Sidebar'
+import { SECTIONS } from '../config/navigation'
 
 // Mutable mock so tests can exercise role-based visibility (Phase 4, spec §9).
 const { mockUser } = vi.hoisted(() => ({
@@ -85,12 +86,39 @@ describe('Sidebar tab sub-nav (Phase D): link-only sections', () => {
     expect(orderMatches).toBe(true)
   })
 
-  it('links every section to its landing page (/sections/:key)', () => {
+  it('links every section to its landing page (dedicated default pages win)', () => {
     renderSidebar()
     SECTION_KEYS.forEach((key, index) => {
       const link = screen.getByRole('link', { name: new RegExp(`^${SECTION_LABELS[index]}$`, 'i') })
-      expect(link.getAttribute('href')).toBe(`/sections/${key}`)
+      const section = SECTIONS.find((candidate) => candidate.key === key)
+      const expected = section.overviewHref || `/sections/${key}`
+      expect(link.getAttribute('href')).toBe(expected)
     })
+  })
+
+  it('links the Sales section to the dedicated sales overview dashboard', () => {
+    renderSidebar()
+    expect(screen.getByRole('link', { name: /^sales$/i }).getAttribute('href')).toBe('/sales-overview')
+  })
+
+  it('links the Clients section to the All Clients page', () => {
+    renderSidebar()
+    expect(screen.getByRole('link', { name: /^clients$/i }).getAttribute('href')).toBe('/clients')
+  })
+
+  it('links the Home section straight to the dashboard', () => {
+    renderSidebar()
+    expect(screen.getByRole('link', { name: /^home$/i }).getAttribute('href')).toBe('/dashboard')
+  })
+
+  it('highlights the Sales section on the dedicated sales overview page', () => {
+    renderSidebar('/sales-overview')
+    expect(screen.getByRole('link', { name: /^sales$/i }).getAttribute('aria-current')).toBe('page')
+  })
+
+  it('highlights the Clients section on the All Clients page', () => {
+    renderSidebar('/clients')
+    expect(screen.getByRole('link', { name: /^clients$/i }).getAttribute('aria-current')).toBe('page')
   })
 
   it('removed the sub-items: no WhatsApp link, no expand buttons for sections', () => {

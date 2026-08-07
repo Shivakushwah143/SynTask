@@ -3,7 +3,11 @@
 // Every metric is computed from live system data (sales dashboard, pipeline board,
 // and CRM activities). Values that cannot be calculated are shown as "—" instead of
 // fabricating results.
-import { useMemo } from 'react'
+//
+// Compact layout: slim hero, a 2×4 KPI grid (4 tiles per row), and tight cards so the
+// whole dashboard reads well without excessive vertical scrolling. Every value and label
+// stays fully visible (no truncation on the KPI tiles or card headers).
+import { useCallback, useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -25,10 +29,17 @@ import {
 } from 'lucide-react'
 import { salesApi } from '../../api/sales'
 import { crmApi } from '../../api/crm'
-import { buildPipelineBoard, formatCurrency, getLeadDealValue, getLeadOwnerLabel, getLeadPriority } from '../crm/pipeline/utils'
+import {
+  buildPipelineBoard,
+  formatCurrency,
+  getLeadDealValue,
+  getLeadOwnerLabel,
+  getLeadPriority,
+  normalizeText,
+} from '../crm/pipeline/utils'
 import { CRMEmptyState } from '../../components/crm'
 import { Badge, Button, Skeleton } from '../../components/ui'
-import { normalizeText } from '../crm/pipeline/utils'
+import SalesFollowUpDialog from '../../components/sales/SalesFollowUpDialog'
 
 const isToday = (value) => {
   if (!value) return false
@@ -50,25 +61,106 @@ const StatCard = ({ label, value, icon: Icon, color = 'indigo', hint, currency }
     violet: 'from-violet-500 to-fuchsia-500',
   }
   const numeric = typeof value === 'number'
+  const display =
+    currency && numeric
+      ? formatCurrency(value, currency)
+      : numeric
+        ? value.toLocaleString('en-IN')
+        : value
   return (
-    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</span>
-        <div className={`rounded-lg bg-gradient-to-r ${colors[color]} p-2 text-white shadow-lg transition-transform group-hover:scale-110`}>
+    <div className="group rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-700">
+      <div className="flex items-center gap-2.5">
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${colors[color]} text-white shadow transition-transform group-hover:scale-105`}
+        >
           <Icon className="h-4 w-4" />
         </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            {label}
+          </p>
+          <p className="text-xl font-bold leading-tight text-gray-900 dark:text-white">
+            {display}
+            {numeric && label.includes('Rate') ? '%' : ''}
+          </p>
+        </div>
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-        {currency && numeric ? formatCurrency(value, currency) : numeric ? value.toLocaleString('en-IN') : value}
-        {numeric && label.includes('Rate') ? '%' : ''}
-      </p>
-      {hint ? <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p> : null}
+      {hint ? (
+        <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500" title={hint}>
+          {hint}
+        </p>
+      ) : null}
     </div>
+  )
+}
+
+// Shared compact card shell so every section keeps the same tight rhythm.
+const SectionCard = ({
+  title,
+  subtitle,
+  badge,
+  badgeColor = 'draft',
+  icon: Icon,
+  iconColor = 'bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-300',
+  children,
+  className = '',
+}) => (
+  <section className={`rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 ${className}`}>
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2">
+        {Icon ? (
+          <span className={`shrink-0 rounded-lg p-1.5 ${iconColor}`}>
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+        ) : null}
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h2>
+          {subtitle ? <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p> : null}
+        </div>
+      </div>
+      {badge ? <Badge label={badge} colorKey={badgeColor} pill /> : null}
+    </div>
+    <div className="mt-3">{children}</div>
+  </section>
+)
+
+// Per-stage accent colours (mirror the pipeline journey colours).
+const STAGE_ACCENTS = {
+  acquire: 'bg-sky-500',
+  qualify: 'bg-amber-500',
+  discovery: 'bg-violet-500',
+  proposal: 'bg-indigo-500',
+  negotiation: 'bg-orange-500',
+  agreement: 'bg-purple-500',
+  won: 'bg-emerald-500',
+  lost: 'bg-rose-500',
+}
+
+// One card per pipeline stage: stage name and its live lead count.
+const StageCard = ({ stage }) => {
+  const accent = STAGE_ACCENTS[stage.key] || 'bg-sky-500'
+  return (
+    <Link
+      to={`/crm/pipeline/${stage.key}`}
+      className="group rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:border-indigo-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-indigo-600"
+    >
+      <div className="flex items-center justify-between gap-1.5">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className={`h-2 w-2 shrink-0 rounded-full ${accent}`} />
+          <span className="truncate text-xs font-semibold text-gray-600 dark:text-gray-300">{stage.name}</span>
+        </span>
+        <ArrowRight className="h-3 w-3 shrink-0 text-gray-300 transition-all group-hover:translate-x-0.5 group-hover:text-indigo-400" />
+      </div>
+      <p className="mt-2 text-xl font-bold leading-tight text-gray-900 dark:text-white">{stage.leadCount}</p>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Leads</p>
+    </Link>
   )
 }
 
 export default function SalesOverview() {
   const navigate = useNavigate()
+  const [followUpOpen, setFollowUpOpen] = useState(false)
+  const [followUpLead, setFollowUpLead] = useState(null)
   const overviewQuery = useQuery('sales-overview-dashboard', salesApi.getOverview, { staleTime: 60_000 })
   const pipelineQuery = useQuery('sales-overview-pipeline', crmApi.getPipeline, { staleTime: 60_000 })
   const activitiesQuery = useQuery('sales-overview-activities', () => crmApi.getActivities({ limit: 30 }), { staleTime: 60_000 })
@@ -76,7 +168,6 @@ export default function SalesOverview() {
   const overview = overviewQuery.data?.data || overviewQuery.data || {}
   const overviewMetrics = overview.overview || {}
   const closedVsTarget = overview.closed_vs_target || {}
-  const stageBreakdown = overview.pipeline?.stage_breakdown || []
   const summary = overview.summary || {}
   const spotlight = overview.spotlight || {}
 
@@ -108,12 +199,17 @@ export default function SalesOverview() {
   const revenueClosed = overviewMetrics.revenue_closed_this_month ?? summary.this_month ?? 0
   const monthlyTarget = overviewMetrics.monthly_target ?? (Array.isArray(closedVsTarget.target) ? closedVsTarget.target[closedVsTarget.target.length - 1] : 0)
 
+  const handleScheduleFollowUp = useCallback(() => {
+    setFollowUpLead(null)
+    setFollowUpOpen(true)
+  }, [])
+
   const quickActions = [
     { label: 'Add Lead', href: '/crm/leads?create=1', icon: Plus, tone: 'bg-indigo-600 text-white' },
     { label: 'Import Leads', href: '/bulk-leads', icon: Upload, tone: 'bg-emerald-600 text-white' },
     { label: 'Create Meeting', href: '/meetings', icon: Video, tone: 'bg-violet-600 text-white' },
     { label: 'Generate Proposal', href: '/crm/pipeline/proposal', icon: FileDown, tone: 'bg-amber-600 text-white' },
-    { label: 'Schedule Follow-up', href: '/crm/leads', icon: CalendarClock, tone: 'bg-rose-600 text-white' },
+    { label: 'Schedule Follow-up', action: handleScheduleFollowUp, icon: CalendarClock, tone: 'bg-rose-600 text-white' },
   ]
 
   // Real, computed brief — never fabricated AI output.
@@ -126,39 +222,37 @@ export default function SalesOverview() {
   const topOpportunity = [...hotLeads].sort((a, b) => getLeadDealValue(b) - getLeadDealValue(a))[0]
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 p-6 text-white shadow-xl md:p-8">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
-        <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-        <div className="relative z-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-white/20 p-2.5 backdrop-blur-sm">
-                <LayoutDashboard className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold md:text-3xl">Sales Overview</h1>
-                <p className="mt-1 text-indigo-100">What requires your attention today?</p>
-              </div>
+    <div className="space-y-4">
+      {/* Slim hero */}
+      <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 px-4 py-3 text-white shadow-lg">
+        <div className="absolute right-0 top-0 h-36 w-36 -translate-y-1/3 translate-x-1/3 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute bottom-0 left-0 h-28 w-28 -translate-x-1/3 translate-y-1/3 rounded-full bg-white/10 blur-2xl" />
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="rounded-lg bg-white/20 p-2 backdrop-blur-sm">
+              <LayoutDashboard className="h-4 w-4" />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" className="bg-white/20 !text-white hover:bg-white/30 border-0" onClick={() => navigate('/crm/pipeline')}>
-                Open Pipeline
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-              <Button className="bg-white !text-indigo-700 hover:bg-indigo-50 border-0" onClick={() => navigate('/crm/leads?create=1')}>
-                <Plus className="h-4 w-4" />
-                Add Lead
-              </Button>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold leading-tight md:text-xl">Sales Overview</h1>
+              <p className="truncate text-xs text-indigo-100 md:text-sm">What requires your attention today?</p>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="secondary" className="border-0 bg-white/15 !text-white hover:bg-white/25" onClick={() => navigate('/crm/pipeline')}>
+              Open Pipeline
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="sm" className="border-0 bg-white !text-indigo-700 hover:bg-indigo-50" onClick={() => navigate('/crm/leads?create=1')}>
+              <Plus className="h-3.5 w-3.5" />
+              Add Lead
+            </Button>
           </div>
         </div>
       </div>
 
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((item) => <Skeleton key={item} className="h-28 w-full rounded-xl" />)}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((item) => <Skeleton key={item} className="h-24 w-full rounded-xl" />)}
         </div>
       ) : hasError ? (
         <CRMEmptyState
@@ -169,8 +263,21 @@ export default function SalesOverview() {
         />
       ) : (
         <>
-          {/* Stats */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Stage momentum — one card per journey stage, shown at the top */}
+          <SectionCard title="Stage Momentum" subtitle="Live leads and deal value per stage" badge={`${allLeads.length} leads`}>
+            {board.stages.length ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 2xl:grid-cols-8">
+                {board.stages.map((stage) => (
+                  <StageCard key={stage.key} stage={stage} />
+                ))}
+              </div>
+            ) : (
+              <p className="py-2 text-sm text-gray-500 dark:text-gray-400">No pipeline data yet.</p>
+            )}
+          </SectionCard>
+
+          {/* KPI grid — 4 tiles per row (2 rows of 4) so every label and value stays fully visible */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard label="Today's Leads" value={overviewMetrics.today_leads ?? 0} icon={Users} color="indigo" hint="New leads created today" />
             <StatCard label="Today's Calls" value={overviewMetrics.today_calls ?? 0} icon={PhoneCall} color="emerald" hint="Calls recorded today" />
             <StatCard label="Today's Meetings" value={overviewMetrics.today_meetings ?? 0} icon={Video} color="violet" hint="Meetings recorded today" />
@@ -181,51 +288,22 @@ export default function SalesOverview() {
             <StatCard label="Monthly Target" value={monthlyTarget} icon={CheckCircle2} color="emerald" hint="Pipeline value captured this month" currency={currency} />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="space-y-6">
-              {/* Stage momentum */}
-              <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-bold text-gray-900 dark:text-white">Stage Momentum</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Live counts per sales journey stage</p>
-                  </div>
-                  <Badge label={`${allLeads.length} leads`} colorKey="draft" />
-                </div>
-                {stageBreakdown.length ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {stageBreakdown.map((row) => (
-                      <Link
-                        key={row.stage}
-                        to={`/crm/pipeline/${normalizeText(row.stage).replace(/\s+/g, '-')}`}
-                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40"
-                      >
-                        {row.stage}
-                        <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-200">{row.count}</span>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">No leads in the pipeline yet.</p>
-                )}
-              </section>
-
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="grid gap-4 lg:grid-cols-2">
               {/* Follow-ups due */}
-              <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-bold text-gray-900 dark:text-white">Follow-ups Due Today</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Leads with follow-ups or due dates today</p>
-                  </div>
-                  <Badge label={`${followUpsDue.length} due`} colorKey={followUpsDue.length ? 'scheduled' : 'draft'} />
-                </div>
-                <div className="mt-4 space-y-2">
+              <SectionCard
+                title="Follow-ups Due Today"
+                subtitle="Leads with follow-ups or due dates today"
+                badge={`${followUpsDue.length} due`}
+                badgeColor={followUpsDue.length ? 'scheduled' : 'draft'}
+              >
+                <div className="space-y-1.5">
                   {followUpsDue.length ? followUpsDue.map((lead) => (
                     <button
                       key={lead.id || lead._id}
                       type="button"
                       onClick={() => navigate(`/crm/leads/${lead.id || lead._id}`)}
-                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-left transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40"
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40"
                     >
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{lead.company_name || lead.prospect_name || 'Lead'}</span>
@@ -233,28 +311,21 @@ export default function SalesOverview() {
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
                         {lead.phone ? <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><Phone className="h-3 w-3" />{lead.phone}</span> : null}
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                        <ArrowRight className="h-3.5 w-3.5 text-gray-400" />
                       </span>
                     </button>
                   )) : (
-                    <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">Nothing due today — you&apos;re all caught up.</p>
+                    <p className="py-2 text-center text-sm text-gray-500 dark:text-gray-400">Nothing due today — you&apos;re all caught up.</p>
                   )}
                 </div>
-              </section>
+              </SectionCard>
 
               {/* Today's activity */}
-              <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-bold text-gray-900 dark:text-white">Today&apos;s Activity</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Recent calls, meetings and pipeline changes</p>
-                  </div>
-                  <Badge label={`${todayActivities.length} events`} colorKey="draft" />
-                </div>
-                <div className="mt-4 space-y-2">
+              <SectionCard title="Today's Activity" subtitle="Recent calls, meetings and pipeline changes" badge={`${todayActivities.length} events`}>
+                <div className="space-y-1.5">
                   {todayActivities.length ? todayActivities.map((item, index) => (
-                    <div key={item.id || `${item.title}-${index}`} className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900">
-                      <span className="mt-0.5 rounded-lg bg-indigo-100 p-1.5 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300">
+                    <div key={item.id || `${item.title}-${index}`} className="flex items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900">
+                      <span className="shrink-0 rounded-md bg-indigo-100 p-1.5 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300">
                         {item.activity_type === 'call' ? <PhoneCall className="h-3.5 w-3.5" /> : item.activity_type === 'meeting' ? <Video className="h-3.5 w-3.5" /> : <ClipboardList className="h-3.5 w-3.5" />}
                       </span>
                       <span className="min-w-0 flex-1">
@@ -264,62 +335,70 @@ export default function SalesOverview() {
                       <span className="shrink-0 text-[11px] uppercase tracking-wide text-gray-400">{item.activity_type}</span>
                     </div>
                   )) : (
-                    <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">No activity recorded today yet.</p>
+                    <p className="py-2 text-center text-sm text-gray-500 dark:text-gray-400">No activity recorded today yet.</p>
                   )}
                 </div>
-              </section>
+              </SectionCard>
             </div>
 
-            <aside className="space-y-6">
+            <aside className="space-y-4">
               {/* Daily brief */}
-              <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-lg bg-violet-100 p-2 text-violet-600 dark:bg-violet-900/50 dark:text-violet-300"><Sparkles className="h-4 w-4" /></span>
-                  <div>
-                    <h2 className="font-bold text-gray-900 dark:text-white">AI Daily Brief</h2>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Derived live from your pipeline data</p>
-                  </div>
-                </div>
-                <ul className="mt-4 space-y-3">
+              <SectionCard icon={Sparkles} title="AI Daily Brief" subtitle="Derived live from your pipeline data">
+                <ul className="space-y-2">
                   {briefItems.map((item) => (
-                    <li key={item.text} className="flex items-start gap-2.5 text-sm text-gray-700 dark:text-gray-200">
-                      <item.icon className={`mt-0.5 h-4 w-4 shrink-0 ${item.tone}`} />
+                    <li key={item.text} className="flex items-start gap-2 text-sm leading-snug text-gray-700 dark:text-gray-200">
+                      <item.icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${item.tone}`} />
                       <span>{item.text}</span>
                     </li>
                   ))}
                   {topOpportunity ? (
-                    <li className="flex items-start gap-2.5 text-sm text-gray-700 dark:text-gray-200">
-                      <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-teal-500" />
+                    <li className="flex items-start gap-2 text-sm leading-snug text-gray-700 dark:text-gray-200">
+                      <TrendingUp className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal-500" />
                       <span>
                         Best open opportunity: <button type="button" className="font-semibold text-indigo-600 hover:underline dark:text-indigo-300" onClick={() => navigate(`/crm/leads/${topOpportunity.id || topOpportunity._id}`)}>{topOpportunity.company_name || topOpportunity.prospect_name}</button> ({formatCurrency(getLeadDealValue(topOpportunity), currency)}).
                       </span>
                     </li>
                   ) : null}
                 </ul>
-              </section>
+              </SectionCard>
 
               {/* Quick actions */}
-              <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <h2 className="font-bold text-gray-900 dark:text-white">Quick Actions</h2>
-                <div className="mt-4 grid gap-2">
-                  {quickActions.map((action) => (
-                    <Link
-                      key={action.label}
-                      to={action.href}
-                      className="group flex min-h-11 items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-800 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40"
-                    >
-                      <span className={`rounded-lg p-1.5 text-white ${action.tone}`}><action.icon className="h-4 w-4" /></span>
-                      {action.label}
-                      <ArrowRight className="ml-auto h-4 w-4 text-gray-400 transition-transform group-hover:translate-x-0.5" />
-                    </Link>
-                  ))}
+              <SectionCard title="Quick Actions">
+                <div className="space-y-1.5">
+                  {quickActions.map((action) => {
+                    const Wrapper = action.action ? 'button' : Link
+                    const wrapperProps = action.action
+                      ? { onClick: action.action, type: 'button' }
+                      : { to: action.href }
+                    return (
+                      <Wrapper
+                        key={action.label}
+                        {...wrapperProps}
+                        className="group flex min-h-10 w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-800 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40"
+                      >
+                        <span className={`rounded-md p-1 text-white ${action.tone}`}><action.icon className="h-3.5 w-3.5" /></span>
+                        {action.label}
+                        <ArrowRight className="ml-auto h-3.5 w-3.5 text-gray-400 transition-transform group-hover:translate-x-0.5" />
+                      </Wrapper>
+                    )
+                  })}
                 </div>
-              </section>
+              </SectionCard>
+
+              {/* Follow-up Dialog */}
+              <SalesFollowUpDialog
+                open={followUpOpen}
+                lead={followUpLead}
+                users={[]}
+                onClose={() => {
+                  setFollowUpOpen(false)
+                  setFollowUpLead(null)
+                }}
+              />
 
               {/* Spotlight */}
-              <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <h2 className="font-bold text-gray-900 dark:text-white">Spotlight</h2>
-                <dl className="mt-4 space-y-3 text-sm">
+              <SectionCard title="Spotlight">
+                <dl className="space-y-2 text-sm">
                   {spotlight.fastest_prospect_name ? (
                     <div className="flex items-center justify-between gap-2">
                       <dt className="text-gray-500 dark:text-gray-400">Fastest close</dt>
@@ -342,7 +421,7 @@ export default function SalesOverview() {
                     <p className="text-gray-500 dark:text-gray-400">Won deals will appear here.</p>
                   ) : null}
                 </dl>
-              </section>
+              </SectionCard>
             </aside>
           </div>
         </>

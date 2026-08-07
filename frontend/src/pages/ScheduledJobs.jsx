@@ -28,7 +28,9 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatDistanceToNow } from 'date-fns'
+import { useQueryClient } from 'react-query'
 import { scheduledJobsAPI } from '../api/scheduledJobs'
+import { invalidateWorkspaceCalendar } from '../api/calendar'
 import { useAuthStore } from '../store/authStore'
 import { normalizeRole, ROLE } from '../utils/roles'
 import { PageHeader, EmptyState, Badge, Button, Modal, FormField } from '../components/ui'
@@ -386,6 +388,7 @@ function JobRowMenu({ job, onView, onEdit, onCancel, onRetry, onDelete }) {
 /* ─── Main Page ───────────────────────────────────────────────── */
 export default function ScheduledJobs() {
   const { user } = useAuthStore()
+  const queryClient = useQueryClient()
   const userRole = normalizeRole(user?.role)
   const canSchedule = [ROLE.SUPER_ADMIN, ROLE.ADMIN, ROLE.SUB_ADMIN, ROLE.MANAGER, ROLE.LEAD].includes(userRole)
 
@@ -448,6 +451,7 @@ export default function ScheduledJobs() {
       await scheduledJobsAPI.cancelSchedule(job.id)
       toast.success('Job cancelled')
       loadJobs({ silent: true })
+      invalidateWorkspaceCalendar(queryClient)
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Failed to cancel job')
     }
@@ -458,6 +462,7 @@ export default function ScheduledJobs() {
       await scheduledJobsAPI.retryJob(job.id)
       toast.success('Job queued for retry')
       loadJobs({ silent: true })
+      invalidateWorkspaceCalendar(queryClient)
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Failed to retry job')
     }
@@ -468,6 +473,7 @@ export default function ScheduledJobs() {
       await scheduledJobsAPI.deleteJob(job.id)
       toast.success('Job deleted')
       loadJobs({ silent: true })
+      invalidateWorkspaceCalendar(queryClient)
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Failed to delete job')
     }
@@ -743,7 +749,10 @@ export default function ScheduledJobs() {
         <EditScheduleModal
           job={editJob}
           onClose={() => setEditJob(null)}
-          onSaved={() => loadJobs({ silent: true })}
+          onSaved={() => {
+            loadJobs({ silent: true })
+            invalidateWorkspaceCalendar(queryClient)
+          }}
         />
       )}
     </div>

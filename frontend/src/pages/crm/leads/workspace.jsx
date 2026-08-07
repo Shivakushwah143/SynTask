@@ -8,6 +8,7 @@ import { usersAPI } from '../../../api/users'
 import { CRMEmptyState, CRMPage, CRMSection } from '../../../components/crm'
 import { EmailComposer } from '../../../components/EmailComposer'
 import { Button, ConfirmDialog } from '../../../components/ui'
+import SalesFollowUpDialog from '../../../components/sales/SalesFollowUpDialog'
 import { LeadAccessDeniedState, LeadAttachmentsTab, LeadCallLogsTab, LeadEmailsTab, LeadHistoryTab, LeadLoadingState, LeadMeetingsTab, LeadOverview, LeadProposalTab, LeadSidebar, LeadTasksTab, LeadWorkspace } from './components'
 import { LEAD_FILES_QUERY_KEY, LeadFilesTab } from './files'
 import { LEAD_NOTES_QUERY_KEY, LeadNotesTab } from './notes'
@@ -27,6 +28,7 @@ export default function CRMLeadWorkspacePage() {
   const [timelineSearch, setTimelineSearch] = useState('')
   const [composerOpen, setComposerOpen] = useState(false)
   const [pendingLeadUpdate, setPendingLeadUpdate] = useState(null)
+  const [followUpOpen, setFollowUpOpen] = useState(false)
   const [proposalForm, setProposalForm] = useState({
     title: '',
     summary: '',
@@ -136,6 +138,7 @@ export default function CRMLeadWorkspacePage() {
   }, [setSearchParams])
 
   const openComposer = useCallback(() => setComposerOpen(true), [])
+  const openFollowUp = useCallback(() => setFollowUpOpen(true), [])
   const leadUpdateMutation = useMutation(
     (payload) => salesApi.updateLeadForm(leadId, payload),
     {
@@ -337,6 +340,7 @@ export default function CRMLeadWorkspacePage() {
         onBack={() => navigate('/crm/pipeline')}
         onRefresh={handleRefresh}
         onSendEmail={openComposer}
+        onScheduleFollowUp={openFollowUp}
         onSaveLead={handleHeaderSave}
         isSaving={leadUpdateMutation.isLoading}
         users={users}
@@ -355,6 +359,12 @@ export default function CRMLeadWorkspacePage() {
           related_entity_id: leadId,
           related_module: 'crm',
         }}
+      />
+      <SalesFollowUpDialog
+        open={followUpOpen}
+        lead={lead}
+        users={users}
+        onClose={() => setFollowUpOpen(false)}
       />
       <ConfirmDialog
         isOpen={Boolean(pendingLeadUpdate)}

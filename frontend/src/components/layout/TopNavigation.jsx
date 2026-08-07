@@ -4,6 +4,7 @@ import { Maximize2, Menu, MessageCircle, Minimize2, Search, Video, LayoutDashboa
 import NotificationBell from '../NotificationBell'
 import ThemeToggle from '../ThemeToggle'
 import GlobalClock from '../GlobalClock'
+import AttendanceStatusPill from '../attendance/AttendanceStatusPill'
 import { Button } from '../ui'
 import { useAuthStore } from '../../store/authStore'
 import { ROLE, hasCompanyAdminAccess, isManagerRole, normalizeRole } from '../../utils/roles'
@@ -108,6 +109,8 @@ export function TopNavigation({
         {/* Right Section - Actions */}
         <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
           <GlobalClock />
+          {/* Attendance Status (status indicator + navigation shortcut only) */}
+          <AttendanceStatusPill />
           {/* Communication Links */}
           {communicationLinks.length > 0 && (
             <nav className="flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50/80 p-1 dark:border-gray-700 dark:bg-gray-800/50" aria-label="Global communication">

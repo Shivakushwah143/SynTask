@@ -9,6 +9,7 @@ import { SynzinHelpPrompt } from '../components/ai/SynzinHelpPrompt'
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut'
 import ReminderToastListener from '../components/ReminderToastListener'
 import SectionTabs from '../components/layout/SectionTabs'
+import { AttendanceStatusBootstrap } from '../components/attendance/AttendanceStatusBootstrap'
 import { buildBreadcrumbTrail } from '../utils/breadcrumbs'
 
 const MainLayout = () => {
@@ -291,6 +292,7 @@ const MainLayout = () => {
         />
         <ReminderToastListener />
       </div>
+      <AttendanceStatusBootstrap />
     </>
   )
 }

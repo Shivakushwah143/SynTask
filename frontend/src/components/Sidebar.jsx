@@ -22,6 +22,8 @@ const WIDTH_KEY = "syntask-sidebar-width";
 const WIDTH_OPTIONS = [240, 280, 320];
 
 // Tab sub-nav plan (D1): clicking a section opens its landing page at /sections/:key.
+// Sections with a dedicated default page (section.overviewHref, e.g. Sales -> /sales-overview,
+// Clients -> /clients) link straight there instead of the generic /sections/:key landing.
 const SECTION_LANDING_PREFIX = "/sections/";
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -81,12 +83,15 @@ const Sidebar = ({ isOpen, onClose }) => {
   const sectionLinks = SECTIONS.map((section) => ({
     ...section,
     icon: SECTION_ICONS[section.key],
-    href: `${SECTION_LANDING_PREFIX}${section.key}`,
+    // Sections with a dedicated default page open there (Sales -> /sales-overview,
+    // Clients -> /clients); the rest keep the generic /sections/:key landing.
+    href: section.overviewHref || `${SECTION_LANDING_PREFIX}${section.key}`,
     items: getSectionItems(section.key, user, orgDepartments),
   })).filter((section) => section.items.length);
 
   const isSectionLinkActive = (section) =>
     location.pathname === section.href ||
+    location.pathname === `${SECTION_LANDING_PREFIX}${section.key}` ||
     section.items.some((item) => isNavItemActive(item, location));
 
   // Favorites pool: every gated config/HR item across sections (dynamic department tabs excluded).

@@ -23,9 +23,11 @@ const SECTION_LANDING_RE = /^\/sections\/([^/]+)/;
 const SCROLL_STEP_PX = 240;
 
 // Sections whose Overview tab points at a dedicated dashboard page (e.g. the Sales
-// workspace Overview) instead of the generic /sections/:key landing.
+// workspace Overview) instead of the generic /sections/:key landing. Sections with
+// `hideOverviewTab` (Home, Clients) are excluded: their dedicated page IS the
+// overview, so no Overview tab is rendered and their page is not a tab-bar landing.
 const SECTION_OVERVIEW_HREFS = [
-  ...SECTIONS.filter((section) => section.overviewHref).map((section) => ({
+  ...SECTIONS.filter((section) => section.overviewHref && !section.hideOverviewTab).map((section) => ({
     href: section.overviewHref,
     sectionKey: section.key,
   })),
@@ -138,11 +140,13 @@ function SectionTabsInner({ location, context }) {
         return countKey ? { ...item, unreadCount: inboxCounts[countKey] || 0 } : item;
       });
     }
-    return [
-      { name: "Overview", href: section.overviewHref || `/sections/${section.key}`, icon: null, overview: true },
-      ...list,
-    ];
-  }, [items, section, inboxCounts, context.isLanding]);
+    // Sections with a dedicated default page (hideOverviewTab: Home, Clients) skip the
+    // redundant Overview tab — the page itself is the overview.
+    const overviewTab = section.hideOverviewTab
+      ? []
+      : [{ name: "Overview", href: section.overviewHref || `/sections/${section.key}`, icon: null, overview: true }];
+    return [...overviewTab, ...list];
+  }, [items, section, inboxCounts]);
 
   useEffect(() => {
     const updateCanScroll = () => {

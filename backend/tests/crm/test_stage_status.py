@@ -149,6 +149,42 @@ async def test_acquire_accepts_contacted_and_not_contacted(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_acquire_accepts_wrong_number_and_no_response(monkeypatch):
+    # Reported feedback: Wrong Number / No Response belong in the Acquire intake
+    # select too (both Acquire and Qualify expose them).
+    lead = _lead(current_stage="Acquire", assigned_to=None)
+    _patch_status_service(monkeypatch, lead)
+
+    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "Wrong Number")
+    assert result["changed"] is True
+    assert lead.current_stage_status == "wrong_number"
+    assert result["status"] == "wrong_number"
+
+    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "No Response")
+    assert result["changed"] is True
+    assert lead.current_stage_status == "no_response"
+    assert result["status"] == "no_response"
+
+
+@pytest.mark.asyncio
+async def test_qualify_accepts_wrong_number_and_no_response(monkeypatch):
+    # These contact-outcome labels are valid in both Acquire and Qualify
+    # (reported feedback: keep them in Qualify while adding them to Acquire).
+    lead = _lead(current_stage="Qualify")
+    _patch_status_service(monkeypatch, lead)
+
+    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "Wrong Number")
+    assert result["status"] == "wrong_number"
+    assert lead.qualify_status == "wrong_number"
+    assert lead.current_stage_status == "wrong_number"
+
+    result = await CRMPipelineService.update_stage_status(_user(), "lead-1", "No Response")
+    assert result["status"] == "no_response"
+    assert lead.qualify_status == "no_response"
+    assert lead.current_stage_status == "no_response"
+
+
+@pytest.mark.asyncio
 async def test_acquire_rejects_signed(monkeypatch):
     lead = _lead(current_stage="Acquire")
     _patch_status_service(monkeypatch, lead)
@@ -649,9 +685,14 @@ async def test_create_client_reuses_existing_client_without_running_automation(m
 
 
 def test_canonical_stage_status_config_covers_all_stages():
-    # Acquire shares the contact progression with Qualify (reported feedback:
-    # Not Contacted / Contacted were missing from the Acquire status select).
-    assert STAGE_INNER_STATUSES["acquire"] == ["new", "imported", "assigned", "not_contacted", "contacted", "duplicate", "spam"]
+    # Acquire carries the intake contact progression: Not Contacted / Contacted,
+    # plus Wrong Number / No Response (added per feedback). Qualify keeps both
+    # contact-outcome labels too.
+    assert STAGE_INNER_STATUSES["acquire"] == ["new", "imported", "assigned", "not_contacted", "contacted", "wrong_number", "no_response", "duplicate", "spam"]
+    assert "wrong_number" in STAGE_INNER_STATUSES["acquire"]
+    assert "no_response" in STAGE_INNER_STATUSES["acquire"]
+    assert "wrong_number" in STAGE_INNER_STATUSES["qualify"]
+    assert "no_response" in STAGE_INNER_STATUSES["qualify"]
     assert "interested" in STAGE_INNER_STATUSES["qualify"]
     assert "qualified" in STAGE_INNER_STATUSES["qualify"]
     assert "need_proposal" in STAGE_INNER_STATUSES["discovery"]

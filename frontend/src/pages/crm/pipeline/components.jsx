@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlertCircle, ChevronDown, Filter, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, X } from 'lucide-react'
+import { AlertCircle, CalendarClock, ChevronDown, Filter, MoreHorizontal, MoveRight, Phone, RefreshCw, Sparkles, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { CRMEmptyState, CRMSection } from '../../../components/crm'
 import { Badge, Button, Skeleton } from '../../../components/ui'
@@ -344,6 +344,7 @@ export const PipelineBoard = memo(function PipelineBoard({
   onMoveLeadToStage,
   onUpdateStageStatus,
   onRecordContact,
+  onScheduleFollowUp,
   getAllowedStageKeys,
   onCopyLeadId,
   onLeadSelect,
@@ -384,6 +385,7 @@ export const PipelineBoard = memo(function PipelineBoard({
               onMoveLeadToStage={onMoveLeadToStage}
               onUpdateStageStatus={onUpdateStageStatus}
               onRecordContact={onRecordContact}
+              onScheduleFollowUp={onScheduleFollowUp}
               getAllowedStageKeys={getAllowedStageKeys}
               onCopyLeadId={onCopyLeadId}
               onLeadSelect={onLeadSelect}
@@ -406,6 +408,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
   onMoveLeadToStage,
   onUpdateStageStatus,
   onRecordContact,
+  onScheduleFollowUp,
   onLeadSelect,
   onResetFilters,
   onBulkAssign,
@@ -557,6 +560,7 @@ export const PipelineStageListView = memo(function PipelineStageListView({
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Status</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Value</th>
               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Created</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em]">Follow-up</th>
               <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em]">Actions</th>
             </tr>
           </thead>
@@ -641,6 +645,15 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                   <td className="whitespace-nowrap px-3 py-2.5 text-xs text-text-secondary dark:text-gray-300">
                     {formatShortDate(lead.created_at || lead.createdAt || lead.created_date)}
                   </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-xs">
+                    {lead.next_follow_up_at ? (
+                      <span className={new Date(lead.next_follow_up_at) < new Date() ? 'font-semibold text-rose-500' : 'text-text-secondary dark:text-gray-300'}>
+                        {formatShortDate(lead.next_follow_up_at)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 dark:text-gray-500">—</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                       {getStageKey(stage) === 'acquire' && !lead.phone && !lead.first_contact_at && !lead.last_contacted_at ? (
@@ -652,6 +665,18 @@ export const PipelineStageListView = memo(function PipelineStageListView({
                         >
                           <Phone className="h-3.5 w-3.5" />
                           Record contact
+                        </Button>
+                      ) : null}
+                      {!lead.transferred_at ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onScheduleFollowUp?.(lead)}
+                          title="Schedule Follow-up"
+                        >
+                          <CalendarClock className="h-3.5 w-3.5" />
+                          Follow up
                         </Button>
                       ) : null}
                       <Button
@@ -688,6 +713,7 @@ export const PipelineColumn = memo(function PipelineColumn({
   statusUpdatingId = null,
   users = [],
   onRecordContact,
+  onScheduleFollowUp,
   onMoveLeadToStage,
   onUpdateStageStatus,
   getAllowedStageKeys,
@@ -743,6 +769,7 @@ export const PipelineColumn = memo(function PipelineColumn({
                 onMoveLeadToStage={onMoveLeadToStage}
                 onUpdateStageStatus={onUpdateStageStatus}
                 onRecordContact={onRecordContact}
+                onScheduleFollowUp={onScheduleFollowUp}
                 allowedStageKeys={allowedStageKeys}
                 onCopyLeadId={onCopyLeadId}
                 onLeadSelect={onLeadSelect}
@@ -782,6 +809,7 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   onMoveLeadToStage,
   onUpdateStageStatus,
   onRecordContact,
+  onScheduleFollowUp,
   allowedStageKeys = new Set(),
   onCopyLeadId,
   onLeadSelect,
@@ -929,6 +957,15 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           }}
         />
       ) : null}
+      {!lead.transferred_at ? (
+        <ActionItem
+          label="Schedule Follow-up"
+          onClick={() => {
+            onScheduleFollowUp?.(lead)
+            setMenuOpen(false)
+          }}
+        />
+      ) : null}
       {stageActions.map((action) => (
         <ActionItem
           key={`${action.key}-${action.label}`}
@@ -1022,6 +1059,13 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           )}
         />
         <LeadMetaRow label="Created" value={formatShortDate(lead.created_at || lead.createdAt || lead.created_date)} />
+        {lead.next_follow_up_at ? (
+          <LeadMetaRow
+            label="Follow-up"
+            value={formatShortDate(lead.next_follow_up_at)}
+            className={new Date(lead.next_follow_up_at) < new Date() ? 'text-rose-500 font-semibold' : ''}
+          />
+        ) : null}
         <LeadMetaRow label="Stage" value={stage.name} />
       </div>
       <StageProgress stage={stage} stages={stages} />
@@ -1055,6 +1099,19 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
           >
             <Phone className="h-4 w-4" />
             Record contact
+          </Button>
+        ) : null}
+        {!lead.transferred_at ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={pipelineLeadCardClassNames.actionButton}
+            onClick={() => onScheduleFollowUp?.(lead)}
+            title="Schedule Follow-up"
+          >
+            <CalendarClock className="h-4 w-4" />
+            Follow up
           </Button>
         ) : null}
         {canMoveNext ? (
@@ -1095,9 +1152,9 @@ export const PipelineLeadCard = memo(function PipelineLeadCard({
   )
 })
 
-function LeadMetaRow({ label, value, strong = false }) {
+function LeadMetaRow({ label, value, strong = false, className = '' }) {
   return (
-    <div className="min-w-0 rounded-lg border border-surface-border/70 bg-surface-muted/70 px-2.5 py-2 dark:border-gray-800 dark:bg-gray-950/40">
+    <div className={`min-w-0 rounded-lg border border-surface-border/70 bg-surface-muted/70 px-2.5 py-2 dark:border-gray-800 dark:bg-gray-950/40 ${className}`}>
       <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted dark:text-gray-500">{label}</span>
       <span className={strong ? 'mt-1 block truncate font-semibold text-text-primary dark:text-gray-100' : 'mt-1 block truncate text-text-secondary dark:text-gray-200'}>
         {value}

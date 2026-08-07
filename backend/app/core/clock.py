@@ -72,6 +72,23 @@ class ClockService:
         return timezone_name
 
     @staticmethod
+    def local_day_bounds_utc(start_date: Any, end_date: Any, timezone_name: str | None = None) -> tuple[datetime, datetime]:
+        """Convert a local calendar-day window into naive-UTC instants.
+
+        start_date/end_date are `date`-like values. The returned naive UTC
+        datetimes cover every instant that falls inside those local dates, so a
+        MongoDB range query on UTC `run_at`/`due_date` stays timezone-safe.
+        """
+        zone_name = ClockService.validate_timezone(timezone_name)
+        zone = pytz.timezone(zone_name)
+        start_local = zone.localize(datetime.combine(start_date, datetime.min.time()))
+        end_local = zone.localize(datetime.combine(end_date, datetime.max.time()))
+        return (
+            start_local.astimezone(pytz.utc).replace(tzinfo=None),
+            end_local.astimezone(pytz.utc).replace(tzinfo=None),
+        )
+
+    @staticmethod
     def ensure_utc(value: datetime | None) -> Optional[datetime]:
         """Return an aware UTC datetime; stamp UTC onto naive values."""
         if value is None:
@@ -149,3 +166,7 @@ def from_timestamp_utc(timestamp: float | int) -> datetime:
 
 def parse_date_utc(value: datetime | str, fmt: str = "%Y-%m-%d") -> datetime:
     return clock_service.parse_date_utc(value, fmt)
+
+
+def local_day_bounds_utc(start_date: Any, end_date: Any, timezone_name: str | None = None) -> tuple[datetime, datetime]:
+    return clock_service.local_day_bounds_utc(start_date, end_date, timezone_name)

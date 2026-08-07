@@ -89,12 +89,18 @@ describe('crm pipeline helpers', () => {
     expect(getLeadDealValue({ current_stage: 'qualify', budget: 500000, won_amount: 0 })).toBe(500000)
   })
 
-  it('exposes Not Contacted / Contacted in the Acquire stage status options', () => {
-    // Reported feedback: the Qualify select offered Contacted / Not Contacted
-    // but the Acquire stage did not. Both stages share the contact progression.
-    const values = getStageStatusOptions('acquire').map((option) => option.value)
-    expect(values).toContain('not_contacted')
-    expect(values).toContain('contacted')
+  it('exposes Wrong Number / No Response in both Acquire and Qualify status options', () => {
+    // Reported feedback: Wrong Number / No Response should appear in the Acquire
+    // intake select AND stay available in Qualify.
+    const acquireValues = getStageStatusOptions('acquire').map((option) => option.value)
+    expect(acquireValues).toContain('not_contacted')
+    expect(acquireValues).toContain('contacted')
+    expect(acquireValues).toContain('wrong_number')
+    expect(acquireValues).toContain('no_response')
+
+    const qualifyValues = getStageStatusOptions('qualify').map((option) => option.value)
+    expect(qualifyValues).toContain('wrong_number')
+    expect(qualifyValues).toContain('no_response')
   })
 
   it('moves a lead into another stage and updates counts', () => {
