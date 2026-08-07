@@ -766,6 +766,79 @@ async def test_update_lead_reassigns_owner_and_records_transfer(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_update_lead_persists_custom_fields(monkeypatch):
+    """Adding a custom field from the lead overview must persist custom_fields.
+
+    Regression: update_lead never applied custom_fields, so the overview
+    Add-field flow (and the sidebar Advanced-fields JSON editor) silently saved
+    nothing. The stored set is replaced by the payload's complete set.
+    """
+    lead = FakeProspect(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        source="manual",
+        assigned_to="user-1",
+        assigned_by="user-9",
+        custom_fields={"existing": "yes"},
+    )
+    lead.saved = False
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_require_owned_record_access(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.require_owned_record_access", fake_require_owned_record_access)
+
+    current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    result = await LeadEngine.update_lead(
+        current_user,
+        "lead-1",
+        {"custom_fields": {"existing": "yes", "linkedin_url": "https://linkedin.com/in/jane"}},
+    )
+
+    assert result["message"] == "Prospect updated successfully"
+    assert lead.custom_fields == {"existing": "yes", "linkedin_url": "https://linkedin.com/in/jane"}
+    assert lead.saved is True
+
+
+@pytest.mark.asyncio
+async def test_update_lead_persists_referred_by(monkeypatch):
+    """The optional referred_by field set at creation can be updated later."""
+    lead = FakeProspect(
+        id="lead-1",
+        company_id="company-1",
+        deleted=False,
+        prospect_name="Alpha Co",
+        source="manual",
+        assigned_to="user-1",
+        assigned_by="user-9",
+        referred_by=None,
+    )
+    lead.saved = False
+
+    async def fake_get(lead_id):
+        return lead
+
+    async def fake_require_owned_record_access(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect.get", fake_get)
+    monkeypatch.setattr("app.crm.lead_engine.require_owned_record_access", fake_require_owned_record_access)
+
+    current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    result = await LeadEngine.update_lead(current_user, "lead-1", {"referred_by": "user-2"})
+
+    assert result["message"] == "Prospect updated successfully"
+    assert lead.referred_by == "user-2"
+    assert lead.saved is True
+
+
+@pytest.mark.asyncio
 async def test_update_lead_preserves_budget_when_not_in_payload(monkeypatch):
     """A partial update must leave absent fields (budget, phone, ...) untouched.
 

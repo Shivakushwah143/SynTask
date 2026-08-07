@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { buildLeadEditFields, buildLeadOverviewSections } from './components'
+import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import toast from 'react-hot-toast'
+import { buildLeadEditFields, buildLeadOverviewSections, LeadOverview } from './components'
 import { asArray } from '../../phase4Utils'
+
+vi.mock('react-hot-toast', () => ({
+  default: { error: vi.fn(), success: vi.fn() },
+}))
 
 describe('lead sidebar edit fields', () => {
   it('builds labeled fields from real lead values and selection options', () => {
@@ -112,5 +118,58 @@ describe('lead overview layout data', () => {
     expect(sections[0].items).toHaveLength(3)
     expect(sections[1].items).toHaveLength(4)
     expect(sections[2].items).toHaveLength(2)
+  })
+
+  it('shows Referred by with the resolved user name when the lead was referred', () => {
+    const sections = buildLeadOverviewSections(
+      {
+        referred_by: 'user-9',
+        crm_contact_name: 'Sam Buyer',
+        email: 'sam@example.com',
+        phone: '555-0100',
+      },
+      [{ id: 'user-9', first_name: 'Ravi', last_name: 'Rao', role: 'manager' }],
+    )
+
+    const contact = sections.find((section) => section.title === 'Contact Snapshot')
+    expect(contact.items.find((item) => item.label === 'Referred by')?.value).toBe('Ravi Rao')
+  })
+
+  it('falls back to the raw id when the referrer user is not in the user list', () => {
+    const sections = buildLeadOverviewSections(
+      { referred_by: 'user-ghost', email: 'sam@example.com' },
+      [],
+    )
+
+    const contact = sections.find((section) => section.title === 'Contact Snapshot')
+    expect(contact.items.find((item) => item.label === 'Referred by')?.value).toBe('user-ghost')
+  })
+})
+
+describe('LeadOverview custom fields', () => {
+  it('adds a missing custom field through the Add field flow', () => {
+    const onSubmit = vi.fn()
+    render(<LeadOverview lead={{ id: 'lead-1', custom_fields: { existing: 'yes' } }} users={[]} onSubmit={onSubmit} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add field' }))
+    fireEvent.change(screen.getByPlaceholderText('e.g. LinkedIn profile'), { target: { value: 'linkedin_url' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. linkedin.com/in/jane'), { target: { value: 'https://linkedin.com/in/jane' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save field' }))
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      custom_fields: JSON.stringify({ existing: 'yes', linkedin_url: 'https://linkedin.com/in/jane' }),
+    })
+  })
+
+  it('rejects an Add field without a name', () => {
+    const onSubmit = vi.fn()
+    render(<LeadOverview lead={{ id: 'lead-1' }} users={[]} onSubmit={onSubmit} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add field' }))
+    fireEvent.change(screen.getByPlaceholderText('e.g. LinkedIn profile'), { target: { value: '  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save field' }))
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith('Field name is required')
   })
 })

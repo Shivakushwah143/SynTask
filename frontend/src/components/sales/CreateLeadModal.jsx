@@ -127,6 +127,7 @@ const EMPTY_LEAD_FORM = {
   product_ids: '',
   current_stage: '',
   assigned_to: '',
+  referred_by: '',
   interest_level: 'medium',
   estimated_close_date: '',
   remark: '',
@@ -190,6 +191,8 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
     return []
   }, [usersQuery.data])
   const leadOwnerOptions = useMemo(() => assignableUsers.filter(isValidLeadOwner), [assignableUsers])
+  // Referral sources are any active employee or manager in the company (optional).
+  const referralOptions = useMemo(() => assignableUsers.filter(isAssignableActiveUser), [assignableUsers])
 
   const defaultStageId = getStageValue(stages[0])
   const defaultCategoryId = getOptionId(categories[0])
@@ -305,6 +308,7 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
       product_ids: createForm.product_ids || undefined,
       current_stage: createForm.current_stage || undefined,
       assigned_to: createForm.assigned_to || defaultOwnerId || undefined,
+      referred_by: createForm.referred_by || undefined,
       interest_level: createForm.interest_level || 'medium',
       estimated_close_date: createForm.estimated_close_date || undefined,
       remark: createForm.remark.trim(),
@@ -405,6 +409,17 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
                 {!leadOwnerOptions.length && defaultOwnerId ? (
                   <option value={defaultOwnerId}>{user?.first_name} {user?.last_name} ({user?.role || 'owner'})</option>
                 ) : null}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-muted">Referred by</span>
+              <select className={inputClassName} value={createForm.referred_by} onChange={(e) => setCreateForm((state) => ({ ...state, referred_by: e.target.value }))}>
+                <option value="">Not referred</option>
+                {referralOptions.map((userOption) => (
+                  <option key={getUserId(userOption)} value={getUserId(userOption)}>
+                    {userOption.first_name} {userOption.last_name} {userOption.role ? `(${userOption.role})` : ''}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="space-y-1">

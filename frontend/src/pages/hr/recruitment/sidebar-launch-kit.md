@@ -88,7 +88,7 @@ Questions? Reply to this message.
 | All client conversations | Inbox → Meta Messages | Was "Meta Inbox" under CRM Tools |
 | Notifications | Inbox → Notifications | Was under Communication |
 | Activity feed | Inbox → Activity Feed | Was "Timeline" under Communication |
-| Daily updates (EOD) | Inbox → Daily Updates | Was "Daily EOD" under Communication |
+| Daily updates (EOD) | Work → Daily Updates | Was "Daily EOD" under Communication |
 | AI reply drafts | Inbox → AI Replies | Was "AI Reply Drafts" under Meta Omnichannel |
 | Human approval queue | Inbox → Approval Queue | Was "Human Approval Queue" under Meta Omnichannel |
 | AI tools / AI writer | AI Workspace → AI Assistant | Was "AI Command Center" under AI & Marketing |

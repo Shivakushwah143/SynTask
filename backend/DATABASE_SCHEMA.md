@@ -942,6 +942,7 @@ Indexes: includes a partial unique `('company_id', 'meta_lead_id')` index for Me
 | `estimated_close_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `assigned_to` | `str` | Yes | Yes | Model field |
 | `assigned_by` | `Optional[str]` | No | Yes | Model field |
+| `referred_by` | `Optional[str]` | No | No | User ID of the employee/manager who referred the lead (optional) |
 | `current_stage` | `str` | No | Yes | Model field |
 | `due_date` | `Optional[datetime.datetime]` | No | No | Model field |
 | `due_time` | `Optional[str]` | No | No | Model field |
