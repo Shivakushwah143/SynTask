@@ -397,6 +397,7 @@ class LeadNormalizer:
         normalized["owner_contact_no"] = _normalize_text(normalized.get("owner_contact_no")) or None
         normalized["assigned_to"] = _normalize_text(normalized.get("assigned_to")) or None
         normalized["assigned_by"] = _normalize_text(normalized.get("assigned_by")) or None
+        normalized["referred_by"] = _normalize_text(normalized.get("referred_by")) or None
         normalized["due_date"] = _normalize_text(normalized.get("due_date")) or None
         normalized["due_time"] = _normalize_text(normalized.get("due_time")) or None
         normalized["tag"] = _parse_multi_value(normalized.get("tag")) if isinstance(normalized.get("tag"), str) else list(normalized.get("tag") or [])
@@ -464,7 +465,7 @@ class LeadNormalizer:
             "designation", "nationality", "language",
             "owner_name", "owner_contact_no",
             "tag", "crm_company_id", "contact_id",
-            "due_date", "due_time",
+            "due_date", "due_time", "referred_by",
             "budget", "timeline", "decision_maker", "industry",
             "requirement", "location", "pain_points",
             "won_amount", "deal_value", "dealValue", "value", "amount",
@@ -497,6 +498,7 @@ class LeadNormalizer:
                 "language": row_norm.get("language"),
                 "owner_name": row_norm.get("owner_name"),
                 "owner_contact_no": row_norm.get("owner_contact_no"),
+                "referred_by": row_norm.get("referred_by"),
                 "tag": row_norm.get("tag"),
                 "crm_company_id": row_norm.get("crm_company_id"),
                 "contact_id": row_norm.get("contact_id"),
@@ -890,6 +892,7 @@ class LeadEngine:
             estimated_close_date=_parse_datetime(normalized.get("estimated_close_date")),
             assigned_to=str(normalized.get("assigned_to")),
             assigned_by=str(normalized.get("assigned_by")),
+            referred_by=normalized.get("referred_by"),
             current_stage=normalized.get("current_stage") or "new",
             due_date=_parse_datetime(normalized.get("due_date"), normalized.get("due_time")),
             due_time=normalized.get("due_time"),
@@ -966,6 +969,7 @@ class LeadEngine:
             "estimated_close_date": prospect.estimated_close_date.isoformat() if prospect.estimated_close_date else None,
             "assigned_to": prospect.assigned_to,
             "assigned_by": prospect.assigned_by,
+            "referred_by": getattr(prospect, "referred_by", None),
             "current_stage": prospect.current_stage,
             "due_date": prospect.due_date.isoformat() if prospect.due_date else None,
             "due_time": prospect.due_time,
@@ -1042,6 +1046,8 @@ class LeadEngine:
             prospect.interest_level = _parse_interest_level(payload.get("interest_level"))
         if "estimated_close_date" in payload:
             prospect.estimated_close_date = _parse_datetime(payload.get("estimated_close_date"))
+        if "referred_by" in payload:
+            prospect.referred_by = _normalize_text(payload.get("referred_by")) or None
         if "assigned_to" in payload:
             target_assignee = payload.get("assigned_to") or prospect.assigned_to
             # Only re-validate/reassign when the owner is actually changing.
@@ -1099,6 +1105,12 @@ class LeadEngine:
             prospect.tag = list(payload.get("tag") or [])
         if "greeting_preference" in payload:
             prospect.greeting_preference = _normalize_text(payload.get("greeting_preference")) or None
+        if "custom_fields" in payload:
+            # The payload carries the complete custom-field set (the overview
+            # Add-field flow sends existing + new, the sidebar editor sends the
+            # full edited JSON), so the stored set is replaced, never merged.
+            incoming = payload.get("custom_fields") or {}
+            prospect.custom_fields = dict(incoming) if isinstance(incoming, dict) else {}
         if "reason_for_lost" in payload:
             prospect.reason_for_lost = _normalize_text(payload.get("reason_for_lost")) or None
         if "won_amount" in payload:

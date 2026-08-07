@@ -47,6 +47,7 @@ class SalesProspect(Document):
     estimated_close_date: Optional[datetime] = None
     assigned_to: str  # User ID
     assigned_by: Optional[str] = None  # User ID who assigned
+    referred_by: Optional[str] = None  # User ID of the employee/manager who referred this lead
     current_stage: str = "new"  # Stage name (from master)
     due_date: Optional[datetime] = None
     due_time: Optional[str] = None  # HH:MM AM/PM format

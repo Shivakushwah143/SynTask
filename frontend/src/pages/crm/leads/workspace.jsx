@@ -277,6 +277,7 @@ export default function CRMLeadWorkspacePage() {
         <MetaAttribution lead={lead} />
         <LeadOverview
           lead={lead}
+          users={users}
           onSubmit={handleLeadOverviewSubmit}
           isSaving={leadUpdateMutation.isLoading}
         />

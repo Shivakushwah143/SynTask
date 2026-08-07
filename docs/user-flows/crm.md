@@ -53,7 +53,7 @@ flowchart TD
 
 ## Leads Dashboard
 - How the user reaches it: CRM sidebar, dashboard shortcut, or direct `/crm/leads`.
-- What they can do: view lead analytics and charts, search/filter leads, create leads, import/export leads, bulk edit leads, review and merge duplicates, and assign leads to active same-company owners.
+- What they can do: view lead analytics and charts, search/filter leads, create leads, import/export leads, bulk edit leads, review and merge duplicates, and assign leads to active same-company owners. The shared Add New Lead modal includes an optional **Referred by** dropdown listing active company users (employees, managers, leads, admins); the chosen user ID is stored as `referred_by` on the lead.
 - What happens after every action:
   - Search and filters update the visible lead list client-side.
   - Creating a lead opens a modal; phone is required, phone duplicates are allowed for later duplicate review/merge, and on success the lead list and pipeline are refreshed.
@@ -83,7 +83,7 @@ flowchart TD
 
 ## Lead Workspace
 - How the user reaches it: click a lead card in pipeline, calendar, activities, company/leads links, or open `/crm/leads/:leadId`.
-- What they can do: inspect lead summary, update deal-related data, manage notes/files, inspect timeline/history, open related CRM modules.
+- What they can do: inspect lead summary, update deal-related data, manage notes/files, inspect timeline/history, open related CRM modules. The Lead overview shows the **Referred by** name (resolved from the optional `referred_by` user ID captured at creation) inside the Contact Snapshot, and has an **Add field** button that creates a missing custom field inline (name + value) — stored on the lead's `custom_fields` via the existing `PUT /api/v1/sales/prospects/{lead_id}` path, which replaces the complete custom-field set.
 - What happens after every action:
   - Tab changes swap sections without leaving the workspace.
   - Header summary chips show stable identity metadata only: resolved owner name, phone, and created date.

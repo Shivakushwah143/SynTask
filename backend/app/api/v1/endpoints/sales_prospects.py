@@ -332,6 +332,7 @@ async def list_prospects(
                 "email": p.email,
                 "assigned_to": p.assigned_to,
                 "assigned_by": p.assigned_by,
+                "referred_by": getattr(p, "referred_by", None),
                 "category_id": p.category_id,
                 "product_ids": p.product_ids,
                 "crm_company_id": p.crm_company_id,
@@ -481,6 +482,7 @@ async def get_prospect(
         "estimated_close_date": prospect.estimated_close_date.isoformat() if prospect.estimated_close_date else None,
         "assigned_to": prospect.assigned_to,
         "assigned_by": prospect.assigned_by,
+        "referred_by": getattr(prospect, "referred_by", None),
         "current_stage": prospect.current_stage,
         "due_date": prospect.due_date.isoformat() if prospect.due_date else None,
         "due_time": prospect.due_time,
@@ -567,6 +569,7 @@ async def create_prospect(
     language: Optional[str] = Form(None),  # Pipe-separated
     owner_name: Optional[str] = Form(None),
     owner_contact_no: Optional[str] = Form(None),
+    referred_by: Optional[str] = Form(None),  # User ID of the employee/manager who referred the lead
     tag: Optional[str] = Form(None),  # Pipe-separated
     greeting_preference: Optional[str] = Form(None),
     custom_fields: Optional[str] = Form(None),
@@ -633,6 +636,7 @@ async def create_prospect(
             "language": _parse_multi_value(language) if language else [],
             "owner_name": owner_name,
             "owner_contact_no": owner_contact_no,
+            "referred_by": referred_by,
             "tag": _parse_multi_value(tag) if tag else [],
             "greeting_preference": greeting_preference,
             "custom_fields": _parse_custom_fields(custom_fields),
@@ -683,6 +687,7 @@ async def update_prospect(
     estimated_close_date: Optional[str] = Form(None),
     reason_for_lost: Optional[str] = Form(None),
     won_amount: Optional[float] = Form(None),
+    referred_by: Optional[str] = Form(None),
     crm_company_id: Optional[str] = Form(None),
     custom_fields: Optional[str] = Form(None),
     source: Optional[str] = Form(None),
@@ -744,6 +749,7 @@ async def update_prospect(
         "estimated_close_date": estimated_close_date,
         "reason_for_lost": reason_for_lost,
         "won_amount": won_amount,
+        "referred_by": referred_by,
         "crm_company_id": crm_company_id,
         "custom_fields": _parse_custom_fields(custom_fields),
         "source": source,

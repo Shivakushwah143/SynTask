@@ -73,6 +73,8 @@ describe('CreateLeadModal (shared lead creation form)', () => {
     expect(screen.getByText('Select product')).toBeTruthy()
     expect(screen.getByText('Select stage')).toBeTruthy()
     expect(screen.getByText('Select owner')).toBeTruthy()
+    expect(screen.getByText('Referred by')).toBeTruthy()
+    expect(screen.getByText('Not referred')).toBeTruthy()
     expect(screen.getByText('Interest level')).toBeTruthy()
     expect(screen.getByText('Estimated close date')).toBeTruthy()
     expect(screen.getByPlaceholderText('Tags, pipe-separated')).toBeTruthy()
@@ -116,6 +118,9 @@ describe('CreateLeadModal (shared lead creation form)', () => {
     fireEvent.change(screen.getByPlaceholderText('Enter mobile number'), { target: { value: '9876543210' } })
     fireEvent.change(screen.getByPlaceholderText('Company name'), { target: { value: 'Acme Corp' } })
     fireEvent.change(screen.getByPlaceholderText('Tags, pipe-separated'), { target: { value: 'hot | enterprise' } })
+    // Referred by is optional — pick an employee from the dropdown.
+    const referredSelect = screen.getByText('Not referred').closest('select')
+    fireEvent.change(referredSelect, { target: { value: 'u1' } })
     fireEvent.click(screen.getByText('Save lead'))
 
     expect(salesApi.createLead).toHaveBeenCalledTimes(1)
@@ -132,7 +137,19 @@ describe('CreateLeadModal (shared lead creation form)', () => {
       product_ids: 'prod-1',
       current_stage: 'acquire',
       assigned_to: 'u1',
+      referred_by: 'u1',
     })
+  })
+
+  it('sends no referred_by when the optional field is left unset', () => {
+    renderModal()
+
+    fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Ravi' } })
+    fireEvent.click(screen.getByText('Save lead'))
+
+    expect(salesApi.createLead).toHaveBeenCalledTimes(1)
+    const payload = salesApi.createLead.mock.calls[0][0]
+    expect(payload.referred_by).toBeUndefined()
   })
 
   it('lets an employee open the Create category modal from + New category (no role gate)', () => {

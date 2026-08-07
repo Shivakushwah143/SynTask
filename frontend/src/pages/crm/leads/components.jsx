@@ -2,7 +2,7 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, BadgeInfo, Bell, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Route, Save, Sparkles, StickyNote, Users, Video, Wand2, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeInfo, Bell, CalendarClock, CheckCircle2, Clock3, FileText, History, Layers3, Lock, Mail, MessageSquare, Pencil, Plus, Route, Save, Sparkles, StickyNote, Users, Video, Wand2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
@@ -139,13 +139,22 @@ export const buildLeadEditFields = (lead = {}, stages = [], users = []) => {
   ]
 }
 
-export const buildLeadOverviewSections = (lead = {}) => {
+const resolveUserIdName = (userId, users = []) => {
+  const rawId = String(userId || '').trim()
+  if (!rawId) return ''
+  const found = users.find((user) => String(user?.id || user?._id || user?.user_id || '').trim() === rawId)
+  return found ? formatUserName(found) : rawId
+}
+
+export const buildLeadOverviewSections = (lead = {}, users = []) => {
   const customFields = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
+  const referredByName = resolveUserIdName(lead?.referred_by, users)
   const contactItems = [
     { label: 'Contact', value: lead?.crm_contact_name || lead?.primary_contact || lead?.contact_name || lead?.prospect_name || '-' },
     { label: 'Email', value: lead?.email || '-' },
     { label: 'Phone', value: lead?.phone || '-' },
   ]
+  if (referredByName) contactItems.push({ label: 'Referred by', value: referredByName })
   const pipelineItems = [
     { label: 'Source', value: lead?.channel || '-' },
     { label: 'Inner status', value: getStageStatusLabel(lead?.current_stage, getLeadStageStatus(lead)) || '-' },
@@ -630,9 +639,11 @@ const buildLeadOverviewForm = (lead = {}) => ({
   next_follow_up_at: lead?.next_follow_up_at ? String(lead.next_follow_up_at).slice(0, 10) : '',
 })
 
-export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSaving = false }) {
-  const sections = buildLeadOverviewSections(lead)
+export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSaving = false, users = [] }) {
+  const sections = buildLeadOverviewSections(lead, users)
   const [isEditing, setIsEditing] = useState(false)
+  const [isAddingField, setIsAddingField] = useState(false)
+  const [newField, setNewField] = useState({ name: '', value: '' })
   const [form, setForm] = useState(() => buildLeadOverviewForm(lead))
 
   useEffect(() => {
@@ -648,17 +659,99 @@ export const LeadOverview = memo(function LeadOverview({ lead, onSubmit, isSavin
     setIsEditing(false)
   }
 
+  const handleAddField = () => {
+    const name = newField.name.trim()
+    const value = newField.value.trim()
+    if (!name) {
+      toast.error('Field name is required')
+      return
+    }
+    const existing = lead?.custom_fields && typeof lead.custom_fields === 'object' ? lead.custom_fields : {}
+    const nextCustomFields = { ...existing, [name]: value }
+    onSubmit?.({
+      custom_fields: JSON.stringify(nextCustomFields),
+    })
+    setNewField({ name: '', value: '' })
+    setIsAddingField(false)
+  }
+
+  const closeAddField = () => {
+    setNewField({ name: '', value: '' })
+    setIsAddingField(false)
+  }
+
   return (
     <CRMSection
       title="Lead overview"
       description="Balanced lead context grouped for quick scanning."
       actions={(
-        <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditing((value) => !value)}>
-          <Pencil className="h-4 w-4" />
-          {isEditing ? 'Close edit' : 'Edit'}
-        </Button>
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setIsEditing(false)
+              setIsAddingField((value) => !value)
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            Add field
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setIsAddingField(false)
+              setIsEditing((value) => !value)
+            }}
+          >
+            <Pencil className="h-4 w-4" />
+            {isEditing ? 'Close edit' : 'Edit'}
+          </Button>
+        </>
       )}
     >
+      {isAddingField ? (
+        <div className="mb-4 rounded-2xl border border-dashed border-primary-300/70 bg-primary-50/40 p-4 dark:border-primary-800 dark:bg-primary-950/20">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Add a custom field</p>
+            <button type="button" onClick={closeAddField} className="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800" aria-label="Close add field">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Missing a required field? Create it here — it is stored as a custom field on this lead.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Field name</span>
+              <input
+                className={`${inputClassName} mt-2`}
+                placeholder="e.g. LinkedIn profile"
+                value={newField.name}
+                onChange={(event) => setNewField((state) => ({ ...state, name: event.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Value</span>
+              <input
+                className={`${inputClassName} mt-2`}
+                placeholder="e.g. linkedin.com/in/jane"
+                value={newField.value}
+                onChange={(event) => setNewField((state) => ({ ...state, value: event.target.value }))}
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={closeAddField}>
+              Cancel
+            </Button>
+            <Button type="button" variant="primary" size="sm" onClick={handleAddField}>
+              Save field
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {isEditing ? (
         <div className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
