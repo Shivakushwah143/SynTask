@@ -81,22 +81,46 @@ async def test_create_lead_preserves_selected_stage(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_create_lead_rejects_whitespace_phone(monkeypatch):
+async def test_create_lead_allows_missing_phone(monkeypatch):
+    """Phone is optional on manual lead creation: an empty/whitespace phone is
+    stored as None instead of failing the request with a 400 (the reported UI
+    feedback: a lead with no mobile number must still be created)."""
+    async def fake_find_duplicate(current_user, payload):
+        return None
+
+    async def fake_resolve_company(current_user, payload):
+        return None, payload.get("company_name")
+
+    async def fake_resolve_contact(current_user, payload):
+        return None
+
+    async def fake_load_assignable_users(current_user, *, department_id=None):
+        return [SimpleNamespace(id="user-1", first_name="Ada", last_name="Admin")]
+
+    async def fake_publish(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.find_duplicate", fake_find_duplicate)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_company", fake_resolve_company)
+    monkeypatch.setattr("app.crm.lead_engine.DuplicateResolver.resolve_contact", fake_resolve_contact)
+    monkeypatch.setattr("app.crm.lead_engine.AssignmentEngine.load_assignable_users", fake_load_assignable_users)
+    monkeypatch.setattr("app.crm.lead_engine.LeadEventPublisher.lead_created", fake_publish)
+    monkeypatch.setattr("app.crm.lead_engine.SalesProspect", FakeProspect)
+
     current_user = SimpleNamespace(id="manager-1", company_id="company-1", role=UserRole.MANAGER)
+    result = await LeadEngine.create_lead(
+        current_user,
+        {
+            "first_name": "Ada",
+            "last_name": "Admin",
+            "country_code": "+91",
+            "phone": "   ",
+            "company_name": "Alpha",
+        },
+    )
 
-    with pytest.raises(HTTPException) as exc_info:
-        await LeadEngine.create_lead(
-            current_user,
-            {
-                "first_name": "Ada",
-                "last_name": "Admin",
-                "country_code": "+91",
-                "phone": "   ",
-            },
-        )
-
-    assert exc_info.value.status_code == 400
-    assert "Phone is required" in str(exc_info.value.detail)
+    assert result["message"] == "Prospect created successfully"
+    assert result["lead"]["phone"] is None
 
 
 @pytest.mark.asyncio

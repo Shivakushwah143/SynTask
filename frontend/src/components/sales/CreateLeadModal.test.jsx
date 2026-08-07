@@ -31,7 +31,9 @@ vi.mock('../../api/users', () => ({
 }))
 
 vi.mock('../../store/authStore', () => ({
-  useAuthStore: () => ({ user: { id: 'u1', first_name: 'Admin', role: 'admin', modules: ['sales_crm'] } }),
+  // An Employee session proves the + New category / + New product quick-creation
+  // flows are open to everyone, not just admin/manager roles.
+  useAuthStore: () => ({ user: { id: 'u1', first_name: 'Ema', last_name: 'Employee', role: 'employee', modules: ['sales_crm'] } }),
 }))
 
 vi.mock('react-hot-toast', () => ({
@@ -64,7 +66,7 @@ describe('CreateLeadModal (shared lead creation form)', () => {
     // Full field set — the same form everywhere, no reduced variant.
     expect(screen.getByPlaceholderText('First name')).toBeTruthy()
     expect(screen.getByPlaceholderText('Last name')).toBeTruthy()
-    expect(screen.getByPlaceholderText('9876543210')).toBeTruthy()
+    expect(screen.getByPlaceholderText('Enter mobile number')).toBeTruthy()
     expect(screen.getByPlaceholderText('Email')).toBeTruthy()
     expect(screen.getByPlaceholderText('Company name')).toBeTruthy()
     expect(screen.getByText('Select category')).toBeTruthy()
@@ -81,16 +83,29 @@ describe('CreateLeadModal (shared lead creation form)', () => {
     expect(screen.getByText('+ New product')).toBeTruthy()
   })
 
-  it('rejects an invalid phone format before creating the lead', () => {
+  it('rejects an invalid phone format when a phone is provided', () => {
     renderModal()
 
-    // Native HTML5 `required` blocks the fully empty submit, so exercise the
-    // component guard with a value that passes `required` but fails validation.
-    fireEvent.change(screen.getByPlaceholderText('9876543210'), { target: { value: '123' } })
+    // Phone is optional, but a provided phone must match +country + 10 digits.
+    fireEvent.change(screen.getByPlaceholderText('Enter mobile number'), { target: { value: '123' } })
     fireEvent.click(screen.getByText('Save lead'))
 
     expect(toast.error).toHaveBeenCalledWith('Use a + country code and exactly 10 phone digits')
     expect(salesApi.createLead).not.toHaveBeenCalled()
+  })
+
+  it('creates a lead without a phone number', () => {
+    renderModal()
+
+    // No mobile number at all — the lead must still be created (partial capture).
+    fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Ravi' } })
+    fireEvent.change(screen.getByPlaceholderText('Company name'), { target: { value: 'Acme Corp' } })
+    fireEvent.click(screen.getByText('Save lead'))
+
+    expect(salesApi.createLead).toHaveBeenCalledTimes(1)
+    const payload = salesApi.createLead.mock.calls[0][0]
+    expect(payload.phone).toBe('')
+    expect(payload.first_name).toBe('Ravi')
   })
 
   it('creates the lead with all entered details', () => {
@@ -98,7 +113,7 @@ describe('CreateLeadModal (shared lead creation form)', () => {
 
     fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Ravi' } })
     fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Sharma' } })
-    fireEvent.change(screen.getByPlaceholderText('9876543210'), { target: { value: '9876543210' } })
+    fireEvent.change(screen.getByPlaceholderText('Enter mobile number'), { target: { value: '9876543210' } })
     fireEvent.change(screen.getByPlaceholderText('Company name'), { target: { value: 'Acme Corp' } })
     fireEvent.change(screen.getByPlaceholderText('Tags, pipe-separated'), { target: { value: 'hot | enterprise' } })
     fireEvent.click(screen.getByText('Save lead'))
@@ -118,6 +133,15 @@ describe('CreateLeadModal (shared lead creation form)', () => {
       current_stage: 'acquire',
       assigned_to: 'u1',
     })
+  })
+
+  it('lets an employee open the Create category modal from + New category (no role gate)', () => {
+    renderModal()
+
+    // The authStore mock user is an Employee — the button must still work.
+    fireEvent.click(screen.getByText('+ New category'))
+    expect(screen.getByText('Create category')).toBeTruthy()
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   it('opens the Create category modal from + New category and saves a category', () => {

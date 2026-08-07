@@ -144,9 +144,7 @@ const EMPTY_PRODUCT_FORM = { name: '', category_id: '', rate: '', unit: '', stat
 export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
-  const userRole = normalizeRole(user?.role)
   const currentUserId = user?.id || user?._id || ''
-  const canCreateCategory = Boolean(user && (userRole === 'admin' || userRole === 'sub_admin' || userRole === 'manager' || userRole === 'lead' || userRole === 'super_admin') && hasSalesCrmModule(user?.modules || []))
 
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
   const [createProductOpen, setCreateProductOpen] = useState(false)
@@ -297,12 +295,9 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
       tag: createForm.tag.trim(),
     }
 
-    // Only phone is required - all other fields are optional for partial lead creation
-    if (!payload.phone) {
-      toast.error('Phone number is required')
-      return
-    }
-    if (!/^\+\d{1,4}$/.test(String(payload.country_code || '')) || !/^\d{10}$/.test(payload.phone)) {
+    // All fields are optional for partial lead creation — phone included.
+    // When a phone IS entered it must still match the +country code + 10 digits format.
+    if (payload.phone && (!/^\+\d{1,4}$/.test(String(payload.country_code || '')) || !/^\d{10}$/.test(payload.phone))) {
       toast.error('Use a + country code and exactly 10 phone digits')
       return
     }
@@ -332,13 +327,13 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
               <input className={inputClassName} placeholder="Last name" value={createForm.last_name} onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))} />
             </label>
             <label className="space-y-1 md:col-span-2">
-              <span className="text-xs font-medium text-text-muted">Phone *</span>
+              <span className="text-xs font-medium text-text-muted">Phone</span>
               <PhoneInput
                 countryCode={createForm.country_code}
                 phoneNumber={createForm.phone}
                 onCountryCodeChange={(value) => setCreateForm((state) => ({ ...state, country_code: value }))}
                 onPhoneNumberChange={(value) => setCreateForm((state) => ({ ...state, phone: value }))}
-                required
+                placeholder="Enter mobile number"
               />
             </label>
             <label className="space-y-1">
@@ -352,7 +347,7 @@ export default function CreateLeadModal({ isOpen, onClose, onCreated }) {
             <label className="space-y-1">
               <span className="flex items-center justify-between gap-2 text-xs font-medium text-text-muted">
                 <span>Category</span>
-                <button type="button" className={`text-primary-600 hover:underline ${!canCreateCategory ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => { if (!canCreateCategory) { toast.error('You do not have permission to create categories'); return } setCreateCategoryOpen(true) }} >+ New category</button>
+                <button type="button" className="text-primary-600 hover:underline" onClick={() => setCreateCategoryOpen(true)}>+ New category</button>
               </span>
               <select className={inputClassName} value={createForm.category_id || defaultCategoryId} onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}>
                 <option value="">Select category</option>

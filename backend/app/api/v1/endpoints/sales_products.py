@@ -14,7 +14,9 @@ router = APIRouter(dependencies=[Depends(require_module("sales"))])
 
 
 def _ensure_create_permission(user: User):
-    if user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.SUPER_ADMIN]:
+    # Any authenticated user with the sales module can add a product so the
+    # shared lead form's "+ New product" works for Employees too.
+    if user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN, UserRole.MANAGER, UserRole.LEAD, UserRole.EMPLOYEE, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to add products"

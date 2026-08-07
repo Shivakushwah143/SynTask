@@ -483,9 +483,8 @@ class LeadNormalizer:
 class LeadValidator:
     @staticmethod
     def validate_lead_payload(payload: Dict[str, Any]) -> None:
-        # Only phone is required - all other fields are optional for partial lead creation
-        if not payload.get("phone"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone is required")
+        # Every field is optional for partial lead creation (phone included) -
+        # a lead may be captured with only a name, only a phone, or both empty.
         # If first_name is provided but last_name is not, that's okay
         # If last_name is provided but first_name is not, that's okay
         # prospect_name will be auto-generated from first_name + last_name
@@ -832,7 +831,7 @@ class LeadEngine:
             last_name=normalized.get("last_name"),
             prospect_name=prospect_name,
             country_code=normalized.get("country_code") or "+91",
-            phone=normalized["phone"],
+            phone=normalized.get("phone") or None,
             email=normalized.get("email"),
             contact_id=normalized.get("contact_id"),
             category_id=normalized.get("category_id"),
