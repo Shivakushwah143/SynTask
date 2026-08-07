@@ -800,10 +800,12 @@ class LeadEngine:
             department_id=normalized.get("department_id"),
         )
         if assigned_to:
+            # Explicit owner selection is company-wide — department scoping
+            # only applies to automatic assignment strategies.
             _, assignable_users = await AssignmentEngine.validate_target_user(
                 current_user,
                 assigned_to,
-                department_id=department_id,
+                department_id=None,
             )
             normalized["assigned_to"] = AssignmentEngine.choose_assignee(
                 "manual",

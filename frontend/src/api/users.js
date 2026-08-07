@@ -109,10 +109,11 @@ export const usersAPI = {
   },
 
   // Get assignable users (for task/ticket assignment)
-  getAssignableUsers: async (forTickets = false, projectId = null) => {
+  getAssignableUsers: async (forTickets = false, projectId = null, context = null) => {
     const params = new URLSearchParams()
     if (forTickets) params.append('for_tickets', 'true')
     if (projectId) params.append('project_id', projectId)
+    if (context) params.append('context', context)
     const response = await api.get(`/users/assignable?${params.toString()}`)
     return response.data
   },
