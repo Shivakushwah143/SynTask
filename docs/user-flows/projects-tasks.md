@@ -13,6 +13,11 @@ flowchart TD
   E --> G[Comments / Attachments / Time / Watchers]
 ```
 
+## Tasks List
+- How the user reaches it: main navigation `/tasks` (list or kanban toggle).
+- What they can do: browse tasks, search, filter by status/priority/assignee/department/due date, create tasks (now or scheduled), edit, and delete.
+- Follow-up behavior: Sales follow-up items (source_type `sales_follow_up`), including scheduled follow-up placeholders, are excluded from the Tasks page because they are not standalone tasks; they surface in the Calendar and CRM follow-up views instead.
+
 ## Projects List and Board
 - How the user reaches it: main navigation or workspace links.
 - What they can do: browse projects, open a board, inspect board summaries, create tasks, assign tasks to active employees in the company, and quick-create an employee from the task assignment flow.

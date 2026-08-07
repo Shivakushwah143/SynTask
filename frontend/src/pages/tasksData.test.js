@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
+import { buildTaskGraphRows, buildTaskGraphSummary, isFollowUpTask } from './tasksData'
 
 describe('tasks graph data helpers', () => {
   test('maps task status to progress and priority to color', () => {
@@ -48,5 +48,38 @@ describe('tasks graph data helpers', () => {
     ])
 
     expect(rows[0].assignee).toBe('Asha Patel')
+  })
+
+  test('excludes follow-up tasks from graph rows and summary', () => {
+    const tasks = [
+      { id: 't1', title: 'Real task', status: 'todo', priority: 'medium' },
+      { id: 't2', title: 'Follow up call', status: 'in_progress', priority: 'high', source_type: 'sales_follow_up' },
+    ]
+
+    const rows = buildTaskGraphRows(tasks)
+    expect(rows.map((r) => r.id)).toEqual(['t1'])
+
+    const summary = buildTaskGraphSummary(tasks)
+    expect(summary).toEqual({ total: 1, active: 1, completed: 0 })
+  })
+
+  test('isFollowUpTask flags sales follow-up tasks and scheduled placeholders', () => {
+    expect(isFollowUpTask({ id: 't1', source_type: 'sales_follow_up' })).toBe(true)
+    expect(isFollowUpTask({ id: 't2', source_type: 'SALES_FOLLOW_UP' })).toBe(true)
+    // Scheduled follow-up placeholders now carry source_type from the job payload
+    expect(isFollowUpTask({ id: 't3', is_scheduled_placeholder: true, source_type: 'sales_follow_up' })).toBe(true)
+    expect(isFollowUpTask({ id: 't4', source_type: 'imported' })).toBe(false)
+    expect(isFollowUpTask({ id: 't5' })).toBe(false)
+  })
+
+  test('keeps scheduled placeholders that are not follow-ups in graph rows', () => {
+    const rows = buildTaskGraphRows([
+      { id: 's1', title: 'Publish later', status: 'scheduled', is_scheduled_placeholder: true },
+      { id: 'f1', title: 'Follow up call', status: 'scheduled', is_scheduled_placeholder: true, source_type: 'sales_follow_up' },
+      { id: 't1', title: 'Real task', status: 'todo' },
+    ])
+
+    expect(rows.map((r) => r.id)).toEqual(['s1', 't1'])
+    expect(rows[0].isScheduled).toBe(true)
   })
 })

@@ -17,7 +17,7 @@ import NaturalDateInput from '../components/tasks/NaturalDateInput'
 import QuickAssignPanel from '../components/tasks/QuickAssignPanel'
 import { useViewStore } from '../store/viewStore'
 import { canCreateTask, hasCompanyAdminAccess, normalizeRole } from '../utils/roles'
-import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary } from './tasksData'
+import { TASK_GRAPH_PRIORITY_COLORS, buildTaskGraphRows, buildTaskGraphSummary, isFollowUpTask } from './tasksData'
 import { readTaskRouteState, writeTaskRouteState } from './tasksRouteState'
 import { timeService } from '@/services/timeService';
 import { excludeCurrentUser } from '../utils/userFilters';
@@ -311,7 +311,10 @@ useEffect(() => {
         limit: pageSize,
       })
       let filteredTasks = Array.isArray(data.tasks) ? data.tasks : []
-      
+      // Follow-up items (e.g. scheduled from a Sales lead) are not standalone
+      // tasks and must not appear on the Tasks page.
+      filteredTasks = filteredTasks.filter((task) => !isFollowUpTask(task))
+
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase()
         filteredTasks = filteredTasks.filter(task =>
