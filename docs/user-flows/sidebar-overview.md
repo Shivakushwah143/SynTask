@@ -1,7 +1,7 @@
 # Sidebar Overview Panel
 
 Status: implemented frontend behavior
-Last reviewed: 2026-08-04
+Last reviewed: 2026-08-07
 
 ## Scope
 
@@ -20,7 +20,7 @@ Three sections have a dedicated default page instead of the generic `/sections/:
 
 ## Authorization and Tenant Isolation
 
-The overview does not create new permissions or backend contracts. Card visibility remains the same as the sidebar because both use `getSectionItems` with the authenticated user and organization department context. Operational counts are derived from existing React Query cache entries when a destination page has already loaded compatible data. For the Work module, the overview also reuses existing list APIs for Projects, Tasks, Requests, Scheduled Work, and Time Tracking with small limits; unavailable or unauthorized data falls back to neutral placeholders.
+The overview does not create new permissions or backend contracts. Card visibility remains the same as the sidebar because both use `getSectionItems` with the authenticated user and organization department context. Operational counts are derived from existing React Query cache entries when a destination page has already loaded compatible data. For the Work module, the overview also reuses existing list APIs for Projects, Tasks, Requests, Scheduled Work, Time Tracking, and Daily Updates (EOD) with small limits; unavailable or unauthorized data falls back to neutral placeholders.
 
 Tenant key: tenant-owned data remains enforced by the destination APIs and pages through `company_id` and existing backend authorization. The overview does not expose cross-tenant counts, record names, identifiers, files, or activity data.
 
