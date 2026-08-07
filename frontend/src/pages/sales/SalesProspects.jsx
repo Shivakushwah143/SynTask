@@ -83,7 +83,7 @@ function BulkUploadModal({ isOpen, onClose, onDone }) {
   const [fileError, setFileError] = useState('')
   const [step, setStep] = useState('upload')
   const [summary, setSummary] = useState(null)
-  const { data: usersData } = useQuery('assignable-users-for-bulk-upload', () => usersAPI.getAssignableUsers(), { enabled: isOpen })
+  const { data: usersData } = useQuery('assignable-users-for-bulk-upload', () => usersAPI.getAssignableUsers(false, null, 'sales_lead'), { enabled: isOpen })
   const users = useMemo(() => asArray(usersData, ['users']).filter(isAssignableActiveUser), [usersData])
 
   const mutation = useMutation((formData) => salesApi.bulkUploadLeads(formData), {
@@ -366,7 +366,7 @@ function LeadModal({ isOpen, onClose, onDone }) {
   const { data: stagesData } = useQuery('sales-stages-for-prospect', salesApi.getStages, { enabled: isOpen })
   const { data: categoriesData } = useQuery('sales-categories-for-prospect', salesApi.getCategories, { enabled: isOpen })
   const { data: productsData } = useQuery('sales-products-for-prospect', salesApi.getProducts, { enabled: isOpen })
-  const { data: usersData } = useQuery('assignable-users-for-prospect', () => usersAPI.getAssignableUsers(), { enabled: isOpen })
+  const { data: usersData } = useQuery('assignable-users-for-prospect', () => usersAPI.getAssignableUsers(false, null, 'sales_lead'), { enabled: isOpen })
 
   const stages = asArray(stagesData, ['stages'])
   const categories = asArray(categoriesData, ['categories'])
