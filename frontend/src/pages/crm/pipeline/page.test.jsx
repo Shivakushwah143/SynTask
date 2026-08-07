@@ -141,10 +141,13 @@ describe('crm pipeline page', () => {
 
     fireEvent.click(addLeadButton)
 
-    // The create form modal opens and exposes the real fields + submit button.
+    // The create form modal opens and exposes every field (shared component)
+    // including the + New category / + New product quick-creation flows.
     expect(screen.getByRole('heading', { name: /add new lead/i })).toBeTruthy()
-    expect(screen.getByPlaceholderText('John')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /create lead/i })).toBeTruthy()
+    expect(screen.getByPlaceholderText('First name')).toBeTruthy()
+    expect(screen.getByText('+ New category')).toBeTruthy()
+    expect(screen.getByText('+ New product')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /save lead/i })).toBeTruthy()
 
     // Closing via Cancel hides the modal again.
     fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))

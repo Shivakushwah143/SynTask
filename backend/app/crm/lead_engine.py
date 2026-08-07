@@ -113,6 +113,15 @@ def _promote_assignment_status(stage_value: Optional[str], assigned_to: Optional
     return current_status
 
 
+def _role_is_assignable(role: Any) -> bool:
+    """True when the role may own leads (admin, sub_admin, manager, lead, employee)."""
+    try:
+        normalized = role if isinstance(role, UserRole) else UserRole.from_legacy(str(role))
+    except Exception:
+        return False
+    return normalized in ASSIGNABLE_USER_ROLE_VALUES
+
+
 def _display_name(user: Optional[User], fallback: str = "System") -> str:
     if not user:
         return fallback
@@ -517,9 +526,8 @@ class LeadNormalizer:
 class LeadValidator:
     @staticmethod
     def validate_lead_payload(payload: Dict[str, Any]) -> None:
-        # Only phone is required - all other fields are optional for partial lead creation
-        if not payload.get("phone"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone is required")
+        # Every field is optional for partial lead creation (phone included) -
+        # a lead may be captured with only a name, only a phone, or both empty.
         # If first_name is provided but last_name is not, that's okay
         # If last_name is provided but first_name is not, that's okay
         # prospect_name will be auto-generated from first_name + last_name
@@ -799,30 +807,61 @@ class LeadEngine:
             current_user,
             department_id=normalized.get("department_id"),
         )
+        # Owner resolution must never block lead creation. When no valid
+        # assignable user can be found (e.g. an employee whose department has no
+        # other assignable members, or a fresh company with a single user), the
+        # lead is owned by its creator instead of failing the request with a 400
+        # (reported: POST /api/v1/sales/prospects/ returns 400 for employees).
+        fallback_assignee = (
+            str(getattr(current_user, "id", ""))
+            if _role_is_assignable(getattr(current_user, "role", None))
+            else ""
+        )
         if assigned_to:
             # Explicit owner selection is company-wide — department scoping
             # only applies to automatic assignment strategies.
-            _, assignable_users = await AssignmentEngine.validate_target_user(
-                current_user,
-                assigned_to,
-                department_id=None,
-            )
-            normalized["assigned_to"] = AssignmentEngine.choose_assignee(
-                "manual",
-                assignable_users,
-                target_user_id=str(assigned_to),
-                current_user=current_user,
-            )
-        else:
-            assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
-            if current_user.role == UserRole.MANAGER and str(current_user.id) in {str(user.id) for user in assignable_users}:
-                normalized["assigned_to"] = str(getattr(current_user, "id", ""))
-            else:
-                normalized["assigned_to"] = AssignmentEngine.choose_assignee(
-                    "least-loaded",
-                    assignable_users,
-                    assignment_counts={str(user.id): 0 for user in assignable_users},
+            try:
+                _, assignable_users = await AssignmentEngine.validate_target_user(
+                    current_user,
+                    assigned_to,
+                    department_id=None,
                 )
+                normalized["assigned_to"] = AssignmentEngine.choose_assignee(
+                    "manual",
+                    assignable_users,
+                    target_user_id=str(assigned_to),
+                    current_user=current_user,
+                )
+            except HTTPException:
+                logger.warning(
+                    "Lead owner validation failed ownerId=%s companyId=%s actorId=%s — falling back to creator ownership",
+                    assigned_to,
+                    getattr(current_user, "company_id", None),
+                    getattr(current_user, "id", None),
+                )
+                normalized["assigned_to"] = fallback_assignee
+        else:
+            try:
+                assignable_users = await AssignmentEngine.load_assignable_users(current_user, department_id=department_id)
+            except HTTPException:
+                logger.warning(
+                    "No assignable users for lead create companyId=%s departmentId=%s actorId=%s — falling back to creator ownership",
+                    getattr(current_user, "company_id", None),
+                    department_id,
+                    getattr(current_user, "id", None),
+                )
+                assignable_users = []
+            if assignable_users:
+                if current_user.role == UserRole.MANAGER and str(current_user.id) in {str(user.id) for user in assignable_users}:
+                    normalized["assigned_to"] = str(getattr(current_user, "id", ""))
+                else:
+                    normalized["assigned_to"] = AssignmentEngine.choose_assignee(
+                        "least-loaded",
+                        assignable_users,
+                        assignment_counts={str(user.id): 0 for user in assignable_users},
+                    )
+            else:
+                normalized["assigned_to"] = fallback_assignee
         # An owned Acquire lead starts as Assigned, never the new/imported intake
         # defaults (the reported pipeline bug: assigned leads showing "New").
         normalized["current_stage_status"] = _promote_assignment_status(
@@ -842,7 +881,7 @@ class LeadEngine:
             last_name=normalized.get("last_name"),
             prospect_name=prospect_name,
             country_code=normalized.get("country_code") or "+91",
-            phone=normalized["phone"],
+            phone=normalized.get("phone") or None,
             email=normalized.get("email"),
             contact_id=normalized.get("contact_id"),
             category_id=normalized.get("category_id"),

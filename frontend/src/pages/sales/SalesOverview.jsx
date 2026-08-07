@@ -237,14 +237,14 @@ export default function SalesOverview() {
               <p className="truncate text-xs text-indigo-100 md:text-sm">What requires your attention today?</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="secondary" className="border-0 bg-white/15 !text-white hover:bg-white/25" onClick={() => navigate('/crm/pipeline')}>
+          <div className="flex flex-wrap items-center px-2 gap-2">
+            <Button size="sm" variant="secondary" className="border-0 bg-white/15 px-4 !text-white hover:bg-white/25" onClick={() => navigate('/crm/pipeline')}>
               Open Pipeline
               <ArrowRight className="h-3.5 w-3.5" />
             </Button>
-            <Button size="sm" className="border-0 bg-white !text-indigo-700 hover:bg-indigo-50" onClick={() => navigate('/crm/leads?create=1')}>
-              <Plus className="h-3.5 w-3.5" />
-              Add Lead
+            <Button size="sm" className="border-0 bg-white px-4 !text-white hover:bg-indigo-50" onClick={() => navigate('/crm/leads?create=1')}>
+              {/* <Plus className="h-3.5 w-3.5" /> */}
+              Lead Dashboard
             </Button>
           </div>
         </div>

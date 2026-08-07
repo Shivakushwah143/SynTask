@@ -40,6 +40,7 @@ flowchart TD
 - How the user reaches it: sales dashboard/sidebar or `/sales/prospects`.
 - What they can do: list prospects, create prospects, edit prospects, bulk upload, open detail.
 - What happens after every action: list updates, stage updates, and detail screens refresh the prospect record. Manual create requires a phone number but allows duplicate phones so duplicate management can review and merge them later.
+- Role access: creating and bulk-importing leads is open to **every authenticated role** (including Employee) — the backend no longer gates `POST /sales/prospects`, `POST /sales/prospects/bulk-upload`, `POST /sales/prospects/bulk-upload/preview`, or `POST /sales/prospects/imports/{id}/retry` by role; the UI exposes the Add Lead/Import buttons and the `/bulk-leads` page to all roles (module gate `sales_crm` still applies, and company/tenant scoping is preserved).
 - Backend APIs called: `GET/POST/PUT /api/v1/sales/prospects`, bulk upload, search/contact helpers.
 - Timeline events created: prospect lifecycle events should flow into CRM activity/timeline if backend emits them.
 - Notifications sent: none explicitly in the frontend.

@@ -8,47 +8,28 @@ import {
   LayoutDashboard,
   Users,
   TrendingUp,
-  Clock,
   DollarSign,
   RefreshCw,
   Plus,
   Import,
   Filter,
-  Search,
   X,
-  GripVertical,
   User,
-  Building2,
-  Mail,
-  Phone,
-  Tag,
-  Calendar,
-  CalendarClock,
-  Star,
   AlertCircle,
   BarChart3,
-  PieChart,
   Target,
   Award,
-  Activity,
-  ArrowRight,
-  CheckCircle,
-  Clock as ClockIcon,
-  Zap
+  Activity
 } from 'lucide-react'
 import { crmApi } from '../../../api/crm'
 import { salesApi } from '../../../api/sales'
 import { usersAPI } from '../../../api/users'
 import { isAssignableActiveUser } from '../../../utils/userFilters'
 import { useDebounce } from '../../../hooks/useDebounce'
-import { PhoneInput } from '../../../components/ui/PhoneInput'
 import {
   PipelineBoard,
-  PipelineBoardShell,
-  PipelineErrorState,
   PipelineFiltersBar,
   PipelineInsightRail,
-  PipelineLoadingState,
   PipelineStageListView,
 } from './components'
 import {
@@ -67,6 +48,7 @@ import {
 import { StageRequirementsDialog } from '../../../components/sales/StageRequirementsDialog'
 import { ContactAttemptDialog } from '../../../components/sales/ContactAttemptDialog'
 import SalesFollowUpDialog from '../../../components/sales/SalesFollowUpDialog'
+import CreateLeadModal from '../../../components/sales/CreateLeadModal'
 import {
   TRANSITION_BLOCKER,
   TRANSITION_WARNING_TOAST,
@@ -96,9 +78,6 @@ const usePipelineSearchContext = () => {
   return context || {}
 }
 
-const getOptionId = (item) => String(item?.id || item?._id || item?.value || item?.key || '').trim()
-const getUserId = (item) => String(item?.id || item?._id || item?.user_id || item?.value || '').trim()
-const getStageValue = (stage) => String(stage?.id || stage?._id || stage?.key || stage?.name || '').trim()
 const getResponseItems = (data, key) => {
   const direct = data?.[key]
   const nested = data?.data?.[key]
@@ -120,22 +99,6 @@ export default function CRMPipelinePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [localSearchValue, setLocalSearchValue] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
-  const [createForm, setCreateForm] = useState({
-    first_name: '',
-    last_name: '',
-    country_code: '+91',
-    phone: '',
-    email: '',
-    company_name: '',
-    category_id: '',
-    product_ids: '',
-    current_stage: '',
-    assigned_to: '',
-    interest_level: 'medium',
-    estimated_close_date: '',
-    remark: '',
-    tag: '',
-  })
   const pipelineSearchContext = usePipelineSearchContext()
   const searchValue = pipelineSearchContext.searchValue ?? localSearchValue
   const setSearchValue = pipelineSearchContext.setSearchValue || setLocalSearchValue
@@ -145,10 +108,7 @@ export default function CRMPipelinePage() {
   const pipelineQuery = useQuery(PIPELINE_QUERY_KEY, () => crmApi.getPipeline(), {
     staleTime: 30 * 1000,
   })
-  const categoriesQuery = useQuery('crm-lead-categories', salesApi.getCategories, { staleTime: 5 * 60 * 1000 })
-  const stagesQuery = useQuery('crm-lead-stages', salesApi.getStages, { staleTime: 5 * 60 * 1000 })
   const usersQuery = useQuery('crm-lead-users', () => usersAPI.getAssignableUsers(), { staleTime: 5 * 60 * 1000 })
-  const productsQuery = useQuery('crm-lead-products', salesApi.getProducts, { staleTime: 5 * 60 * 1000 })
   const [activeLeadId, setActiveLeadId] = useState(null)
   const [dragOverlayLead, setDragOverlayLead] = useState(null)
   const [requirementsDialog, setRequirementsDialog] = useState(null)
@@ -167,13 +127,10 @@ export default function CRMPipelinePage() {
 
   const rawPipeline = pipelineQuery.data
   const board = useMemo(() => buildPipelineBoard(rawPipeline || {}), [rawPipeline])
-  const categories = useMemo(() => getResponseItems(categoriesQuery.data, 'categories'), [categoriesQuery.data])
-  const stages = useMemo(() => getResponseItems(stagesQuery.data, 'stages'), [stagesQuery.data])
   const users = useMemo(
     () => getResponseItems(usersQuery.data, 'users').filter(isAssignableActiveUser),
     [usersQuery.data]
   )
-  const products = useMemo(() => getResponseItems(productsQuery.data, 'products'), [productsQuery.data])
   const loading = pipelineQuery.isLoading
   const hasError = pipelineQuery.isError
   const filters = useMemo(() => parsePipelineFilters(searchParams), [searchParams])
@@ -262,22 +219,6 @@ export default function CRMPipelinePage() {
 
   const interactiveStages = selectedStage ? board.stages : visibleBoard.stages
 
-  const defaultStageId = getStageValue(stages[0])
-  const defaultCategoryId = getOptionId(categories[0])
-  const defaultProductIds = getOptionId(products[0])
-  const defaultOwnerId = getUserId(users[0])
-
-  useEffect(() => {
-    if (!createOpen) return
-    setCreateForm((state) => ({
-      ...state,
-      category_id: state.category_id || defaultCategoryId,
-      product_ids: state.product_ids || defaultProductIds,
-      current_stage: state.current_stage || defaultStageId,
-      assigned_to: state.assigned_to || defaultOwnerId,
-    }))
-  }, [createOpen, defaultCategoryId, defaultOwnerId, defaultProductIds, defaultStageId])
-
   const updateFilters = useCallback((partial) => {
     if (Object.prototype.hasOwnProperty.call(partial, 'stage')) {
       const nextStageKey = getCanonicalPipelineStageKey(partial.stage)
@@ -304,70 +245,6 @@ export default function CRMPipelinePage() {
       return next
     }, { replace: true })
   }, [navigate, selectedStageKey, setSearchParams, setSearchValue])
-
-  const createLeadMutation = useMutation((payload) => salesApi.createLead(payload), {
-    onSuccess: () => {
-      toast.success('Lead created successfully! 🎉')
-      setCreateOpen(false)
-      setCreateForm({
-        first_name: '',
-        last_name: '',
-        country_code: '+91',
-        phone: '',
-        email: '',
-        company_name: '',
-        category_id: defaultCategoryId,
-        product_ids: defaultProductIds,
-        current_stage: defaultStageId,
-        assigned_to: '',
-        interest_level: 'medium',
-        estimated_close_date: '',
-        remark: '',
-        tag: '',
-      })
-      queryClient.invalidateQueries('crm-pipeline-board')
-      queryClient.invalidateQueries('crm-leads-entry')
-      queryClient.invalidateQueries('crm-lead-duplicates')
-      queryClient.invalidateQueries('sales-prospects')
-      queryClient.invalidateQueries('crm-all-leads')
-    },
-    onError: (error) => {
-      toast.error(error?.response?.data?.detail || 'Unable to create lead')
-    },
-  })
-
-  const submitCreateLead = useCallback((event) => {
-    event.preventDefault()
-    const payload = {
-      ...createForm,
-      first_name: createForm.first_name.trim(),
-      last_name: createForm.last_name.trim(),
-      phone: createForm.phone.trim(),
-      email: createForm.email.trim(),
-      company_name: createForm.company_name.trim(),
-      category_id: createForm.category_id || undefined,
-      product_ids: createForm.product_ids || undefined,
-      current_stage: createForm.current_stage || undefined,
-      assigned_to: createForm.assigned_to || defaultOwnerId || undefined,
-      interest_level: createForm.interest_level || 'medium',
-      estimated_close_date: createForm.estimated_close_date || undefined,
-      remark: createForm.remark.trim(),
-      tag: createForm.tag.trim(),
-    }
-    if (!payload.first_name || !payload.last_name || !payload.phone) {
-      toast.error('First name, last name, and phone are required')
-      return
-    }
-    if (!/^\+\d{1,4}$/.test(String(payload.country_code || '')) || !/^\d{10}$/.test(payload.phone)) {
-      toast.error('Use a + country code and exactly 10 phone digits')
-      return
-    }
-    if (!payload.assigned_to) {
-      toast.error('No valid owner found for this company')
-      return
-    }
-    createLeadMutation.mutate(payload)
-  }, [createForm, createLeadMutation, defaultOwnerId])
 
   // The board lead can be up to 5 minutes stale (cached pipeline query), so the
   // required-details popup must analyze the live record: a field saved just now
@@ -1121,246 +998,12 @@ export default function CRMPipelinePage() {
       />
 
       {/* ============================================================ */}
-      {/* CREATE LEAD MODAL - Beautiful Glassmorphism */}
+      {/* CREATE LEAD MODAL - shared component (same form as the Leads Dashboard) */}
       {/* ============================================================ */}
-      {createOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setCreateOpen(false)
-          }}
-        >
-          <div className="relative w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <div className="mb-6 flex items-start justify-between border-b border-gray-200 pb-4 dark:border-gray-700">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Add New Lead</h2>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Capture lead details and assign ownership
-                </p>
-              </div>
-              <button
-                onClick={() => setCreateOpen(false)}
-                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form className="space-y-5" onSubmit={submitCreateLead}>
-              <div className="grid gap-4 md:grid-cols-2">
-                {/* First Name */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    First Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="John"
-                    value={createForm.first_name}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, first_name: e.target.value }))}
-                    required
-                  />
-                </div>
-
-                {/* Last Name */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Last Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="Doe"
-                    value={createForm.last_name}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, last_name: e.target.value }))}
-                    required
-                  />
-                </div>
-
-                {/* Phone */}
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Phone <span className="text-rose-500">*</span>
-                  </label>
-                  <PhoneInput
-                    countryCode={createForm.country_code}
-                    phoneNumber={createForm.phone}
-                    onCountryCodeChange={(value) => setCreateForm((state) => ({ ...state, country_code: value }))}
-                    onPhoneNumberChange={(value) => setCreateForm((state) => ({ ...state, phone: value }))}
-                    required
-                  />
-                </div>
-
-                {/* Email */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-                  <input
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="john@example.com"
-                    type="email"
-                    value={createForm.email}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, email: e.target.value }))}
-                  />
-                </div>
-
-                {/* Company */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Company</label>
-                  <input
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="Acme Corp"
-                    value={createForm.company_name}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, company_name: e.target.value }))}
-                  />
-                </div>
-
-                {/* Category */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
-                  <select
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.category_id || defaultCategoryId}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, category_id: e.target.value }))}
-                  >
-                    <option value="">Select category</option>
-                    {categories.map((category) => (
-                      <option key={getOptionId(category)} value={getOptionId(category)}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Product */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Product</label>
-                  <select
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.product_ids || defaultProductIds}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, product_ids: e.target.value }))}
-                  >
-                    <option value="">Select product</option>
-                    {products.map((product) => (
-                      <option key={getOptionId(product)} value={getOptionId(product)}>
-                        {product.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Stage */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Stage</label>
-                  <select
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.current_stage || defaultStageId}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, current_stage: e.target.value }))}
-                  >
-                    <option value="">Select stage</option>
-                    {stages.map((stage) => (
-                      <option key={getStageValue(stage)} value={getStageValue(stage)}>
-                        {stage.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Owner */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Owner</label>
-                  <select
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.assigned_to || defaultOwnerId}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, assigned_to: e.target.value }))}
-                  >
-                    <option value="">Select owner</option>
-                    {users.map((user) => (
-                      <option key={getUserId(user)} value={getUserId(user)}>
-                        {user.first_name} {user.last_name} {user.role ? `(${user.role})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Interest Level */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Interest Level</label>
-                  <select
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    value={createForm.interest_level}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, interest_level: e.target.value }))}
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-
-                {/* Estimated Close */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated Close</label>
-                  <input
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    type="date"
-                    value={createForm.estimated_close_date}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, estimated_close_date: e.target.value }))}
-                  />
-                </div>
-
-                {/* Tags */}
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Tags</label>
-                  <input
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                    placeholder="Enter tags separated by | (e.g., hot | priority | enterprise)"
-                    value={createForm.tag}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, tag: e.target.value }))}
-                  />
-                </div>
-
-                {/* Remark */}
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Remarks</label>
-                  <textarea
-                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-white min-h-24"
-                    placeholder="Add any additional notes or remarks..."
-                    value={createForm.remark}
-                    onChange={(e) => setCreateForm((state) => ({ ...state, remark: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
-                <button
-                  type="button"
-                  onClick={() => setCreateOpen(false)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createLeadMutation.isLoading}
-                  className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-2 text-sm font-medium text-white shadow-lg transition hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
-                >
-                  {createLeadMutation.isLoading ? (
-                    <>
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4" />
-                      Create Lead
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CreateLeadModal
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+      />
     </div>
   )
 }
